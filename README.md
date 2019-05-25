@@ -1,2 +1,3 @@
 # encrypted.dev
-An end-to-end encrypted serverless platform for web and mobile apps.
+
+Current Master Plan: https://twitter.com/dvassallo/status/1126925437790081024
