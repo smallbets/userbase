@@ -1,0 +1,11 @@
+{
+    "editor.formatOnPaste": true,
+    "editor.formatOnSave": true,
+    "editor.minimap.maxColumn": 180,
+    "editor.tabSize": 2,
+    "editor.smoothScrolling": true,
+    "editor.tabCompletion": "on",
+    "files.insertFinalNewline": true,
+    "files.trimFinalNewlines": true,
+    "files.trimTrailingWhitespace": true
+}

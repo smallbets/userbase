@@ -1,0 +1,78 @@
+{
+  "name": "encrypted.dev",
+  "version": "0.0.1",
+  "description": "An end-to-end encrypted serverless platform for web and mobile apps.",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest",
+    "coverage": "jest --coverage",
+    "build:dev": "webpack --mode development --config webpack.server.config.js && webpack --mode development --config webpack.dev.config.js",
+    "build:prod": "webpack --mode production --config webpack.server.config.js && webpack --mode production --config webpack.prod.config.js",
+    "build:server": "webpack --mode development --config webpack.server.config.js",
+    "build": "npm run build:prod",
+    "start": "node ./build/server.js",
+    "watch:client": "webpack-dev-server --mode development --config webpack.dev.config.js",
+    "watch:server": "webpack --watch --mode development --config webpack.server.config.js",
+    "start:nodemon": "nodemon --ignore src/ --ignore node_modules/ --ignore dist/ ./build/server.js",
+    "start:dev": "npm run build:dev && npm-run-all -p start:nodemon watch:client watch:server",
+    "start:server": "npm run build:server && npm start",
+    "start:prod": "npm run build:prod && npm start"
+  },
+  "repository": "https://github.com/dvassallo/encrypted.dev",
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=4.3.2"
+  },
+  "jest": {
+    "setupFiles": [
+      "<rootDir>/src/test/setup.js"
+    ],
+    "moduleNameMapper": {
+      "\\.(css|less)$": "<rootDir>/__mocks__/styleMock.js",
+      "\\.(gif|ttf|eot|svg)$": "<rootDir>/__mocks__/fileMock.js"
+    }
+  },
+  "dependencies": {
+    "aws-sdk": "^2.466.0",
+    "express": "^4.16.4",
+    "react": "^16.7.0",
+    "react-dom": "^16.7.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.0.0",
+    "@babel/preset-env": "^7.0.0",
+    "@babel/preset-react": "^7.0.0",
+    "babel-core": "^7.0.0-bridge.0",
+    "babel-eslint": "^10.0.1",
+    "babel-jest": "^24.1.0",
+    "babel-loader": "^8.0.0",
+    "clean-webpack-plugin": "^3.0.0",
+    "css-loader": "^0.28.11",
+    "enzyme": "^3.8.0",
+    "enzyme-adapter-react-16": "^1.7.1",
+    "eslint": "^5.14.1",
+    "eslint-loader": "^2.1.1",
+    "eslint-plugin-react": "^7.12.1",
+    "file-loader": "^1.1.11",
+    "html-loader": "^0.5.5",
+    "html-webpack-plugin": "^3.2.0",
+    "jest": "^24.1.0",
+    "mini-css-extract-plugin": "^0.4.5",
+    "nodemon": "^1.19.1",
+    "npm-run-all": "^4.1.5",
+    "open-browser-webpack-plugin": "0.0.5",
+    "optimize-css-assets-webpack-plugin": "^4.0.3",
+    "style-loader": "^0.21.0",
+    "uglifyjs-webpack-plugin": "^1.3.0",
+    "url-loader": "^1.1.2",
+    "webpack": "^4.28.3",
+    "webpack-cli": "^3.1.2",
+    "webpack-dev-middleware": "^3.4.0",
+    "webpack-dev-server": "^3.5.1",
+    "webpack-hot-middleware": "^2.24.3",
+    "webpack-merge": "^4.2.1",
+    "webpack-node-externals": "^1.7.2"
+  }
+}

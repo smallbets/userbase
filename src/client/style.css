@@ -1,0 +1,21 @@
+body {
+  font-family: 'PT Serif';
+  background-color: #ffd005;
+  color: #000000;
+  text-align: center;
+  font-size: 1.25em;
+}
+
+.welcome {
+  display: inline-block;
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+
+.logo {
+  background: url('img/logo-horizontal.png');
+  width: 400px;
+  height: 90px;
+  background-size: 100% auto;
+  background-repeat: no-repeat;
+}
