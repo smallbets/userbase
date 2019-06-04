@@ -22,5 +22,5 @@ npm install
 Start the dev server:
 
 ```
-npm start:dev
+npm run start:dev
 ```
