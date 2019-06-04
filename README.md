@@ -7,6 +7,14 @@
 
 ## Development
 
+Add your AWS credentials in `~/.aws/credentials` under a profile called "encrypted":
+
+```
+[encrypted]
+aws_access_key_id=A******************F
+aws_secret_access_key=1**************************************k
+```
+
 Check out the repo:
 
 ```
