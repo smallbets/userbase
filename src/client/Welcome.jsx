@@ -5,7 +5,7 @@ const Welcome = () => {
   return (
     <div className="welcome">
       <div className="logo" />
-      <div style={{ marginTop: '50px' }}>
+      <div style={{ marginTop: '150px' }}>
         <SignUpForm />
       </div>
     </div>

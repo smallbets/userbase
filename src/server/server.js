@@ -1,4 +1,5 @@
 import express from 'express'
+import bodyParser from 'body-parser'
 import setup from './setup'
 import auth from './auth'
 import db from './db'
@@ -14,6 +15,7 @@ if (process.env.NODE_ENV == 'development') {
 setup.init()
 
 app.use(express.static(distDir))
+app.use(bodyParser.json())
 
 app.post('/api/auth/sign-up', auth.signUp)
 app.post('/api/auth/sign-in', auth.signIn)

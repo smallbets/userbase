@@ -1,17 +1,21 @@
 import aws from 'aws-sdk'
 import os from 'os'
 
+const tableNamePrefix = (process.env.NODE_ENV == 'development') ? os.userInfo().username + '-' : ''
+
+const usersTableName = tableNamePrefix + 'users'
+const sessionsTableName = tableNamePrefix + 'sessions'
+const databaseTableName = tableNamePrefix + 'database'
+
+exports.usersTableName = usersTableName
+exports.sessionsTableName = sessionsTableName
+exports.databaseTableName = databaseTableName
+
 exports.init = function () {
   aws.config.update({ region: 'us-west-2' })
   aws.config.credentials = new aws.SharedIniFileCredentials({ profile: 'encrypted' })
 
   const ddb = new aws.DynamoDB({ apiVersion: '2012-08-10' })
-
-  const tableNamePrefix = (process.env.NODE_ENV == 'development') ? os.userInfo().username + '-' : ''
-
-  const usersTableName = tableNamePrefix + 'users'
-  const sessionsTableName = tableNamePrefix + 'sessions'
-  const databaseTableName = tableNamePrefix + 'database'
 
   const usersTableParams = {
     AttributeDefinitions: [{ AttributeName: 'username', AttributeType: 'S' }],
