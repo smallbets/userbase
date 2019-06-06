@@ -74,12 +74,11 @@ exports.signUp = async function (req, res) {
       await ddbClient.put(params).promise()
     } catch (e) {
       if (e.name === 'ConditionalCheckFailedException') {
-        const readableMessage = 'Username already exists'
         return res
           .status(statusCodes['Conflict'])
           .send({
             err: `Failed to sign up with error ${e}`,
-            readableMessage
+            readableMessage: 'Username already exists'
           })
       }
       throw e
@@ -90,7 +89,7 @@ exports.signUp = async function (req, res) {
     else throw new Error('Failed to create session')
   } catch (e) {
     return res
-      .status(e.statusCode || statusCodes['Internal Server Error'])
+      .status(statusCodes['Internal Server Error'])
       .send({ err: `Failed to sign up with ${e}` })
   }
 }
@@ -125,7 +124,7 @@ exports.signIn = async function (req, res) {
     else throw new Error('Failed to create session')
   } catch (e) {
     return res
-      .status(e.statusCode || statusCodes['Internal Server Error'])
+      .status(statusCodes['Internal Server Error'])
       .send({ err: `Failed to sign up with ${e}` })
   }
 }
@@ -152,13 +151,17 @@ exports.signOut = async function (req, res) {
     return res.send({ success: true })
   } catch (e) {
     return res
-      .status(e.statusCode || statusCodes['Internal Server Error'])
+      .status(statusCodes['Internal Server Error'])
       .send({ err: `Failed to sign out with ${e}` })
   }
 }
 
 exports.authenticateUser = async function (req, res, next) {
   const sessionId = req.cookies.sessionId
+
+  if (!sessionId) return res
+    .status(statusCodes['Unauthorized'])
+    .send({ readableMessage: 'Missing session token' })
 
   const params = {
     TableName: setup.sessionsTableName,
@@ -185,11 +188,11 @@ exports.authenticateUser = async function (req, res, next) {
       .status(statusCodes['Unauthorized'])
       .send({ readableMessage: 'Session expired' })
 
-    res.locals.userId = session['user-id'] // makes session available in next route
+    res.locals.userId = session['user-id'] // makes user id available in next route
     next()
   } catch (e) {
     return res
-      .status(e.statusCode || statusCodes['Internal Server Error'])
+      .status(statusCodes['Internal Server Error'])
       .send({ err: `Failed to authenticate user with ${e}` })
   }
 }

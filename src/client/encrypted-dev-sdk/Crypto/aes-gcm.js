@@ -1,4 +1,4 @@
-import { arrayBufferToString, stringToArrayBuffer } from '../../utils'
+import { arrayBufferToString, stringToArrayBuffer } from './utils'
 
 const ALGORITHIM_NAME = 'AES-GCM'
 const BIT_SIZE = 256
@@ -57,7 +57,7 @@ const getKeyFromLocalStorage = () => {
  * @param {object | string} plaintext
  * @returns {object}
  * @returns {Uint8Array} iv - random initialization vector that prevents key leak. It can
- *                              be exposed safely
+ *                            be exposed safely
  * @returns {ArrayBuffer} encryptedArrayBuffer
  */
 const encrypt = async (key, plaintext) => {

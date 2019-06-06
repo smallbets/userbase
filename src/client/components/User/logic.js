@@ -1,60 +1,48 @@
-import axios from 'axios'
-import crypto from '../Crypto'
+import ed from '../../encrypted-dev-sdk'
+
+const _errorHandler = (e, operation) => {
+  console.log(`Failed to ${operation} with`, e, e.response && e.response.data)
+  const errorMsg = (e.response && e.response.data.readableMessage) || e.message
+  return { error: errorMsg }
+}
 
 const signUp = async (username, password) => {
   try {
-    const symmetricKey = await crypto.aesGcm.generateKey()
-    await crypto.aesGcm.saveKeyToLocalStorage(symmetricKey)
-  } catch (e) {
-    return { error: 'Failed to save an encryption key' }
-  }
-
-  try {
-    const response = await axios.post('/api/auth/sign-up', {
-      username,
-      password
-    })
+    const response = await ed.signUp(username, password)
     return { user: response.data }
   } catch (e) {
-    console.log('Failed to sign up with', e, e.response && e.response.data)
-    const errorMsg = (e.response && e.response.data.readableMessage) || e.message
-    return { error: errorMsg }
+    return _errorHandler(e, 'sign up')
   }
 }
 
 const signOut = async () => {
   try {
-    const response = await axios.post('/api/auth/sign-out')
+    const response = await ed.signOut()
+    localStorage.setItem('signedIn', false)
     return { response }
   } catch (e) {
-    console.log('Failed to sign out with', e, e.response && e.response.data)
-    const errorMsg = (e.response && e.response.data.readableMessage) || e.message
-    return { error: errorMsg }
+    return _errorHandler(e, 'sign out')
   }
 }
 
 const signIn = async (username, password) => {
   try {
-    const response = await axios.post('/api/auth/sign-in', {
-      username,
-      password
-    })
+    const response = await ed.signIn(username, password)
+    localStorage.setItem('signedIn', true)
     return { user: response.data }
   } catch (e) {
-    console.log('Failed to sign in with', e, e.response && e.response.data)
-    const errorMsg = (e.response && e.response.data.readableMessage) || e.message
-    return { error: errorMsg }
+    return _errorHandler(e, 'sign in')
   }
 }
 
-const query = async () => {
+const isUserSignedIn = async () => {
   try {
-    const response = await axios.get('/api/user/query')
+    const signedIn = localStorage.getItem('signedIn')
+    if (!signedIn) return false
+    const response = await ed.user.query()
     return { user: response.data }
   } catch (e) {
-    console.log('Failed to query for user with', e, e.response && e.response.data)
-    const errorMsg = (e.response && e.response.data.readableMessage) || e.message
-    return { error: errorMsg }
+    return false
   }
 }
 
@@ -62,5 +50,5 @@ export default {
   signUp,
   signOut,
   signIn,
-  query
+  isUserSignedIn,
 }

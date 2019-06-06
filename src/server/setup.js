@@ -49,11 +49,11 @@ exports.init = function () {
 
   const databaseTableParams = {
     AttributeDefinitions: [
-      { AttributeName: 'username', AttributeType: 'S' },
+      { AttributeName: 'user-id', AttributeType: 'S' },
       { AttributeName: 'sequence-no', AttributeType: 'N' }
     ],
     KeySchema: [
-      { AttributeName: 'username', KeyType: 'HASH' },
+      { AttributeName: 'user-id', KeyType: 'HASH' },
       { AttributeName: 'sequence-no', KeyType: 'RANGE' }
     ],
     BillingMode: 'PAY_PER_REQUEST',

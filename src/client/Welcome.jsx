@@ -1,7 +1,7 @@
 import React, { Component } from 'react'
+import userLogic from './components/User/logic'
 import Dashboard from './components/Dashboard/Dashboard'
 import UserForm from './components/User/UserForm'
-import userLogic from './components/User/logic'
 
 const displaySignInForm = () => window.location.hash.substring(1) === 'sign-in'
 const displaySignUpForm = () => window.location.hash.substring(1) === 'sign-up'
@@ -22,10 +22,9 @@ class Welcome extends Component {
   }
 
   async componentWillMount() {
-    const signedIn = localStorage.getItem('signedIn')
-    if (!signedIn) return this.setState({ loading: false })
-    const result = await userLogic.query()
-    this.setState({ user: result && result.user, loading: false })
+    const result = await userLogic.isUserSignedIn()
+    if (result) return this.setState({ user: result.user, loading: false })
+    else return this.setState({ loading: false })
   }
 
   componentDidMount() {
@@ -37,13 +36,11 @@ class Welcome extends Component {
   }
 
   handleAuthenticateUser(user) {
-    localStorage.setItem('signedIn', true)
     window.location.hash = ''
     this.setState({ user })
   }
 
   handleRemoveUserAuthentication() {
-    localStorage.removeItem('signedIn')
     window.location.hash = ''
     this.setState({ user: undefined })
   }

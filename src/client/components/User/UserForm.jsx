@@ -8,7 +8,8 @@ class UserForm extends Component {
     this.state = {
       username: '',
       password: '',
-      error: ''
+      error: '',
+      loading: false
     }
 
     this.handleInputChange = this.handleInputChange.bind(this)
@@ -32,17 +33,19 @@ class UserForm extends Component {
     const { username, password } = this.state
     event.preventDefault()
 
+    await this.setState({ loading: true })
+
     let result
     if (formType === 'Sign Up') result = await userLogic.signUp(username, password)
     else if (formType === 'Sign In') result = await userLogic.signIn(username, password)
     else return console.error('Unknown form type')
 
-    if (result.error) this.setState({ error: result.error })
-    else handleAuthenticateUser(result.user)
+    if (result.error) this.setState({ error: result.error, loading: false })
+    else handleAuthenticateUser(result.user) // re-routes to different component
   }
 
   render() {
-    const { username, password, error } = this.state
+    const { username, password, error, loading } = this.state
 
     return (
       <form onSubmit={this.handleSubmit}>
@@ -72,12 +75,15 @@ class UserForm extends Component {
           </div>
 
           <div style={{ display: 'flex', marginTop: '20px' }}>
-            <input
-              style={{ width: '100%' }}
-              type="submit"
-              value={this.props.formType}
-              disabled={!username || !password}
-            />
+            {loading
+              ? <div className='loader' style={{ margin: 'auto', height: '15px', width: '15px' }} />
+              : <input
+                style={{ width: '100%' }}
+                type="submit"
+                value={this.props.formType}
+                disabled={!username || !password}
+              />
+            }
           </div>
 
           {error && (

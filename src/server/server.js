@@ -26,10 +26,10 @@ app.post('/api/auth/sign-out', auth.authenticateUser, auth.signOut)
 
 app.get('/api/user/query', auth.authenticateUser, user.query)
 
-app.post('/api/db/insert', db.insert)
-app.post('/api/db/update', db.update)
-app.post('/api/db/delete', db.delete)
-app.post('/api/db/query', db.query)
+app.post('/api/db/insert', auth.authenticateUser, db.insert)
+app.post('/api/db/update', auth.authenticateUser, db.update)
+app.post('/api/db/delete', auth.authenticateUser, db.delete)
+app.get('/api/db/query', auth.authenticateUser, db.query)
 
 app.listen(port, () => {
   console.log(`App listening to ${port}....`)
