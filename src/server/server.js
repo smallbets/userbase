@@ -1,7 +1,9 @@
 import express from 'express'
 import bodyParser from 'body-parser'
+import cookieParser from 'cookie-parser'
 import setup from './setup'
 import auth from './auth'
+import user from './user'
 import db from './db'
 
 const app = express()
@@ -16,10 +18,13 @@ setup.init()
 
 app.use(express.static(distDir))
 app.use(bodyParser.json())
+app.use(cookieParser())
 
 app.post('/api/auth/sign-up', auth.signUp)
 app.post('/api/auth/sign-in', auth.signIn)
-app.post('/api/auth/sign-out', auth.signOut)
+app.post('/api/auth/sign-out', auth.authenticateUser, auth.signOut)
+
+app.get('/api/user/query', auth.authenticateUser, user.query)
 
 app.post('/api/db/insert', db.insert)
 app.post('/api/db/update', db.update)

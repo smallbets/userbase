@@ -18,10 +18,22 @@ exports.init = function () {
   const ddb = new aws.DynamoDB({ apiVersion: '2012-08-10' })
 
   const usersTableParams = {
-    AttributeDefinitions: [{ AttributeName: 'username', AttributeType: 'S' }],
-    KeySchema: [{ AttributeName: 'username', KeyType: 'HASH' }],
+    TableName: usersTableName,
     BillingMode: 'PAY_PER_REQUEST',
-    TableName: usersTableName
+    AttributeDefinitions: [
+      { AttributeName: 'username', AttributeType: 'S' },
+      { AttributeName: 'user-id', AttributeType: 'S' }
+    ],
+    KeySchema: [
+      { AttributeName: 'username', KeyType: 'HASH' }
+    ],
+    GlobalSecondaryIndexes: [{
+      IndexName: 'UserIdIndex',
+      KeySchema: [
+        { AttributeName: 'user-id', KeyType: 'HASH' }
+      ],
+      Projection: { ProjectionType: 'KEYS_ONLY' }
+    }]
   }
 
   const sessionsTableParams = {

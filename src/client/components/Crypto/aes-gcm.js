@@ -22,21 +22,14 @@ const EXTRACTED_KEY_TYPE = 'jwk' // json web key
 const RECOMMENDED_IV_BYTE_SIZE = 96 / 8
 const RECOMMENDED_AUTHENTICATION_TAG_LENGTH = 128
 
-const generateKey = () => {
-  try {
-    return window.crypto.subtle.generateKey(
-      {
-        name: ALGORITHIM_NAME,
-        length: BIT_SIZE
-      },
-      KEY_IS_EXTRACTABLE,
-      KEY_WILL_BE_USED_TO
-    )
-  } catch (e) {
-    console.log(`Failed to generate ${ALGORITHIM_NAME} key with`, e)
-    return null
-  }
-}
+const generateKey = () => window.crypto.subtle.generateKey(
+  {
+    name: ALGORITHIM_NAME,
+    length: BIT_SIZE
+  },
+  KEY_IS_EXTRACTABLE,
+  KEY_WILL_BE_USED_TO
+)
 
 const saveKeyToLocalStorage = async (key) => {
   const extractedJsonKey = await window.crypto.subtle.exportKey(EXTRACTED_KEY_TYPE, key)
@@ -68,26 +61,21 @@ const getKeyFromLocalStorage = () => {
  * @returns {ArrayBuffer} encryptedArrayBuffer
  */
 const encrypt = async (key, plaintext) => {
-  const plaintextAsString = JSON.stringify(plaintext)
-  const plaintextAsArrayBuffer = stringToArrayBuffer(plaintextAsString)
-  try {
-    const iv = window.crypto.getRandomValues(new Uint8Array(RECOMMENDED_IV_BYTE_SIZE))
-    const encryptedArrayBuffer = await window.crypto.subtle.encrypt(
-      {
-        name: ALGORITHIM_NAME,
-        iv,
-        tagLength: RECOMMENDED_AUTHENTICATION_TAG_LENGTH
-      },
-      key,
-      plaintextAsArrayBuffer
-    )
-    return {
+  const plaintextString = JSON.stringify(plaintext)
+  const plaintextArrayBuffer = stringToArrayBuffer(plaintextString)
+  const iv = window.crypto.getRandomValues(new Uint8Array(RECOMMENDED_IV_BYTE_SIZE))
+  const encryptedArrayBuffer = await window.crypto.subtle.encrypt(
+    {
+      name: ALGORITHIM_NAME,
       iv,
-      encryptedArrayBuffer,
-    }
-  } catch (e) {
-    console.log(`Failed to encrypt using ${ALGORITHIM_NAME} with`, e)
-    return null
+      tagLength: RECOMMENDED_AUTHENTICATION_TAG_LENGTH
+    },
+    key,
+    plaintextArrayBuffer
+  )
+  return {
+    iv,
+    encryptedArrayBuffer,
   }
 }
 
@@ -99,22 +87,17 @@ const encrypt = async (key, plaintext) => {
  * @returns {object}
  */
 const decrypt = async (key, encryptedArrayBuffer, iv) => {
-  try {
-    const plaintextAsArrayBuffer = await window.crypto.subtle.decrypt(
-      {
-        name: ALGORITHIM_NAME,
-        iv,
-        tagLength: RECOMMENDED_AUTHENTICATION_TAG_LENGTH
-      },
-      key,
-      encryptedArrayBuffer
-    )
-    const plaintextAsString = arrayBufferToString(plaintextAsArrayBuffer)
-    return JSON.parse(plaintextAsString)
-  } catch (e) {
-    console.log(`Failed to decrypt using ${ALGORITHIM_NAME} with`, e)
-    return null
-  }
+  const plaintextArrayBuffer = await window.crypto.subtle.decrypt(
+    {
+      name: ALGORITHIM_NAME,
+      iv,
+      tagLength: RECOMMENDED_AUTHENTICATION_TAG_LENGTH
+    },
+    key,
+    encryptedArrayBuffer
+  )
+  const plaintextString = arrayBufferToString(plaintextArrayBuffer)
+  return JSON.parse(plaintextString)
 }
 
 export default {
