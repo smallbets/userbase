@@ -2,7 +2,7 @@ import connection from './connection'
 import setup from './setup'
 import statusCodes from './statusCodes'
 
-exports.query = async function (req, res) {
+exports.find = async function (req, res) {
   const userId = res.locals.userId
 
   const params = {

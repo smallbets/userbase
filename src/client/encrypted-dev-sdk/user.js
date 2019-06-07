@@ -1,7 +1,7 @@
 import axios from 'axios'
 
-const query = async () => axios.get('/api/user/query')
+const find = async () => axios.get('/api/user/find')
 
 export default {
-  query
+  find
 }

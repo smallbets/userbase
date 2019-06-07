@@ -1,4 +1,4 @@
-import { arrayBufferToString, stringToArrayBuffer } from './utils'
+import { arrayBufferToString, stringToArrayBuffer, appendBuffer } from './utils'
 
 const ALGORITHIM_NAME = 'AES-GCM'
 const BIT_SIZE = 256
@@ -16,10 +16,13 @@ const EXTRACTED_KEY_TYPE = 'jwk' // json web key
  * Pg. 8
  * https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38d.pdf
  *
- * Additional source on tag length:
- * https://crypto.stackexchange.com/questions/26783/ciphertext-and-tag-size-and-iv-transmission-with-aes-in-gcm-mode/26787
  **/
 const RECOMMENDED_IV_BYTE_SIZE = 96 / 8
+
+/**
+ * Source on tag length:
+ * https://crypto.stackexchange.com/questions/26783/ciphertext-and-tag-size-and-iv-transmission-with-aes-in-gcm-mode/26787
+ */
 const RECOMMENDED_AUTHENTICATION_TAG_LENGTH = 128
 
 const generateKey = () => window.crypto.subtle.generateKey(
@@ -53,18 +56,23 @@ const getKeyFromLocalStorage = () => {
 
 /**
  *
- * @param {Crypto Key} key
+ * @param {CryptoKey} key
  * @param {object | string} plaintext
- * @returns {object}
- * @returns {Uint8Array} iv - random initialization vector that prevents key leak. It can
- *                            be exposed safely
- * @returns {ArrayBuffer} encryptedArrayBuffer
+ * @returns {ArrayBuffer} encrypted Array Buffer
+ *
+ *     encrypted is a concatentation of ciphertext + IV Array Buffers
+ *
+ *     The IV is a random intialization vector that prevents an attacker
+ *     from determining a user's key. It can be exposed alongside the ciphertext safely.
+ *
  */
 const encrypt = async (key, plaintext) => {
   const plaintextString = JSON.stringify(plaintext)
   const plaintextArrayBuffer = stringToArrayBuffer(plaintextString)
+
   const iv = window.crypto.getRandomValues(new Uint8Array(RECOMMENDED_IV_BYTE_SIZE))
-  const encryptedArrayBuffer = await window.crypto.subtle.encrypt(
+
+  const ciphertextArrayBuffer = await window.crypto.subtle.encrypt(
     {
       name: ALGORITHIM_NAME,
       iv,
@@ -73,20 +81,21 @@ const encrypt = async (key, plaintext) => {
     key,
     plaintextArrayBuffer
   )
-  return {
-    iv,
-    encryptedArrayBuffer,
-  }
+
+  return appendBuffer(ciphertextArrayBuffer, iv)
 }
 
 /**
  *
- * @param {CryptoKey} key - Crypto key object
- * @param {ArrayBuffer} encryptedArrayBuffer
- * @param {Uint8Array} iv - initialization vector used to encrypt data
- * @returns {object}
+ * @param {CryptoKey} key
+ * @param {ArrayBuffer} encrypted - the encrypted Array Buffer
+ * @returns {object} plaintext
  */
-const decrypt = async (key, encryptedArrayBuffer, iv) => {
+const decrypt = async (key, encrypted) => {
+  const ivStartIndex = encrypted.byteLength - RECOMMENDED_IV_BYTE_SIZE
+  const ciphertextArrayBuffer = encrypted.slice(0, ivStartIndex)
+  const iv = encrypted.slice(ivStartIndex)
+
   const plaintextArrayBuffer = await window.crypto.subtle.decrypt(
     {
       name: ALGORITHIM_NAME,
@@ -94,8 +103,9 @@ const decrypt = async (key, encryptedArrayBuffer, iv) => {
       tagLength: RECOMMENDED_AUTHENTICATION_TAG_LENGTH
     },
     key,
-    encryptedArrayBuffer
+    ciphertextArrayBuffer
   )
+
   const plaintextString = arrayBufferToString(plaintextArrayBuffer)
   return JSON.parse(plaintextString)
 }

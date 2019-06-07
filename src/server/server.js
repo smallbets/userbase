@@ -24,7 +24,7 @@ app.post('/api/auth/sign-up', auth.signUp)
 app.post('/api/auth/sign-in', auth.signIn)
 app.post('/api/auth/sign-out', auth.authenticateUser, auth.signOut)
 
-app.get('/api/user/query', auth.authenticateUser, user.query)
+app.get('/api/user/find', auth.authenticateUser, user.find)
 
 app.post('/api/db/insert', auth.authenticateUser, db.insert)
 app.post('/api/db/update', auth.authenticateUser, db.update)

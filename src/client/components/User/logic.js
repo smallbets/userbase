@@ -39,7 +39,7 @@ const isUserSignedIn = async () => {
   try {
     const signedIn = localStorage.getItem('signedIn')
     if (!signedIn) return false
-    const response = await ed.user.query()
+    const response = await ed.user.find()
     return { user: response.data }
   } catch (e) {
     return false

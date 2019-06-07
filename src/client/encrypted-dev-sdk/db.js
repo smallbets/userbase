@@ -1,9 +1,12 @@
+import axios from 'axios'
+import crypto from './Crypto'
+
 /**
 
-    Takes an object as input, encrypts the object client-side,
-    then sends the encrypted object to the database for storage.
+    Takes an item as input, encrypts the item client-side,
+    then sends the encrypted item to the database for storage.
 
-    Returns the item id of the object stored in the database
+    Returns the item id of the item stored in the database
     as well as the sequence number of the write operation. A
     user's sequence number increases monotonically with each
     write operation to the database.
@@ -28,8 +31,10 @@
           'sequence-no': 1
         }
  */
-const insert = async (object) => {
-  console.log('Called insert object', object)
+const insert = async (item) => {
+  const key = await crypto.aesGcm.getKeyFromLocalStorage()
+  const encryptedItem = await crypto.aesGcm.encrypt(key, item)
+  return axios.post('/api/db/insert', encryptedItem)
 }
 
 const update = async () => {
@@ -41,7 +46,22 @@ const deleteFunction = async () => {
 }
 
 const query = async () => {
-  console.log('Called item query in client')
+  const itemsResponse = await axios.get('/api/db/query')
+
+  const items = itemsResponse.data
+  const key = await crypto.aesGcm.getKeyFromLocalStorage()
+
+  const decryptedRecordsPromises = items.map((item) => {
+    const itemRecord = item.record.data
+    return crypto.aesGcm.decrypt(key, new Uint8Array(itemRecord))
+  })
+
+  const decryptedRecords = await Promise.all(decryptedRecordsPromises)
+
+  return decryptedRecords.map((decryptedRecord, index) => ({
+    ...items[index],
+    record: decryptedRecord
+  }))
 }
 
 export default {
