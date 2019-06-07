@@ -53,7 +53,7 @@ class Dashboard extends Component {
       todos: this.state.todos.concat({
         record: { todo: todoInput },
         command: 'Insert',
-        ...result
+        ...result.item
       }),
       loading: false
     })

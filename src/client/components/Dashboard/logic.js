@@ -9,7 +9,7 @@ const _errorHandler = (e, operation) => {
 const insertTodo = async (todo) => {
   try {
     const response = await ed.db.insert({ todo })
-    return { item: response.data.item }
+    return { item: response.data }
   } catch (e) {
     return _errorHandler(e, 'insert')
   }

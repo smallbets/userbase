@@ -6,6 +6,29 @@ import statusCodes from './statusCodes'
 // DynamoDB limit: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html#limits-items
 const FOUR_HUNDRED_KBS = 400 * 1024
 
+const getNextSequenceNo = async function (userId) {
+  const latestSequenceNoParams = {
+    TableName: setup.databaseTableName,
+    KeyConditionExpression: '#userId = :userId',
+    ExpressionAttributeNames: {
+      '#userId': 'user-id',
+      '#sequenceNo': 'sequence-no'
+    },
+    ExpressionAttributeValues: {
+      ':userId': userId
+    },
+    Limit: 1,
+    ScanIndexForward: false,
+    ProjectionExpression: '#sequenceNo'
+  }
+
+  const ddbClient = connection.ddbClient()
+  const latestItemQuery = await ddbClient.query(latestSequenceNoParams).promise()
+  const latestItem = latestItemQuery.Items.length && latestItemQuery.Items[0]
+  const nextSequenceNo = latestItem ? latestItem['sequence-no'] + 1 : 0
+  return nextSequenceNo
+}
+
 exports.insert = async function (req, res) {
   if (req.readableLength > FOUR_HUNDRED_KBS) return res
     .status(statusCodes['Bad Request'])
@@ -19,12 +42,14 @@ exports.insert = async function (req, res) {
     // the data store. S3 offers this. I can't find an implementation in DynamoDB for this.
     const buffer = req.read()
 
+    const sequenceNo = await getNextSequenceNo(userId)
+
     const item = {
       'user-id': userId,
       'item-id': uuidv4(),
       command: 'Insert',
       record: buffer,
-      'sequence-no': 0 // TO-DO: atomic counter increase
+      'sequence-no': sequenceNo // if seq no + user-id already exists, insertion will fail
     }
 
     const params = {
