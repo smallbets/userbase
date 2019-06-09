@@ -11,9 +11,21 @@ exports.usersTableName = usersTableName
 exports.sessionsTableName = sessionsTableName
 exports.databaseTableName = databaseTableName
 
-exports.init = function () {
+exports.init = async function () {
+  const profile = 'encrypted'
+
+  const chain = new aws.CredentialProviderChain([
+    function () { return new aws.EnvironmentCredentials('AWS') },
+    function () { return new aws.EnvironmentCredentials('AMAZON') },
+    function () { return new aws.SharedIniFileCredentials({ profile }) },
+    function () { return new aws.ECSCredentials() },
+    function () { return new aws.ProcessCredentials({ profile }) },
+    function () { return new aws.EC2MetadataCredentials() }
+  ])
+
+  console.log('Loading AWS credentials')
+  aws.config.credentials = await chain.resolvePromise()
   aws.config.update({ region: 'us-west-2' })
-  aws.config.credentials = new aws.SharedIniFileCredentials({ profile: 'encrypted' })
 
   const ddb = new aws.DynamoDB({ apiVersion: '2012-08-10' })
 
@@ -60,20 +72,22 @@ exports.init = function () {
     TableName: databaseTableName
   }
 
-  Promise.all([
+  console.log('Creating DynamoDB tables if necessary')
+  await Promise.all([
     createTable(ddb, usersTableParams),
     createTable(ddb, sessionsTableParams),
     createTable(ddb, databaseTableParams)])
 }
 
-function createTable(ddb, params) {
-  return ddb.createTable(params).promise()
-    .then(() => { console.log(`Table ${params.TableName} created successfully`) },
-      (err) => {
-        if (err != undefined && err.message.includes('Table already exists')) {
-          return Promise.resolve()
-        }
+async function createTable(ddb, params) {
+  try {
+    await ddb.createTable(params).promise()
+    console.log(`Table ${params.TableName} created successfully`)
+  } catch (e) {
+    if (!e.message.includes('Table already exists')) {
+      throw e
+    }
+  }
 
-        throw err
-      })
+  await ddb.waitFor('tableExists', { TableName: params.TableName, $waiter: { delay: 2, maxAttempts: 60 } }).promise()
 }
