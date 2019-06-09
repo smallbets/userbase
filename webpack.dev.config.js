@@ -5,7 +5,7 @@ const OpenBrowserPlugin = require('open-browser-webpack-plugin')
 
 module.exports = merge(common, {
   entry: {
-    main: ['webpack-hot-middleware/client?path=/__webpack_hmr&timeout=20000&reload=true&overlay=true', './src/client/index.js']
+    main: ['./src/client/index.js']
   },
   mode: 'development',
   devtool: 'inline-source-map',
