@@ -1,0 +1,21 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      docker: 18
+  build:
+    commands:
+      - echo Build started on `date`
+      - echo Building the Docker image
+      - docker build -t dvassallo/encrypted.dev:latest .
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - echo Saving the Docker image
+      - docker save --output build.tar dvassallo/encrypted.dev:latest
+artifacts:
+  files:
+    - build.tar
+    - appspec.yml
+  name: build-$(date +%Y-%m-%d).tar
