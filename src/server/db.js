@@ -2,34 +2,46 @@ import uuidv4 from 'uuid/v4'
 import connection from './connection'
 import setup from './setup'
 import statusCodes from './statusCodes'
+import userController from './user'
 
-// DynamoDB limit: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html#limits-items
-const FOUR_HUNDRED_KBS = 400 * 1024
+/**
+ * Atomically increments the last sequence no on a user and returns the updated sequence no.
+ *
+ * Safe to keep this outside a tx because it's ok if there are non-existent ops for a sequence no.
+ * For example, assume the user's last sequence no gets set to 5 and then the insert operation fails
+ * -- there will be no associated insert operation with sequence no 5. This is ok.
+ *
+ * @param {String} userId
+ * @returns {Number} user's updated last sequence no
+ */
+const setNextSequenceNo = async function (userId) {
+  const user = await userController.findUserByUserId(userId)
+  const username = user.username
 
-const getNextSequenceNo = async function (userId) {
-  const latestSequenceNoParams = {
-    TableName: setup.databaseTableName,
-    KeyConditionExpression: '#userId = :userId',
+  const atomicIncrementUserSeqNoParams = {
+    TableName: setup.usersTableName,
+    Key: {
+      username: username // if username changes before this is called, this will fail
+    },
     ExpressionAttributeNames: {
-      '#userId': 'user-id',
-      '#sequenceNo': 'sequence-no'
+      '#lastSequenceNo': 'last-sequence-no',
     },
     ExpressionAttributeValues: {
-      ':userId': userId
+      ':incrementSequenceNo': 1
     },
-    Limit: 1,
-    ScanIndexForward: false,
-    ProjectionExpression: '#sequenceNo'
+    UpdateExpression: 'SET #lastSequenceNo = #lastSequenceNo + :incrementSequenceNo',
+    ReturnValues: 'UPDATED_NEW'
   }
 
   const ddbClient = connection.ddbClient()
-  const latestItemQuery = await ddbClient.query(latestSequenceNoParams).promise()
-  const latestItem = latestItemQuery.Items.length && latestItemQuery.Items[0]
-  const nextSequenceNo = latestItem ? latestItem['sequence-no'] + 1 : 0
-  return nextSequenceNo
+  const updatedUser = await ddbClient.update(atomicIncrementUserSeqNoParams).promise()
+  return updatedUser.Attributes['last-sequence-no']
 }
 
 exports.insert = async function (req, res) {
+  // DynamoDB limit: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html#limits-items
+  const FOUR_HUNDRED_KBS = 400 * 1024
+
   if (req.readableLength > FOUR_HUNDRED_KBS) return res
     .status(statusCodes['Bad Request'])
     .send({ readableMessage: 'Encrypted blob is too large' })
@@ -37,19 +49,20 @@ exports.insert = async function (req, res) {
   const userId = res.locals.userId
 
   try {
+
+    const sequenceNo = await setNextSequenceNo(userId)
+
     // Warning: if the server receives many large simultaneous requests, memory could fill up here.
     // The solution to this is to read the buffer in small chunks and pipe the chunks to
-    // the data store. S3 offers this. I can't find an implementation in DynamoDB for this.
+    // S3 and store the S3 URL in DynamoDB.
     const buffer = req.read()
-
-    const sequenceNo = await getNextSequenceNo(userId)
 
     const item = {
       'user-id': userId,
       'item-id': uuidv4(),
       command: 'Insert',
       record: buffer,
-      'sequence-no': sequenceNo // if seq no + user-id already exists, insertion will fail
+      'sequence-no': sequenceNo
     }
 
     const params = {
@@ -63,7 +76,10 @@ exports.insert = async function (req, res) {
 
     const ddbClient = connection.ddbClient()
     await ddbClient.put(params).promise()
-    return res.send({ 'item-id': item['item-id'], 'sequence-no': item['sequence-no'] })
+    return res.send({
+      'item-id': item['item-id'],
+      'sequence-no': item['sequence-no']
+    })
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])

@@ -2,9 +2,7 @@ import connection from './connection'
 import setup from './setup'
 import statusCodes from './statusCodes'
 
-exports.find = async function (req, res) {
-  const userId = res.locals.userId
-
+const findUserByUserId = async function (userId) {
   const params = {
     TableName: setup.usersTableName,
     IndexName: 'UserIdIndex',
@@ -17,19 +15,29 @@ exports.find = async function (req, res) {
     },
   }
 
-  try {
-    const ddbClient = connection.ddbClient()
-    const userResponse = await ddbClient.query(params).promise()
+  const ddbClient = connection.ddbClient()
+  const userResponse = await ddbClient.query(params).promise()
 
-    if (!userResponse || userResponse.Items.length === 0) return res
+  if (!userResponse || userResponse.Items.length === 0) return null
+
+  if (userResponse.Items.length > 1) {
+    console.warn(`Too many users found with id ${userId}`)
+  }
+
+  return userResponse.Items[0]
+}
+
+exports.findUserByUserId = findUserByUserId
+
+exports.find = async function (req, res) {
+  const userId = res.locals.userId
+
+  try {
+    const user = await findUserByUserId(userId)
+
+    if (!user) return res
       .status(statusCodes['Not Found'])
       .send({ readableMessage: 'User not found' })
-
-    if (userResponse.Items.length > 1) {
-      console.warn(`Too many users found with id ${userId}`)
-    }
-
-    const user = userResponse.Items[0]
 
     res.send(user)
   } catch (e) {

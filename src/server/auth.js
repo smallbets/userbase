@@ -61,6 +61,7 @@ exports.signUp = async function (req, res) {
       username: username.toLowerCase(),
       'password-hash': passwordHash,
       'user-id': uuidv4(),
+      'last-sequence-no': 0
     }
 
     const params = {
