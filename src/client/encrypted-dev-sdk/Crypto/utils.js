@@ -4,9 +4,9 @@ export const arrayBufferToString = (buf) => {
 }
 
 export const stringToArrayBuffer = (str) => {
-  var buf = new ArrayBuffer(str.length * 2) // 2 bytes for each char
-  var bufView = new Uint16Array(buf)
-  for (var i = 0, strLen = str.length; i < strLen; i++) {
+  let buf = new ArrayBuffer(str.length * 2) // 2 bytes for each char
+  let bufView = new Uint16Array(buf)
+  for (let i = 0, strLen = str.length; i < strLen; i++) {
     bufView[i] = str.charCodeAt(i)
   }
   return buf
@@ -23,7 +23,7 @@ export const stringToArrayBuffer = (str) => {
 *
 */
 export const appendBuffer = (buffer1, buffer2) => {
-  var tmp = new Uint8Array(buffer1.byteLength + buffer2.byteLength)
+  let tmp = new Uint8Array(buffer1.byteLength + buffer2.byteLength)
   tmp.set(new Uint8Array(buffer1), 0)
   tmp.set(new Uint8Array(buffer2), buffer1.byteLength)
   return tmp.buffer

@@ -9,6 +9,7 @@ const _errorHandler = (e, operation) => {
 const signUp = async (username, password) => {
   try {
     const response = await ed.signUp(username, password)
+    localStorage.setItem('signedIn', true)
     return { user: response.data }
   } catch (e) {
     return _errorHandler(e, 'sign up')
