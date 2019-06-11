@@ -1,5 +1,5 @@
 version: 0.0
 os: linux
 files:
-  - source: ./build-package
+  - source: /
     destination: /home/ec2-user/encrypted
