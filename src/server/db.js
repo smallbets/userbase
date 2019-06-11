@@ -21,15 +21,18 @@ const setNextSequenceNo = async function (userId) {
   const atomicIncrementUserSeqNoParams = {
     TableName: setup.usersTableName,
     Key: {
-      username: username // if username changes before this is called, this will fail
+      username: username // if username changes before update is called but after it's found by user id, this will fail
     },
     ExpressionAttributeNames: {
       '#lastSequenceNo': 'last-sequence-no',
+      '#userId': 'user-id'
     },
     ExpressionAttributeValues: {
-      ':incrementSequenceNo': 1
+      ':incrementSequenceNo': 1,
+      ':userId': userId
     },
     UpdateExpression: 'SET #lastSequenceNo = #lastSequenceNo + :incrementSequenceNo',
+    ConditionExpression: '#userId = :userId',
     ReturnValues: 'UPDATED_NEW'
   }
 
@@ -49,7 +52,6 @@ exports.insert = async function (req, res) {
   const userId = res.locals.userId
 
   try {
-
     const sequenceNo = await setNextSequenceNo(userId)
 
     // Warning: if the server receives many large simultaneous requests, memory could fill up here.
