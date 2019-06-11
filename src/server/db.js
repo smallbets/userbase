@@ -4,6 +4,9 @@ import setup from './setup'
 import statusCodes from './statusCodes'
 import userController from './user'
 
+// DynamoDB limit: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html#limits-items
+const FOUR_HUNDRED_KBS = 400 * 1024
+
 /**
  * Atomically increments the last sequence no on a user and returns the updated sequence no.
  *
@@ -41,10 +44,25 @@ const setNextSequenceNo = async function (userId) {
   return updatedUser.Attributes['last-sequence-no']
 }
 
-exports.insert = async function (req, res) {
-  // DynamoDB limit: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html#limits-items
-  const FOUR_HUNDRED_KBS = 400 * 1024
+const putItem = async function (res, item) {
+  const params = {
+    TableName: setup.databaseTableName,
+    Item: item,
+    ConditionExpression: 'attribute_not_exists(#userId)',
+    ExpressionAttributeNames: {
+      '#userId': 'user-id'
+    },
+  }
 
+  const ddbClient = connection.ddbClient()
+  await ddbClient.put(params).promise()
+  return res.send({
+    'item-id': item['item-id'],
+    'sequence-no': item['sequence-no']
+  })
+}
+
+exports.insert = async function (req, res) {
   if (req.readableLength > FOUR_HUNDRED_KBS) return res
     .status(statusCodes['Bad Request'])
     .send({ readableMessage: 'Encrypted blob is too large' })
@@ -67,21 +85,7 @@ exports.insert = async function (req, res) {
       'sequence-no': sequenceNo
     }
 
-    const params = {
-      TableName: setup.databaseTableName,
-      Item: item,
-      ConditionExpression: 'attribute_not_exists(#userId)',
-      ExpressionAttributeNames: {
-        '#userId': 'user-id'
-      },
-    }
-
-    const ddbClient = connection.ddbClient()
-    await ddbClient.put(params).promise()
-    return res.send({
-      'item-id': item['item-id'],
-      'sequence-no': item['sequence-no']
-    })
+    return putItem(res, item)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -89,12 +93,66 @@ exports.insert = async function (req, res) {
   }
 }
 
-exports.delete = function (req, res) {
-  res.send('Got a Delete request')
+exports.delete = async function (req, res) {
+  const userId = res.locals.userId
+  const itemId = req.body.itemId
+
+  if (!itemId) return res
+    .status(statusCodes['Bad Request'])
+    .send({ readableMessage: `Missing item id` })
+
+  try {
+    const sequenceNo = await setNextSequenceNo(userId)
+
+    const item = {
+      'user-id': userId,
+      'item-id': itemId,
+      command: 'Delete',
+      'sequence-no': sequenceNo
+    }
+
+    return putItem(res, item)
+  } catch (e) {
+    return res
+      .status(statusCodes['Internal Server Error'])
+      .send({ err: `Failed to sign up with ${e}` })
+  }
 }
 
-exports.update = function (req, res) {
-  res.send('Got an Update request')
+exports.update = async function (req, res) {
+  const userId = res.locals.userId
+  const itemId = req.query.itemId
+
+  if (!itemId) return res
+    .status(statusCodes['Bad Request'])
+    .send({ readableMessage: `Missing item id` })
+
+  if (req.readableLength > FOUR_HUNDRED_KBS) return res
+    .status(statusCodes['Bad Request'])
+    .send({ readableMessage: 'Encrypted blob is too large' })
+
+  try {
+    const sequenceNo = await setNextSequenceNo(userId)
+
+    // Warning: if the server receives many large simultaneous requests, memory could fill up here.
+    // The solution to this is to read the buffer in small chunks and pipe the chunks to
+    // S3 and store the S3 URL in DynamoDB.
+    const buffer = req.read()
+
+    const item = {
+      'user-id': userId,
+      'item-id': itemId,
+      command: 'Update',
+      record: buffer,
+      'sequence-no': sequenceNo
+    }
+
+    return putItem(res, item)
+  } catch (e) {
+    return res
+      .status(statusCodes['Internal Server Error'])
+      .send({ err: `Failed to sign up with ${e}` })
+  }
 }
 
 exports.query = async function (req, res) {

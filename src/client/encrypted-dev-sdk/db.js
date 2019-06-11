@@ -37,12 +37,23 @@ const insert = async (item) => {
   return axios.post('/api/db/insert', encryptedItem)
 }
 
-const update = async () => {
-  console.log('Called update in client')
+const update = async (oldItem, newItem) => {
+  const key = await crypto.aesGcm.getKeyFromLocalStorage()
+  const encryptedItem = await crypto.aesGcm.encrypt(key, newItem)
+  return axios({
+    method: 'POST',
+    url: '/api/db/update',
+    params: {
+      itemId: oldItem['item-id']
+    },
+    data: encryptedItem
+  })
 }
 
-const deleteFunction = async () => {
-  console.log('Called delete in client')
+const deleteFunction = async (item) => {
+  return axios.post('/api/db/delete', {
+    itemId: item['item-id']
+  })
 }
 
 const query = async () => {
@@ -52,6 +63,7 @@ const query = async () => {
   const key = await crypto.aesGcm.getKeyFromLocalStorage()
 
   const decryptedRecordsPromises = items.map((item) => {
+    if (!item.record) return null // must be a deleted item
     const itemRecord = item.record.data
     return crypto.aesGcm.decrypt(key, new Uint8Array(itemRecord))
   })
