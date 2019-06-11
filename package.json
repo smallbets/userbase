@@ -11,10 +11,7 @@
     "start": "npm-run-all -r -p watch:server watch:client",
     "start:prod": "node ./build/server.js",
     "watch:client": "webpack-dev-server --mode development --config webpack.dev.config.js",
-    "watch:server": "NODE_ENV=development nodemon --exec babel-node ./src/server/server.js",
-    "docker:build": "docker build -t dvassallo/encrypted.dev .",
-    "docker:start": "docker run -v ${HOME}/.aws/credentials:/root/.aws/credentials:ro -p 8080:8080 -d dvassallo/encrypted.dev",
-    "docker:stop": "docker stop $(docker ps -q --filter ancestor=dvassallo/encrypted.dev)"
+    "watch:server": "NODE_ENV=development nodemon --exec babel-node ./src/server/server.js"
   },
   "repository": "https://github.com/dvassallo/encrypted.dev",
   "keywords": [],
