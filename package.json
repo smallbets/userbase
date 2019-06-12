@@ -10,8 +10,10 @@
     "build": "npm run clean && babel src/server -d build && webpack --mode production --config webpack.dev.config.js",
     "start": "npm-run-all -r -p watch:server watch:client",
     "start:prod": "node ./build/server.js",
+    "stop": "pkill encrypted-dev-server",
     "watch:client": "webpack-dev-server --mode development --config webpack.dev.config.js",
-    "watch:server": "NODE_ENV=development nodemon --exec babel-node ./src/server/server.js"
+    "watch:server": "NODE_ENV=development nodemon --exec babel-node ./src/server/server.js",
+    "deploy:infra": "./deploy/cloudformation/deploy-infra.sh"
   },
   "repository": "https://github.com/dvassallo/encrypted.dev",
   "keywords": [],

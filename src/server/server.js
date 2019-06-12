@@ -10,6 +10,8 @@ const app = express()
 const distDir = "./dist"
 const port = process.env.PORT || 8080
 
+process.title = 'encrypted-dev-server'
+
 if (process.env.NODE_ENV == 'development') {
   console.log("Development Mode")
 }
