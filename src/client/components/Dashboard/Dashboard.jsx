@@ -53,14 +53,7 @@ class Dashboard extends Component {
     const result = await dbLogic.insertTodo(todoInput)
 
     if (result.error) this.setState({ error: result.error, loading: false })
-    else this.setState({
-      todos: this.state.todos.concat({
-        record: { todo: todoInput },
-        command: 'Insert',
-        ...result.item
-      }),
-      loading: false
-    })
+    else this.setState({ todos: result.todos, loading: false })
   }
 
   handleToggleSelectedTodo(todo) {
@@ -85,18 +78,13 @@ class Dashboard extends Component {
 
     const result = await dbLogic.deleteTodos(Object.values(selectedTodos))
 
-    if (result.error) this.setState({ error: result.error, loading: false })
-    else {
-      const deletedTodos = result.deletedTodos.map(deletedTodo => ({
-        command: 'Delete',
-        ...deletedTodo
-      }))
-
-      this.setState({
-        todos: this.state.todos.concat(deletedTodos),
-        loading: false
-      })
+    const updatedState = {
+      loading: false,
+      selectedTodos: []
     }
+
+    if (result.error) this.setState({ error: result.error, ...updatedState })
+    else this.setState({ todos: result.todos, ...updatedState })
   }
 
   async handleMarkSelectedTodosCompleted(event) {
@@ -107,18 +95,13 @@ class Dashboard extends Component {
 
     const result = await dbLogic.markTodosCompleted(Object.values(selectedTodos))
 
-    if (result.error) this.setState({ error: result.error, loading: false })
-    else {
-      const completedTodos = result.completedTodos.map(completedTodo => ({
-        command: 'Update',
-        ...completedTodo
-      }))
-
-      this.setState({
-        todos: this.state.todos.concat(completedTodos),
-        loading: false
-      })
+    const updatedState = {
+      loading: false,
+      selectedTodos: []
     }
+
+    if (result.error) this.setState({ error: result.error, ...updatedState })
+    else this.setState({ todos: result.todos, ...updatedState })
   }
 
   render() {

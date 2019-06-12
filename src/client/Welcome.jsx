@@ -23,7 +23,7 @@ class Welcome extends Component {
 
   async componentWillMount() {
     const result = await userLogic.isUserSignedIn()
-    if (result) return this.setState({ user: result.user, loading: false })
+    if (result) return this.setState({ user: result, loading: false })
     else return this.setState({ loading: false })
   }
 

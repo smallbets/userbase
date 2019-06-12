@@ -8,9 +8,8 @@ const _errorHandler = (e, operation) => {
 
 const signUp = async (username, password) => {
   try {
-    const response = await ed.signUp(username, password)
-    localStorage.setItem('signedIn', true)
-    return { user: response.data }
+    const user = await ed.signUp(username, password)
+    return { user }
   } catch (e) {
     return _errorHandler(e, 'sign up')
   }
@@ -18,9 +17,8 @@ const signUp = async (username, password) => {
 
 const signOut = async () => {
   try {
-    const response = await ed.signOut()
-    localStorage.setItem('signedIn', false)
-    return { response }
+    const user = await ed.signOut()
+    return { user }
   } catch (e) {
     return _errorHandler(e, 'sign out')
   }
@@ -28,9 +26,8 @@ const signOut = async () => {
 
 const signIn = async (username, password) => {
   try {
-    const response = await ed.signIn(username, password)
-    localStorage.setItem('signedIn', true)
-    return { user: response.data }
+    const user = await ed.signIn(username, password)
+    return { user }
   } catch (e) {
     return _errorHandler(e, 'sign in')
   }
@@ -38,11 +35,9 @@ const signIn = async (username, password) => {
 
 const isUserSignedIn = async () => {
   try {
-    const signedIn = localStorage.getItem('signedIn')
-    if (!signedIn) return false
-    const response = await ed.user.find()
-    return { user: response.data }
+    return ed.isUserSignedIn()
   } catch (e) {
+    console.log(e)
     return false
   }
 }
