@@ -5,8 +5,8 @@ phases:
     runtime-versions:
       nodejs: 10
     commands:
-      - curl --silent --location https://rpm.nodesource.com/setup_12.x | bash -
-      - yum -y install nodejs
+      - curl -sL https://deb.nodesource.com/setup_12.x | bash -
+      - apt-get install -y nodejs
   pre_build:
     commands:
       - npm ci

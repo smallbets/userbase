@@ -19,7 +19,7 @@ Resources:
     Type: AWS::CodeBuild::Project
     Properties:
       Name: !Ref AWS::StackName
-      ServiceRole: !GetAtt PipelineRole.Arn
+      ServiceRole: !GetAtt ServiceRole.Arn
       Artifacts:
         Type: CODEPIPELINE
       Environment:
@@ -45,7 +45,7 @@ Resources:
         - Key: !Ref AWS::StackName
           Type: KEY_AND_VALUE
           Value: staging
-      ServiceRoleArn: !GetAtt PipelineRole.Arn
+      ServiceRoleArn: !GetAtt ServiceRole.Arn
 
   Pipeline:
     Type: AWS::CodePipeline::Pipeline
@@ -54,7 +54,7 @@ Resources:
       ArtifactStore:
         Location: !Ref BuildArtifactsBucket
         Type: S3
-      RoleArn: !GetAtt PipelineRole.Arn
+      RoleArn: !GetAtt ServiceRole.Arn
       Stages:
         - Name: Source
           Actions:
@@ -118,7 +118,7 @@ Resources:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
 
-  PipelineRole:
+  ServiceRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
