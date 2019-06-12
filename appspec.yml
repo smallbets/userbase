@@ -2,4 +2,13 @@ version: 0.0
 os: linux
 files:
   - source: /
-    destination: /home/ec2-user/encrypted
+    destination: /home/ec2-user/encd
+hooks:
+  ApplicationStart:
+    - location: deploy/start-service.sh
+      timeout: 300
+      runas: ec2-user
+  ApplicationStop:
+    - location: deploy/stop-service.sh
+      timeout: 300
+      runas: ec2-user

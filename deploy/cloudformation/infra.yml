@@ -1,0 +1,214 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Parameters:
+  GitHubOwner:
+    Type: String
+  GitHubRepo:
+    Type: String
+  GitHubBranch:
+    Type: String
+  GitHubPersonalAccessToken:
+    Type: String
+
+Outputs:
+  StagingURL:
+    Value: !Sub 'http://${StagingIP}/'
+
+Resources:
+  BuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Ref AWS::StackName
+      ServiceRole: !GetAtt ServiceRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:2.0
+      Source:
+        Type: CODEPIPELINE
+
+  DeploymentApplication:
+    Type: AWS::CodeDeploy::Application
+    Properties:
+      ApplicationName: !Ref AWS::StackName
+      ComputePlatform: Server
+
+  StagingDeploymentGroup:
+    Type: AWS::CodeDeploy::DeploymentGroup
+    Properties:
+      DeploymentGroupName: staging
+      ApplicationName: !Ref DeploymentApplication
+      DeploymentConfigName: CodeDeployDefault.AllAtOnce
+      Ec2TagFilters:
+        - Key: !Ref AWS::StackName
+          Type: KEY_AND_VALUE
+          Value: staging
+      ServiceRoleArn: !GetAtt ServiceRole.Arn
+
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: !Ref AWS::StackName
+      ArtifactStore:
+        Location: !Ref BuildArtifactsBucket
+        Type: S3
+      RoleArn: !GetAtt ServiceRole.Arn
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: Source
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Version: 1
+                Provider: GitHub
+              OutputArtifacts:
+                - Name: Source
+              Configuration:
+                Owner: !Ref GitHubOwner
+                Repo: !Ref GitHubRepo
+                Branch: !Ref GitHubBranch
+                OAuthToken: !Ref GitHubPersonalAccessToken
+                PollForSourceChanges: false
+              RunOrder: 1
+        - Name: Build
+          Actions:
+            - Name: Build
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              InputArtifacts:
+                - Name: Source
+              OutputArtifacts:
+                - Name: Build
+              Configuration:
+                ProjectName: !Ref BuildProject
+              RunOrder: 1
+        - Name: Deploy
+          Actions:
+            - Name: Staging
+              InputArtifacts:
+                - Name: Build
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CodeDeploy
+              Configuration:
+                ApplicationName: !Ref DeploymentApplication
+                DeploymentGroupName: !Ref StagingDeploymentGroup
+              RunOrder: 1
+
+  BuildArtifactsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Sub 'codepipeline-${AWS::StackName}-${AWS::AccountId}-${AWS::Region}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  ServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          Effect: Allow
+          Principal:
+            Service:
+              - codepipeline.amazonaws.com
+              - codedeploy.amazonaws.com
+              - codebuild.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/PowerUserAccess
+
+  StagingInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      IamInstanceProfile: !Ref InstanceProfile
+      ImageId: "ami-0cb72367e98845d43"
+      InstanceType: "t3.micro"
+      KeyName: "encrypted-staging"
+      SecurityGroupIds:
+        - !GetAtt SecurityGroup.GroupId
+      Tags:
+        - Key: !Ref AWS::StackName
+          Value: staging
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+
+          # Get Node.js 12
+          curl --silent --location https://rpm.nodesource.com/setup_12.x | bash -
+
+          # Update all packages
+          yum -y update
+
+          # Install dependencies
+          yum install -y ruby nodejs iptables-services
+
+          # Install CodeDeploy agent
+          cd /home/ec2-user
+          curl -O https://aws-codedeploy-${AWS::Region}.s3.amazonaws.com/latest/install
+          chmod +x ./install
+          ./install auto
+
+          # Set iptables rule to forward port 80 to 8080
+          iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 80 -j REDIRECT --to-port 8080
+          service iptables save
+          service iptables start
+          systemctl enable iptables
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Ref AWS::StackName
+      GroupDescription: "Allow connections on ports 80 and 22"
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0
+
+  InstanceProfile:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      Roles:
+        - Ref: InstanceRole
+
+  InstanceRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          Effect: Allow
+          Principal:
+            Service:
+              - "ec2.amazonaws.com"
+              - "codedeploy.amazonaws.com"
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/PowerUserAccess
+
+  StagingIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref StagingInstance
