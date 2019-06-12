@@ -1,3 +1,3 @@
 #!/bin/bash
 cd /home/ec2-user/encd/
-npm stop
+npm stop >/dev/null 2>&1 &
