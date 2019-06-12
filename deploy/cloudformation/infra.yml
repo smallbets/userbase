@@ -149,15 +149,27 @@ Resources:
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
+
+          # Get Node.js 12
+          curl --silent --location https://rpm.nodesource.com/setup_12.x | bash -
+
+          # Update all packages
           yum -y update
-          yum install -y ruby
+
+          # Install dependencies
+          yum install -y ruby nodejs iptables-services
+
+          # Install CodeDeploy agent
           cd /home/ec2-user
           curl -O https://aws-codedeploy-${AWS::Region}.s3.amazonaws.com/latest/install
           chmod +x ./install
           ./install auto
-          curl --silent --location https://rpm.nodesource.com/setup_12.x | bash -
-          yum -y install nodejs
+
+          # Set iptables rule to forward port 80 to 8080
           iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 80 -j REDIRECT --to-port 8080
+          service iptables save
+          service iptables start
+          systemctl enable iptables
 
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup
