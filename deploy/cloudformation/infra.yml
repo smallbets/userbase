@@ -157,6 +157,7 @@ Resources:
           ./install auto
           curl --silent --location https://rpm.nodesource.com/setup_12.x | bash -
           yum -y install nodejs
+          iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 80 -j REDIRECT --to-port 8080
 
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup
