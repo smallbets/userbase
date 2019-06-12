@@ -2,13 +2,13 @@ version: 0.2
 
 phases:
   install:
-    runtime-versions:
-      nodejs: 10
     commands:
+      - yes | n uninstall
       - curl -sL https://deb.nodesource.com/setup_12.x | bash -
       - apt-get install -y nodejs
   pre_build:
     commands:
+      - node --version
       - npm ci
   build:
     commands:
