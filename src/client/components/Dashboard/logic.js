@@ -9,7 +9,7 @@ const _errorHandler = (e, operation) => {
 const insertTodo = async (todo) => {
   try {
     await ed.db.insert({ todo })
-    return { todos: Object.values(ed.db.getLatestState()) }
+    return { todos: ed.db.getLatestState() }
   } catch (e) {
     return _errorHandler(e, 'insert todo')
   }
@@ -28,7 +28,7 @@ const deleteTodos = async (todos) => {
   try {
     const deletePromises = todos.map(todo => ed.db.delete(todo))
     await Promise.all(deletePromises)
-    return { todos: Object.values(ed.db.getLatestState()) }
+    return { todos: ed.db.getLatestState() }
   } catch (e) {
     return _errorHandler(e, 'delete todos')
   }
@@ -38,7 +38,7 @@ const markTodosCompleted = async (todos) => {
   try {
     const updatedTodosPromises = todos.map(todo => ed.db.update(todo, { todo: todo.record.todo, completed: true }))
     await Promise.all(updatedTodosPromises)
-    return { todos: Object.values(ed.db.getLatestState()) }
+    return { todos: ed.db.getLatestState() }
   } catch (e) {
     return _errorHandler(e, 'mark todos completed')
   }

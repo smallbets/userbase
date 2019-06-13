@@ -24,12 +24,14 @@ import stateManager from './stateManager'
 
       item-id {String} - GUID for item inserted into the database
       sequence-no {Integer} - counter for user's write operations on the database
+      command {String} - the write operation type
 
       Example:
 
         {
           'item-id': 'b09cf9c2-86bd-499c-af06-709d5c11f64b',
-          'sequence-no': 1
+          'sequence-no': 1,
+          command: 'Insert'
         }
  */
 const insert = async (item) => {
@@ -40,11 +42,10 @@ const insert = async (item) => {
 
   const itemToReturn = {
     ...insertedItem,
-    record: item,
-    command: 'Insert'
+    record: item
   }
 
-  stateManager().setItem(itemToReturn)
+  stateManager().insertItem(itemToReturn)
 
   return itemToReturn
 }
@@ -65,11 +66,10 @@ const update = async (oldItem, newItem) => {
   const itemToReturn = {
     ...oldItem,
     ...updatedItem,
-    record: newItem,
-    command: 'Update'
+    record: newItem
   }
 
-  stateManager().setItem(itemToReturn)
+  stateManager().updateItem(itemToReturn)
 
   return itemToReturn
 }
@@ -88,15 +88,15 @@ const deleteFunction = async (item) => {
 
   delete itemToReturn.record
 
-  stateManager().setItem(itemToReturn)
+  stateManager().updateItem(itemToReturn)
 
   return itemToReturn
 }
 
 /**
 
-    Returns the latest state of the db as an object where each key
-    is an item id and each value is an item with its record decrypted.
+    Returns the latest state of all items in the db in the order they
+    were originally inserted.
 
     If an item has been updated, the most recent version of the item
     is included in the state.
@@ -106,13 +106,17 @@ const deleteFunction = async (item) => {
 
     An example response would look like this:
 
-      {
-        '50bf2e6e-9776-441e-8215-08966581fcec': {
+      [
+        {
+          'item-id: '50bf2e6e-9776-441e-8215-08966581fcec',
           'sequence-no': 3,
           command: 'Insert',
-          record: { todo: 'remember the milk' }
+          record: {
+            todo: 'remember the milk'
+          }
         },
-        'b09cf9c2-86bd-499c-af06-709d5c11f64b': {
+        {
+          'item-id': 'b09cf9c2-86bd-499c-af06-709d5c11f64b',
           'sequence-no': 5,
           command: 'Update',
           record: {
@@ -120,49 +124,72 @@ const deleteFunction = async (item) => {
             completed: true
           }
         },
-        'ea264f5f-027e-41cf-8852-7514c8c81369': {
+        {
+          'item-id': 'ea264f5f-027e-41cf-8852-7514c8c81369',
           'sequence-no': 2,
           command: 'Delete'
         }
-      }
+      ]
+
+    Note for future optimization consideration: the server does not
+    need to respond with the user's entire transaction log. It only
+    needs to send deleted items, the latest update of items,
+    and all inserts.
 
  */
 const query = async () => {
-  const itemsResponse = await axios.get('/api/db/query')
+  const dbLogResponse = await axios.get('/api/db/query')
 
-  const items = itemsResponse.data
+  const dbLog = dbLogResponse.data
   const key = await crypto.aesGcm.getKeyFromLocalStorage()
 
-  const itemMap = {}
+  const itemsInOrderOfInsertion = []
+  const indexesOfItemsInOrderOfInsertionArray = {}
+
+  const tempItemMap = {}
+
   const itemsWithEncryptedRecords = []
   const decryptedRecordsPromises = []
 
-  for (let i = 0; i < items.length; i++) {
-    const item = items[items.length - 1 - i] // iterate in reverse order to get most recent items first
-    const itemId = item['item-id']
+  for (let i = 0; i < dbLog.length; i++) {
+    const currentOperation = dbLog[i]
+    if (currentOperation.command === 'Insert') {
+      const currentOperationItemId = currentOperation['item-id']
+      const item = tempItemMap[currentOperationItemId] || null
+      indexesOfItemsInOrderOfInsertionArray[currentOperationItemId] = itemsInOrderOfInsertion.push(item) - 1
+    }
 
-    const itemAlreadyExists = !!itemMap[itemId]
-    const itemIsDeleted = item.command === 'Deleted'
-    const itemAlreadyMarkedForDeletion = itemAlreadyExists
-      && itemMap[itemId].command === 'Deleted'
+    const mostRecentOperation = dbLog[dbLog.length - 1 - i]
+    const mostRecentOperationItemId = mostRecentOperation['item-id']
 
-    if (!itemAlreadyExists) {
-      itemMap[itemId] = item
+    const insertionIndex = indexesOfItemsInOrderOfInsertionArray[mostRecentOperationItemId]
+    const mostRecentVersionOfItem = itemsInOrderOfInsertion[insertionIndex] || tempItemMap[mostRecentOperationItemId]
+    const thisIsADeleteOperation = mostRecentOperation.command === 'Delete'
+    const itemAlreadyMarkedForDeletion = mostRecentVersionOfItem && mostRecentVersionOfItem.command === 'Delete'
 
-      const itemRecord = item.record
+    if (!mostRecentVersionOfItem) {
+      // possible don't know its insertion index yet, putting it here temporarily
+      if (!insertionIndex && insertionIndex !== 0) tempItemMap[mostRecentOperationItemId] = mostRecentOperation
+      else itemsInOrderOfInsertion[insertionIndex] = mostRecentOperation
+
+      const itemRecord = mostRecentOperation.record
       if (itemRecord) {
-        itemsWithEncryptedRecords.push(itemId)
-        decryptedRecordsPromises.push(crypto.aesGcm.decrypt(key, new Uint8Array(itemRecord.data)))
-        const itemWithEncryptedRecordIndex = itemsWithEncryptedRecords.length
-        itemMap[itemId].record = itemWithEncryptedRecordIndex
+        const encryptedRecord = itemRecord.data
+        const encryptedRecordIndex = itemsWithEncryptedRecords.push(mostRecentOperationItemId) - 1
+        decryptedRecordsPromises.push(crypto.aesGcm.decrypt(key, new Uint8Array(encryptedRecord)))
+
+        if (!insertionIndex && insertionIndex !== 0) tempItemMap[mostRecentOperationItemId].record = encryptedRecordIndex
+        else itemsInOrderOfInsertion[insertionIndex].record = encryptedRecordIndex
       }
-    } else if (itemAlreadyExists && itemIsDeleted && !itemAlreadyMarkedForDeletion) {
+    } else if (mostRecentVersionOfItem && thisIsADeleteOperation && !itemAlreadyMarkedForDeletion) {
       // this is needed because an item can be deleted at sequence no 5, but then updated at
       // sequence no 6. The client must honor the deletion
-      const itemWithEncryptedRecordIndex = itemMap[itemId].record
+      const itemWithEncryptedRecordIndex = mostRecentVersionOfItem.record
       itemsWithEncryptedRecords.splice(itemWithEncryptedRecordIndex, 1)
       decryptedRecordsPromises.splice(itemWithEncryptedRecordIndex, 1)
-      itemMap[itemId] = item
+
+      if (!insertionIndex && insertionIndex !== 0) tempItemMap[mostRecentOperationItemId] = mostRecentOperation
+      else itemsInOrderOfInsertion[insertionIndex] = mostRecentOperation
     }
   }
 
@@ -170,12 +197,13 @@ const query = async () => {
 
   for (let i = 0; i < itemsWithEncryptedRecords.length; i++) {
     const itemId = itemsWithEncryptedRecords[i]
-    itemMap[itemId].record = decryptedRecords[i]
+    const indexInOrderOfInsertionArray = indexesOfItemsInOrderOfInsertionArray[itemId]
+    itemsInOrderOfInsertion[indexInOrderOfInsertionArray].record = decryptedRecords[i]
   }
 
-  stateManager().setItems(itemMap)
+  stateManager().setItems(itemsInOrderOfInsertion, indexesOfItemsInOrderOfInsertionArray)
 
-  return itemMap
+  return itemsInOrderOfInsertion
 }
 
 const getLatestState = () => {

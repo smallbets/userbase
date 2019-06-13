@@ -44,7 +44,7 @@ const setNextSequenceNo = async function (userId) {
   return updatedUser.Attributes['last-sequence-no']
 }
 
-const putItem = async function (res, item) {
+const putItem = async function (res, item, command) {
   const params = {
     TableName: setup.databaseTableName,
     Item: item,
@@ -58,7 +58,8 @@ const putItem = async function (res, item) {
   await ddbClient.put(params).promise()
   return res.send({
     'item-id': item['item-id'],
-    'sequence-no': item['sequence-no']
+    'sequence-no': item['sequence-no'],
+    command
   })
 }
 
@@ -77,15 +78,17 @@ exports.insert = async function (req, res) {
     // S3 and store the S3 URL in DynamoDB.
     const buffer = req.read()
 
+    const command = 'Insert'
+
     const item = {
       'user-id': userId,
       'item-id': uuidv4(),
-      command: 'Insert',
+      command,
       record: buffer,
       'sequence-no': sequenceNo
     }
 
-    return putItem(res, item)
+    return putItem(res, item, command)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -104,14 +107,16 @@ exports.delete = async function (req, res) {
   try {
     const sequenceNo = await setNextSequenceNo(userId)
 
+    const command = 'Delete'
+
     const item = {
       'user-id': userId,
       'item-id': itemId,
-      command: 'Delete',
+      command,
       'sequence-no': sequenceNo
     }
 
-    return putItem(res, item)
+    return putItem(res, item, command)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -139,15 +144,17 @@ exports.update = async function (req, res) {
     // S3 and store the S3 URL in DynamoDB.
     const buffer = req.read()
 
+    const command = 'Update'
+
     const item = {
       'user-id': userId,
       'item-id': itemId,
-      command: 'Update',
+      command,
       record: buffer,
       'sequence-no': sequenceNo
     }
 
-    return putItem(res, item)
+    return putItem(res, item, command)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])

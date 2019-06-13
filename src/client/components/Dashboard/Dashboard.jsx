@@ -147,12 +147,21 @@ class Dashboard extends Component {
             </div>
 
             {todos && todos.length !== 0 && todos.map((todo) => {
-              return (
-                <div style={{ marginTop: '10px' }} key={todo['sequence-no']}>
-                  <input type='checkbox' onClick={() => this.handleToggleSelectedTodo(todo)} />
-                  {JSON.stringify(todo, null, 2)}
-                </div>
-              )
+              return todo.command !== 'Delete'
+                ? (
+                  <div
+                    style={{
+                      textAlign: 'left',
+                      marginTop: '10px',
+                      textDecoration: todo.record.completed ? 'line-through' : null
+                    }}
+                    key={todo['sequence-no']}
+                  >
+                    <input type='checkbox' onClick={() => this.handleToggleSelectedTodo(todo)} />
+                    {todo.record.todo}
+                  </div>
+                )
+                : null
             })}
 
             {error && (
