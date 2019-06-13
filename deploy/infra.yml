@@ -38,6 +38,7 @@ Resources:
 
   StagingDeploymentGroup:
     Type: AWS::CodeDeploy::DeploymentGroup
+    DependsOn: StagingInstance
     Properties:
       DeploymentGroupName: staging
       ApplicationName: !Ref DeploymentApplication
@@ -152,6 +153,9 @@ Resources:
 
   StagingInstance:
     Type: AWS::EC2::Instance
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT5M
     Properties:
       IamInstanceProfile: !Ref InstanceProfile
       ImageId: "ami-0cb72367e98845d43"
@@ -186,6 +190,10 @@ Resources:
           service iptables save
           service iptables start
           systemctl enable iptables
+
+          # Signal to CloudFormation that the instance is ready
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --region ${AWS::Region} --resource StagingInstance
+          /opt/aws/bin/cfn-signal -e 0 --stack ${AWS::StackName} --region ${AWS::Region} --resource StagingInstance
 
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup
