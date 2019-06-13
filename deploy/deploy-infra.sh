@@ -8,7 +8,7 @@ aws cloudformation deploy \
     --region us-west-2 \
     --profile encrypted \
     --stack-name encd \
-    --template-file ./deploy/cloudformation/infra.yml \
+    --template-file ./deploy/infra.yml \
     --no-fail-on-empty-changeset \
     --parameter-overrides \
       GitHubOwner=dvassallo \

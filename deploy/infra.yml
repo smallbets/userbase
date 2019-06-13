@@ -9,6 +9,7 @@ Parameters:
     Type: String
   GitHubPersonalAccessToken:
     Type: String
+    NoEcho: true
 
 Outputs:
   StagingURL:
@@ -117,6 +118,21 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
+
+  PipelineWebhook:
+    Type: AWS::CodePipeline::Webhook
+    Properties:
+      Authentication: GITHUB_HMAC
+      AuthenticationConfiguration:
+        SecretToken: !Ref GitHubPersonalAccessToken
+      Filters:
+        - JsonPath: $.ref
+          MatchEquals: 'refs/heads/{Branch}'
+      TargetPipeline: !Ref Pipeline
+      TargetAction: Source
+      Name: !Sub 'webhook-${AWS::StackName}'
+      TargetPipelineVersion: !GetAtt Pipeline.Version
+      RegisterWithThirdParty: true
 
   ServiceRole:
     Type: AWS::IAM::Role

@@ -13,7 +13,7 @@
     "stop": "pkill encrypted-dev-server",
     "watch:client": "webpack-dev-server --mode development --config webpack.dev.config.js",
     "watch:server": "NODE_ENV=development nodemon --exec babel-node ./src/server/server.js",
-    "deploy:infra": "./deploy/cloudformation/deploy-infra.sh"
+    "deploy:infra": "./deploy/deploy-infra.sh"
   },
   "repository": "https://github.com/dvassallo/encrypted.dev",
   "keywords": [],
