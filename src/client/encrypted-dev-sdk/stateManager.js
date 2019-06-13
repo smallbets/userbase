@@ -51,8 +51,12 @@ EncryptedDevSdk.prototype.insertItem = function (item) {
 
 EncryptedDevSdk.prototype.updateItem = function (item) {
   const index = this.itemIdsToIndexes[item['item-id']]
-  this.items[index] = item
+  const currentItem = this.items[index]
+  if (item['sequence-no'] > currentItem['sequence-no'] && currentItem.command !== 'Delete') {
+    this.items[index] = item
+  }
 }
+
 EncryptedDevSdk.prototype.getItems = function () { return this.items }
 
 EncryptedDevSdk.prototype.clearState = function () { state = new EncryptedDevSdk() }

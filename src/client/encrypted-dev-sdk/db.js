@@ -16,7 +16,7 @@ import stateManager from './stateManager'
 
       db.insert({
         todo: 'remember the milk'
-      }, function(err, product) {
+      }).then(function (item) {
         // asynchronously called
       });
 
@@ -33,6 +33,7 @@ import stateManager from './stateManager'
           'sequence-no': 1,
           command: 'Insert'
         }
+
  */
 const insert = async (item) => {
   const key = await crypto.aesGcm.getKeyFromLocalStorage()
@@ -109,7 +110,7 @@ const deleteFunction = async (item) => {
       [
         {
           'item-id: '50bf2e6e-9776-441e-8215-08966581fcec',
-          'sequence-no': 3,
+          'sequence-no': 0,
           command: 'Insert',
           record: {
             todo: 'remember the milk'
@@ -117,7 +118,7 @@ const deleteFunction = async (item) => {
         },
         {
           'item-id': 'b09cf9c2-86bd-499c-af06-709d5c11f64b',
-          'sequence-no': 5,
+          'sequence-no': 4,
           command: 'Update',
           record: {
             todo: 'create the most useful app of all time',
@@ -126,7 +127,7 @@ const deleteFunction = async (item) => {
         },
         {
           'item-id': 'ea264f5f-027e-41cf-8852-7514c8c81369',
-          'sequence-no': 2,
+          'sequence-no': 3,
           command: 'Delete'
         }
       ]
@@ -144,33 +145,40 @@ const query = async () => {
   const key = await crypto.aesGcm.getKeyFromLocalStorage()
 
   const itemsInOrderOfInsertion = []
-  const indexesOfItemsInOrderOfInsertionArray = {}
+  const itemIdsToOrderOfInsertion = {}
 
-  const tempItemMap = {}
+  const mostRecentStateOfItems = {}
 
   const itemsWithEncryptedRecords = []
   const decryptedRecordsPromises = []
 
   for (let i = 0; i < dbLog.length; i++) {
+    // iterate forwards picking up the items in the order they were first inserted
     const currentOperation = dbLog[i]
     if (currentOperation.command === 'Insert') {
       const currentOperationItemId = currentOperation['item-id']
-      const item = tempItemMap[currentOperationItemId] || null
-      indexesOfItemsInOrderOfInsertionArray[currentOperationItemId] = itemsInOrderOfInsertion.push(item) - 1
+      const item = mostRecentStateOfItems[currentOperationItemId] || null
+      itemIdsToOrderOfInsertion[currentOperationItemId] = itemsInOrderOfInsertion.push(item) - 1
     }
 
+    // iterate backwards picking up the most recent state of the item
     const mostRecentOperation = dbLog[dbLog.length - 1 - i]
     const mostRecentOperationItemId = mostRecentOperation['item-id']
 
-    const insertionIndex = indexesOfItemsInOrderOfInsertionArray[mostRecentOperationItemId]
-    const mostRecentVersionOfItem = itemsInOrderOfInsertion[insertionIndex] || tempItemMap[mostRecentOperationItemId]
+    const insertionIndex = itemIdsToOrderOfInsertion[mostRecentOperationItemId]
+    const mostRecentVersionOfItem = itemsInOrderOfInsertion[insertionIndex] || mostRecentStateOfItems[mostRecentOperationItemId]
     const thisIsADeleteOperation = mostRecentOperation.command === 'Delete'
     const itemAlreadyMarkedForDeletion = mostRecentVersionOfItem && mostRecentVersionOfItem.command === 'Delete'
 
     if (!mostRecentVersionOfItem) {
-      // possible don't know its insertion index yet, putting it here temporarily
-      if (!insertionIndex && insertionIndex !== 0) tempItemMap[mostRecentOperationItemId] = mostRecentOperation
-      else itemsInOrderOfInsertion[insertionIndex] = mostRecentOperation
+      if (!insertionIndex && insertionIndex !== 0) {
+        // possible we don't know when the item was first inserted yet because have not encountered
+        // its insertion while iterating forward yet. Putting its most recent state in this object
+        // so it will be picked up when iterating forward
+        mostRecentStateOfItems[mostRecentOperationItemId] = mostRecentOperation
+      } else {
+        itemsInOrderOfInsertion[insertionIndex] = mostRecentOperation
+      }
 
       const itemRecord = mostRecentOperation.record
       if (itemRecord) {
@@ -178,8 +186,11 @@ const query = async () => {
         const encryptedRecordIndex = itemsWithEncryptedRecords.push(mostRecentOperationItemId) - 1
         decryptedRecordsPromises.push(crypto.aesGcm.decrypt(key, new Uint8Array(encryptedRecord)))
 
-        if (!insertionIndex && insertionIndex !== 0) tempItemMap[mostRecentOperationItemId].record = encryptedRecordIndex
-        else itemsInOrderOfInsertion[insertionIndex].record = encryptedRecordIndex
+        if (!insertionIndex && insertionIndex !== 0) {
+          mostRecentStateOfItems[mostRecentOperationItemId].record = encryptedRecordIndex
+        } else {
+          itemsInOrderOfInsertion[insertionIndex].record = encryptedRecordIndex
+        }
       }
     } else if (mostRecentVersionOfItem && thisIsADeleteOperation && !itemAlreadyMarkedForDeletion) {
       // this is needed because an item can be deleted at sequence no 5, but then updated at
@@ -188,8 +199,11 @@ const query = async () => {
       itemsWithEncryptedRecords.splice(itemWithEncryptedRecordIndex, 1)
       decryptedRecordsPromises.splice(itemWithEncryptedRecordIndex, 1)
 
-      if (!insertionIndex && insertionIndex !== 0) tempItemMap[mostRecentOperationItemId] = mostRecentOperation
-      else itemsInOrderOfInsertion[insertionIndex] = mostRecentOperation
+      if (!insertionIndex && insertionIndex !== 0) {
+        mostRecentStateOfItems[mostRecentOperationItemId] = mostRecentOperation
+      } else {
+        itemsInOrderOfInsertion[insertionIndex] = mostRecentOperation
+      }
     }
   }
 
@@ -197,11 +211,11 @@ const query = async () => {
 
   for (let i = 0; i < itemsWithEncryptedRecords.length; i++) {
     const itemId = itemsWithEncryptedRecords[i]
-    const indexInOrderOfInsertionArray = indexesOfItemsInOrderOfInsertionArray[itemId]
+    const indexInOrderOfInsertionArray = itemIdsToOrderOfInsertion[itemId]
     itemsInOrderOfInsertion[indexInOrderOfInsertionArray].record = decryptedRecords[i]
   }
 
-  stateManager().setItems(itemsInOrderOfInsertion, indexesOfItemsInOrderOfInsertionArray)
+  stateManager().setItems(itemsInOrderOfInsertion, itemIdsToOrderOfInsertion)
 
   return itemsInOrderOfInsertion
 }
