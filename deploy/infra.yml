@@ -177,16 +177,27 @@ Resources:
           yum -y update
 
           # Install dependencies
-          yum install -y ruby nodejs iptables-services
+          yum install -y ruby nodejs python3 iptables-services
 
           # Install CodeDeploy agent
-          cd /home/ec2-user
+          cd /tmp
           curl -O https://aws-codedeploy-${AWS::Region}.s3.amazonaws.com/latest/install
           chmod +x ./install
           ./install auto
 
-          # Set iptables rule to forward port 80 to 8080
-          iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 80 -j REDIRECT --to-port 8080
+          # Install Certbot for Let's Encrypt
+          cd /tmp
+          wget -r --no-parent -A 'epel-release-*.rpm' http://dl.fedoraproject.org/pub/epel/7/x86_64/Packages/e/
+          rpm -Uvh dl.fedoraproject.org/pub/epel/7/x86_64/Packages/e/epel-release-*.rpm
+          yum-config-manager --enable epel*
+          yum install -y certbot python-pip
+          pip install certbot_dns_route53
+
+          # Generate a new HTTPS cert
+          certbot certonly -n --agree-tos --email daniel@encrypted.dev --dns-route53 -d staging.encrypted.dev
+
+          # Set iptables rule to forward port 443 to 8443
+          iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 443 -j REDIRECT --to-port 8443
           service iptables save
           service iptables start
           systemctl enable iptables
@@ -198,12 +209,11 @@ Resources:
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupName: !Ref AWS::StackName
-      GroupDescription: "Allow connections on ports 80 and 22"
+      GroupDescription: "Allow connections on ports 443 and 22"
       SecurityGroupIngress:
       - IpProtocol: tcp
-        FromPort: 80
-        ToPort: 80
+        FromPort: 443
+        ToPort: 443
         CidrIp: 0.0.0.0/0
       - IpProtocol: tcp
         FromPort: 22
@@ -236,3 +246,13 @@ Resources:
     Properties:
       Domain: vpc
       InstanceId: !Ref StagingInstance
+
+  StagingDNS:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneName: encrypted.dev.
+      Name: staging.encrypted.dev.
+      Type: A
+      TTL: 300
+      ResourceRecords:
+      - !Ref StagingIP

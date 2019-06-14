@@ -3,6 +3,8 @@ os: linux
 files:
   - source: /
     destination: /home/ec2-user/encd
+  - source: /etc/letsencrypt/live/staging.encrypted.dev/
+    destination: /home/ec2-user/encd/keys
 permissions:
   - object: /home/ec2-user/encd
     pattern: "**"

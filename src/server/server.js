@@ -1,4 +1,7 @@
 import express from 'express'
+import http from 'http'
+import https from 'https'
+import fs from 'fs'
 import bodyParser from 'body-parser'
 import cookieParser from 'cookie-parser'
 import setup from './setup'
@@ -8,7 +11,10 @@ import db from './db'
 
 const app = express()
 const distDir = "./dist"
-const port = process.env.PORT || 8080
+const httpsKey = './keys/privkey.pem'
+const httpsCert = './keys/fullchain.pem'
+const httpPort = process.env.PORT || 8080
+const httpsPort = process.env.PORT || 8443
 
 process.title = 'encrypted-dev-server'
 
@@ -35,11 +41,14 @@ if (process.env.NODE_ENV == 'development') {
     app.post('/api/db/delete', auth.authenticateUser, db.delete)
     app.get('/api/db/query', auth.authenticateUser, db.query)
 
-    console.log('Starting http server')
-    app.listen(port, () => {
-      console.log(`App listening to ${port}....`)
-      console.log('Press Ctrl+C to quit.')
-    })
+    if (fs.existsSync(httpsKey) && fs.existsSync(httpsCert)) {
+      console.log('Starting https server')
+      https.createServer({ key: fs.readFileSync(httpsKey), cert: fs.readFileSync(httpsCert) }, app)
+        .listen(httpsPort, () => console.log(`App listening on https port ${httpsPort}....`))
+    } else {
+      console.log('Starting http server')
+      http.createServer(app).listen(httpPort, () => console.log(`App listening on http port ${httpPort}....`))
+    }
   } catch (e) {
     console.log(`Unhandled error while launching server: ${e}`)
   }
