@@ -59,7 +59,7 @@ class Welcome extends Component {
 
     return (
       <div className="welcome">
-        <div className="logo" />
+        <div className="logo" style={{ margin: 'auto' }} />
 
         {userIsAuthenticated
           ? <Dashboard user={user} handleRemoveUserAuthentication={this.handleRemoveUserAuthentication} />

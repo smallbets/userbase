@@ -1,4 +1,5 @@
 import ed from '../../encrypted-dev-sdk'
+import { arrayBufferToString } from '../../encrypted-dev-sdk/Crypto/utils'
 
 const _errorHandler = (e, operation) => {
   console.log(`Failed to ${operation} with`, e, e.response && e.response.data)
@@ -8,7 +9,8 @@ const _errorHandler = (e, operation) => {
 
 const insertTodo = async (todo) => {
   try {
-    await ed.db.insert({ todo })
+    const insertedItem = await ed.db.insert({ todo })
+    console.log(`Todo '${todo}' encrypted and stored as '${arrayBufferToString(insertedItem.encryptedRecord)}'`)
     return { todos: ed.db.getLatestState() }
   } catch (e) {
     return _errorHandler(e, 'insert todo')
@@ -37,7 +39,10 @@ const deleteTodos = async (todos) => {
 const markTodosCompleted = async (todos) => {
   try {
     const updatedTodosPromises = todos.map(todo => ed.db.update(todo, { todo: todo.record.todo, completed: true }))
-    await Promise.all(updatedTodosPromises)
+    const udpatedTodos = await Promise.all(updatedTodosPromises)
+    udpatedTodos.forEach((updatedTodo) => {
+      console.log(`Completed todo '${updatedTodo.record.todo}' encrypted and stored as '${arrayBufferToString(updatedTodo.encryptedRecord)}'`)
+    })
     return { todos: ed.db.getLatestState() }
   } catch (e) {
     return _errorHandler(e, 'mark todos completed')

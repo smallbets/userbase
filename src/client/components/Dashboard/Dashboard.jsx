@@ -53,7 +53,7 @@ class Dashboard extends Component {
     const result = await dbLogic.insertTodo(todoInput)
 
     if (result.error) this.setState({ error: result.error, loading: false })
-    else this.setState({ todos: result.todos, loading: false })
+    else this.setState({ todos: result.todos, todoInput: '', loading: false })
   }
 
   handleToggleSelectedTodo(todo) {
@@ -106,78 +106,77 @@ class Dashboard extends Component {
 
   render() {
     const { user } = this.props
-    const { todoInput, error, loading, todos } = this.state
+    const { todoInput, error, loading, todos, selectedTodos } = this.state
 
     return (
-      <div style={{ marginTop: '50px' }}>
+      <div style={{ marginTop: '50px', maxWidth: '400px', wordBreak: 'break-word' }}>
         <div >
           Welcome, {user.username}!
         </div>
 
         <form style={{ marginTop: '25px' }}>
 
-          <div style={{ width: '250px', margin: 'auto' }}>
-
-            <div style={{ display: 'flex' }}>
+          <div style={{ display: 'flex' }}>
+            <span style={{ display: 'inline-flex', width: '20%' }}>
               To-do:
-              <input
-                style={{ marginLeft: 'auto', padding: '5px' }}
-                type='text'
-                name='todoInput'
-                onChange={this.handleInputChange}
-              />
-            </div>
-
-            <div style={{ display: 'flex', marginTop: '20px' }}>
-              {loading
-                ? <div className='loader' style={{ margin: 'auto', height: '15px', width: '15px' }} />
-                : <input
-                  style={{ width: '100%' }}
-                  type='submit'
-                  value='Add'
-                  disabled={!todoInput}
-                  onClick={this.handleAddTodo}
-                />
-              }
-            </div>
-
-            <div style={{ display: 'flex', marginTop: '20px' }}>
-              <button onClick={this.handleMarkSelectedTodosCompleted}>Mark Selected Complete</button>
-              <button onClick={this.handleDeleteSelectedTodos}>Delete Selected</button>
-            </div>
-
-            {todos && todos.length !== 0 && todos.map((todo) => {
-              return todo.command !== 'Delete'
-                ? (
-                  <div
-                    style={{
-                      textAlign: 'left',
-                      marginTop: '10px',
-                      textDecoration: todo.record.completed ? 'line-through' : null
-                    }}
-                    key={todo['sequence-no']}
-                  >
-                    <input type='checkbox' onClick={() => this.handleToggleSelectedTodo(todo)} />
-                    {todo.record.todo}
-                  </div>
-                )
-                : null
-            })}
-
-            {error && (
-              <div style={{
-                marginTop: '10px',
-                color: 'red',
-                fontSize: '.75em',
-                textAlign: 'left',
-                wordBreak: 'break-word',
-                fontStyle: 'italic'
-              }}>
-                {error}
-              </div>
-            )}
-
+            </span>
+            <input
+              style={{ display: 'inline-flex', width: '80%', marginLeft: 'auto', padding: '5px' }}
+              type='text'
+              name='todoInput'
+              value={todoInput}
+              onChange={this.handleInputChange}
+            />
           </div>
+
+          <div style={{ display: 'flex', marginTop: '20px' }}>
+            {loading
+              ? <div className='loader' style={{ margin: 'auto', height: '15px', width: '15px' }} />
+              : <input
+                style={{ width: '100%' }}
+                type='submit'
+                value='Add'
+                disabled={!todoInput}
+                onClick={this.handleAddTodo}
+              />
+            }
+          </div>
+
+          <div style={{ display: 'flex', marginTop: '20px' }}>
+            <button disabled={!Object.keys(selectedTodos).length} style={{ width: '150px', marginLeft: '7%' }} onClick={this.handleMarkSelectedTodosCompleted}>Mark Selected Complete</button>
+            <button disabled={!Object.keys(selectedTodos).length} style={{ width: '150px', marginRight: '7%', marginLeft: 'auto' }} onClick={this.handleDeleteSelectedTodos}>Delete Selected</button>
+          </div>
+
+          {todos && todos.length !== 0 && todos.map((todo) => {
+            return todo.command !== 'Delete'
+              ? (
+                <div
+                  style={{
+                    textAlign: 'left',
+                    marginTop: '10px',
+                    textDecoration: todo.record.completed ? 'line-through' : null
+                  }}
+                  key={todo['sequence-no']}
+                >
+                  <input type='checkbox' style={{ marginRight: '1vw' }} onClick={() => this.handleToggleSelectedTodo(todo)} />
+                  {todo.record.todo}
+                </div>
+              )
+              : null
+          })}
+
+          {error && (
+            <div style={{
+              marginTop: '10px',
+              color: 'red',
+              fontSize: '.75em',
+              textAlign: 'left',
+              wordBreak: 'break-word',
+              fontStyle: 'italic'
+            }}>
+              {error}
+            </div>
+          )}
 
         </form>
 

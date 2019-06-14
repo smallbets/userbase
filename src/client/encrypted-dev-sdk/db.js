@@ -43,6 +43,7 @@ const insert = async (item) => {
 
   const itemToReturn = {
     ...insertedItem,
+    encryptedRecord: encryptedItem,
     record: item
   }
 
@@ -67,6 +68,7 @@ const update = async (oldItem, newItem) => {
   const itemToReturn = {
     ...oldItem,
     ...updatedItem,
+    encryptedRecord: encryptedItem,
     record: newItem
   }
 
