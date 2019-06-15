@@ -10,10 +10,24 @@ Parameters:
   GitHubPersonalAccessToken:
     Type: String
     NoEcho: true
+  EC2KeyPair:
+    Type: String
+  EC2InstanceType:
+    Type: String
+    Default: t3.micro
+  EC2AMI:
+    Type: String
+    Default: ami-0cb72367e98845d43
+  Domain:
+    Type: String
 
 Outputs:
   StagingURL:
-    Value: !Sub 'http://${StagingIP}/'
+    Value: !If [HasDomain, !Sub 'https://staging.${Domain}/', !Sub 'http://${StagingIP}/']
+
+Conditions:
+  HasEC2KeyPair: !Not [!Equals [!Ref EC2KeyPair, '']]
+  HasDomain: !Not [!Equals [!Ref Domain, '']]
 
 Resources:
   BuildProject:
@@ -158,62 +172,76 @@ Resources:
         Timeout: PT5M
     Properties:
       IamInstanceProfile: !Ref InstanceProfile
-      ImageId: "ami-0cb72367e98845d43"
-      InstanceType: "t3.micro"
-      KeyName: "encrypted-staging"
+      ImageId: !Ref EC2AMI
+      InstanceType: !Ref EC2InstanceType
+      KeyName: !If [HasEC2KeyPair, !Ref EC2KeyPair, !Ref 'AWS::NoValue']
       SecurityGroupIds:
         - !GetAtt SecurityGroup.GroupId
       Tags:
         - Key: !Ref AWS::StackName
           Value: staging
       UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash
+        Fn::Base64:
+          !Join
+            - ''
+            - - !Sub |
+                  #!/bin/bash
 
-          # Get Node.js 12
-          curl --silent --location https://rpm.nodesource.com/setup_12.x | bash -
+                  # Get Node.js 12
+                  curl --silent --location https://rpm.nodesource.com/setup_12.x | bash -
 
-          # Update all packages
-          yum -y update
+                  # Update all packages
+                  yum -y update
 
-          # Install dependencies
-          yum install -y ruby nodejs python3 iptables-services
+                  # Install dependencies
+                  yum install -y ruby nodejs python3 iptables-services
 
-          # Install CodeDeploy agent
-          cd /tmp
-          curl -O https://aws-codedeploy-${AWS::Region}.s3.amazonaws.com/latest/install
-          chmod +x ./install
-          ./install auto
+                  # Install CodeDeploy agent
+                  cd /tmp
+                  curl -O https://aws-codedeploy-${AWS::Region}.s3.amazonaws.com/latest/install
+                  chmod +x ./install
+                  ./install auto
 
-          # Install Certbot for Let's Encrypt
-          cd /tmp
-          wget -r --no-parent -A 'epel-release-*.rpm' http://dl.fedoraproject.org/pub/epel/7/x86_64/Packages/e/
-          rpm -Uvh dl.fedoraproject.org/pub/epel/7/x86_64/Packages/e/epel-release-*.rpm
-          yum-config-manager --enable epel*
-          yum install -y certbot python-pip
-          pip install certbot_dns_route53
+              - !If
+                - HasDomain
+                - !Sub |
+                  # Install Certbot for Let's Encrypt
+                  cd /tmp
+                  wget -r --no-parent -A 'epel-release-*.rpm' http://dl.fedoraproject.org/pub/epel/7/x86_64/Packages/e/
+                  rpm -Uvh dl.fedoraproject.org/pub/epel/7/x86_64/Packages/e/epel-release-*.rpm
+                  yum-config-manager --enable epel*
+                  yum install -y certbot python-pip
+                  pip install certbot_dns_route53
 
-          # Generate a new HTTPS cert
-          certbot certonly -n --agree-tos --email daniel@encrypted.dev --dns-route53 -d staging.encrypted.dev
+                  # Generate a new HTTPS cert
+                  certbot certonly -n --agree-tos --email daniel@encrypted.dev --dns-route53 -d staging.${Domain}
 
-          # Set iptables rule to forward port 443 to 8443
-          iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 443 -j REDIRECT --to-port 8443
-          service iptables save
-          service iptables start
-          systemctl enable iptables
+                  # Set iptables rule to forward port 443 to 8443
+                  iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 443 -j REDIRECT --to-port 8443
+                - !Sub |
+                  # Set iptables rule to forward port 80 to 8080
+                  iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 80 -j REDIRECT --to-port 8080
 
-          # Signal to CloudFormation that the instance is ready
-          /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --region ${AWS::Region} --resource StagingInstance
-          /opt/aws/bin/cfn-signal -e 0 --stack ${AWS::StackName} --region ${AWS::Region} --resource StagingInstance
+              - !Sub |
+                  service iptables save
+                  service iptables start
+                  systemctl enable iptables
+
+                  # Signal to CloudFormation that the instance is ready
+                  /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --region ${AWS::Region} --resource StagingInstance
+                  /opt/aws/bin/cfn-signal -e 0 --stack ${AWS::StackName} --region ${AWS::Region} --resource StagingInstance
+
+                  # Deploy to outdated instances
+                  aws deploy create-deployment --application-name ${AWS::StackName} --deployment-group staging --update-outdated-instances-only --region ${AWS::Region}
 
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: "Allow connections on ports 443 and 22"
+      GroupDescription: !Sub 'Security group from ${AWS::StackName} staging host'
       SecurityGroupIngress:
       - IpProtocol: tcp
-        FromPort: 443
-        ToPort: 443
+        FromPort: !If [HasDomain, 443, 80]
+        ToPort: !If [HasDomain, 443, 80]
         CidrIp: 0.0.0.0/0
       - IpProtocol: tcp
         FromPort: 22
@@ -249,9 +277,10 @@ Resources:
 
   StagingDNS:
     Type: AWS::Route53::RecordSet
+    Condition: HasDomain
     Properties:
-      HostedZoneName: encrypted.dev.
-      Name: staging.encrypted.dev.
+      HostedZoneName: !Sub '${Domain}.'
+      Name: !Sub 'staging.${Domain}.'
       Type: A
       TTL: 300
       ResourceRecords:
