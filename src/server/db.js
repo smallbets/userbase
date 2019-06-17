@@ -44,7 +44,7 @@ const setNextSequenceNo = async function (userId) {
   return updatedUser.Attributes['last-sequence-no']
 }
 
-const putItem = async function (res, item, command) {
+const putItem = async function (res, item) {
   const params = {
     TableName: setup.databaseTableName,
     Item: item,
@@ -59,7 +59,7 @@ const putItem = async function (res, item, command) {
   return res.send({
     'item-id': item['item-id'],
     'sequence-no': item['sequence-no'],
-    command
+    command: item.command
   })
 }
 
@@ -88,7 +88,7 @@ exports.insert = async function (req, res) {
       'sequence-no': sequenceNo
     }
 
-    return putItem(res, item, command)
+    return putItem(res, item)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -116,7 +116,7 @@ exports.delete = async function (req, res) {
       'sequence-no': sequenceNo
     }
 
-    return putItem(res, item, command)
+    return putItem(res, item)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -154,7 +154,7 @@ exports.update = async function (req, res) {
       'sequence-no': sequenceNo
     }
 
-    return putItem(res, item, command)
+    return putItem(res, item)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -179,8 +179,19 @@ exports.query = async function (req, res) {
 
   try {
     const ddbClient = connection.ddbClient()
-    const itemsResponse = await ddbClient.query(params).promise()
-    return res.send(itemsResponse.Items)
+    let itemsResponse = await ddbClient.query(params).promise()
+    let items = itemsResponse.Items
+
+    // Warning: memory could fill up here when building the items array.
+    // Note that this while loop is necessary in the first place because
+    // DDB itself limits each query response to 1mb.
+    while (itemsResponse.LastEvaluatedKey) {
+      params.ExclusiveStartKey = itemsResponse.LastEvaluatedKey
+      itemsResponse = await ddbClient.query(params).promise()
+      items = items.concat(itemsResponse.Items)
+    }
+
+    return res.send(items)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])

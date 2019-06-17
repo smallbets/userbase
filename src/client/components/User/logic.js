@@ -1,4 +1,4 @@
-import ed from '../../encrypted-dev-sdk'
+import encd from '../../encrypted-dev-sdk'
 
 const _errorHandler = (e, operation) => {
   console.log(`Failed to ${operation} with`, e, e.response && e.response.data)
@@ -8,7 +8,7 @@ const _errorHandler = (e, operation) => {
 
 const signUp = async (username, password) => {
   try {
-    const user = await ed.signUp(username, password)
+    const user = await encd.signUp(username, password)
     return { user }
   } catch (e) {
     return _errorHandler(e, 'sign up')
@@ -17,7 +17,7 @@ const signUp = async (username, password) => {
 
 const signOut = async () => {
   try {
-    const user = await ed.signOut()
+    const user = await encd.signOut()
     return { user }
   } catch (e) {
     return _errorHandler(e, 'sign out')
@@ -26,7 +26,7 @@ const signOut = async () => {
 
 const signIn = async (username, password) => {
   try {
-    const user = await ed.signIn(username, password)
+    const user = await encd.signIn(username, password)
     return { user }
   } catch (e) {
     return _errorHandler(e, 'sign in')
@@ -35,7 +35,8 @@ const signIn = async (username, password) => {
 
 const isUserSignedIn = async () => {
   try {
-    return ed.isUserSignedIn()
+    const result = await encd.isUserSignedIn()
+    return result
   } catch (e) {
     console.log(e)
     return false

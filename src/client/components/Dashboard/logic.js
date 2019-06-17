@@ -1,4 +1,4 @@
-import ed from '../../encrypted-dev-sdk'
+import encd from '../../encrypted-dev-sdk'
 import { arrayBufferToString } from '../../encrypted-dev-sdk/Crypto/utils'
 
 const _errorHandler = (e, operation) => {
@@ -9,9 +9,9 @@ const _errorHandler = (e, operation) => {
 
 const insertTodo = async (todo) => {
   try {
-    const insertedItem = await ed.db.insert({ todo })
+    const insertedItem = await encd.db.insert({ todo })
     console.log(`Todo '${todo}' encrypted and stored as '${arrayBufferToString(insertedItem.encryptedRecord)}'`)
-    return { todos: ed.db.getLatestState() }
+    return { todos: encd.db.getLatestState() }
   } catch (e) {
     return _errorHandler(e, 'insert todo')
   }
@@ -19,7 +19,11 @@ const insertTodo = async (todo) => {
 
 const getTodos = async () => {
   try {
-    const response = await ed.db.query()
+    const t0 = performance.now()
+    const response = await encd.db.query()
+    const t1 = performance.now()
+    const timeToRun = `${((t1 - t0) / 1000).toFixed(2)}`
+    console.log('Call to SDK db query took ' + timeToRun + 's')
     return { todos: Object.values(response) }
   } catch (e) {
     return _errorHandler(e, 'get todos')
@@ -28,7 +32,7 @@ const getTodos = async () => {
 
 const deleteTodos = async (todos) => {
   try {
-    const deletePromises = todos.map(todo => ed.db.delete(todo))
+    const deletePromises = todos.map(todo => encd.db.delete(todo))
     await Promise.all(deletePromises)
     return { todos: ed.db.getLatestState() }
   } catch (e) {
@@ -38,12 +42,12 @@ const deleteTodos = async (todos) => {
 
 const markTodosCompleted = async (todos) => {
   try {
-    const updatedTodosPromises = todos.map(todo => ed.db.update(todo, { todo: todo.record.todo, completed: true }))
+    const updatedTodosPromises = todos.map(todo => encd.db.update(todo, { todo: todo.record.todo, completed: true }))
     const udpatedTodos = await Promise.all(updatedTodosPromises)
     udpatedTodos.forEach((updatedTodo) => {
       console.log(`Completed todo '${updatedTodo.record.todo}' encrypted and stored as '${arrayBufferToString(updatedTodo.encryptedRecord)}'`)
     })
-    return { todos: ed.db.getLatestState() }
+    return { todos: encd.db.getLatestState() }
   } catch (e) {
     return _errorHandler(e, 'mark todos completed')
   }

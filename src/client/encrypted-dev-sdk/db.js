@@ -2,6 +2,8 @@ import axios from 'axios'
 import crypto from './Crypto'
 import stateManager from './stateManager'
 
+const TIMEOUT = 5 * 1000
+
 /**
 
     Takes an item as input, encrypts the item client-side,
@@ -38,7 +40,12 @@ import stateManager from './stateManager'
 const insert = async (item) => {
   const key = await crypto.aesGcm.getKeyFromLocalStorage()
   const encryptedItem = await crypto.aesGcm.encrypt(key, item)
-  const response = await axios.post('/api/db/insert', encryptedItem)
+  const response = await axios({
+    method: 'POST',
+    url: '/api/db/insert',
+    timeout: TIMEOUT,
+    data: encryptedItem
+  })
   const insertedItem = response.data
 
   const itemToReturn = {
@@ -61,6 +68,7 @@ const update = async (oldItem, newItem) => {
     params: {
       itemId: oldItem['item-id']
     },
+    timeout: TIMEOUT,
     data: encryptedItem
   })
   const updatedItem = response.data
@@ -78,8 +86,13 @@ const update = async (oldItem, newItem) => {
 }
 
 const deleteFunction = async (item) => {
-  const response = await axios.post('/api/db/delete', {
-    itemId: item['item-id']
+  const response = await axios({
+    method: 'POST',
+    url: '/api/db/delete',
+    timeout: TIMEOUT,
+    data: {
+      itemId: item['item-id']
+    }
   })
   const deletedItem = response.data
 
@@ -141,9 +154,16 @@ const deleteFunction = async (item) => {
 
  */
 const query = async () => {
+  let t0 = performance.now()
   const dbLogResponse = await axios.get('/api/db/query')
+  let t1 = performance.now()
 
   const dbLog = dbLogResponse.data
+  if (process.env.NODE_ENV == 'development') {
+    const timeToRunQueryServerSide = `${((t1 - t0) / 1000).toFixed(2)}`
+    console.log(`Found ${dbLog.length} items in transaction log in ${timeToRunQueryServerSide}s`)
+  }
+
   const key = await crypto.aesGcm.getKeyFromLocalStorage()
 
   const itemsInOrderOfInsertion = []
@@ -154,6 +174,7 @@ const query = async () => {
   const itemsWithEncryptedRecords = []
   const decryptedRecordsPromises = []
 
+  t0 = performance.now()
   for (let i = 0; i < dbLog.length; i++) {
     // iterate forwards picking up the items in the order they were first inserted
     const currentOperation = dbLog[i]
@@ -215,6 +236,12 @@ const query = async () => {
     const itemId = itemsWithEncryptedRecords[i]
     const indexInOrderOfInsertionArray = itemIdsToOrderOfInsertion[itemId]
     itemsInOrderOfInsertion[indexInOrderOfInsertionArray].record = decryptedRecords[i]
+  }
+
+  t1 = performance.now()
+  if (process.env.NODE_ENV == 'development') {
+    const timeToSetUpStateClientSide = `${((t1 - t0) / 1000).toFixed(2)}`
+    console.log(`Set up client side state in ${timeToSetUpStateClientSide}s`)
   }
 
   stateManager().setItems(itemsInOrderOfInsertion, itemIdsToOrderOfInsertion)
