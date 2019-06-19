@@ -3,27 +3,74 @@ AWSTemplateFormatVersion: 2010-09-09
 Parameters:
   GitHubOwner:
     Type: String
+    Description: 'The username of the source GitHub repo.'
   GitHubRepo:
     Type: String
+    Description: 'The source GitHub repo name (without the username).'
   GitHubBranch:
     Type: String
+    Default: master
+    Description: 'The source GitHub branch.'
   GitHubPersonalAccessToken:
     Type: String
     NoEcho: true
+    Description: 'Use a personal access token from https://github.com/settings/tokens with "repo" and "admin:repo_hook" permissions.'
   EC2KeyPair:
-    Type: String
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: '[Optional] An existing EC2 keypair to be able to ssh to your staging host.'
   EC2InstanceType:
     Type: String
     Default: t3.micro
+    Description: 'The staging host EC2 instance type. Only tested on x86_64.'
   EC2AMI:
-    Type: String
-    Default: ami-0cb72367e98845d43
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+    Description: 'The EC2 AMI. Only tested on Amazon Linux 2.'
   Domain:
     Type: String
+    Description: '[Optional] Your root domain name (Example: example.com). HTTPS will only be enabled if a domain is specified. Only provide this if your DNS is managed by Route 53.'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: GitHub Configuration
+        Parameters:
+          - GitHubOwner
+          - GitHubRepo
+          - GitHubBranch
+          - GitHubPersonalAccessToken
+      - Label:
+          default: EC2 Configuration
+        Parameters:
+          - EC2InstanceType
+          - EC2AMI
+          - EC2KeyPair
+      - Label:
+          default: HTTPS Configuration
+        Parameters:
+          - Domain
+    ParameterLabels:
+      GitHubOwner:
+        default: GitHub Username
+      GitHubRepo:
+        default: GitHub Repo Name
+      GitHubBranch:
+        default: GitHub Branch
+      GitHubPersonalAccessToken:
+        default: GitHub Personal Access Token
+      EC2InstanceType:
+        default: EC2 Instance Type
+      EC2AMI:
+        default: EC2 AMI
+      EC2KeyPair:
+        default: EC2 Key Pair
+      Domain:
+        default: Domain Name
 
 Outputs:
   StagingURL:
-    Value: !If [HasDomain, !Sub 'https://staging.${Domain}/', !Sub 'http://${StagingIP}/']
+    Value: !If [HasDomain, !Sub 'https://test.${Domain}/', !Sub 'http://${StagingIP}/']
 
 Conditions:
   HasEC2KeyPair: !Not [!Equals [!Ref EC2KeyPair, '']]
@@ -123,7 +170,7 @@ Resources:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
     Properties:
-      BucketName: !Sub 'codepipeline-${AWS::StackName}-${AWS::AccountId}-${AWS::Region}'
+      BucketName: !Sub 'codepipeline-${AWS::AccountId}-${AWS::Region}'
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
@@ -214,7 +261,7 @@ Resources:
                   pip install certbot_dns_route53
 
                   # Generate a new HTTPS cert
-                  certbot certonly -n --agree-tos --email daniel@encrypted.dev --dns-route53 -d staging.${Domain}
+                  certbot certonly -n --agree-tos --email daniel@encrypted.dev --dns-route53 -d test.${Domain}
 
                   # Set iptables rule to forward port 443 to 8443
                   iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 443 -j REDIRECT --to-port 8443
@@ -280,7 +327,7 @@ Resources:
     Condition: HasDomain
     Properties:
       HostedZoneName: !Sub '${Domain}.'
-      Name: !Sub 'staging.${Domain}.'
+      Name: !Sub 'test.${Domain}.'
       Type: A
       TTL: 300
       ResourceRecords:
