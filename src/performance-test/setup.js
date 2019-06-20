@@ -1,9 +1,5 @@
 import encd from '../client/encrypted-dev-sdk'
 
-const USERNAME_1K = 'test-1k'
-// const USERNAME_10K = 'test-10k'
-// const USERNAME_100K = 'test-100k'
-
 const PASSWORD = 'Test1234'
 
 const MAX_TCP_CONNECTIONS = 6 // max TCP sockets chrome allows: https://developers.google.com/web/tools/chrome-devtools/network/reference#timing-explanation
@@ -108,6 +104,6 @@ const init = async (username, limit) => {
   localStorage.setItem('key', '${key}'), then sign in with password ${PASSWORD}.`)
 }
 
-init(USERNAME_1K, 1000)
-// init(USERNAME_10K, 10000)
-// init(USERNAME_100K, 100000)
+init('test-1k', 1000)
+// init('test-10k', 10000)
+// init('test-100k', 100000)
