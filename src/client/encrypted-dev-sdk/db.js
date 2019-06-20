@@ -1,8 +1,7 @@
 import axios from 'axios'
 import crypto from './Crypto'
 import stateManager from './stateManager'
-
-const TIMEOUT = 5 * 1000
+import { appendBuffers } from './Crypto/utils'
 
 /**
 
@@ -43,7 +42,6 @@ const insert = async (item) => {
   const response = await axios({
     method: 'POST',
     url: '/api/db/insert',
-    timeout: TIMEOUT,
     data: encryptedItem
   })
   const insertedItem = response.data
@@ -59,6 +57,35 @@ const insert = async (item) => {
   return itemToReturn
 }
 
+const batchInsert = async (items) => {
+  const key = await crypto.aesGcm.getKeyFromLocalStorage()
+  const encryptionPromises = items.map(item => crypto.aesGcm.encrypt(key, item))
+  const encryptedItems = await Promise.all(encryptionPromises)
+
+  const { buffer, byteLengths } = appendBuffers(encryptedItems)
+
+  const response = await axios({
+    method: 'POST',
+    url: '/api/db/batch-insert',
+    params: {
+      byteLengths
+    },
+    data: buffer
+  })
+
+  const insertedItems = response.data
+
+  const itemsToReturn = insertedItems.map((insertedItem, index) => ({
+    ...insertedItem,
+    encryptedRecord: encryptedItems[index],
+    record: items[index]
+  }))
+
+  stateManager().insertItems(itemsToReturn)
+
+  return itemsToReturn
+}
+
 const update = async (oldItem, newItem) => {
   const key = await crypto.aesGcm.getKeyFromLocalStorage()
   const encryptedItem = await crypto.aesGcm.encrypt(key, newItem)
@@ -68,7 +95,6 @@ const update = async (oldItem, newItem) => {
     params: {
       itemId: oldItem['item-id']
     },
-    timeout: TIMEOUT,
     data: encryptedItem
   })
   const updatedItem = response.data
@@ -85,11 +111,48 @@ const update = async (oldItem, newItem) => {
   return itemToReturn
 }
 
+const batchUpdate = async (oldItems, newItems) => {
+  const key = await crypto.aesGcm.getKeyFromLocalStorage()
+  const encryptionPromises = newItems.map(item => crypto.aesGcm.encrypt(key, item))
+  const encryptedItems = await Promise.all(encryptionPromises)
+
+  const { buffer, byteLengths } = appendBuffers(encryptedItems)
+
+  const updatedRecordsMetadata = oldItems.map((item, index) => ({
+    'item-id': item['item-id'],
+    byteLength: byteLengths[index]
+  }))
+
+  const response = await axios({
+    method: 'POST',
+    url: '/api/db/batch-update',
+    params: {
+      updatedRecordsMetadata
+    },
+    data: buffer
+  })
+  const updatedItems = response.data
+
+  const itemsToReturn = updatedItems.map((updatedItem, index) => {
+    const itemToReturn = {
+      ...oldItems[index],
+      ...updatedItem,
+      encryptedRecord: encryptedItems[index],
+      record: newItems[index]
+    }
+
+    stateManager().updateItem(itemToReturn)
+
+    return itemToReturn
+  })
+
+  return itemsToReturn
+}
+
 const deleteFunction = async (item) => {
   const response = await axios({
     method: 'POST',
     url: '/api/db/delete',
-    timeout: TIMEOUT,
     data: {
       itemId: item['item-id']
     }
@@ -98,8 +161,7 @@ const deleteFunction = async (item) => {
 
   const itemToReturn = {
     ...item,
-    ...deletedItem,
-    command: 'Delete'
+    ...deletedItem
   }
 
   delete itemToReturn.record
@@ -107,6 +169,32 @@ const deleteFunction = async (item) => {
   stateManager().updateItem(itemToReturn)
 
   return itemToReturn
+}
+
+const batchDelete = async (items) => {
+  const itemIds = items.map(item => item['item-id'])
+
+  const response = await axios({
+    method: 'POST',
+    url: '/api/db/batch-delete',
+    data: {
+      itemIds
+    }
+  })
+  const deletedItems = response.data
+
+  const itemsToReturn = deletedItems.map((deletedItem, index) => {
+    const itemToReturn = {
+      ...items[index],
+      ...deletedItem
+    }
+
+    stateManager().updateItem(itemToReturn)
+
+    return itemToReturn
+  })
+
+  return itemsToReturn
 }
 
 /**
@@ -255,8 +343,11 @@ const getLatestState = () => {
 
 export default {
   insert,
+  batchInsert,
   update,
+  batchUpdate,
   'delete': deleteFunction,
+  batchDelete,
   query,
   getLatestState
 }

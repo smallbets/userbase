@@ -34,7 +34,7 @@ const deleteTodos = async (todos) => {
   try {
     const deletePromises = todos.map(todo => encd.db.delete(todo))
     await Promise.all(deletePromises)
-    return { todos: ed.db.getLatestState() }
+    return { todos: encd.db.getLatestState() }
   } catch (e) {
     return _errorHandler(e, 'delete todos')
   }

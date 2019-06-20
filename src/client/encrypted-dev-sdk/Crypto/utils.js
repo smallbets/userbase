@@ -23,8 +23,25 @@ export const stringToArrayBuffer = (str) => {
 *
 */
 export const appendBuffer = (buffer1, buffer2) => {
-  let tmp = new Uint8Array(buffer1.byteLength + buffer2.byteLength)
+  const tmp = new Uint8Array(buffer1.byteLength + buffer2.byteLength)
   tmp.set(new Uint8Array(buffer1), 0)
   tmp.set(new Uint8Array(buffer2), buffer1.byteLength)
   return tmp.buffer
+}
+
+export const appendBuffers = (buffers) => {
+  const bufferByteLengths = buffers.map(buffer => buffer.byteLength)
+  const totalByteLength = bufferByteLengths.reduce((byteLengthSum, bufferByteLength) => byteLengthSum + bufferByteLength)
+
+  const tmp = new Uint8Array(totalByteLength)
+  let currentByteLength = 0
+  for (let i = 0; i < buffers.length; i++) {
+    tmp.set(new Uint8Array(buffers[i]), currentByteLength)
+    currentByteLength += bufferByteLengths[i]
+  }
+
+  return {
+    buffer: tmp.buffer,
+    byteLengths: bufferByteLengths
+  }
 }

@@ -41,6 +41,10 @@ if (process.env.NODE_ENV == 'development') {
     app.post('/api/db/delete', auth.authenticateUser, db.delete)
     app.get('/api/db/query', auth.authenticateUser, db.query)
 
+    app.post('/api/db/batch-insert', auth.authenticateUser, db.batchInsert)
+    app.post('/api/db/batch-update', auth.authenticateUser, db.batchUpdate)
+    app.post('/api/db/batch-delete', auth.authenticateUser, db.batchDelete)
+
     if (fs.existsSync(httpsKey) && fs.existsSync(httpsCert)) {
       console.log('Starting https server')
       https.createServer({ key: fs.readFileSync(httpsKey), cert: fs.readFileSync(httpsCert) }, app)

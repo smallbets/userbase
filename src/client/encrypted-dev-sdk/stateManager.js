@@ -15,7 +15,7 @@ EncryptedDevSdk.prototype.setItems = function (items, itemIdsToIndexes) {
     Insert item where its sequence number is highest.
 
     You can't assume that this will be called every time the latest item is inserted,
-    therefore it might need to insert it somwhere close to the back rather than the
+    therefore it might need to insert it somewhere close to the back rather than the
     very back of the array.
 
     For example, a user calls:
@@ -36,7 +36,7 @@ EncryptedDevSdk.prototype.setItems = function (items, itemIdsToIndexes) {
 */
 EncryptedDevSdk.prototype.insertItem = function (item) {
   let i = this.items.length - 1
-  while (i >= 0 && item['sequence-no'] < this.items[i]['sequence-no']) {
+  while (i >= 0 && item['sequence-no'] < i) {
     const itemThatWillBeMoved = this.items[i]
     const itemIdThatWillBeMoved = itemThatWillBeMoved['item-id']
     this.itemIdsToIndexes[itemIdThatWillBeMoved] = this.itemIdsToIndexes[itemIdThatWillBeMoved] + 1
@@ -49,6 +49,23 @@ EncryptedDevSdk.prototype.insertItem = function (item) {
   this.itemIdsToIndexes[item['item-id']] = indexToInsertItem
 }
 
+EncryptedDevSdk.prototype.insertItems = function (newItems) {
+  let i = this.items.length - 1
+  while (i >= 0 && newItems[0]['sequence-no'] < i) {
+    const itemThatWillBeMoved = this.items[i]
+    const itemIdThatWillBeMoved = itemThatWillBeMoved['item-id']
+    this.itemIdsToIndexes[itemIdThatWillBeMoved] = this.itemIdsToIndexes[itemIdThatWillBeMoved] + newItems.length
+    i--
+  }
+
+  const indexToInsertItems = i + 1
+  const deleteCount = 0
+  this.items.splice(indexToInsertItems, deleteCount, ...newItems)
+  for (let i = 0; i < newItems.length; i++) {
+    this.itemIdsToIndexes[newItems[i]['item-id']] = indexToInsertItems + i
+  }
+}
+
 EncryptedDevSdk.prototype.updateItem = function (item) {
   const index = this.itemIdsToIndexes[item['item-id']]
   const currentItem = this.items[index]
@@ -58,6 +75,7 @@ EncryptedDevSdk.prototype.updateItem = function (item) {
 }
 
 EncryptedDevSdk.prototype.getItems = function () { return this.items }
+EncryptedDevSdk.prototype.getItemIdsToIndexes = function () { return this.itemIdsToIndexes }
 
 EncryptedDevSdk.prototype.clearState = function () { state = new EncryptedDevSdk() }
 
