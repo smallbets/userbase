@@ -6,7 +6,8 @@ module.exports = {
   output: {
     path: path.join(__dirname, 'dist'),
     publicPath: '/',
-    filename: '[name].js'
+    filename: '[name].js',
+    globalObject: 'this'
   },
   target: 'web',
   module: {
@@ -26,6 +27,10 @@ module.exports = {
         test: /\.jsx?$/,
         exclude: /node_modules/,
         loader: "babel-loader"
+      },
+      {
+        test: /\worker\.js$/,
+        loader: 'worker-loader'
       }
     ]
   },

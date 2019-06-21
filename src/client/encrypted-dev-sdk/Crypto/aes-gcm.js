@@ -42,8 +42,12 @@ const saveKeyToLocalStorage = async (key) => {
 
 const getKeyFromLocalStorage = () => {
   const jsonKeyAsString = localStorage.getItem('key')
-  const jsonKey = JSON.parse(jsonKeyAsString)
-  return window.crypto.subtle.importKey(
+  return importKey(jsonKeyAsString)
+}
+
+const importKey = (keyString) => {
+  const jsonKey = JSON.parse(keyString)
+  return (typeof window !== 'undefined' ? window : self).crypto.subtle.importKey(
     EXTRACTED_KEY_TYPE,
     jsonKey,
     {
@@ -70,17 +74,19 @@ const encrypt = async (key, plaintext) => {
   const plaintextString = JSON.stringify(plaintext)
   const plaintextArrayBuffer = stringToArrayBuffer(plaintextString)
 
-  const iv = window.crypto.getRandomValues(new Uint8Array(RECOMMENDED_IV_BYTE_SIZE))
+  const iv = (typeof window !== 'undefined' ? window : self)
+    .crypto.getRandomValues(new Uint8Array(RECOMMENDED_IV_BYTE_SIZE))
 
-  const ciphertextArrayBuffer = await window.crypto.subtle.encrypt(
-    {
-      name: ALGORITHIM_NAME,
-      iv,
-      tagLength: RECOMMENDED_AUTHENTICATION_TAG_LENGTH
-    },
-    key,
-    plaintextArrayBuffer
-  )
+  const ciphertextArrayBuffer = await (typeof window !== 'undefined' ? window : self)
+    .crypto.subtle.encrypt(
+      {
+        name: ALGORITHIM_NAME,
+        iv,
+        tagLength: RECOMMENDED_AUTHENTICATION_TAG_LENGTH
+      },
+      key,
+      plaintextArrayBuffer
+    )
 
   return appendBuffer(ciphertextArrayBuffer, iv)
 }
@@ -96,15 +102,16 @@ const decrypt = async (key, encrypted) => {
   const ciphertextArrayBuffer = encrypted.slice(0, ivStartIndex)
   const iv = encrypted.slice(ivStartIndex)
 
-  const plaintextArrayBuffer = await window.crypto.subtle.decrypt(
-    {
-      name: ALGORITHIM_NAME,
-      iv,
-      tagLength: RECOMMENDED_AUTHENTICATION_TAG_LENGTH
-    },
-    key,
-    ciphertextArrayBuffer
-  )
+  const plaintextArrayBuffer = await (typeof window !== 'undefined' ? window : self)
+    .crypto.subtle.decrypt(
+      {
+        name: ALGORITHIM_NAME,
+        iv,
+        tagLength: RECOMMENDED_AUTHENTICATION_TAG_LENGTH
+      },
+      key,
+      ciphertextArrayBuffer
+    )
 
   const plaintextString = arrayBufferToString(plaintextArrayBuffer)
   return JSON.parse(plaintextString)
@@ -114,6 +121,7 @@ export default {
   generateKey,
   saveKeyToLocalStorage,
   getKeyFromLocalStorage,
+  importKey,
   encrypt,
   decrypt,
 }
