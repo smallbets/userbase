@@ -7,9 +7,13 @@ const usersTableName = tableNamePrefix + 'users'
 const sessionsTableName = tableNamePrefix + 'sessions'
 const databaseTableName = tableNamePrefix + 'database'
 
+const dbStatesBucketName = tableNamePrefix + 'db-states'
+
 exports.usersTableName = usersTableName
 exports.sessionsTableName = sessionsTableName
 exports.databaseTableName = databaseTableName
+
+exports.dbStatesBucketName = dbStatesBucketName
 
 exports.init = async function () {
   const profile = 'encrypted'
@@ -27,6 +31,11 @@ exports.init = async function () {
   aws.config.credentials = await chain.resolvePromise()
   aws.config.update({ region: 'us-west-2' })
 
+  await setupDdb()
+  await setupS3()
+}
+
+async function setupDdb() {
   const ddb = new aws.DynamoDB({ apiVersion: '2012-08-10' })
 
   const usersTableParams = {
@@ -79,6 +88,18 @@ exports.init = async function () {
     createTable(ddb, databaseTableParams)])
 }
 
+async function setupS3() {
+  const s3 = new aws.S3({ apiVersion: '2006-03-01' })
+
+  const bucketParams = {
+    Bucket: dbStatesBucketName,
+    ACL: 'private'
+  }
+
+  console.log('Creating S3 bucket if necessary')
+  await createBucket(s3, bucketParams)
+}
+
 async function createTable(ddb, params) {
   try {
     await ddb.createTable(params).promise()
@@ -90,4 +111,17 @@ async function createTable(ddb, params) {
   }
 
   await ddb.waitFor('tableExists', { TableName: params.TableName, $waiter: { delay: 2, maxAttempts: 60 } }).promise()
+}
+
+async function createBucket(s3, params) {
+  try {
+    await s3.createBucket(params).promise()
+    console.log(`Bucket ${params.Bucket} created successfully`)
+  } catch (e) {
+    if (!e.message.includes('Your previous request to create the named bucket succeeded')) {
+      throw e
+    }
+  }
+
+  await s3.waitFor('bucketExists', { Bucket: params.Bucket, $waiter: { delay: 2, maxAttempts: 60 } }).promise()
 }
