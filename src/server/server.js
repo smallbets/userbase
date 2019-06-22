@@ -39,11 +39,14 @@ if (process.env.NODE_ENV == 'development') {
     app.post('/api/db/insert', auth.authenticateUser, db.insert)
     app.post('/api/db/update', auth.authenticateUser, db.update)
     app.post('/api/db/delete', auth.authenticateUser, db.delete)
-    app.get('/api/db/query', auth.authenticateUser, db.query)
+    app.get('/api/db/query/tx-log', auth.authenticateUser, db.queryTransactionLog)
+    app.get('/api/db/query/db-state', auth.authenticateUser, db.queryDbState)
 
     app.post('/api/db/batch-insert', auth.authenticateUser, db.batchInsert)
     app.post('/api/db/batch-update', auth.authenticateUser, db.batchUpdate)
     app.post('/api/db/batch-delete', auth.authenticateUser, db.batchDelete)
+
+    app.post('/api/db/flush-db-state', auth.authenticateUser, db.flushDbState)
 
     if (fs.existsSync(httpsKey) && fs.existsSync(httpsCert)) {
       console.log('Starting https server')

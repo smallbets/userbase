@@ -1,8 +1,25 @@
-// https://developers.google.com/web/updates/2012/06/How-to-convert-ArrayBuffer-to-and-from-String
+const ONE_KB = 1024
+const ONE_HUNDRED_KB = 100 * ONE_KB
+
+// https://stackoverflow.com/a/20604561/11601853
 export const arrayBufferToString = (buf) => {
-  return String.fromCharCode.apply(null, new Uint16Array(buf))
+  const bufView = new Uint16Array(buf)
+  const length = bufView.length
+  let result = ''
+  let chunkSize = ONE_HUNDRED_KB // using chunks prevents stack from blowing up
+
+  for (var i = 0; i < length; i += chunkSize) {
+    if (i + chunkSize > length) {
+      chunkSize = length - i
+    }
+    const chunk = bufView.subarray(i, i + chunkSize)
+    result += String.fromCharCode.apply(null, chunk)
+  }
+
+  return result
 }
 
+// https://developers.google.com/web/updates/2012/06/How-to-convert-ArrayBuffer-to-and-from-String
 export const stringToArrayBuffer = (str) => {
   let buf = new ArrayBuffer(str.length * 2) // 2 bytes for each char
   let bufView = new Uint16Array(buf)

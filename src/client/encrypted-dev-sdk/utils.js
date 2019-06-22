@@ -30,3 +30,7 @@ export const sizeOfDdbItems = (items) => {
 
   return bytes
 }
+
+export const getSecondsSinceT0 = (t0) => {
+  return `${((performance.now() - t0) / 1000).toFixed(2)}`
+}

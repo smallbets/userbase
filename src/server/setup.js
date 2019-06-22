@@ -13,6 +13,9 @@ exports.usersTableName = usersTableName
 exports.sessionsTableName = sessionsTableName
 exports.databaseTableName = databaseTableName
 
+let s3
+const getS3Connection = () => s3
+exports.s3 = getS3Connection
 exports.dbStatesBucketName = dbStatesBucketName
 
 exports.init = async function () {
@@ -89,7 +92,7 @@ async function setupDdb() {
 }
 
 async function setupS3() {
-  const s3 = new aws.S3({ apiVersion: '2006-03-01' })
+  s3 = new aws.S3({ apiVersion: '2006-03-01' })
 
   const bucketParams = {
     Bucket: dbStatesBucketName,

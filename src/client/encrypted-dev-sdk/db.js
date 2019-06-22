@@ -3,6 +3,7 @@ import Worker from './worker.js'
 import crypto from './Crypto'
 import stateManager from './stateManager'
 import { appendBuffers } from './Crypto/utils'
+import { getSecondsSinceT0 } from './utils'
 
 const initalizeWebWorker = () => {
   const worker = new Worker()
@@ -216,28 +217,24 @@ const batchDelete = async (items) => {
 }
 
 const query = async () => {
-  let t0 = performance.now()
-  const transactionLogResponse = await axios.get('/api/db/query')
-  let t1 = performance.now()
+  const key = await crypto.aesGcm.getKeyFromLocalStorage()
+
+  const getTransactionLog = axios.get('/api/db/query/tx-log')
+
+  let [dbState, transactionLogResponse] = await Promise.all([
+    stateManager().getDbState(key),
+    getTransactionLog
+  ])
 
   const transactionLog = transactionLogResponse.data
 
+  const t0 = performance.now()
+  dbState = await stateManager().applyTransactionsToDbState(key, dbState, transactionLog)
   if (process.env.NODE_ENV == 'development') {
-    const timeToRunQueryServerSide = `${((t1 - t0) / 1000).toFixed(2)}`
-    console.log(`Found ${transactionLog.length} items in transaction log in ${timeToRunQueryServerSide}s`)
+    console.log(`Set up client side state in ${getSecondsSinceT0(t0)}s`)
   }
 
-  t0 = performance.now()
-  const key = await crypto.aesGcm.getKeyFromLocalStorage()
-  const dbState = await stateManager().buildDbStateFromTransactionLog(transactionLog, key)
   const { itemsInOrderOfInsertion, itemIdsToOrderOfInsertion } = dbState
-  t1 = performance.now()
-
-  if (process.env.NODE_ENV == 'development') {
-    const timeToSetUpStateClientSide = `${((t1 - t0) / 1000).toFixed(2)}`
-    console.log(`Set up client side state in ${timeToSetUpStateClientSide}s`)
-  }
-
   stateManager().setItems(itemsInOrderOfInsertion, itemIdsToOrderOfInsertion)
 
   return itemsInOrderOfInsertion

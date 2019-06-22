@@ -104,6 +104,6 @@ const init = async (username, limit) => {
   localStorage.setItem('key', '${key}'), then sign in with password ${PASSWORD}.`)
 }
 
-init('test-1k', 1000)
-// init('test-10k', 10000)
+// init('test-1k', 1000)
+init('test-10k' + Math.random(), 10000)
 // init('test-100k', 100000)

@@ -13,6 +13,8 @@ const FOUR_HUNDRED_KB = 400 * ONE_KB
 // DynamoDB batch write limit: https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_BatchWriteItem.html
 const SIXTEEN_MB = 16 * ONE_MB
 
+const MAX_REQUESTS_IN_DDB_BATCH = 25
+
 /**
  * Atomically increments the last sequence no on a user and returns the updated sequence no.
  *
@@ -98,7 +100,7 @@ exports.insert = async function (req, res) {
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
-      .send({ err: `Failed to sign up with ${e}` })
+      .send({ err: `Failed to insert with ${e}` })
   }
 }
 
@@ -126,7 +128,7 @@ exports.delete = async function (req, res) {
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
-      .send({ err: `Failed to sign up with ${e}` })
+      .send({ err: `Failed to delete with ${e}` })
   }
 }
 
@@ -164,11 +166,11 @@ exports.update = async function (req, res) {
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
-      .send({ err: `Failed to sign up with ${e}` })
+      .send({ err: `Failed to update with ${e}` })
   }
 }
 
-exports.query = async function (req, res) {
+exports.queryTransactionLog = async function (req, res) {
   const userId = res.locals.userId
 
   const params = {
@@ -201,7 +203,40 @@ exports.query = async function (req, res) {
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
-      .send({ err: `Failed to sign up with ${e}` })
+      .send({ err: `Failed to query transaction log with ${e}` })
+  }
+}
+
+exports.queryDbState = async function (req, res) {
+  const userId = res.locals.userId
+
+  const params = { Bucket: setup.dbStatesBucketName, Key: userId }
+
+  try {
+    const s3 = setup.s3()
+    s3.getObject(params)
+      .on('httpHeaders', function (statusCode, headers, response, error) {
+        if (statusCode < 300) {
+          res.set('Content-Length', headers['content-length'])
+          res.set('Content-Type', headers['content-type'])
+          const stream = this.response.httpResponse.createUnbufferedStream()
+          stream.pipe(res)
+        } else {
+          return statusCode === 404 && error === 'Not Found'
+            ? res
+              .status(statusCodes['Not Found'])
+              .send({ err: `Failed to query db state with ${error}` })
+            : res
+              .status(statusCode)
+              .send({ err: `Failed to query db state with ${error}` })
+        }
+      })
+      .send()
+
+  } catch (e) {
+    return res
+      .status(statusCodes['Internal Server Error'])
+      .send({ err: `Failed to query db state with ${e}` })
   }
 }
 
@@ -215,10 +250,9 @@ exports.batchInsert = async function (req, res) {
     .status(statusCodes['Bad Request'])
     .send({ readableMessage: 'Missing buffer byte lengths' })
 
-  const MAX_REQUESTS_IN_BATCH = 25
-  if (bufferByteLengths.length > MAX_REQUESTS_IN_BATCH) return res
+  if (bufferByteLengths.length > MAX_REQUESTS_IN_DDB_BATCH) return res
     .status(statusCodes['Bad Request'])
-    .send({ readableMessage: `Cannot exceed ${MAX_REQUESTS_IN_BATCH} requests` })
+    .send({ readableMessage: `Cannot exceed ${MAX_REQUESTS_IN_DDB_BATCH} requests` })
 
   const userId = res.locals.userId
 
@@ -263,7 +297,7 @@ exports.batchInsert = async function (req, res) {
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
-      .send({ err: `Failed to sign up with ${e}` })
+      .send({ err: `Failed to batch insert with ${e}` })
   }
 }
 
@@ -277,10 +311,9 @@ exports.batchUpdate = async function (req, res) {
     .status(statusCodes['Bad Request'])
     .send({ readableMessage: 'Missing metadata for updated records' })
 
-  const MAX_REQUESTS_IN_BATCH = 25
-  if (updatedRecordsMetadata.length > MAX_REQUESTS_IN_BATCH) return res
+  if (updatedRecordsMetadata.length > MAX_REQUESTS_IN_DDB_BATCH) return res
     .status(statusCodes['Bad Request'])
-    .send({ readableMessage: `Cannot exceed ${MAX_REQUESTS_IN_BATCH} requests` })
+    .send({ readableMessage: `Cannot exceed ${MAX_REQUESTS_IN_DDB_BATCH} requests` })
 
   const userId = res.locals.userId
 
@@ -327,7 +360,7 @@ exports.batchUpdate = async function (req, res) {
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
-      .send({ err: `Failed to sign up with ${e}` })
+      .send({ err: `Failed to batch update with ${e}` })
   }
 }
 
@@ -338,10 +371,9 @@ exports.batchDelete = async function (req, res) {
     .status(statusCodes['Bad Request'])
     .send({ readableMessage: 'Missing item ids to delete' })
 
-  const MAX_REQUESTS_IN_BATCH = 25
-  if (itemIds.length > MAX_REQUESTS_IN_BATCH) return res
+  if (itemIds.length > MAX_REQUESTS_IN_DDB_BATCH) return res
     .status(statusCodes['Bad Request'])
-    .send({ readableMessage: `Cannot exceed ${MAX_REQUESTS_IN_BATCH} deletes` })
+    .send({ readableMessage: `Cannot exceed ${MAX_REQUESTS_IN_DDB_BATCH} deletes` })
 
   const userId = res.locals.userId
 
@@ -378,6 +410,60 @@ exports.batchDelete = async function (req, res) {
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
-      .send({ err: `Failed to sign up with ${e}` })
+      .send({ err: `Failed to batch delete with ${e}` })
+  }
+}
+
+exports.flushDbState = async function (req, res) {
+  const userId = res.locals.userId
+  const sequenceNos = req.query.sequenceNos
+
+  if (!sequenceNos) return res
+    .status(statusCodes['Bad Request'])
+    .send({ readableMessage: 'Missing sequence numbers to delete' })
+
+  const params = { Bucket: setup.dbStatesBucketName, Key: userId, Body: req }
+  try {
+
+    console.log('Uploading db state to S3...')
+    const s3 = setup.s3()
+    await s3.upload(params).promise()
+
+    console.log('Deleting operations from transaction log...')
+    const ddbClient = connection.ddbClient()
+
+    let deleteRequestBatch = []
+    const promises = []
+    for (let i = 0; i < sequenceNos.length; i++) {
+      deleteRequestBatch.push({
+        DeleteRequest: {
+          Key: {
+            'user-id': userId,
+            'sequence-no': Number(sequenceNos[i])
+          }
+        }
+      })
+
+      if (i === sequenceNos.length - 1 || deleteRequestBatch.length === MAX_REQUESTS_IN_DDB_BATCH) {
+        const params = {
+          RequestItems: {
+            [setup.databaseTableName]: deleteRequestBatch
+          }
+        }
+
+        const promise = ddbClient.batchWrite(params).promise()
+        promises.push(promise)
+
+        deleteRequestBatch = []
+      }
+    }
+
+    await Promise.all(promises)
+
+    res.send('Success!')
+  } catch (e) {
+    return res
+      .status(statusCodes['Internal Server Error'])
+      .send({ err: `Failed to flush db state with ${e}` })
   }
 }

@@ -1,4 +1,6 @@
+import axios from 'axios'
 import crypto from './Crypto'
+import { getSecondsSinceT0 } from './utils'
 
 let state
 
@@ -125,18 +127,23 @@ EncryptedDevSdk.prototype.clearState = function () { state = new EncryptedDevSdk
     and all inserts.
 
  */
-EncryptedDevSdk.prototype.buildDbStateFromTransactionLog = async function (transactionLog, key) {
-  const itemsInOrderOfInsertion = []
-  const itemIdsToOrderOfInsertion = {}
+EncryptedDevSdk.prototype.applyTransactionsToDbState = async function (key, dbState, transactionLog) {
+  const {
+    itemsInOrderOfInsertion,
+    itemIdsToOrderOfInsertion
+  } = dbState
 
   const mostRecentStateOfItems = {}
 
   const itemsWithEncryptedRecords = []
   const decryptedRecordsPromises = []
 
+  let maxSequenceNo = dbState.maxSequenceNo
+
   for (let i = 0; i < transactionLog.length; i++) {
     // iterate forwards picking up the items in the order they were first inserted
     const currentOperation = transactionLog[i]
+    if (!maxSequenceNo || currentOperation['sequence-no'] > maxSequenceNo) maxSequenceNo = currentOperation['sequence-no']
     if (currentOperation.command === 'Insert') {
       const currentOperationItemId = currentOperation['item-id']
       const item = mostRecentStateOfItems[currentOperationItemId] || null
@@ -152,7 +159,7 @@ EncryptedDevSdk.prototype.buildDbStateFromTransactionLog = async function (trans
     const thisIsADeleteOperation = mostRecentOperation.command === 'Delete'
     const itemAlreadyMarkedForDeletion = mostRecentVersionOfItem && mostRecentVersionOfItem.command === 'Delete'
 
-    if (!mostRecentVersionOfItem) {
+    if (!mostRecentVersionOfItem || mostRecentOperation['sequence-no'] > mostRecentVersionOfItem['sequence-no']) {
       if (!insertionIndex && insertionIndex !== 0) {
         // possible we don't know when the item was first inserted yet because have not encountered
         // its insertion while iterating forward yet. Putting its most recent state in this object
@@ -197,9 +204,46 @@ EncryptedDevSdk.prototype.buildDbStateFromTransactionLog = async function (trans
     itemsInOrderOfInsertion[indexInOrderOfInsertionArray].record = decryptedRecords[i]
   }
 
-  return { itemsInOrderOfInsertion, itemIdsToOrderOfInsertion }
+  return {
+    itemsInOrderOfInsertion,
+    itemIdsToOrderOfInsertion,
+    maxSequenceNo
+  }
 }
 
+EncryptedDevSdk.prototype.getDbState = async (key) => {
+  let t0 = performance.now()
+  let dbStateResponse
+  try {
+    dbStateResponse = await axios.get('/api/db/query/db-state', {
+      responseType: 'arraybuffer',
+    })
+  } catch (e) {
+    if (e.response && e.response.statusText === 'Not Found') {
+      return {
+        itemsInOrderOfInsertion: [],
+        itemIdsToOrderOfInsertion: {}
+      }
+    } else {
+      throw e
+    }
+  }
+
+  if (process.env.NODE_ENV == 'development') {
+    console.log(`Got encrypted db state in ${getSecondsSinceT0(t0)}s`)
+  }
+
+  const encryptedDbState = dbStateResponse.data
+
+  t0 = performance.now()
+  const decryptedDbState = await crypto.aesGcm.decrypt(key, encryptedDbState)
+
+  if (process.env.NODE_ENV == 'development') {
+    console.log(`Decrypted db state in ${getSecondsSinceT0(t0)}s`)
+  }
+
+  return decryptedDbState
+}
 
 export default () => {
   if (state) return state
