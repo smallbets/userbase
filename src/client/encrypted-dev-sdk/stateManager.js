@@ -122,12 +122,12 @@ EncryptedDevSdk.prototype.clearState = function () { state = new EncryptedDevSdk
       ]
 
     Note for future optimization consideration: the server does not
-    need to respond with the user's entire transaction log. It only
+    need to respond with the user's entire operation log. It only
     needs to send deleted items, the latest update of items,
     and all inserts.
 
  */
-EncryptedDevSdk.prototype.applyTransactionsToDbState = async function (key, dbState, transactionLog) {
+EncryptedDevSdk.prototype.applyOperationsToDbState = async function (key, dbState, dbOperationLog) {
   const {
     itemsInOrderOfInsertion,
     itemIdsToOrderOfInsertion
@@ -140,9 +140,9 @@ EncryptedDevSdk.prototype.applyTransactionsToDbState = async function (key, dbSt
 
   let maxSequenceNo = dbState.maxSequenceNo
 
-  for (let i = 0; i < transactionLog.length; i++) {
+  for (let i = 0; i < dbOperationLog.length; i++) {
     // iterate forwards picking up the items in the order they were first inserted
-    const currentOperation = transactionLog[i]
+    const currentOperation = dbOperationLog[i]
     if (!maxSequenceNo || currentOperation['sequence-no'] > maxSequenceNo) maxSequenceNo = currentOperation['sequence-no']
     if (currentOperation.command === 'Insert') {
       const currentOperationItemId = currentOperation['item-id']
@@ -151,7 +151,7 @@ EncryptedDevSdk.prototype.applyTransactionsToDbState = async function (key, dbSt
     }
 
     // iterate backwards picking up the most recent state of the item
-    const mostRecentOperation = transactionLog[transactionLog.length - 1 - i]
+    const mostRecentOperation = dbOperationLog[dbOperationLog.length - 1 - i]
     const mostRecentOperationItemId = mostRecentOperation['item-id']
 
     const insertionIndex = itemIdsToOrderOfInsertion[mostRecentOperationItemId]

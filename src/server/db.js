@@ -170,7 +170,7 @@ exports.update = async function (req, res) {
   }
 }
 
-exports.queryTransactionLog = async function (req, res) {
+exports.queryDbOperationLog = async function (req, res) {
   const userId = res.locals.userId
 
   const params = {
@@ -203,7 +203,7 @@ exports.queryTransactionLog = async function (req, res) {
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
-      .send({ err: `Failed to query transaction log with ${e}` })
+      .send({ err: `Failed to query operation log with ${e}` })
   }
 }
 
@@ -429,7 +429,7 @@ exports.flushDbState = async function (req, res) {
     const s3 = setup.s3()
     await s3.upload(params).promise()
 
-    console.log('Deleting operations from transaction log...')
+    console.log('Deleting operations from operation log...')
     const ddbClient = connection.ddbClient()
 
     let deleteRequestBatch = []

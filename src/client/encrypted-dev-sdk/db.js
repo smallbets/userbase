@@ -219,17 +219,17 @@ const batchDelete = async (items) => {
 const query = async () => {
   const key = await crypto.aesGcm.getKeyFromLocalStorage()
 
-  const getTransactionLog = axios.get('/api/db/query/tx-log')
+  const getDbOperationLog = axios.get('/api/db/query/op-log')
 
-  let [dbState, transactionLogResponse] = await Promise.all([
+  let [dbState, dbOperationLogResponse] = await Promise.all([
     stateManager().getDbState(key),
-    getTransactionLog
+    getDbOperationLog
   ])
 
-  const transactionLog = transactionLogResponse.data
+  const dbOperationLog = dbOperationLogResponse.data
 
   const t0 = performance.now()
-  dbState = await stateManager().applyTransactionsToDbState(key, dbState, transactionLog)
+  dbState = await stateManager().applyOperationsToDbState(key, dbState, dbOperationLog)
   if (process.env.NODE_ENV == 'development') {
     console.log(`Set up client side state in ${getSecondsSinceT0(t0)}s`)
   }
