@@ -2,7 +2,7 @@ import axios from 'axios'
 import Worker from './worker.js'
 import crypto from './Crypto'
 import stateManager from './stateManager'
-import { appendBuffers } from './Crypto/utils'
+import { appendBuffers, stringToArrayBuffer } from './Crypto/utils'
 import { getSecondsSinceT0 } from './utils'
 
 const initalizeWebWorker = () => {
@@ -46,12 +46,16 @@ const initalizeWebWorker = () => {
 const insert = async (item) => {
   const key = await crypto.aesGcm.getKeyFromLocalStorage()
   const encryptedItem = await crypto.aesGcm.encrypt(key, item)
+
   const response = await axios({
     method: 'POST',
     url: '/api/db/insert',
     data: encryptedItem
   })
+
   const insertedItem = response.data
+  if (response.headers['init-bundle-process']) initalizeWebWorker()
+
 
   const itemToReturn = {
     ...insertedItem,
@@ -59,10 +63,7 @@ const insert = async (item) => {
     record: item
   }
 
-  stateManager().insertItem(itemToReturn)
-
-  initalizeWebWorker()
-
+  stateManager.insertItem(itemToReturn)
   return itemToReturn
 }
 
@@ -83,6 +84,7 @@ const batchInsert = async (items) => {
   })
 
   const insertedItems = response.data
+  if (response.headers['init-bundle-process']) initalizeWebWorker()
 
   const itemsToReturn = insertedItems.map((insertedItem, index) => ({
     ...insertedItem,
@@ -90,9 +92,7 @@ const batchInsert = async (items) => {
     record: items[index]
   }))
 
-  stateManager().insertItems(itemsToReturn)
-
-  initalizeWebWorker()
+  stateManager.insertItems(itemsToReturn)
 
   return itemsToReturn
 }
@@ -100,6 +100,7 @@ const batchInsert = async (items) => {
 const update = async (oldItem, newItem) => {
   const key = await crypto.aesGcm.getKeyFromLocalStorage()
   const encryptedItem = await crypto.aesGcm.encrypt(key, newItem)
+
   const response = await axios({
     method: 'POST',
     url: '/api/db/update',
@@ -108,7 +109,9 @@ const update = async (oldItem, newItem) => {
     },
     data: encryptedItem
   })
+
   const updatedItem = response.data
+  if (response.headers['init-bundle-process']) initalizeWebWorker()
 
   const itemToReturn = {
     ...oldItem,
@@ -117,9 +120,7 @@ const update = async (oldItem, newItem) => {
     record: newItem
   }
 
-  stateManager().updateItem(itemToReturn)
-
-  initalizeWebWorker()
+  stateManager.updateItem(itemToReturn)
 
   return itemToReturn
 }
@@ -144,7 +145,9 @@ const batchUpdate = async (oldItems, newItems) => {
     },
     data: buffer
   })
+
   const updatedItems = response.data
+  if (response.headers['init-bundle-process']) initalizeWebWorker()
 
   const itemsToReturn = updatedItems.map((updatedItem, index) => {
     const itemToReturn = {
@@ -154,12 +157,10 @@ const batchUpdate = async (oldItems, newItems) => {
       record: newItems[index]
     }
 
-    stateManager().updateItem(itemToReturn)
+    stateManager.updateItem(itemToReturn)
 
     return itemToReturn
   })
-
-  initalizeWebWorker()
 
   return itemsToReturn
 }
@@ -172,7 +173,9 @@ const deleteFunction = async (item) => {
       itemId: item['item-id']
     }
   })
+
   const deletedItem = response.data
+  if (response.headers['init-bundle-process']) initalizeWebWorker()
 
   const itemToReturn = {
     ...item,
@@ -181,9 +184,7 @@ const deleteFunction = async (item) => {
 
   delete itemToReturn.record
 
-  stateManager().updateItem(itemToReturn)
-
-  initalizeWebWorker()
+  stateManager.updateItem(itemToReturn)
 
   return itemToReturn
 }
@@ -198,7 +199,9 @@ const batchDelete = async (items) => {
       itemIds
     }
   })
+
   const deletedItems = response.data
+  if (response.headers['init-bundle-process']) initalizeWebWorker()
 
   const itemsToReturn = deletedItems.map((deletedItem, index) => {
     const itemToReturn = {
@@ -206,12 +209,10 @@ const batchDelete = async (items) => {
       ...deletedItem
     }
 
-    stateManager().updateItem(itemToReturn)
+    stateManager.updateItem(itemToReturn)
 
     return itemToReturn
   })
-
-  initalizeWebWorker()
 
   return itemsToReturn
 }
@@ -219,29 +220,53 @@ const batchDelete = async (items) => {
 const query = async () => {
   const key = await crypto.aesGcm.getKeyFromLocalStorage()
 
-  const getDbOperationLog = axios.get('/api/db/query/op-log')
+  let t0 = performance.now()
+  const dbResponse = await axios.get('/api/db/query')
+  if (process.env.NODE_ENV == 'development') {
+    console.log(`Retrieved user's db in ${getSecondsSinceT0(t0)}s`)
+  }
 
-  let [dbState, dbOperationLogResponse] = await Promise.all([
-    stateManager().getDbState(key),
-    getDbOperationLog
-  ])
+  t0 = performance.now()
+  const formBoundary = dbResponse
+    .headers['x-content-type']
+    .split('multipart/form-data; boundary=')[1]
 
-  const dbOperationLog = dbOperationLogResponse.data
+  const forms = dbResponse.data.split(formBoundary)
 
-  const t0 = performance.now()
-  dbState = await stateManager().applyOperationsToDbState(key, dbState, dbOperationLog)
+  const dbOpLogFormData = forms[1]
+  const startOfDbOpLog = dbOpLogFormData.indexOf('[')
+  const dbOpLogString = dbOpLogFormData.substring(startOfDbOpLog)
+  const dbOperationLog = JSON.parse(dbOpLogString)
+
+  const dbStateFormData = forms[2]
+  const contentType = 'Content-Type: application/octet-stream'
+  const indexOfContentType = dbStateFormData.indexOf(contentType)
+
+  let dbState = {
+    itemsInOrderOfInsertion: [],
+    itemIdsToOrderOfInsertion: {}
+  }
+  if (indexOfContentType > -1) {
+    const startOfDbState = 4 + dbStateFormData.indexOf(contentType) + contentType.length
+    const dbStateString = dbStateFormData.substring(startOfDbState)
+    const encryptedDbState = stringToArrayBuffer(dbStateString)
+    dbState = await crypto.aesGcm.decrypt(key, encryptedDbState)
+  }
+
+  dbState = await stateManager.applyOperationsToDbState(key, dbState, dbOperationLog)
+
   if (process.env.NODE_ENV == 'development') {
     console.log(`Set up client side state in ${getSecondsSinceT0(t0)}s`)
   }
 
   const { itemsInOrderOfInsertion, itemIdsToOrderOfInsertion } = dbState
-  stateManager().setItems(itemsInOrderOfInsertion, itemIdsToOrderOfInsertion)
+  stateManager.setItems(itemsInOrderOfInsertion, itemIdsToOrderOfInsertion)
 
   return itemsInOrderOfInsertion
 }
 
 const getLatestState = () => {
-  return stateManager().getItems()
+  return stateManager.getItems()
 }
 
 export default {

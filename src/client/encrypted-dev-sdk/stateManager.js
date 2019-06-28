@@ -1,8 +1,4 @@
-import axios from 'axios'
 import crypto from './Crypto'
-import { getSecondsSinceT0 } from './utils'
-
-let state
 
 function EncryptedDevSdk() {
   this.items = []
@@ -126,8 +122,8 @@ EncryptedDevSdk.prototype.clearState = function () { state = new EncryptedDevSdk
     needs to send deleted items, the latest update of items,
     and all inserts.
 
- */
-EncryptedDevSdk.prototype.applyOperationsToDbState = async function (key, dbState, dbOperationLog) {
+  */
+EncryptedDevSdk.prototype.applyOperationsToDbState = async (key, dbState, dbOperationLog) => {
   const {
     itemsInOrderOfInsertion,
     itemIdsToOrderOfInsertion
@@ -211,42 +207,5 @@ EncryptedDevSdk.prototype.applyOperationsToDbState = async function (key, dbStat
   }
 }
 
-EncryptedDevSdk.prototype.getDbState = async (key) => {
-  let t0 = performance.now()
-  let dbStateResponse
-  try {
-    dbStateResponse = await axios.get('/api/db/query/db-state', {
-      responseType: 'arraybuffer',
-    })
-  } catch (e) {
-    if (e.response && e.response.statusText === 'Not Found') {
-      return {
-        itemsInOrderOfInsertion: [],
-        itemIdsToOrderOfInsertion: {}
-      }
-    } else {
-      throw e
-    }
-  }
-
-  if (process.env.NODE_ENV == 'development') {
-    console.log(`Got encrypted db state in ${getSecondsSinceT0(t0)}s`)
-  }
-
-  const encryptedDbState = dbStateResponse.data
-
-  t0 = performance.now()
-  const decryptedDbState = await crypto.aesGcm.decrypt(key, encryptedDbState)
-
-  if (process.env.NODE_ENV == 'development') {
-    console.log(`Decrypted db state in ${getSecondsSinceT0(t0)}s`)
-  }
-
-  return decryptedDbState
-}
-
-export default () => {
-  if (state) return state
-  state = new EncryptedDevSdk()
-  return state
-}
+let state = new EncryptedDevSdk()
+export default state

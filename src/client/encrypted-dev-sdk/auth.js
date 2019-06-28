@@ -17,7 +17,7 @@ const signUp = async (username, password) => {
 const signOut = async () => {
   await axios.post('/api/auth/sign-out')
   localStorage.removeItem('signedIn')
-  stateManager().clearState()
+  stateManager.clearState()
 }
 
 const signIn = async (username, password) => {

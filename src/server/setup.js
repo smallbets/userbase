@@ -1,5 +1,6 @@
 import aws from 'aws-sdk'
 import os from 'os'
+import memcache from './memcache'
 
 const tableNamePrefix = (process.env.NODE_ENV == 'development') ? os.userInfo().username + '-' : ''
 
@@ -36,6 +37,10 @@ exports.init = async function () {
 
   await setupDdb()
   await setupS3()
+
+  console.log('Eager loading in-memory db operation log cache')
+  await memcache.eagerLoad()
+  console.log('Loaded db operation log cache successfully')
 }
 
 async function setupDdb() {

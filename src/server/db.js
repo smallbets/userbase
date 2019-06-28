@@ -1,11 +1,16 @@
+import FormData from 'form-data'
 import uuidv4 from 'uuid/v4'
 import connection from './connection'
 import setup from './setup'
 import statusCodes from './statusCodes'
+import memcache from './memcache'
 import userController from './user'
+
+const getS3DbStateKey = (userId, bundleSeqNo) => `${userId}-${bundleSeqNo}`
 
 const ONE_KB = 1024
 const ONE_MB = ONE_KB * 1024
+const NINETY_PERCENT_OF_ONE_MB = Math.floor(.9 * ONE_MB)
 
 // DynamoDB single item limit: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html#limits-items
 const FOUR_HUNDRED_KB = 400 * ONE_KB
@@ -15,47 +20,49 @@ const SIXTEEN_MB = 16 * ONE_MB
 
 const MAX_REQUESTS_IN_DDB_BATCH = 25
 
-/**
- * Atomically increments the last sequence no on a user and returns the updated sequence no.
- *
- * Safe to keep this outside a tx because it's ok if there are non-existent ops for a sequence no.
- * For example, assume the user's last sequence no gets set to 5 and then the insert operation fails
- * -- there will be no associated insert operation with sequence no 5. This is ok.
- *
- * @param {String} userId
- * @returns {Number} user's updated last sequence no
- */
-const setNextSequenceNo = async function (userId, sequenceNoIncrement) {
-  const user = await userController.findUserByUserId(userId)
-  const username = user.username
+const dbOperationLogExceedsLimit = (res, userId) => {
+  const bundleSeqNo = memcache.getBundleSeqNo(userId)
+  const startingSeqNo = memcache.getStartingSeqNo(bundleSeqNo)
 
-  const atomicIncrementUserSeqNoParams = {
-    TableName: setup.usersTableName,
-    Key: {
-      username: username // if username changes before update is called but after it's found by user id, this will fail
-    },
-    ExpressionAttributeNames: {
-      '#lastSequenceNo': 'last-sequence-no',
-      '#userId': 'user-id'
-    },
-    ExpressionAttributeValues: {
-      ':incrementSequenceNo': sequenceNoIncrement || 1,
-      ':userId': userId
-    },
-    UpdateExpression: 'SET #lastSequenceNo = #lastSequenceNo + :incrementSequenceNo',
-    ConditionExpression: '#userId = :userId',
-    ReturnValues: 'UPDATED_NEW'
+  const sizeOfOpLog = memcache.getSizeOfOperationLog(userId, startingSeqNo)
+  console.log(sizeOfOpLog)
+  if (sizeOfOpLog > 10) {
+    res.setHeader('init-bundle-process', true)
+  }
+}
+
+const putBatch = async function (res, putRequests, userId) {
+  const params = {
+    RequestItems: {
+      [setup.databaseTableName]: putRequests
+    }
   }
 
   const ddbClient = connection.ddbClient()
-  const updatedUser = await ddbClient.update(atomicIncrementUserSeqNoParams).promise()
-  return updatedUser.Attributes['last-sequence-no']
+  await ddbClient.batchWrite(params).promise()
+
+  const result = putRequests.map(pr => {
+    const operationWithSequenceNo = pr.PutRequest.Item
+    memcache.operationPersistedToDisk(operationWithSequenceNo)
+    return {
+      'item-id': operationWithSequenceNo['item-id'],
+      'sequence-no': operationWithSequenceNo['sequence-no'],
+      command: operationWithSequenceNo.command
+    }
+  })
+
+  // Warning: this is O(n * m) where n is operations and m is attributes
+  dbOperationLogExceedsLimit(res, userId)
+
+  return res.send(result)
 }
 
-const putItem = async function (res, item) {
+const putOperation = async function (res, operation) {
+  const operationWithSequenceNo = memcache.pushOperation(operation)
+
   const params = {
     TableName: setup.databaseTableName,
-    Item: item,
+    Item: operationWithSequenceNo,
     ConditionExpression: 'attribute_not_exists(#userId)',
     ExpressionAttributeNames: {
       '#userId': 'user-id'
@@ -64,10 +71,18 @@ const putItem = async function (res, item) {
 
   const ddbClient = connection.ddbClient()
   await ddbClient.put(params).promise()
+
+  memcache.operationPersistedToDisk(operationWithSequenceNo)
+
+  const userId = operationWithSequenceNo['user-id']
+
+  // Warning: this is O(n * m) where n is operations and m is attributes
+  dbOperationLogExceedsLimit(res, userId)
+
   return res.send({
-    'item-id': item['item-id'],
-    'sequence-no': item['sequence-no'],
-    command: item.command
+    'item-id': operation['item-id'],
+    'sequence-no': operationWithSequenceNo['sequence-no'],
+    command: operation.command
   })
 }
 
@@ -79,8 +94,6 @@ exports.insert = async function (req, res) {
   const userId = res.locals.userId
 
   try {
-    const sequenceNo = await setNextSequenceNo(userId)
-
     // Warning: if the server receives many large simultaneous requests, memory could fill up here.
     // The solution to this is to read the buffer in small chunks and pipe the chunks to
     // S3 and store the S3 URL in DynamoDB.
@@ -88,15 +101,14 @@ exports.insert = async function (req, res) {
 
     const command = 'Insert'
 
-    const item = {
+    const operation = {
       'user-id': userId,
       'item-id': uuidv4(),
       command,
-      record: buffer,
-      'sequence-no': sequenceNo
+      record: buffer
     }
 
-    return putItem(res, item)
+    return putOperation(res, operation)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -113,18 +125,15 @@ exports.delete = async function (req, res) {
     .send({ readableMessage: `Missing item id` })
 
   try {
-    const sequenceNo = await setNextSequenceNo(userId)
-
     const command = 'Delete'
 
-    const item = {
+    const operation = {
       'user-id': userId,
       'item-id': itemId,
-      command,
-      'sequence-no': sequenceNo
+      command
     }
 
-    return putItem(res, item)
+    return putOperation(res, operation)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -145,7 +154,6 @@ exports.update = async function (req, res) {
     .send({ readableMessage: 'Encrypted blob is too large' })
 
   try {
-    const sequenceNo = await setNextSequenceNo(userId)
 
     // Warning: if the server receives many large simultaneous requests, memory could fill up here.
     // The solution to this is to read the buffer in small chunks and pipe the chunks to
@@ -154,15 +162,14 @@ exports.update = async function (req, res) {
 
     const command = 'Update'
 
-    const item = {
+    const operation = {
       'user-id': userId,
       'item-id': itemId,
       command,
       record: buffer,
-      'sequence-no': sequenceNo
     }
 
-    return putItem(res, item)
+    return putOperation(res, operation)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -170,68 +177,51 @@ exports.update = async function (req, res) {
   }
 }
 
-exports.queryDbOperationLog = async function (req, res) {
+exports.query = async function (req, res) {
   const userId = res.locals.userId
+  const bundleSeqNo = memcache.getBundleSeqNo(userId)
 
-  const params = {
-    TableName: setup.databaseTableName,
-    KeyName: '#userId',
-    KeyConditionExpression: '#userId = :userId',
-    ExpressionAttributeNames: {
-      '#userId': 'user-id'
-    },
-    ExpressionAttributeValues: {
-      ':userId': userId
-    },
-  }
+  const startingSeqNo = memcache.getStartingSeqNo(bundleSeqNo)
+
+  const dbOperationLog = memcache.getOperations(userId, startingSeqNo)
+  const stringifiedDbOperationLog = JSON.stringify(dbOperationLog)
 
   try {
-    const ddbClient = connection.ddbClient()
-    let itemsResponse = await ddbClient.query(params).promise()
-    let items = itemsResponse.Items
+    const form = new FormData()
+    form.append('dbOperationLog', stringifiedDbOperationLog)
+    res.setHeader('x-content-type', 'multipart/form-data; boundary=' + '--' + form._boundary)
 
-    // Warning: memory could fill up here when building the items array.
-    // Note that this while loop is necessary in the first place because
-    // DDB itself limits each query response to 1mb.
-    while (itemsResponse.LastEvaluatedKey) {
-      params.ExclusiveStartKey = itemsResponse.LastEvaluatedKey
-      itemsResponse = await ddbClient.query(params).promise()
-      items = items.concat(itemsResponse.Items)
+    if (!bundleSeqNo && bundleSeqNo !== 0) {
+      return form.pipe(res)
+    } else {
+      const params = { Bucket: setup.dbStatesBucketName, Key: getS3DbStateKey(userId, bundleSeqNo) }
+      const s3 = setup.s3()
+
+      s3.getObject(params)
+        .on('httpHeaders', function (statusCode, headers, response, error) {
+
+          if (statusCode < 300) {
+            const stream = this.response.httpResponse.createUnbufferedStream()
+
+            form.append('db-state', stream, {
+              contentType: headers['content-type'],
+              knownLength: headers['content-length']
+            })
+
+            form.pipe(res)
+
+          } else {
+            return statusCode === 404 && error === 'Not Found'
+              ? res
+                .status(statusCodes['Not Found'])
+                .send({ err: `Failed to query db state with ${error}` })
+              : res
+                .status(statusCode)
+                .send({ err: `Failed to query db state with ${error}` })
+          }
+        })
+        .send()
     }
-
-    return res.send(items)
-  } catch (e) {
-    return res
-      .status(statusCodes['Internal Server Error'])
-      .send({ err: `Failed to query operation log with ${e}` })
-  }
-}
-
-exports.queryDbState = async function (req, res) {
-  const userId = res.locals.userId
-
-  const params = { Bucket: setup.dbStatesBucketName, Key: userId }
-
-  try {
-    const s3 = setup.s3()
-    s3.getObject(params)
-      .on('httpHeaders', function (statusCode, headers, response, error) {
-        if (statusCode < 300) {
-          res.set('Content-Length', headers['content-length'])
-          res.set('Content-Type', headers['content-type'])
-          const stream = this.response.httpResponse.createUnbufferedStream()
-          stream.pipe(res)
-        } else {
-          return statusCode === 404 && error === 'Not Found'
-            ? res
-              .status(statusCodes['Not Found'])
-              .send({ err: `Failed to query db state with ${error}` })
-            : res
-              .status(statusCode)
-              .send({ err: `Failed to query db state with ${error}` })
-        }
-      })
-      .send()
 
   } catch (e) {
     return res
@@ -257,9 +247,6 @@ exports.batchInsert = async function (req, res) {
   const userId = res.locals.userId
 
   try {
-    const sequenceNoIncrement = bufferByteLengths.length
-    const startingSeqNo = await setNextSequenceNo(userId, sequenceNoIncrement) - sequenceNoIncrement
-
     const putRequests = []
     for (let i = 0; i < bufferByteLengths.length; i++) {
       const byteLength = bufferByteLengths[i]
@@ -269,31 +256,23 @@ exports.batchInsert = async function (req, res) {
       // S3 and store the S3 URL in DynamoDB.
       const buffer = req.read(byteLength)
 
-      const item = {
+      const operation = {
         'user-id': userId,
         'item-id': uuidv4(),
         command: 'Insert',
-        record: buffer,
-        'sequence-no': startingSeqNo + i
+        record: buffer
       }
+
+      const operationWithSequenceNo = memcache.pushOperation(operation)
 
       putRequests.push({
         PutRequest: {
-          Item: item
+          Item: operationWithSequenceNo
         }
       })
     }
 
-    const params = {
-      RequestItems: {
-        [setup.databaseTableName]: putRequests
-      }
-    }
-
-    const ddbClient = connection.ddbClient()
-    await ddbClient.batchWrite(params).promise()
-
-    res.send(putRequests.map(pr => pr.PutRequest.Item))
+    return putBatch(res, putRequests)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -318,9 +297,6 @@ exports.batchUpdate = async function (req, res) {
   const userId = res.locals.userId
 
   try {
-    const sequenceNoIncrement = updatedRecordsMetadata.length
-    const startingSeqNo = await setNextSequenceNo(userId, sequenceNoIncrement) - sequenceNoIncrement
-
     const putRequests = []
     for (let i = 0; i < updatedRecordsMetadata.length; i++) {
       const updatedRecord = JSON.parse(updatedRecordsMetadata[i])
@@ -332,31 +308,23 @@ exports.batchUpdate = async function (req, res) {
       // S3 and store the S3 URL in DynamoDB.
       const buffer = req.read(byteLength)
 
-      const item = {
+      const operation = {
         'user-id': userId,
         'item-id': itemId,
         command: 'Update',
         record: buffer,
-        'sequence-no': startingSeqNo + i
       }
+
+      const operationWithSequenceNo = memcache.pushOperation(operation)
 
       putRequests.push({
         PutRequest: {
-          Item: item
+          Item: operationWithSequenceNo
         }
       })
     }
 
-    const params = {
-      RequestItems: {
-        [setup.databaseTableName]: putRequests
-      }
-    }
-
-    const ddbClient = connection.ddbClient()
-    await ddbClient.batchWrite(params).promise()
-
-    res.send(putRequests.map(pr => pr.PutRequest.Item))
+    return putBatch(res, putRequests, userId)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -378,35 +346,24 @@ exports.batchDelete = async function (req, res) {
   const userId = res.locals.userId
 
   try {
-    const sequenceNoIncrement = itemIds.length
-    const startingSeqNo = await setNextSequenceNo(userId, sequenceNoIncrement) - sequenceNoIncrement
-
     const putRequests = []
     for (let i = 0; i < itemIds.length; i++) {
-      const item = {
+      const operation = {
         'user-id': userId,
         'item-id': itemIds[i],
         command: 'Delete',
-        'sequence-no': startingSeqNo + i
       }
+
+      const operationWithSequenceNo = memcache.pushOperation(operation)
 
       putRequests.push({
         PutRequest: {
-          Item: item
+          Item: operationWithSequenceNo
         }
       })
     }
 
-    const params = {
-      RequestItems: {
-        [setup.databaseTableName]: putRequests
-      }
-    }
-
-    const ddbClient = connection.ddbClient()
-    await ddbClient.batchWrite(params).promise()
-
-    res.send(putRequests.map(pr => pr.PutRequest.Item))
+    return putBatch(res, putRequests, userId)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -414,51 +371,51 @@ exports.batchDelete = async function (req, res) {
   }
 }
 
-exports.flushDbState = async function (req, res) {
+exports.bundleDbOperationLog = async function (req, res) {
   const userId = res.locals.userId
-  const sequenceNos = req.query.sequenceNos
+  const bundleSeqNo = req.query.bundleSeqNo
 
-  if (!sequenceNos) return res
+  if (!bundleSeqNo) return res
     .status(statusCodes['Bad Request'])
-    .send({ readableMessage: 'Missing sequence numbers to delete' })
+    .send({ readableMessage: 'Missing bundle sequence number' })
 
-  const params = { Bucket: setup.dbStatesBucketName, Key: userId, Body: req }
   try {
+    const user = await userController.findUserByUserId(userId)
+    if (user.bundleSeqNo >= bundleSeqNo) return res
+      .status(statusCodes['Bad Request'])
+      .send({ readableMessage: 'Bundle sequence no must be greater than current bundle' })
+
+    const dbStateParams = {
+      Bucket: setup.dbStatesBucketName,
+      Key: getS3DbStateKey(userId, bundleSeqNo),
+      Body: req
+    }
 
     console.log('Uploading db state to S3...')
     const s3 = setup.s3()
-    await s3.upload(params).promise()
+    await s3.upload(dbStateParams).promise()
 
-    console.log('Deleting operations from operation log...')
-    const ddbClient = connection.ddbClient()
+    console.log('Setting bundle sequence number on user...')
+    const username = user.username
 
-    let deleteRequestBatch = []
-    const promises = []
-    for (let i = 0; i < sequenceNos.length; i++) {
-      deleteRequestBatch.push({
-        DeleteRequest: {
-          Key: {
-            'user-id': userId,
-            'sequence-no': Number(sequenceNos[i])
-          }
-        }
-      })
-
-      if (i === sequenceNos.length - 1 || deleteRequestBatch.length === MAX_REQUESTS_IN_DDB_BATCH) {
-        const params = {
-          RequestItems: {
-            [setup.databaseTableName]: deleteRequestBatch
-          }
-        }
-
-        const promise = ddbClient.batchWrite(params).promise()
-        promises.push(promise)
-
-        deleteRequestBatch = []
+    const bundleParams = {
+      TableName: setup.usersTableName,
+      Key: {
+        'username': username
+      },
+      UpdateExpression: 'set #bundleSeqNo = :bundleSeqNo',
+      ExpressionAttributeNames: {
+        '#bundleSeqNo': 'bundle-seq-no',
+      },
+      ExpressionAttributeValues: {
+        ':bundleSeqNo': bundleSeqNo
       }
     }
 
-    await Promise.all(promises)
+    const ddbClient = connection.ddbClient()
+    await ddbClient.update(bundleParams).promise()
+
+    memcache.setBundleSeqNo(userId, bundleSeqNo)
 
     res.send('Success!')
   } catch (e) {

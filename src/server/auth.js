@@ -4,6 +4,7 @@ import bcrypt from 'bcrypt'
 import connection from './connection'
 import setup from './setup'
 import statusCodes from './statusCodes'
+import memcache from './memcache'
 
 const SALT_ROUNDS = 10
 
@@ -71,6 +72,7 @@ exports.signUp = async function (req, res) {
     }
 
     try {
+      memcache.initUser(user['user-id'])
       const ddbClient = connection.ddbClient()
       await ddbClient.put(params).promise()
     } catch (e) {
