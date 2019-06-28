@@ -17,7 +17,7 @@ self.onmessage = async (e) => {
   const dbOperationLog = dbOperationLogResponse.data
   const oldBundleSeqNo = Number(dbOperationLogResponse.headers['bundle-seq-no'])
 
-  if (sizeOfDdbItems(dbOperationLog) > 10) {
+  if (sizeOfDdbItems(dbOperationLog) > NINETY_PERCENT_OF_ONE_MB) {
     console.log('Flushing db operation log!')
 
     let dbState

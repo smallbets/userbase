@@ -1,6 +1,5 @@
 import connection from './connection'
 import setup from './setup'
-import { sizeOfDdbOperations } from './utils'
 
 function MemCache() {
   this.dbOperationLogByUserId = {}
@@ -132,11 +131,6 @@ MemCache.prototype.getBundleSeqNo = function (userId) {
 
 MemCache.prototype.getStartingSeqNo = function (bundleSeqNo) {
   return bundleSeqNo ? bundleSeqNo + 1 : 0
-}
-
-MemCache.prototype.getSizeOfOperationLog = function (userId, startingSeqNo) {
-  const operations = this.getOperations(userId, startingSeqNo)
-  return sizeOfDdbOperations(operations)
 }
 
 export default new MemCache()

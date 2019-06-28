@@ -5,7 +5,7 @@ import statusCodes from './statusCodes'
 import memcache from './memcache'
 import userController from './user'
 
-const getS3DbStateKey = (userId, bundleSeqNo) => `${userId}-${bundleSeqNo}`
+const getS3DbStateKey = (userId, bundleSeqNo) => `${userId}/${bundleSeqNo}`
 
 const ONE_KB = 1024
 const ONE_MB = ONE_KB * 1024
