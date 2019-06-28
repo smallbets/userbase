@@ -1,3 +1,4 @@
+import uuidv4 from 'uuid/v4'
 import axios from 'axios'
 import crypto from './Crypto'
 import stateManager from './stateManager'
@@ -7,7 +8,8 @@ const signUp = async (username, password) => {
   await crypto.aesGcm.saveKeyToLocalStorage(symmetricKey)
   const response = await axios.post('/api/auth/sign-up', {
     username,
-    password
+    password,
+    userId: uuidv4()
   })
   localStorage.setItem('signedIn', true)
   const user = response.data

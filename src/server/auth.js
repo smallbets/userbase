@@ -1,5 +1,4 @@
 import crypto from 'crypto'
-import uuidv4 from 'uuid/v4'
 import bcrypt from 'bcrypt'
 import connection from './connection'
 import setup from './setup'
@@ -54,6 +53,11 @@ const createSession = async function (userId, res) {
 exports.signUp = async function (req, res) {
   const username = req.body.username
   const password = req.body.password
+  const userId = req.body.userId
+
+  if (!username || !password || !userId) return res
+    .status(statusCodes['Bad Request'])
+    .send({ readableMessage: 'Missing required items' })
 
   try {
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS)
@@ -61,8 +65,7 @@ exports.signUp = async function (req, res) {
     const user = {
       username: username.toLowerCase(),
       'password-hash': passwordHash,
-      'user-id': uuidv4(),
-      'last-sequence-no': 0
+      'user-id': userId
     }
 
     const params = {

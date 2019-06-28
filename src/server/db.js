@@ -1,4 +1,3 @@
-import uuidv4 from 'uuid/v4'
 import connection from './connection'
 import setup from './setup'
 import statusCodes from './statusCodes'
@@ -71,6 +70,11 @@ exports.insert = async function (req, res) {
     .send({ readableMessage: 'Encrypted blob is too large' })
 
   const userId = res.locals.userId
+  const itemId = req.query.itemId
+
+  if (!itemId) return res
+    .status(statusCodes['Bad Request'])
+    .send({ readableMessage: 'Missing item id' })
 
   try {
     // Warning: if the server receives many large simultaneous requests, memory could fill up here.
@@ -82,7 +86,7 @@ exports.insert = async function (req, res) {
 
     const operation = {
       'user-id': userId,
-      'item-id': uuidv4(),
+      'item-id': itemId,
       command,
       record: buffer
     }
@@ -126,7 +130,7 @@ exports.update = async function (req, res) {
 
   if (!itemId) return res
     .status(statusCodes['Bad Request'])
-    .send({ readableMessage: `Missing item id` })
+    .send({ readableMessage: 'Missing item id' })
 
   if (req.readableLength > FOUR_HUNDRED_KB) return res
     .status(statusCodes['Bad Request'])
@@ -221,21 +225,32 @@ exports.batchInsert = async function (req, res) {
     .status(statusCodes['Bad Request'])
     .send({ readableMessage: 'Batch of encrypted records cannot be larger than 16 MB' })
 
-  const bufferByteLengths = req.query.byteLengths
-  if (!bufferByteLengths || bufferByteLengths.length === 0) return res
-    .status(statusCodes['Bad Request'])
-    .send({ readableMessage: 'Missing buffer byte lengths' })
+  const userId = res.locals.userId
+  const itemsMetadata = req.query.itemsMetadata
 
-  if (bufferByteLengths.length > MAX_REQUESTS_IN_DDB_BATCH) return res
+  if (!itemsMetadata || itemsMetadata.length === 0) return res
+    .status(statusCodes['Bad Request'])
+    .send({ readableMessage: 'Missing items metadata' })
+
+  if (itemsMetadata.length > MAX_REQUESTS_IN_DDB_BATCH) return res
     .status(statusCodes['Bad Request'])
     .send({ readableMessage: `Cannot exceed ${MAX_REQUESTS_IN_DDB_BATCH} requests` })
 
-  const userId = res.locals.userId
-
   try {
     const putRequests = []
-    for (let i = 0; i < bufferByteLengths.length; i++) {
-      const byteLength = bufferByteLengths[i]
+    for (let i = 0; i < itemsMetadata.length; i++) {
+      const itemMetadata = JSON.parse(itemsMetadata[i])
+
+      const byteLength = itemMetadata.byteLength
+      const itemId = itemMetadata.itemId
+
+      if (!byteLength) return res
+        .status(statusCodes['Bad Request'])
+        .send({ readableMessage: `Item ${i} missing buffer byte length` })
+
+      if (!itemId) return res
+        .status(statusCodes['Bad Request'])
+        .send({ readableMessage: `Item ${i} missing item id` })
 
       // Warning: if the server receives many large simultaneous requests, memory could fill up here.
       // The solution to this is to read the buffer in small chunks and pipe the chunks to
@@ -244,7 +259,7 @@ exports.batchInsert = async function (req, res) {
 
       const operation = {
         'user-id': userId,
-        'item-id': uuidv4(),
+        'item-id': itemId,
         command: 'Insert',
         record: buffer
       }
@@ -286,8 +301,17 @@ exports.batchUpdate = async function (req, res) {
     const putRequests = []
     for (let i = 0; i < updatedRecordsMetadata.length; i++) {
       const updatedRecord = JSON.parse(updatedRecordsMetadata[i])
+
       const byteLength = updatedRecord.byteLength
-      const itemId = updatedRecord['item-id']
+      const itemId = updatedRecord['itemId']
+
+      if (!byteLength) return res
+        .status(statusCodes['Bad Request'])
+        .send({ readableMessage: `Item ${i} missing buffer byte length` })
+
+      if (!itemId) return res
+        .status(statusCodes['Bad Request'])
+        .send({ readableMessage: `Item ${i} missing item id` })
 
       // Warning: if the server receives many large simultaneous requests, memory could fill up here.
       // The solution to this is to read the buffer in small chunks and pipe the chunks to

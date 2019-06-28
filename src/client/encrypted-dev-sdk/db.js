@@ -1,3 +1,4 @@
+import uuidv4 from 'uuid/v4'
 import axios from 'axios'
 import Worker from './worker.js'
 import crypto from './Crypto'
@@ -50,6 +51,9 @@ const insert = async (item) => {
   const response = await axios({
     method: 'POST',
     url: '/api/db/insert',
+    params: {
+      itemId: uuidv4()
+    },
     data: encryptedItem
   })
 
@@ -75,11 +79,16 @@ const batchInsert = async (items) => {
 
   const { buffer, byteLengths } = appendBuffers(encryptedItems)
 
+  const itemsMetadata = items.map((item, i) => ({
+    itemId: uuidv4(),
+    byteLength: byteLengths[i]
+  }))
+
   const response = await axios({
     method: 'POST',
     url: '/api/db/batch-insert',
     params: {
-      byteLengths
+      itemsMetadata
     },
     data: buffer
   })
@@ -136,7 +145,7 @@ const batchUpdate = async (oldItems, newItems) => {
   const { buffer, byteLengths } = appendBuffers(encryptedItems)
 
   const updatedRecordsMetadata = oldItems.map((item, index) => ({
-    'item-id': item['item-id'],
+    itemId: item['item-id'],
     byteLength: byteLengths[index]
   }))
 
