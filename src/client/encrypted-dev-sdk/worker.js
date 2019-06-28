@@ -2,52 +2,57 @@ import 'babel-polyfill'
 import axios from 'axios'
 import crypto from './Crypto'
 import stateManager from './stateManager'
-import { stringToArrayBuffer } from './Crypto/utils'
+import { sizeOfDdbItems } from './utils'
+
+const ONE_KB = 1024
+const ONE_MB = 1024 * ONE_KB
+const NINETY_PERCENT_OF_ONE_MB = Math.floor(.9 * ONE_MB)
 
 self.onmessage = async (e) => {
   const keyString = e.data
   const key = await crypto.aesGcm.importKey(keyString)
 
-  const dbResponse = await axios.get('/api/db/query')
+  const dbOperationLogResponse = await axios.get('/api/db/query/db-op-log')
 
-  const formBoundary = dbResponse
-    .headers['x-content-type']
-    .split('multipart/form-data; boundary=')[1]
+  const dbOperationLog = dbOperationLogResponse.data
+  const oldBundleSeqNo = Number(dbOperationLogResponse.headers['bundle-seq-no'])
 
-  const forms = dbResponse.data.split(formBoundary)
+  if (sizeOfDdbItems(dbOperationLog) > 10) {
+    console.log('Flushing db operation log!')
 
-  const dbOpLogFormData = forms[1]
-  const startOfDbOpLog = dbOpLogFormData.indexOf('[')
-  const dbOpLogString = dbOpLogFormData.substring(startOfDbOpLog)
-  const dbOperationLog = JSON.parse(dbOpLogString)
+    let dbState
+    if (oldBundleSeqNo) {
+      const dbStateResponse = await axios({
+        url: '/api/db/query/db-state',
+        method: 'GET',
+        params: {
+          bundleSeqNo: oldBundleSeqNo
+        },
+        responseType: 'arraybuffer'
+      })
 
-  const dbStateFormData = forms[2]
-  const contentType = 'Content-Type: application/octet-stream'
-  const indexOfContentType = dbStateFormData.indexOf(contentType)
+      const encryptedDbState = dbStateResponse.data
+      dbState = await crypto.aesGcm.decrypt(key, encryptedDbState)
+    } else {
+      dbState = {
+        itemsInOrderOfInsertion: [],
+        itemIdsToOrderOfInsertion: {}
+      }
+    }
 
-  let dbState = {
-    itemsInOrderOfInsertion: [],
-    itemIdsToOrderOfInsertion: {}
+    dbState = await stateManager.applyOperationsToDbState(key, dbState, dbOperationLog)
+
+    const bundleSeqNo = dbState.maxSequenceNo
+
+    const encryptedDbState = await crypto.aesGcm.encrypt(key, dbState)
+
+    await axios({
+      method: 'POST',
+      url: '/api/db/bundle-op-log',
+      params: {
+        bundleSeqNo
+      },
+      data: encryptedDbState
+    })
   }
-  if (indexOfContentType > -1) {
-    const startOfDbState = 4 + dbStateFormData.indexOf(contentType) + contentType.length
-    const dbStateString = dbStateFormData.substring(startOfDbState)
-    const encryptedDbState = stringToArrayBuffer(dbStateString)
-    dbState = await crypto.aesGcm.decrypt(key, encryptedDbState)
-  }
-
-  dbState = await stateManager.applyOperationsToDbState(key, dbState, dbOperationLog)
-
-  const bundleSeqNo = dbState.maxSequenceNo
-
-  const encryptedDbState = await crypto.aesGcm.encrypt(key, dbState)
-
-  await axios({
-    method: 'POST',
-    url: '/api/db/bundle-op-log',
-    params: {
-      bundleSeqNo
-    },
-    data: encryptedDbState
-  })
 }

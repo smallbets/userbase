@@ -39,7 +39,8 @@ if (process.env.NODE_ENV == 'development') {
     app.post('/api/db/insert', auth.authenticateUser, db.insert)
     app.post('/api/db/update', auth.authenticateUser, db.update)
     app.post('/api/db/delete', auth.authenticateUser, db.delete)
-    app.get('/api/db/query', auth.authenticateUser, db.query)
+    app.get('/api/db/query/db-op-log', auth.authenticateUser, db.queryDbOperationLog)
+    app.get('/api/db/query/db-state', auth.authenticateUser, db.queryDbState)
 
     app.post('/api/db/batch-insert', auth.authenticateUser, db.batchInsert)
     app.post('/api/db/batch-update', auth.authenticateUser, db.batchUpdate)

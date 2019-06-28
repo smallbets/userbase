@@ -1,4 +1,3 @@
-import FormData from 'form-data'
 import uuidv4 from 'uuid/v4'
 import connection from './connection'
 import setup from './setup'
@@ -10,7 +9,6 @@ const getS3DbStateKey = (userId, bundleSeqNo) => `${userId}-${bundleSeqNo}`
 
 const ONE_KB = 1024
 const ONE_MB = ONE_KB * 1024
-const NINETY_PERCENT_OF_ONE_MB = Math.floor(.9 * ONE_MB)
 
 // DynamoDB single item limit: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html#limits-items
 const FOUR_HUNDRED_KB = 400 * ONE_KB
@@ -20,18 +18,7 @@ const SIXTEEN_MB = 16 * ONE_MB
 
 const MAX_REQUESTS_IN_DDB_BATCH = 25
 
-const dbOperationLogExceedsLimit = (res, userId) => {
-  const bundleSeqNo = memcache.getBundleSeqNo(userId)
-  const startingSeqNo = memcache.getStartingSeqNo(bundleSeqNo)
-
-  const sizeOfOpLog = memcache.getSizeOfOperationLog(userId, startingSeqNo)
-  console.log(sizeOfOpLog)
-  if (sizeOfOpLog > 10) {
-    res.setHeader('init-bundle-process', true)
-  }
-}
-
-const putBatch = async function (res, putRequests, userId) {
+const putBatch = async function (res, putRequests) {
   const params = {
     RequestItems: {
       [setup.databaseTableName]: putRequests
@@ -50,9 +37,6 @@ const putBatch = async function (res, putRequests, userId) {
       command: operationWithSequenceNo.command
     }
   })
-
-  // Warning: this is O(n * m) where n is operations and m is attributes
-  dbOperationLogExceedsLimit(res, userId)
 
   return res.send(result)
 }
@@ -73,11 +57,6 @@ const putOperation = async function (res, operation) {
   await ddbClient.put(params).promise()
 
   memcache.operationPersistedToDisk(operationWithSequenceNo)
-
-  const userId = operationWithSequenceNo['user-id']
-
-  // Warning: this is O(n * m) where n is operations and m is attributes
-  dbOperationLogExceedsLimit(res, userId)
 
   return res.send({
     'item-id': operation['item-id'],
@@ -177,52 +156,59 @@ exports.update = async function (req, res) {
   }
 }
 
-exports.query = async function (req, res) {
+exports.queryDbOperationLog = async function (req, res) {
   const userId = res.locals.userId
-  const bundleSeqNo = memcache.getBundleSeqNo(userId)
-
-  const startingSeqNo = memcache.getStartingSeqNo(bundleSeqNo)
-
-  const dbOperationLog = memcache.getOperations(userId, startingSeqNo)
-  const stringifiedDbOperationLog = JSON.stringify(dbOperationLog)
 
   try {
-    const form = new FormData()
-    form.append('dbOperationLog', stringifiedDbOperationLog)
-    res.setHeader('x-content-type', 'multipart/form-data; boundary=' + '--' + form._boundary)
+    const bundleSeqNo = memcache.getBundleSeqNo(userId)
 
-    if (!bundleSeqNo && bundleSeqNo !== 0) {
-      return form.pipe(res)
-    } else {
-      const params = { Bucket: setup.dbStatesBucketName, Key: getS3DbStateKey(userId, bundleSeqNo) }
-      const s3 = setup.s3()
+    const startingSeqNo = memcache.getStartingSeqNo(bundleSeqNo)
 
-      s3.getObject(params)
-        .on('httpHeaders', function (statusCode, headers, response, error) {
+    const dbOperationLog = memcache.getOperations(userId, startingSeqNo)
 
-          if (statusCode < 300) {
-            const stream = this.response.httpResponse.createUnbufferedStream()
+    res.set('bundle-seq-no', bundleSeqNo)
 
-            form.append('db-state', stream, {
-              contentType: headers['content-type'],
-              knownLength: headers['content-length']
-            })
+    return res.send(dbOperationLog)
+  } catch (e) {
+    return res
+      .status(statusCodes['Internal Server Error'])
+      .send({ err: `Failed to query db state with ${e}` })
+  }
+}
 
-            form.pipe(res)
+exports.queryDbState = async function (req, res) {
+  const userId = res.locals.userId
+  const bundleSeqNo = req.query.bundleSeqNo
 
-          } else {
-            return statusCode === 404 && error === 'Not Found'
-              ? res
-                .status(statusCodes['Not Found'])
-                .send({ err: `Failed to query db state with ${error}` })
-              : res
-                .status(statusCode)
-                .send({ err: `Failed to query db state with ${error}` })
-          }
-        })
-        .send()
-    }
+  if (!bundleSeqNo && bundleSeqNo !== 0) return res
+    .status(statusCodes['Bad Request'])
+    .send({ readableMessage: 'Must include bundle sequence no' })
 
+  try {
+    const params = { Bucket: setup.dbStatesBucketName, Key: getS3DbStateKey(userId, bundleSeqNo) }
+    const s3 = setup.s3()
+
+    s3.getObject(params)
+      .on('httpHeaders', function (statusCode, headers, response, error) {
+
+        if (statusCode < 300) {
+          res.set('Content-Length', headers['content-length'])
+          res.set('Content-Type', headers['content-type'])
+
+          const stream = this.response.httpResponse.createUnbufferedStream()
+
+          stream.pipe(res)
+        } else {
+          return statusCode === 404 && error === 'Not Found'
+            ? res
+              .status(statusCodes['Not Found'])
+              .send({ err: `Failed to query db state with ${error}` })
+            : res
+              .status(statusCode)
+              .send({ err: `Failed to query db state with ${error}` })
+        }
+      })
+      .send()
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -324,7 +310,7 @@ exports.batchUpdate = async function (req, res) {
       })
     }
 
-    return putBatch(res, putRequests, userId)
+    return putBatch(res, putRequests)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -363,7 +349,7 @@ exports.batchDelete = async function (req, res) {
       })
     }
 
-    return putBatch(res, putRequests, userId)
+    return putBatch(res, putRequests)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])

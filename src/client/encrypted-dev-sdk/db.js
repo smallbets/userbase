@@ -2,7 +2,7 @@ import axios from 'axios'
 import Worker from './worker.js'
 import crypto from './Crypto'
 import stateManager from './stateManager'
-import { appendBuffers, stringToArrayBuffer } from './Crypto/utils'
+import { appendBuffers } from './Crypto/utils'
 import { getSecondsSinceT0 } from './utils'
 
 const initalizeWebWorker = () => {
@@ -54,8 +54,6 @@ const insert = async (item) => {
   })
 
   const insertedItem = response.data
-  if (response.headers['init-bundle-process']) initalizeWebWorker()
-
 
   const itemToReturn = {
     ...insertedItem,
@@ -64,6 +62,9 @@ const insert = async (item) => {
   }
 
   stateManager.insertItem(itemToReturn)
+
+  initalizeWebWorker()
+
   return itemToReturn
 }
 
@@ -84,7 +85,6 @@ const batchInsert = async (items) => {
   })
 
   const insertedItems = response.data
-  if (response.headers['init-bundle-process']) initalizeWebWorker()
 
   const itemsToReturn = insertedItems.map((insertedItem, index) => ({
     ...insertedItem,
@@ -93,6 +93,8 @@ const batchInsert = async (items) => {
   }))
 
   stateManager.insertItems(itemsToReturn)
+
+  initalizeWebWorker()
 
   return itemsToReturn
 }
@@ -111,7 +113,6 @@ const update = async (oldItem, newItem) => {
   })
 
   const updatedItem = response.data
-  if (response.headers['init-bundle-process']) initalizeWebWorker()
 
   const itemToReturn = {
     ...oldItem,
@@ -121,6 +122,8 @@ const update = async (oldItem, newItem) => {
   }
 
   stateManager.updateItem(itemToReturn)
+
+  initalizeWebWorker()
 
   return itemToReturn
 }
@@ -147,7 +150,6 @@ const batchUpdate = async (oldItems, newItems) => {
   })
 
   const updatedItems = response.data
-  if (response.headers['init-bundle-process']) initalizeWebWorker()
 
   const itemsToReturn = updatedItems.map((updatedItem, index) => {
     const itemToReturn = {
@@ -162,6 +164,8 @@ const batchUpdate = async (oldItems, newItems) => {
     return itemToReturn
   })
 
+  initalizeWebWorker()
+
   return itemsToReturn
 }
 
@@ -175,7 +179,6 @@ const deleteFunction = async (item) => {
   })
 
   const deletedItem = response.data
-  if (response.headers['init-bundle-process']) initalizeWebWorker()
 
   const itemToReturn = {
     ...item,
@@ -185,6 +188,8 @@ const deleteFunction = async (item) => {
   delete itemToReturn.record
 
   stateManager.updateItem(itemToReturn)
+
+  initalizeWebWorker()
 
   return itemToReturn
 }
@@ -201,7 +206,6 @@ const batchDelete = async (items) => {
   })
 
   const deletedItems = response.data
-  if (response.headers['init-bundle-process']) initalizeWebWorker()
 
   const itemsToReturn = deletedItems.map((deletedItem, index) => {
     const itemToReturn = {
@@ -214,6 +218,8 @@ const batchDelete = async (items) => {
     return itemToReturn
   })
 
+  initalizeWebWorker()
+
   return itemsToReturn
 }
 
@@ -221,36 +227,40 @@ const query = async () => {
   const key = await crypto.aesGcm.getKeyFromLocalStorage()
 
   let t0 = performance.now()
-  const dbResponse = await axios.get('/api/db/query')
+  const dbOperationLogResponse = await axios.get('/api/db/query/db-op-log')
   if (process.env.NODE_ENV == 'development') {
-    console.log(`Retrieved user's db in ${getSecondsSinceT0(t0)}s`)
+    console.log(`Retrieved user's db operation log in ${getSecondsSinceT0(t0)}s`)
   }
 
+  const dbOperationLog = dbOperationLogResponse.data
+  const bundleSeqNo = Number(dbOperationLogResponse.headers['bundle-seq-no'])
+
+  let dbStateResponse
+  let dbState
   t0 = performance.now()
-  const formBoundary = dbResponse
-    .headers['x-content-type']
-    .split('multipart/form-data; boundary=')[1]
+  if (bundleSeqNo) {
+    dbStateResponse = await axios({
+      url: '/api/db/query/db-state',
+      method: 'GET',
+      params: {
+        bundleSeqNo
+      },
+      responseType: 'arraybuffer'
+    })
+    if (process.env.NODE_ENV == 'development') {
+      console.log(`Retrieved user's db state in ${getSecondsSinceT0(t0)}s`)
+    }
 
-  const forms = dbResponse.data.split(formBoundary)
+    t0 = performance.now()
 
-  const dbOpLogFormData = forms[1]
-  const startOfDbOpLog = dbOpLogFormData.indexOf('[')
-  const dbOpLogString = dbOpLogFormData.substring(startOfDbOpLog)
-  const dbOperationLog = JSON.parse(dbOpLogString)
-
-  const dbStateFormData = forms[2]
-  const contentType = 'Content-Type: application/octet-stream'
-  const indexOfContentType = dbStateFormData.indexOf(contentType)
-
-  let dbState = {
-    itemsInOrderOfInsertion: [],
-    itemIdsToOrderOfInsertion: {}
-  }
-  if (indexOfContentType > -1) {
-    const startOfDbState = 4 + dbStateFormData.indexOf(contentType) + contentType.length
-    const dbStateString = dbStateFormData.substring(startOfDbState)
-    const encryptedDbState = stringToArrayBuffer(dbStateString)
+    const encryptedDbState = dbStateResponse.data
     dbState = await crypto.aesGcm.decrypt(key, encryptedDbState)
+
+  } else {
+    dbState = {
+      itemsInOrderOfInsertion: [],
+      itemIdsToOrderOfInsertion: {}
+    }
   }
 
   dbState = await stateManager.applyOperationsToDbState(key, dbState, dbOperationLog)
