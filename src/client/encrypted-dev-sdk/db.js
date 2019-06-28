@@ -236,13 +236,13 @@ const query = async () => {
   const key = await crypto.aesGcm.getKeyFromLocalStorage()
 
   let t0 = performance.now()
-  const dbOperationLogResponse = await axios.get('/api/db/query/db-op-log')
+  const transactionLogResponse = await axios.get('/api/db/query/tx-log')
   if (process.env.NODE_ENV == 'development') {
-    console.log(`Retrieved user's db operation log in ${getSecondsSinceT0(t0)}s`)
+    console.log(`Retrieved user's transaction log in ${getSecondsSinceT0(t0)}s`)
   }
 
-  const dbOperationLog = dbOperationLogResponse.data
-  const bundleSeqNo = Number(dbOperationLogResponse.headers['bundle-seq-no'])
+  const transactionLog = transactionLogResponse.data
+  const bundleSeqNo = Number(transactionLogResponse.headers['bundle-seq-no'])
 
   let dbStateResponse
   let dbState
@@ -272,7 +272,7 @@ const query = async () => {
     }
   }
 
-  dbState = await stateManager.applyOperationsToDbState(key, dbState, dbOperationLog)
+  dbState = await stateManager.applyTransactionsToDbState(key, dbState, transactionLog)
 
   if (process.env.NODE_ENV == 'development') {
     console.log(`Set up client side state in ${getSecondsSinceT0(t0)}s`)

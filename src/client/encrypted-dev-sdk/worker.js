@@ -12,13 +12,13 @@ self.onmessage = async (e) => {
   const keyString = e.data
   const key = await crypto.aesGcm.importKey(keyString)
 
-  const dbOperationLogResponse = await axios.get('/api/db/query/db-op-log')
+  const transactionLogResponse = await axios.get('/api/db/query/tx-log')
 
-  const dbOperationLog = dbOperationLogResponse.data
-  const oldBundleSeqNo = Number(dbOperationLogResponse.headers['bundle-seq-no'])
+  const transactionLog = transactionLogResponse.data
+  const oldBundleSeqNo = Number(transactionLogResponse.headers['bundle-seq-no'])
 
-  if (sizeOfDdbItems(dbOperationLog) > NINETY_PERCENT_OF_ONE_MB) {
-    console.log('Flushing db operation log!')
+  if (sizeOfDdbItems(transactionLog) > NINETY_PERCENT_OF_ONE_MB) {
+    console.log('Flushing transaction log!')
 
     let dbState
     if (oldBundleSeqNo) {
@@ -33,6 +33,7 @@ self.onmessage = async (e) => {
 
       const encryptedDbState = dbStateResponse.data
       dbState = await crypto.aesGcm.decrypt(key, encryptedDbState)
+
     } else {
       dbState = {
         itemsInOrderOfInsertion: [],
@@ -40,7 +41,7 @@ self.onmessage = async (e) => {
       }
     }
 
-    dbState = await stateManager.applyOperationsToDbState(key, dbState, dbOperationLog)
+    dbState = await stateManager.applyTransactionsToDbState(key, dbState, transactionLog)
 
     const bundleSeqNo = dbState.maxSequenceNo
 
@@ -48,7 +49,7 @@ self.onmessage = async (e) => {
 
     await axios({
       method: 'POST',
-      url: '/api/db/bundle-op-log',
+      url: '/api/db/bundle-tx-log',
       params: {
         bundleSeqNo
       },

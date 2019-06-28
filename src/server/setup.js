@@ -38,9 +38,9 @@ exports.init = async function () {
   await setupDdb()
   await setupS3()
 
-  console.log('Eager loading in-memory db operation log cache')
+  console.log('Eager loading in-memory transaction log cache')
   await memcache.eagerLoad()
-  console.log('Loaded db operation log cache successfully')
+  console.log('Loaded transaction log cache successfully')
 }
 
 async function setupDdb() {

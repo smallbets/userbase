@@ -28,24 +28,24 @@ const putBatch = async function (res, putRequests) {
   await ddbClient.batchWrite(params).promise()
 
   const result = putRequests.map(pr => {
-    const operationWithSequenceNo = pr.PutRequest.Item
-    memcache.operationPersistedToDisk(operationWithSequenceNo)
+    const transactionWithSequenceNo = pr.PutRequest.Item
+    memcache.transactionPersistedToDisk(transactionWithSequenceNo)
     return {
-      'item-id': operationWithSequenceNo['item-id'],
-      'sequence-no': operationWithSequenceNo['sequence-no'],
-      command: operationWithSequenceNo.command
+      'item-id': transactionWithSequenceNo['item-id'],
+      'sequence-no': transactionWithSequenceNo['sequence-no'],
+      command: transactionWithSequenceNo.command
     }
   })
 
   return res.send(result)
 }
 
-const putOperation = async function (res, operation) {
-  const operationWithSequenceNo = memcache.pushOperation(operation)
+const putTransaction = async function (res, transaction) {
+  const transactionWithSequenceNo = memcache.pushTransaction(transaction)
 
   const params = {
     TableName: setup.databaseTableName,
-    Item: operationWithSequenceNo,
+    Item: transactionWithSequenceNo,
     ConditionExpression: 'attribute_not_exists(#userId)',
     ExpressionAttributeNames: {
       '#userId': 'user-id'
@@ -55,12 +55,12 @@ const putOperation = async function (res, operation) {
   const ddbClient = connection.ddbClient()
   await ddbClient.put(params).promise()
 
-  memcache.operationPersistedToDisk(operationWithSequenceNo)
+  memcache.transactionPersistedToDisk(transactionWithSequenceNo)
 
   return res.send({
-    'item-id': operation['item-id'],
-    'sequence-no': operationWithSequenceNo['sequence-no'],
-    command: operation.command
+    'item-id': transaction['item-id'],
+    'sequence-no': transactionWithSequenceNo['sequence-no'],
+    command: transaction.command
   })
 }
 
@@ -84,14 +84,14 @@ exports.insert = async function (req, res) {
 
     const command = 'Insert'
 
-    const operation = {
+    const transaction = {
       'user-id': userId,
       'item-id': itemId,
       command,
       record: buffer
     }
 
-    return putOperation(res, operation)
+    return putTransaction(res, transaction)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -110,13 +110,13 @@ exports.delete = async function (req, res) {
   try {
     const command = 'Delete'
 
-    const operation = {
+    const transaction = {
       'user-id': userId,
       'item-id': itemId,
       command
     }
 
-    return putOperation(res, operation)
+    return putTransaction(res, transaction)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -145,14 +145,14 @@ exports.update = async function (req, res) {
 
     const command = 'Update'
 
-    const operation = {
+    const transaction = {
       'user-id': userId,
       'item-id': itemId,
       command,
       record: buffer,
     }
 
-    return putOperation(res, operation)
+    return putTransaction(res, transaction)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -160,7 +160,7 @@ exports.update = async function (req, res) {
   }
 }
 
-exports.queryDbOperationLog = async function (req, res) {
+exports.queryTransactionLog = async function (req, res) {
   const userId = res.locals.userId
 
   try {
@@ -168,11 +168,11 @@ exports.queryDbOperationLog = async function (req, res) {
 
     const startingSeqNo = memcache.getStartingSeqNo(bundleSeqNo)
 
-    const dbOperationLog = memcache.getOperations(userId, startingSeqNo)
+    const transactionLog = memcache.getTransactions(userId, startingSeqNo)
 
     res.set('bundle-seq-no', bundleSeqNo)
 
-    return res.send(dbOperationLog)
+    return res.send(transactionLog)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -257,18 +257,18 @@ exports.batchInsert = async function (req, res) {
       // S3 and store the S3 URL in DynamoDB.
       const buffer = req.read(byteLength)
 
-      const operation = {
+      const transaction = {
         'user-id': userId,
         'item-id': itemId,
         command: 'Insert',
         record: buffer
       }
 
-      const operationWithSequenceNo = memcache.pushOperation(operation)
+      const transactionWithSequenceNo = memcache.pushTransaction(transaction)
 
       putRequests.push({
         PutRequest: {
-          Item: operationWithSequenceNo
+          Item: transactionWithSequenceNo
         }
       })
     }
@@ -318,18 +318,18 @@ exports.batchUpdate = async function (req, res) {
       // S3 and store the S3 URL in DynamoDB.
       const buffer = req.read(byteLength)
 
-      const operation = {
+      const transaction = {
         'user-id': userId,
         'item-id': itemId,
         command: 'Update',
         record: buffer,
       }
 
-      const operationWithSequenceNo = memcache.pushOperation(operation)
+      const transactionWithSequenceNo = memcache.pushTransaction(transaction)
 
       putRequests.push({
         PutRequest: {
-          Item: operationWithSequenceNo
+          Item: transactionWithSequenceNo
         }
       })
     }
@@ -358,17 +358,17 @@ exports.batchDelete = async function (req, res) {
   try {
     const putRequests = []
     for (let i = 0; i < itemIds.length; i++) {
-      const operation = {
+      const transaction = {
         'user-id': userId,
         'item-id': itemIds[i],
         command: 'Delete',
       }
 
-      const operationWithSequenceNo = memcache.pushOperation(operation)
+      const transactionWithSequenceNo = memcache.pushTransaction(transaction)
 
       putRequests.push({
         PutRequest: {
-          Item: operationWithSequenceNo
+          Item: transactionWithSequenceNo
         }
       })
     }
@@ -381,7 +381,7 @@ exports.batchDelete = async function (req, res) {
   }
 }
 
-exports.bundleDbOperationLog = async function (req, res) {
+exports.bundleTransactionLog = async function (req, res) {
   const userId = res.locals.userId
   const bundleSeqNo = req.query.bundleSeqNo
 

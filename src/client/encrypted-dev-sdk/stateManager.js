@@ -117,13 +117,8 @@ EncryptedDevSdk.prototype.clearState = function () { state = new EncryptedDevSdk
         }
       ]
 
-    Note for future optimization consideration: the server does not
-    need to respond with the user's entire operation log. It only
-    needs to send deleted items, the latest update of items,
-    and all inserts.
-
   */
-EncryptedDevSdk.prototype.applyOperationsToDbState = async (key, dbState, dbOperationLog) => {
+EncryptedDevSdk.prototype.applyTransactionsToDbState = async (key, dbState, transactionLog) => {
   const {
     itemsInOrderOfInsertion,
     itemIdsToOrderOfInsertion
@@ -136,48 +131,48 @@ EncryptedDevSdk.prototype.applyOperationsToDbState = async (key, dbState, dbOper
 
   let maxSequenceNo = dbState.maxSequenceNo
 
-  for (let i = 0; i < dbOperationLog.length; i++) {
+  for (let i = 0; i < transactionLog.length; i++) {
     // iterate forwards picking up the items in the order they were first inserted
-    const currentOperation = dbOperationLog[i]
-    if (!maxSequenceNo || currentOperation['sequence-no'] > maxSequenceNo) maxSequenceNo = currentOperation['sequence-no']
-    if (currentOperation.command === 'Insert') {
-      const currentOperationItemId = currentOperation['item-id']
-      const item = mostRecentStateOfItems[currentOperationItemId] || null
-      itemIdsToOrderOfInsertion[currentOperationItemId] = itemsInOrderOfInsertion.push(item) - 1
+    const currentTransaction = transactionLog[i]
+    if (!maxSequenceNo || currentTransaction['sequence-no'] > maxSequenceNo) maxSequenceNo = currentTransaction['sequence-no']
+    if (currentTransaction.command === 'Insert') {
+      const currentItemId = currentTransaction['item-id']
+      const item = mostRecentStateOfItems[currentItemId] || null
+      itemIdsToOrderOfInsertion[currentItemId] = itemsInOrderOfInsertion.push(item) - 1
     }
 
     // iterate backwards picking up the most recent state of the item
-    const mostRecentOperation = dbOperationLog[dbOperationLog.length - 1 - i]
-    const mostRecentOperationItemId = mostRecentOperation['item-id']
+    const mostRecentTransaction = transactionLog[transactionLog.length - 1 - i]
+    const mostRecentItemId = mostRecentTransaction['item-id']
 
-    const insertionIndex = itemIdsToOrderOfInsertion[mostRecentOperationItemId]
-    const mostRecentVersionOfItem = itemsInOrderOfInsertion[insertionIndex] || mostRecentStateOfItems[mostRecentOperationItemId]
-    const thisIsADeleteOperation = mostRecentOperation.command === 'Delete'
+    const insertionIndex = itemIdsToOrderOfInsertion[mostRecentItemId]
+    const mostRecentVersionOfItem = itemsInOrderOfInsertion[insertionIndex] || mostRecentStateOfItems[mostRecentItemId]
+    const thisIsADeleteTransaction = mostRecentTransaction.command === 'Delete'
     const itemAlreadyMarkedForDeletion = mostRecentVersionOfItem && mostRecentVersionOfItem.command === 'Delete'
 
-    if (!mostRecentVersionOfItem || mostRecentOperation['sequence-no'] > mostRecentVersionOfItem['sequence-no']) {
+    if (!mostRecentVersionOfItem || mostRecentTransaction['sequence-no'] > mostRecentVersionOfItem['sequence-no']) {
       if (!insertionIndex && insertionIndex !== 0) {
         // possible we don't know when the item was first inserted yet because have not encountered
         // its insertion while iterating forward yet. Putting its most recent state in this object
         // so it will be picked up when iterating forward
-        mostRecentStateOfItems[mostRecentOperationItemId] = mostRecentOperation
+        mostRecentStateOfItems[mostRecentItemId] = mostRecentTransaction
       } else {
-        itemsInOrderOfInsertion[insertionIndex] = mostRecentOperation
+        itemsInOrderOfInsertion[insertionIndex] = mostRecentTransaction
       }
 
-      const itemRecord = mostRecentOperation.record
+      const itemRecord = mostRecentTransaction.record
       if (itemRecord) {
         const encryptedRecord = itemRecord.data
-        const encryptedRecordIndex = itemsWithEncryptedRecords.push(mostRecentOperationItemId) - 1
+        const encryptedRecordIndex = itemsWithEncryptedRecords.push(mostRecentItemId) - 1
         decryptedRecordsPromises.push(crypto.aesGcm.decrypt(key, new Uint8Array(encryptedRecord)))
 
         if (!insertionIndex && insertionIndex !== 0) {
-          mostRecentStateOfItems[mostRecentOperationItemId].record = encryptedRecordIndex
+          mostRecentStateOfItems[mostRecentItemId].record = encryptedRecordIndex
         } else {
           itemsInOrderOfInsertion[insertionIndex].record = encryptedRecordIndex
         }
       }
-    } else if (mostRecentVersionOfItem && thisIsADeleteOperation && !itemAlreadyMarkedForDeletion) {
+    } else if (mostRecentVersionOfItem && thisIsADeleteTransaction && !itemAlreadyMarkedForDeletion) {
       // this is needed because an item can be deleted at sequence no 5, but then updated at
       // sequence no 6. The client must honor the deletion
       const itemWithEncryptedRecordIndex = mostRecentVersionOfItem.record
@@ -185,9 +180,9 @@ EncryptedDevSdk.prototype.applyOperationsToDbState = async (key, dbState, dbOper
       decryptedRecordsPromises.splice(itemWithEncryptedRecordIndex, 1)
 
       if (!insertionIndex && insertionIndex !== 0) {
-        mostRecentStateOfItems[mostRecentOperationItemId] = mostRecentOperation
+        mostRecentStateOfItems[mostRecentItemId] = mostRecentTransaction
       } else {
-        itemsInOrderOfInsertion[insertionIndex] = mostRecentOperation
+        itemsInOrderOfInsertion[insertionIndex] = mostRecentTransaction
       }
     }
   }

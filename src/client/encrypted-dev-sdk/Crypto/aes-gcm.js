@@ -25,6 +25,12 @@ const RECOMMENDED_IV_BYTE_SIZE = 96 / 8
  */
 const RECOMMENDED_AUTHENTICATION_TAG_LENGTH = 128
 
+const windowOrSelfObject = () => {
+  return typeof window !== 'undefined'
+    ? window
+    : self
+}
+
 const generateKey = () => window.crypto.subtle.generateKey(
   {
     name: ALGORITHIM_NAME,
@@ -47,7 +53,7 @@ const getKeyFromLocalStorage = () => {
 
 const importKey = (keyString) => {
   const jsonKey = JSON.parse(keyString)
-  return (typeof window !== 'undefined' ? window : self).crypto.subtle.importKey(
+  return windowOrSelfObject().crypto.subtle.importKey(
     EXTRACTED_KEY_TYPE,
     jsonKey,
     {
@@ -74,8 +80,7 @@ const encrypt = async (key, plaintext) => {
   const plaintextString = JSON.stringify(plaintext)
   const plaintextArrayBuffer = stringToArrayBuffer(plaintextString)
 
-  const iv = (typeof window !== 'undefined' ? window : self)
-    .crypto.getRandomValues(new Uint8Array(RECOMMENDED_IV_BYTE_SIZE))
+  const iv = windowOrSelfObject().crypto.getRandomValues(new Uint8Array(RECOMMENDED_IV_BYTE_SIZE))
 
   const ciphertextArrayBuffer = await (typeof window !== 'undefined' ? window : self)
     .crypto.subtle.encrypt(
@@ -102,16 +107,15 @@ const decrypt = async (key, encrypted) => {
   const ciphertextArrayBuffer = encrypted.slice(0, ivStartIndex)
   const iv = encrypted.slice(ivStartIndex)
 
-  const plaintextArrayBuffer = await (typeof window !== 'undefined' ? window : self)
-    .crypto.subtle.decrypt(
-      {
-        name: ALGORITHIM_NAME,
-        iv,
-        tagLength: RECOMMENDED_AUTHENTICATION_TAG_LENGTH
-      },
-      key,
-      ciphertextArrayBuffer
-    )
+  const plaintextArrayBuffer = await windowOrSelfObject().crypto.subtle.decrypt(
+    {
+      name: ALGORITHIM_NAME,
+      iv,
+      tagLength: RECOMMENDED_AUTHENTICATION_TAG_LENGTH
+    },
+    key,
+    ciphertextArrayBuffer
+  )
 
   const plaintextString = arrayBufferToString(plaintextArrayBuffer)
   return JSON.parse(plaintextString)

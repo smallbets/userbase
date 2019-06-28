@@ -1,12 +1,12 @@
 const ONE_KB = 1024
-const ONE_HUNDRED_KB = 100 * ONE_KB
+const TEN_KB = 10 * ONE_KB
 
 // https://stackoverflow.com/a/20604561/11601853
 export const arrayBufferToString = (buf) => {
   const bufView = new Uint16Array(buf)
   const length = bufView.length
   let result = ''
-  let chunkSize = ONE_HUNDRED_KB // using chunks prevents stack from blowing up
+  let chunkSize = TEN_KB // using chunks prevents stack from blowing up
 
   for (var i = 0; i < length; i += chunkSize) {
     if (i + chunkSize > length) {
