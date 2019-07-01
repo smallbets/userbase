@@ -15,9 +15,6 @@ Parameters:
     Type: String
     NoEcho: true
     Description: 'Use a personal access token from https://github.com/settings/tokens with "repo" and "admin:repo_hook" permissions.'
-  EC2KeyPair:
-    Type: AWS::EC2::KeyPair::KeyName
-    Description: '[Optional] An existing EC2 keypair to be able to ssh to your staging host.'
   EC2InstanceType:
     Type: String
     Default: t3.micro
@@ -28,9 +25,12 @@ Parameters:
     Description: 'The EC2 AMI. Only tested on Amazon Linux 2.'
   Domain:
     Type: String
-    Description: '[Optional] Your root domain name (Example: example.com). HTTPS will only be enabled if a domain is specified. Only provide this if your DNS is managed by Route 53.'
+    Default: ''
+    Description: 'Your root domain name (Example: example.com). HTTPS will only be enabled if a domain is specified. Only provide this if your DNS is already managed by Route 53.'
   Certificate:
     Type: String
+    Default: ''
+    Description: 'An existing ACM certificate ARN for staging.<YOUR DOMAIN>.'
 
 Metadata:
   AWS::CloudFormation::Interface:
@@ -47,11 +47,11 @@ Metadata:
         Parameters:
           - EC2InstanceType
           - EC2AMI
-          - EC2KeyPair
       - Label:
-          default: HTTPS Configuration
+          default: HTTPS Configuration (Optional)
         Parameters:
           - Domain
+          - Certificate
     ParameterLabels:
       GitHubOwner:
         default: GitHub Username
@@ -65,17 +65,21 @@ Metadata:
         default: EC2 Instance Type
       EC2AMI:
         default: EC2 AMI
-      EC2KeyPair:
-        default: EC2 Key Pair
       Domain:
         default: Domain Name
+      Certificate:
+        default: ACM Certificate ARN
 
 Outputs:
   StagingURL:
-    Value: !Sub 'https://staging.${Domain}/'
+    Value: !If
+      - HasDomain
+      - !Sub https://staging.${Domain}/
+      - !Sub
+        - http://${LoadBalancerDNS}/
+        - { LoadBalancerDNS: !GetAtt StagingLoadBalancer.DNSName }
 
 Conditions:
-  HasEC2KeyPair: !Not [!Equals [!Ref EC2KeyPair, '']]
   HasDomain: !Not [!Equals [!Ref Domain, '']]
 
 Resources:
@@ -172,7 +176,9 @@ Resources:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
     Properties:
-      BucketName: !Sub 'codepipeline-${AWS::AccountId}-${AWS::Region}'
+      BucketName: !Sub
+        - 'codepipeline-${id}'
+        - { id: !Select [2, !Split [/, !Ref 'AWS::StackId']] }
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
@@ -220,41 +226,53 @@ Resources:
       ResourceSignal:
         Timeout: PT5M
     Properties:
+      SubnetId: !Ref Subnet
       IamInstanceProfile: !Ref InstanceProfile
       ImageId: !Ref EC2AMI
       InstanceType: !Ref EC2InstanceType
-      KeyName: !If [HasEC2KeyPair, !Ref EC2KeyPair, !Ref 'AWS::NoValue']
-      SubnetId: !Ref PublicSubnet
       SecurityGroupIds:
         - !GetAtt SecurityGroup.GroupId
       Tags:
         - Key: !Ref AWS::StackName
           Value: staging
       UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash
+        Fn::Base64:
+          !Join
+            - ''
+            - - !Sub |
+                  #!/bin/bash
 
-          # Get Node.js 12
-          curl --silent --location https://rpm.nodesource.com/setup_12.x | bash -
+                  # Get Node.js 12
+                  curl --silent --location https://rpm.nodesource.com/setup_12.x | bash -
 
-          # Update all packages
-          yum -y update
+                  # Update all packages
+                  yum -y update
 
-          # Install dependencies
-          yum install -y ruby nodejs
+                  # Install dependencies
+                  yum install -y ruby nodejs
 
-          # Install CodeDeploy agent
-          cd /tmp
-          curl -O https://aws-codedeploy-${AWS::Region}.s3.amazonaws.com/latest/install
-          chmod +x ./install
-          ./install auto
+                  # Install CodeDeploy agent
+                  cd /tmp
+                  curl -O https://aws-codedeploy-${AWS::Region}.s3.amazonaws.com/latest/install
+                  chmod +x ./install
+                  ./install auto
 
-          # Signal to CloudFormation that the instance is ready
-          /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --region ${AWS::Region} --resource StagingInstance
-          /opt/aws/bin/cfn-signal -e 0 --stack ${AWS::StackName} --region ${AWS::Region} --resource StagingInstance
+              - !If
+                - HasDomain
+                - !Sub |
+                  # Create a self-signed TLS certificate to communicate with the load balancer
+                  mkdir -p /home/ec2-user/keys
+                  cd /home/ec2-user/keys
+                  openssl req -new -newkey rsa:4096 -days 365 -nodes -x509 -subj "/C=/ST=/L=/O=/CN=localhost" -keyout key.pem -out cert.pem
+                  chown -R ec2-user:ec2-user /home/ec2-user/keys
+                - ''
+              - !Sub |
+                  # Signal to CloudFormation that the instance is ready
+                  /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --region ${AWS::Region} --resource StagingInstance
+                  /opt/aws/bin/cfn-signal -e 0 --stack ${AWS::StackName} --region ${AWS::Region} --resource StagingInstance
 
-          # Deploy to outdated instances
-          aws deploy create-deployment --application-name ${AWS::StackName} --deployment-group staging --update-outdated-instances-only --region ${AWS::Region}
+                  # Deploy to outdated instances
+                  aws deploy create-deployment --application-name ${AWS::StackName} --deployment-group staging --update-outdated-instances-only --region ${AWS::Region}
 
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -263,8 +281,8 @@ Resources:
       VpcId: !Ref VPC
       SecurityGroupIngress:
       - IpProtocol: tcp
-        FromPort: 8080
-        ToPort: 8080
+        FromPort: !If [HasDomain, 8443, 8080]
+        ToPort: !If [HasDomain, 8443, 8080]
         CidrIp: !GetAtt VPC.CidrBlock
       - IpProtocol: tcp
         FromPort: 22
@@ -300,36 +318,37 @@ Resources:
       Name: !Sub 'staging.${Domain}.'
       Type: A
       AliasTarget:
-        HostedZoneId: !GetAtt StagingNLB.CanonicalHostedZoneID
-        DNSName: !GetAtt StagingNLB.DNSName
+        HostedZoneId: !GetAtt StagingLoadBalancer.CanonicalHostedZoneID
+        DNSName: !GetAtt StagingLoadBalancer.DNSName
 
-  StagingNLB:
+  StagingLoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
       Type: network
       Subnets:
-        - !Ref PublicSubnet
+        - !Ref Subnet
 
-  StagingNLBListener:
+  StagingLoadBalancerListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
       DefaultActions:
         - Type: forward
-          TargetGroupArn: !Ref StagingNLBTargetGroup
-      LoadBalancerArn: !Ref StagingNLB
+          TargetGroupArn: !Ref StagingLoadBalancerTargetGroup
+      LoadBalancerArn: !Ref StagingLoadBalancer
       Certificates:
-        - CertificateArn: !Ref Certificate
-      Port: 443
-      Protocol: TLS
+        - CertificateArn: !If [HasDomain, !Ref Certificate, !Ref 'AWS::NoValue']
+      Port: !If [HasDomain, 443, 80]
+      Protocol: !If [HasDomain, TLS, TCP]
 
-  StagingNLBTargetGroup:
+  StagingLoadBalancerTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       TargetType: ip
-      HealthCheckProtocol: TCP
-      Port: 8080
-      Protocol: TCP
+      Port: !If [HasDomain, 8443, 8080]
+      Protocol: !If [HasDomain, TLS, TCP]
       VpcId: !Ref VPC
+      HealthCheckEnabled: true
+      HealthCheckProtocol: !If [HasDomain, HTTPS, HTTP]
       Targets:
         - Id: !GetAtt StagingInstance.PrivateIp
 
@@ -376,9 +395,9 @@ Resources:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       RouteTableId: !Ref RouteTable
-      SubnetId: !Ref PublicSubnet
+      SubnetId: !Ref Subnet
 
-  PublicSubnet:
+  Subnet:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref VPC
