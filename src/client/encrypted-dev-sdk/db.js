@@ -6,7 +6,14 @@ import stateManager from './stateManager'
 import { appendBuffers } from './Crypto/utils'
 import { getSecondsSinceT0 } from './utils'
 
-const initalizeWebWorker = () => {
+/**
+
+    Webworker runs to determine if user's transaction log size
+    is above the limit and bundles it to S3 if so. This is
+    called after every write to the server.
+
+ */
+const initializeBundlingProcess = () => {
   const worker = new Worker()
   worker.postMessage(localStorage.getItem('key')) // can't read localStorage from worker
 }
@@ -67,7 +74,7 @@ const insert = async (item) => {
 
   stateManager.insertItem(itemToReturn)
 
-  initalizeWebWorker()
+  initializeBundlingProcess()
 
   return itemToReturn
 }
@@ -103,7 +110,7 @@ const batchInsert = async (items) => {
 
   stateManager.insertItems(itemsToReturn)
 
-  initalizeWebWorker()
+  initializeBundlingProcess()
 
   return itemsToReturn
 }
@@ -132,7 +139,7 @@ const update = async (oldItem, newItem) => {
 
   stateManager.updateItem(itemToReturn)
 
-  initalizeWebWorker()
+  initializeBundlingProcess()
 
   return itemToReturn
 }
@@ -173,7 +180,7 @@ const batchUpdate = async (oldItems, newItems) => {
     return itemToReturn
   })
 
-  initalizeWebWorker()
+  initializeBundlingProcess()
 
   return itemsToReturn
 }
@@ -198,7 +205,7 @@ const deleteFunction = async (item) => {
 
   stateManager.updateItem(itemToReturn)
 
-  initalizeWebWorker()
+  initializeBundlingProcess()
 
   return itemToReturn
 }
@@ -227,7 +234,7 @@ const batchDelete = async (items) => {
     return itemToReturn
   })
 
-  initalizeWebWorker()
+  initializeBundlingProcess()
 
   return itemsToReturn
 }

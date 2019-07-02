@@ -18,7 +18,7 @@ self.onmessage = async (e) => {
   const oldBundleSeqNo = Number(transactionLogResponse.headers['bundle-seq-no'])
 
   if (sizeOfDdbItems(transactionLog) > NINETY_PERCENT_OF_ONE_MB) {
-    console.log('Flushing transaction log!')
+    console.log('Bundling transaction log!')
 
     let dbState
     if (oldBundleSeqNo) {
@@ -43,7 +43,7 @@ self.onmessage = async (e) => {
 
     dbState = await stateManager.applyTransactionsToDbState(key, dbState, transactionLog)
 
-    const bundleSeqNo = dbState.maxSequenceNo
+    const newBundleSeqNo = dbState.maxSequenceNo
 
     const encryptedDbState = await crypto.aesGcm.encrypt(key, dbState)
 
@@ -51,7 +51,7 @@ self.onmessage = async (e) => {
       method: 'POST',
       url: '/api/db/bundle-tx-log',
       params: {
-        bundleSeqNo
+        bundleSeqNo: newBundleSeqNo
       },
       data: encryptedDbState
     })

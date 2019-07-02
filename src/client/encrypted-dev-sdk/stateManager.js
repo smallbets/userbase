@@ -1,12 +1,12 @@
 import crypto from './Crypto'
 
 function EncryptedDevSdk() {
-  this.items = []
+  this.itemsInOrderOfInsertion = []
   this.itemIdsToIndexes = {}
 }
 
-EncryptedDevSdk.prototype.setItems = function (items, itemIdsToIndexes) {
-  this.items = items
+EncryptedDevSdk.prototype.setItems = function (itemsInOrderOfInsertion, itemIdsToIndexes) {
+  this.itemsInOrderOfInsertion = itemsInOrderOfInsertion
   this.itemIdsToIndexes = itemIdsToIndexes
 }
 
@@ -35,9 +35,9 @@ EncryptedDevSdk.prototype.setItems = function (items, itemIdsToIndexes) {
 
 */
 EncryptedDevSdk.prototype.insertItem = function (item) {
-  let i = this.items.length - 1
+  let i = this.itemsInOrderOfInsertion.length - 1
   while (i >= 0 && item['sequence-no'] < i) {
-    const itemThatWillBeMoved = this.items[i]
+    const itemThatWillBeMoved = this.itemsInOrderOfInsertion[i]
     const itemIdThatWillBeMoved = itemThatWillBeMoved['item-id']
     this.itemIdsToIndexes[itemIdThatWillBeMoved] = this.itemIdsToIndexes[itemIdThatWillBeMoved] + 1
     i--
@@ -45,14 +45,14 @@ EncryptedDevSdk.prototype.insertItem = function (item) {
 
   const indexToInsertItem = i + 1
   const deleteCount = 0
-  this.items.splice(indexToInsertItem, deleteCount, item)
+  this.itemsInOrderOfInsertion.splice(indexToInsertItem, deleteCount, item)
   this.itemIdsToIndexes[item['item-id']] = indexToInsertItem
 }
 
 EncryptedDevSdk.prototype.insertItems = function (newItems) {
-  let i = this.items.length - 1
+  let i = this.itemsInOrderOfInsertion.length - 1
   while (i >= 0 && newItems[0]['sequence-no'] < i) {
-    const itemThatWillBeMoved = this.items[i]
+    const itemThatWillBeMoved = this.itemsInOrderOfInsertion[i]
     const itemIdThatWillBeMoved = itemThatWillBeMoved['item-id']
     this.itemIdsToIndexes[itemIdThatWillBeMoved] = this.itemIdsToIndexes[itemIdThatWillBeMoved] + newItems.length
     i--
@@ -60,7 +60,7 @@ EncryptedDevSdk.prototype.insertItems = function (newItems) {
 
   const indexToInsertItems = i + 1
   const deleteCount = 0
-  this.items.splice(indexToInsertItems, deleteCount, ...newItems)
+  this.itemsInOrderOfInsertion.splice(indexToInsertItems, deleteCount, ...newItems)
   for (let i = 0; i < newItems.length; i++) {
     this.itemIdsToIndexes[newItems[i]['item-id']] = indexToInsertItems + i
   }
@@ -68,13 +68,13 @@ EncryptedDevSdk.prototype.insertItems = function (newItems) {
 
 EncryptedDevSdk.prototype.updateItem = function (item) {
   const index = this.itemIdsToIndexes[item['item-id']]
-  const currentItem = this.items[index]
+  const currentItem = this.itemsInOrderOfInsertion[index]
   if (item['sequence-no'] > currentItem['sequence-no'] && currentItem.command !== 'Delete') {
-    this.items[index] = item
+    this.itemsInOrderOfInsertion[index] = item
   }
 }
 
-EncryptedDevSdk.prototype.getItems = function () { return this.items }
+EncryptedDevSdk.prototype.getItems = function () { return this.itemsInOrderOfInsertion }
 EncryptedDevSdk.prototype.getItemIdsToIndexes = function () { return this.itemIdsToIndexes }
 
 EncryptedDevSdk.prototype.clearState = function () { state = new EncryptedDevSdk() }

@@ -17,6 +17,58 @@ const SIXTEEN_MB = 16 * ONE_MB
 
 const MAX_REQUESTS_IN_DDB_BATCH = 25
 
+const rollbackTransaction = async function (transaction) {
+  const rollbackTransactionParams = {
+    TableName: setup.databaseTableName,
+    Item: {
+      'user-id': transaction['user-id'],
+      'sequence-no': transaction['sequence-no'],
+      'item-id': transaction['item-id'],
+      command: 'rollback'
+    },
+    // if this user id + seq no does not exist, insert
+    // if it already exists and command is rollback, overwrite
+    // if it already exists and command isn't rollback, fail with ConditionalCheckFailedException
+    ConditionExpression: 'attribute_not_exists(#userId) or command = :command',
+    ExpressionAttributeNames: {
+      '#userId': 'user-id',
+    },
+    ExpressionAttributeValues: {
+      ':command': 'rollback',
+    }
+  }
+
+  try {
+    const ddbClient = connection.ddbClient()
+    await ddbClient.put(rollbackTransactionParams).promise()
+
+    memcache.transactionRolledBack(transaction)
+
+    return true
+  } catch (e) {
+    if (e.name === 'ConditionalCheckFailedException') {
+      // This is good -- must have been persisted to disk because it exists and was not rolled back
+      memcache.transactionPersistedToDisk(transaction)
+      console.log('Failed to rollback -- transaction already persisted to disk')
+    } else {
+      console.warn(`Failed to rollback with ${e}`)
+    }
+
+    return false
+  }
+}
+
+exports.rollbackTransaction = rollbackTransaction
+
+const rollbackBatch = async function (putRequests) {
+  const rollbackPromises = putRequests.map(pr => {
+    const transactionWithSequenceNo = pr.PutRequest.Item
+    return rollbackTransaction(transactionWithSequenceNo)
+  })
+
+  await Promise.all(rollbackPromises)
+}
+
 const putBatch = async function (res, putRequests) {
   const params = {
     RequestItems: {
@@ -24,8 +76,19 @@ const putBatch = async function (res, putRequests) {
     }
   }
 
-  const ddbClient = connection.ddbClient()
-  await ddbClient.batchWrite(params).promise()
+  let batchResponse
+  try {
+    const ddbClient = connection.ddbClient()
+    batchResponse = await ddbClient.batchWrite(params).promise()
+
+  } catch (e) {
+    console.log(`Batch transaction failed with ${e}! Rolling back...`)
+
+    if (batchResponse) await rollbackBatch(batchResponse.data.UnprocessedItems)
+    else await rollbackBatch(putRequests)
+
+    throw new Error(`Failed with ${e}. Transaction rolled back.`)
+  }
 
   const result = putRequests.map(pr => {
     const transactionWithSequenceNo = pr.PutRequest.Item
@@ -52,10 +115,18 @@ const putTransaction = async function (res, transaction) {
     },
   }
 
-  const ddbClient = connection.ddbClient()
-  await ddbClient.put(params).promise()
+  try {
+    const ddbClient = connection.ddbClient()
+    await ddbClient.put(params).promise()
 
-  memcache.transactionPersistedToDisk(transactionWithSequenceNo)
+    memcache.transactionPersistedToDisk(transactionWithSequenceNo)
+  } catch (e) {
+
+    console.log(`Transaction failed with ${e}! Rolling back...`)
+    await rollbackTransaction(transactionWithSequenceNo)
+
+    throw new Error(`Failed with ${e}. Transaction rolled back.`)
+  }
 
   return res.send({
     'item-id': transaction['item-id'],
@@ -91,7 +162,7 @@ exports.insert = async function (req, res) {
       record: buffer
     }
 
-    return putTransaction(res, transaction)
+    await putTransaction(res, transaction)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -116,7 +187,7 @@ exports.delete = async function (req, res) {
       command
     }
 
-    return putTransaction(res, transaction)
+    await putTransaction(res, transaction)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -152,7 +223,7 @@ exports.update = async function (req, res) {
       record: buffer,
     }
 
-    return putTransaction(res, transaction)
+    await putTransaction(res, transaction)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -273,7 +344,7 @@ exports.batchInsert = async function (req, res) {
       })
     }
 
-    return putBatch(res, putRequests)
+    await putBatch(res, putRequests)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -334,7 +405,7 @@ exports.batchUpdate = async function (req, res) {
       })
     }
 
-    return putBatch(res, putRequests)
+    await putBatch(res, putRequests)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -373,7 +444,7 @@ exports.batchDelete = async function (req, res) {
       })
     }
 
-    return putBatch(res, putRequests)
+    await putBatch(res, putRequests)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -427,7 +498,7 @@ exports.bundleTransactionLog = async function (req, res) {
 
     memcache.setBundleSeqNo(userId, bundleSeqNo)
 
-    res.send('Success!')
+    return res.send('Success!')
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
