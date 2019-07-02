@@ -151,7 +151,7 @@ const batchUpdate = async (oldItems, newItems) => {
 
   const { buffer, byteLengths } = appendBuffers(encryptedItems)
 
-  const updatedRecordsMetadata = oldItems.map((item, index) => ({
+  const updatedItemsMetadata = oldItems.map((item, index) => ({
     itemId: item['item-id'],
     byteLength: byteLengths[index]
   }))
@@ -160,7 +160,7 @@ const batchUpdate = async (oldItems, newItems) => {
     method: 'POST',
     url: '/api/db/batch-update',
     params: {
-      updatedRecordsMetadata
+      updatedItemsMetadata
     },
     data: buffer
   })

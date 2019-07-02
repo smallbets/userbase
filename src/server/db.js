@@ -12,10 +12,7 @@ const ONE_MB = ONE_KB * 1024
 // DynamoDB single item limit: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html#limits-items
 const FOUR_HUNDRED_KB = 400 * ONE_KB
 
-// DynamoDB batch write limit: https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_BatchWriteItem.html
-const SIXTEEN_MB = 16 * ONE_MB
-
-const MAX_REQUESTS_IN_DDB_BATCH = 25
+const BATCH_SIZE_LIMIT = 10 * ONE_MB
 
 const rollbackTransaction = async function (transaction) {
   const rollbackTransactionParams = {
@@ -43,8 +40,6 @@ const rollbackTransaction = async function (transaction) {
     await ddbClient.put(rollbackTransactionParams).promise()
 
     memcache.transactionRolledBack(transaction)
-
-    return true
   } catch (e) {
     if (e.name === 'ConditionalCheckFailedException') {
       // This is good -- must have been persisted to disk because it exists and was not rolled back
@@ -53,57 +48,12 @@ const rollbackTransaction = async function (transaction) {
     } else {
       console.warn(`Failed to rollback with ${e}`)
     }
-
-    return false
   }
 }
 
 exports.rollbackTransaction = rollbackTransaction
 
-const rollbackBatch = async function (putRequests) {
-  const rollbackPromises = putRequests.map(pr => {
-    const transactionWithSequenceNo = pr.PutRequest.Item
-    return rollbackTransaction(transactionWithSequenceNo)
-  })
-
-  await Promise.all(rollbackPromises)
-}
-
-const putBatch = async function (res, putRequests) {
-  const params = {
-    RequestItems: {
-      [setup.databaseTableName]: putRequests
-    }
-  }
-
-  let batchResponse
-  try {
-    const ddbClient = connection.ddbClient()
-    batchResponse = await ddbClient.batchWrite(params).promise()
-
-  } catch (e) {
-    console.log(`Batch transaction failed with ${e}! Rolling back...`)
-
-    if (batchResponse) await rollbackBatch(batchResponse.data.UnprocessedItems)
-    else await rollbackBatch(putRequests)
-
-    throw new Error(`Failed with ${e}. Transaction rolled back.`)
-  }
-
-  const result = putRequests.map(pr => {
-    const transactionWithSequenceNo = pr.PutRequest.Item
-    memcache.transactionPersistedToDisk(transactionWithSequenceNo)
-    return {
-      'item-id': transactionWithSequenceNo['item-id'],
-      'sequence-no': transactionWithSequenceNo['sequence-no'],
-      command: transactionWithSequenceNo.command
-    }
-  })
-
-  return res.send(result)
-}
-
-const putTransaction = async function (res, transaction) {
+const putTransaction = async function (transaction) {
   const transactionWithSequenceNo = memcache.pushTransaction(transaction)
 
   const params = {
@@ -128,20 +78,20 @@ const putTransaction = async function (res, transaction) {
     throw new Error(`Failed with ${e}. Transaction rolled back.`)
   }
 
-  return res.send({
+  return {
     'item-id': transaction['item-id'],
     'sequence-no': transactionWithSequenceNo['sequence-no'],
     command: transaction.command
-  })
+  }
 }
 
 exports.insert = async function (req, res) {
+  const userId = res.locals.userId
+  const itemId = req.query.itemId
+
   if (req.readableLength > FOUR_HUNDRED_KB) return res
     .status(statusCodes['Bad Request'])
     .send({ readableMessage: 'Encrypted blob is too large' })
-
-  const userId = res.locals.userId
-  const itemId = req.query.itemId
 
   if (!itemId) return res
     .status(statusCodes['Bad Request'])
@@ -162,7 +112,8 @@ exports.insert = async function (req, res) {
       record: buffer
     }
 
-    await putTransaction(res, transaction)
+    const result = await putTransaction(transaction)
+    return res.send(result)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -187,7 +138,8 @@ exports.delete = async function (req, res) {
       command
     }
 
-    await putTransaction(res, transaction)
+    const result = await putTransaction(res, transaction)
+    return result
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -199,13 +151,13 @@ exports.update = async function (req, res) {
   const userId = res.locals.userId
   const itemId = req.query.itemId
 
-  if (!itemId) return res
-    .status(statusCodes['Bad Request'])
-    .send({ readableMessage: 'Missing item id' })
-
   if (req.readableLength > FOUR_HUNDRED_KB) return res
     .status(statusCodes['Bad Request'])
     .send({ readableMessage: 'Encrypted blob is too large' })
+
+  if (!itemId) return res
+    .status(statusCodes['Bad Request'])
+    .send({ readableMessage: 'Missing item id' })
 
   try {
 
@@ -223,7 +175,8 @@ exports.update = async function (req, res) {
       record: buffer,
     }
 
-    await putTransaction(res, transaction)
+    const result = await putTransaction(transaction)
+    return res.send(result)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -260,7 +213,10 @@ exports.queryDbState = async function (req, res) {
     .send({ readableMessage: 'Must include bundle sequence no' })
 
   try {
-    const params = { Bucket: setup.dbStatesBucketName, Key: getS3DbStateKey(userId, bundleSeqNo) }
+    const params = {
+      Bucket: setup.dbStatesBucketName,
+      Key: getS3DbStateKey(userId, bundleSeqNo)
+    }
     const s3 = setup.s3()
 
     s3.getObject(params)
@@ -292,25 +248,20 @@ exports.queryDbState = async function (req, res) {
 }
 
 exports.batchInsert = async function (req, res) {
-  if (req.readableLength > SIXTEEN_MB) return res
-    .status(statusCodes['Bad Request'])
-    .send({ readableMessage: 'Batch of encrypted records cannot be larger than 16 MB' })
-
   const userId = res.locals.userId
   const itemsMetadata = req.query.itemsMetadata
+
+  if (req.readableLength > BATCH_SIZE_LIMIT) return res
+    .status(statusCodes['Bad Request'])
+    .send({ readableMessage: `Batch of encrypted records cannot be larger than ${BATCH_SIZE_LIMIT} MB` })
 
   if (!itemsMetadata || itemsMetadata.length === 0) return res
     .status(statusCodes['Bad Request'])
     .send({ readableMessage: 'Missing items metadata' })
 
-  if (itemsMetadata.length > MAX_REQUESTS_IN_DDB_BATCH) return res
-    .status(statusCodes['Bad Request'])
-    .send({ readableMessage: `Cannot exceed ${MAX_REQUESTS_IN_DDB_BATCH} requests` })
-
   try {
-    const putRequests = []
-    for (let i = 0; i < itemsMetadata.length; i++) {
-      const itemMetadata = JSON.parse(itemsMetadata[i])
+    const insertPromises = itemsMetadata.map((itemMetadataStr, i) => {
+      const itemMetadata = JSON.parse(itemMetadataStr)
 
       const byteLength = itemMetadata.byteLength
       const itemId = itemMetadata.itemId
@@ -318,6 +269,10 @@ exports.batchInsert = async function (req, res) {
       if (!byteLength) return res
         .status(statusCodes['Bad Request'])
         .send({ readableMessage: `Item ${i} missing buffer byte length` })
+
+      if (byteLength > FOUR_HUNDRED_KB) return res
+        .status(statusCodes['Bad Request'])
+        .send({ readableMessage: `Item ${i} encrypted blob is too large` })
 
       if (!itemId) return res
         .status(statusCodes['Bad Request'])
@@ -335,17 +290,13 @@ exports.batchInsert = async function (req, res) {
         record: buffer
       }
 
-      const transactionWithSequenceNo = memcache.pushTransaction(transaction)
+      return putTransaction(transaction)
+    })
 
-      putRequests.push({
-        PutRequest: {
-          Item: transactionWithSequenceNo
-        }
-      })
-    }
-
-    await putBatch(res, putRequests)
+    const result = await Promise.all(insertPromises)
+    return res.send(result)
   } catch (e) {
+    console.log(e)
     return res
       .status(statusCodes['Internal Server Error'])
       .send({ err: `Failed to batch insert with ${e}` })
@@ -353,32 +304,31 @@ exports.batchInsert = async function (req, res) {
 }
 
 exports.batchUpdate = async function (req, res) {
-  if (req.readableLength > SIXTEEN_MB) return res
-    .status(statusCodes['Bad Request'])
-    .send({ readableMessage: 'Batch of encrypted records cannot be larger than 16 MB' })
+  const userId = res.locals.userId
+  const updatedItemsMetadata = req.query.updatedItemsMetadata
 
-  const updatedRecordsMetadata = req.query.updatedRecordsMetadata
-  if (!updatedRecordsMetadata || updatedRecordsMetadata.length === 0) return res
+  if (req.readableLength > BATCH_SIZE_LIMIT) return res
+    .status(statusCodes['Bad Request'])
+    .send({ readableMessage: `Batch of encrypted records cannot be larger than ${BATCH_SIZE_LIMIT} MB` })
+
+  if (!updatedItemsMetadata || updatedItemsMetadata.length === 0) return res
     .status(statusCodes['Bad Request'])
     .send({ readableMessage: 'Missing metadata for updated records' })
 
-  if (updatedRecordsMetadata.length > MAX_REQUESTS_IN_DDB_BATCH) return res
-    .status(statusCodes['Bad Request'])
-    .send({ readableMessage: `Cannot exceed ${MAX_REQUESTS_IN_DDB_BATCH} requests` })
-
-  const userId = res.locals.userId
-
   try {
-    const putRequests = []
-    for (let i = 0; i < updatedRecordsMetadata.length; i++) {
-      const updatedRecord = JSON.parse(updatedRecordsMetadata[i])
+    const updatePromises = updatedItemsMetadata.map((updatedItemsMetadataStr, i) => {
+      const updatedItemMetadata = JSON.parse(updatedItemsMetadataStr)
 
-      const byteLength = updatedRecord.byteLength
-      const itemId = updatedRecord['itemId']
+      const byteLength = updatedItemMetadata.byteLength
+      const itemId = updatedItemMetadata['itemId']
 
       if (!byteLength) return res
         .status(statusCodes['Bad Request'])
         .send({ readableMessage: `Item ${i} missing buffer byte length` })
+
+      if (byteLength > FOUR_HUNDRED_KB) return res
+        .status(statusCodes['Bad Request'])
+        .send({ readableMessage: `Item ${i} encrypted blob is too large` })
 
       if (!itemId) return res
         .status(statusCodes['Bad Request'])
@@ -396,16 +346,11 @@ exports.batchUpdate = async function (req, res) {
         record: buffer,
       }
 
-      const transactionWithSequenceNo = memcache.pushTransaction(transaction)
+      return putTransaction(transaction)
+    })
 
-      putRequests.push({
-        PutRequest: {
-          Item: transactionWithSequenceNo
-        }
-      })
-    }
-
-    await putBatch(res, putRequests)
+    const result = await Promise.all(updatePromises)
+    return res.send(result)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -415,36 +360,30 @@ exports.batchUpdate = async function (req, res) {
 
 exports.batchDelete = async function (req, res) {
   const itemIds = req.body.itemIds
+  const userId = res.locals.userId
 
   if (!itemIds || itemIds.length === 0) return res
     .status(statusCodes['Bad Request'])
     .send({ readableMessage: 'Missing item ids to delete' })
 
-  if (itemIds.length > MAX_REQUESTS_IN_DDB_BATCH) return res
+  const MAX_DELETIONS = 100
+  if (itemIds.length > MAX_DELETIONS) return res
     .status(statusCodes['Bad Request'])
-    .send({ readableMessage: `Cannot exceed ${MAX_REQUESTS_IN_DDB_BATCH} deletes` })
-
-  const userId = res.locals.userId
+    .send({ readableMessage: `Cannot exceed ${MAX_DELETIONS} deletes` })
 
   try {
-    const putRequests = []
-    for (let i = 0; i < itemIds.length; i++) {
+    const deletePromises = itemIds.map(itemId => {
       const transaction = {
         'user-id': userId,
-        'item-id': itemIds[i],
+        'item-id': itemId,
         command: 'Delete',
       }
 
-      const transactionWithSequenceNo = memcache.pushTransaction(transaction)
+      return putTransaction(transaction)
+    })
 
-      putRequests.push({
-        PutRequest: {
-          Item: transactionWithSequenceNo
-        }
-      })
-    }
-
-    await putBatch(res, putRequests)
+    const result = await Promise.all(deletePromises)
+    return res.send(result)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])

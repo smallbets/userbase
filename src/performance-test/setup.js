@@ -3,7 +3,10 @@ import encd from '../client/encrypted-dev-sdk'
 const PASSWORD = 'Test1234'
 
 const MAX_TCP_CONNECTIONS = 6 // max TCP sockets chrome allows: https://developers.google.com/web/tools/chrome-devtools/network/reference#timing-explanation
-const INSERTION_BATCH_SIZE = 25 // max size for DynamoDB
+
+const INSERTION_BATCH_SIZE = 75
+const UPDATE_BATCH_SIZE = 65
+const DELETE_BATCH_SIZE = 100
 
 const wrapInTryCatch = async (promise) => {
   try {
@@ -36,6 +39,7 @@ const init = async (username, limit) => {
 
       const promises = batchOfInsertionBatches.map(batch => wrapInTryCatch(() => encd.db.batchInsert(batch)))
       await Promise.all(promises)
+
       batchOfInsertionBatches = []
     }
   }
@@ -53,7 +57,7 @@ const init = async (username, limit) => {
     updateBatch.oldItems.push(items[i])
     updateBatch.newItems.push({ todo: items[i].record.todo, completed: true })
 
-    if (updateBatch.oldItems.length === INSERTION_BATCH_SIZE || i === ninetyNinePercentOfLimit - 1) {
+    if (updateBatch.oldItems.length === UPDATE_BATCH_SIZE || i === ninetyNinePercentOfLimit - 1) {
       batchOfUpdateBatches.push(updateBatch)
       updateBatch = {
         oldItems: [],
@@ -69,6 +73,7 @@ const init = async (username, limit) => {
 
       const promises = batchOfUpdateBatches.map(batch => wrapInTryCatch(() => encd.db.batchUpdate(batch.oldItems, batch.newItems)))
       await Promise.all(promises)
+
       batchOfUpdateBatches = []
     }
   }
@@ -82,7 +87,7 @@ const init = async (username, limit) => {
   for (let i = 0; i < fiftyPercentOfLimit; i++) {
     deleteBatch.push(items[i])
 
-    if (deleteBatch.length === INSERTION_BATCH_SIZE || i === fiftyPercentOfLimit - 1) {
+    if (deleteBatch.length === DELETE_BATCH_SIZE || i === fiftyPercentOfLimit - 1) {
       batchOfDeleteBatches.push(deleteBatch)
       deleteBatch = []
     }
@@ -95,6 +100,7 @@ const init = async (username, limit) => {
 
       const promises = batchOfDeleteBatches.map(batch => wrapInTryCatch(() => encd.db.batchDelete(batch)))
       await Promise.all(promises)
+
       batchOfDeleteBatches = []
     }
   }
@@ -104,6 +110,6 @@ const init = async (username, limit) => {
   localStorage.setItem('key', '${key}'), then sign in with password ${PASSWORD}.`)
 }
 
-// init('test-1k', 1000)
-init('test-10k' + Math.random(), 10000)
+init('test-1k' + Math.random(), 1000)
+// init('test-10k' + Math.random(), 10000)
 // init('test-100k', 100000)

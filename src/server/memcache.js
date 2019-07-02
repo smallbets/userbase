@@ -1,5 +1,8 @@
 import connection from './connection'
 import setup from './setup'
+import db from './db'
+
+const SECONDS_BEFORE_ROLLBACK_TRIGGERED = 10
 
 function MemCache() {
   this.transactionLogByUserId = {}
@@ -87,7 +90,7 @@ MemCache.prototype.pushTransaction = function (transaction) {
 
   const transactionToPush = {
     ...transaction,
-    persistingToDisk: true
+    persistingToDisk: process.hrtime(),
   }
   const sequenceNo = this.transactionLogByUserId[userId].transactionArray.push(transactionToPush) - 1
 
@@ -105,6 +108,12 @@ MemCache.prototype.transactionPersistedToDisk = function (transactionWithSequenc
   delete this.transactionLogByUserId[userId].transactionArray[sequenceNo].persistingToDisk
 }
 
+MemCache.prototype.transactionRolledBack = function (transactionWithSequenceNo) {
+  const userId = transactionWithSequenceNo['user-id']
+  const sequenceNo = transactionWithSequenceNo['sequence-no']
+  this.transactionLogByUserId[userId].transactionArray[sequenceNo] = undefined
+}
+
 MemCache.prototype.getTransactions = function (userId, startingSeqNo) {
   const transactionLog = this.transactionLogByUserId[userId].transactionArray
   const result = []
@@ -112,8 +121,16 @@ MemCache.prototype.getTransactions = function (userId, startingSeqNo) {
     const transaction = transactionLog[i]
 
     if (transaction && transaction.persistingToDisk) {
+
+      const timeSinceAttemptToPersistToDisk = process.hrtime(transaction.persistingToDisk)
+      const secondsSinceAttemptToPersistToDisk = timeSinceAttemptToPersistToDisk[0]
+
+      if (secondsSinceAttemptToPersistToDisk > SECONDS_BEFORE_ROLLBACK_TRIGGERED) {
+        db.rollbackTransaction(transaction)
+      }
+
       break
-    } else if (transaction) {
+    } else if (transaction && transaction.command !== 'rollback') {
       result.push(transaction)
     }
   }
