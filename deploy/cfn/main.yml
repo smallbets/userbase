@@ -1,0 +1,205 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Parameters:
+  GitHubOwner:
+    Type: String
+    Description: 'The username of the source GitHub repo.'
+  GitHubRepo:
+    Type: String
+    Description: 'The source GitHub repo name (without the username).'
+  GitHubBranch:
+    Type: String
+    Default: master
+    Description: 'The source GitHub branch.'
+  GitHubPersonalAccessToken:
+    Type: String
+    NoEcho: true
+    Description: 'Use a personal access token from https://github.com/settings/tokens with "repo" and "admin:repo_hook" permissions.'
+  EC2InstanceType:
+    Type: String
+    Default: t3.micro
+    Description: 'The staging host EC2 instance type. Only tested on x86_64.'
+  EC2AMI:
+    Type: String
+    Description: 'The EC2 AMI. Only tested on Amazon Linux 2.'
+  Domain:
+    Type: String
+    Description: 'Your root domain name (Example: example.com). HTTPS will only be enabled if a domain is specified. Only provide this if your DNS is already managed by Route 53.'
+  Certificate:
+    Type: String
+    Description: 'An existing ACM certificate ARN for staging.<YOUR DOMAIN>.'
+  CodePipelineBucket:
+    Type: String
+    Description: 'The S3 bucket for CodePipeline artifacts.'
+
+Resources:
+  BuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Ref AWS::StackName
+      ServiceRole: !GetAtt ServiceRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:2.0
+      Source:
+        Type: CODEPIPELINE
+
+  DeploymentApplication:
+    Type: AWS::CodeDeploy::Application
+    Properties:
+      ApplicationName: !Ref AWS::StackName
+      ComputePlatform: Server
+
+  StagingDeploymentGroup:
+    Type: AWS::CodeDeploy::DeploymentGroup
+    DependsOn: Staging
+    Properties:
+      DeploymentGroupName: staging
+      ApplicationName: !Ref DeploymentApplication
+      DeploymentConfigName: CodeDeployDefault.AllAtOnce
+      Ec2TagFilters:
+        - Key: aws:cloudformation:stack-id
+          Type: KEY_AND_VALUE
+          Value: !Ref Staging
+      ServiceRoleArn: !GetAtt ServiceRole.Arn
+
+  DemoDeploymentGroup:
+    Type: AWS::CodeDeploy::DeploymentGroup
+    DependsOn: Demo
+    Properties:
+      DeploymentGroupName: demo
+      ApplicationName: !Ref DeploymentApplication
+      DeploymentConfigName: CodeDeployDefault.AllAtOnce
+      Ec2TagFilters:
+        - Key: aws:cloudformation:stack-id
+          Type: KEY_AND_VALUE
+          Value: !Ref Demo
+      ServiceRoleArn: !GetAtt ServiceRole.Arn
+
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: !Ref AWS::StackName
+      ArtifactStore:
+        Location: !Ref CodePipelineBucket
+        Type: S3
+      RoleArn: !GetAtt ServiceRole.Arn
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: Source
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Version: 1
+                Provider: GitHub
+              OutputArtifacts:
+                - Name: Source
+              Configuration:
+                Owner: !Ref GitHubOwner
+                Repo: !Ref GitHubRepo
+                Branch: !Ref GitHubBranch
+                OAuthToken: !Ref GitHubPersonalAccessToken
+                PollForSourceChanges: false
+              RunOrder: 1
+        - Name: Build
+          Actions:
+            - Name: Build
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              InputArtifacts:
+                - Name: Source
+              OutputArtifacts:
+                - Name: Build
+              Configuration:
+                ProjectName: !Ref BuildProject
+              RunOrder: 1
+        - Name: Staging
+          Actions:
+            - Name: Staging
+              InputArtifacts:
+                - Name: Build
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CodeDeploy
+              Configuration:
+                ApplicationName: !Ref DeploymentApplication
+                DeploymentGroupName: !Ref StagingDeploymentGroup
+              RunOrder: 1
+        - Name: Demo
+          Actions:
+            - Name: Demo
+              InputArtifacts:
+                - Name: Build
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CodeDeploy
+              Configuration:
+                ApplicationName: !Ref DeploymentApplication
+                DeploymentGroupName: !Ref DemoDeploymentGroup
+              RunOrder: 1
+
+  PipelineWebhook:
+    Type: AWS::CodePipeline::Webhook
+    Properties:
+      Authentication: GITHUB_HMAC
+      AuthenticationConfiguration:
+        SecretToken: !Ref GitHubPersonalAccessToken
+      Filters:
+        - JsonPath: $.ref
+          MatchEquals: 'refs/heads/{Branch}'
+      TargetPipeline: !Ref Pipeline
+      TargetAction: Source
+      Name: !Sub 'webhook-${AWS::StackName}'
+      TargetPipelineVersion: !GetAtt Pipeline.Version
+      RegisterWithThirdParty: true
+
+  ServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          Effect: Allow
+          Principal:
+            Service:
+              - codepipeline.amazonaws.com
+              - codedeploy.amazonaws.com
+              - codebuild.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/PowerUserAccess
+
+  Staging:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: stage.yml
+      TimeoutInMinutes: 30
+      Parameters:
+        EC2InstanceType: !Ref EC2InstanceType
+        EC2AMI: !Ref EC2AMI
+        Certificate: !Ref Certificate
+        Domain: !Ref Domain
+        SubDomain: staging
+
+  Demo:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: stage.yml
+      TimeoutInMinutes: 30
+      Parameters:
+        EC2InstanceType: !Ref EC2InstanceType
+        EC2AMI: !Ref EC2AMI
+        Certificate: !Ref Certificate
+        Domain: !Ref Domain
+        SubDomain: demo
