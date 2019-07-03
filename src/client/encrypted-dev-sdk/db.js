@@ -239,54 +239,60 @@ const batchDelete = async (items) => {
   return itemsToReturn
 }
 
+const setupClientState = async (key, transactionLog, encryptedDbState) => {
+  let dbState = encryptedDbState
+    ? await crypto.aesGcm.decrypt(key, encryptedDbState)
+    : {
+      itemsInOrderOfInsertion: [],
+      itemIdsToOrderOfInsertion: {}
+    }
+
+  dbState = await stateManager.applyTransactionsToDbState(key, dbState, transactionLog)
+
+  const { itemsInOrderOfInsertion, itemIdsToOrderOfInsertion } = dbState
+  stateManager.setItems(itemsInOrderOfInsertion, itemIdsToOrderOfInsertion)
+
+  return itemsInOrderOfInsertion
+}
+
+const queryEncryptedDbState = async (bundleSeqNo) => {
+  const encryptedDbStateResponse = await axios({
+    url: '/api/db/query/db-state',
+    method: 'GET',
+    params: {
+      bundleSeqNo
+    },
+    responseType: 'arraybuffer'
+  })
+  return encryptedDbStateResponse.data
+}
+
 const query = async () => {
   const key = await crypto.aesGcm.getKeyFromLocalStorage()
 
+  // retrieving user's transaction log
   let t0 = performance.now()
   const transactionLogResponse = await axios.get('/api/db/query/tx-log')
-  if (process.env.NODE_ENV == 'development') {
-    console.log(`Retrieved user's transaction log in ${getSecondsSinceT0(t0)}s`)
-  }
+  console.log(`Retrieved user's transaction log in ${getSecondsSinceT0(t0)}s`)
 
   const transactionLog = transactionLogResponse.data
   const bundleSeqNo = Number(transactionLogResponse.headers['bundle-seq-no'])
 
-  let dbStateResponse
-  let dbState
-  t0 = performance.now()
+  let encryptedDbState
+  // if server sets bundle-seq-no header, that means the transaction log starts
+  // with transactions with sequence number > bundle-seq-no. Thus the transactions
+  // in the log need to be applied to the db state bundled at bundle-seq-no
   if (bundleSeqNo) {
-    dbStateResponse = await axios({
-      url: '/api/db/query/db-state',
-      method: 'GET',
-      params: {
-        bundleSeqNo
-      },
-      responseType: 'arraybuffer'
-    })
-    if (process.env.NODE_ENV == 'development') {
-      console.log(`Retrieved user's db state in ${getSecondsSinceT0(t0)}s`)
-    }
-
+    // retrieving user's encrypted db state
     t0 = performance.now()
-
-    const encryptedDbState = dbStateResponse.data
-    dbState = await crypto.aesGcm.decrypt(key, encryptedDbState)
-
-  } else {
-    dbState = {
-      itemsInOrderOfInsertion: [],
-      itemIdsToOrderOfInsertion: {}
-    }
+    encryptedDbState = await queryEncryptedDbState(bundleSeqNo)
+    console.log(`Retrieved user's encrypted db state in ${getSecondsSinceT0(t0)}s`)
   }
 
-  dbState = await stateManager.applyTransactionsToDbState(key, dbState, transactionLog)
-
-  if (process.env.NODE_ENV == 'development') {
-    console.log(`Set up client side state in ${getSecondsSinceT0(t0)}s`)
-  }
-
-  const { itemsInOrderOfInsertion, itemIdsToOrderOfInsertion } = dbState
-  stateManager.setItems(itemsInOrderOfInsertion, itemIdsToOrderOfInsertion)
+  // starting to set up client state
+  t0 = performance.now()
+  const itemsInOrderOfInsertion = await setupClientState(key, transactionLog, encryptedDbState)
+  console.log(`Set up client side state in ${getSecondsSinceT0(t0)}s`)
 
   return itemsInOrderOfInsertion
 }
