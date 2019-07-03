@@ -13,6 +13,47 @@ Parameters:
     Type: String
 
 Resources:
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        IamInstanceProfile:
+          Arn: !GetAtt InstanceProfile.Arn
+        ImageId: !Ref EC2AMI
+        InstanceType: !Ref EC2InstanceType
+        Monitoring:
+          Enabled: true
+        SecurityGroupIds:
+          - !GetAtt SecurityGroup.GroupId
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash
+
+            # Get Node.js 12
+            curl --silent --location https://rpm.nodesource.com/setup_12.x | bash -
+
+            # Update all packages
+            yum -y update
+
+            # Install dependencies
+            yum install -y ruby nodejs
+
+            # Install CodeDeploy agent
+            cd /tmp
+            curl -O https://aws-codedeploy-${AWS::Region}.s3.amazonaws.com/latest/install
+            chmod +x ./install
+            ./install auto
+
+            # Create a self-signed TLS certificate to communicate with the load balancer
+            mkdir -p /home/ec2-user/keys
+            cd /home/ec2-user/keys
+            openssl req -new -newkey rsa:4096 -days 365 -nodes -x509 -subj "/C=/ST=/L=/O=/CN=localhost" -keyout key.pem -out cert.pem
+            chown -R ec2-user:ec2-user /home/ec2-user/keys
+
+            # Signal to CloudFormation that the instance is ready
+            /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --region ${AWS::Region} --resource Instance
+            /opt/aws/bin/cfn-signal -e 0 --stack ${AWS::StackName} --region ${AWS::Region} --resource Instance
+
   Instance:
     Type: AWS::EC2::Instance
     CreationPolicy:
@@ -20,42 +61,9 @@ Resources:
         Timeout: PT5M
     Properties:
       SubnetId: !Ref Subnet
-      IamInstanceProfile: !Ref InstanceProfile
-      ImageId: !Ref EC2AMI
-      InstanceType: !Ref EC2InstanceType
-      SecurityGroupIds:
-        - !GetAtt SecurityGroup.GroupId
-      UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash
-
-          # Get Node.js 12
-          curl --silent --location https://rpm.nodesource.com/setup_12.x | bash -
-
-          # Update all packages
-          yum -y update
-
-          # Install dependencies
-          yum install -y ruby nodejs
-
-          # Install CodeDeploy agent
-          cd /tmp
-          curl -O https://aws-codedeploy-${AWS::Region}.s3.amazonaws.com/latest/install
-          chmod +x ./install
-          ./install auto
-
-          # Create a self-signed TLS certificate to communicate with the load balancer
-          mkdir -p /home/ec2-user/keys
-          cd /home/ec2-user/keys
-          openssl req -new -newkey rsa:4096 -days 365 -nodes -x509 -subj "/C=/ST=/L=/O=/CN=localhost" -keyout key.pem -out cert.pem
-          chown -R ec2-user:ec2-user /home/ec2-user/keys
-
-          # Signal to CloudFormation that the instance is ready
-          /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --region ${AWS::Region} --resource Instance
-          /opt/aws/bin/cfn-signal -e 0 --stack ${AWS::StackName} --region ${AWS::Region} --resource Instance
-
-          # Deploy to outdated instances
-          aws deploy create-deployment --application-name ${AWS::StackName} --deployment-group ${SubDomain} --update-outdated-instances-only --region ${AWS::Region}
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemplate
+        Version: 1
 
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -88,10 +96,12 @@ Resources:
           Principal:
             Service:
               - "ec2.amazonaws.com"
-              - "codedeploy.amazonaws.com"
           Action: sts:AssumeRole
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/PowerUserAccess
+        - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/CloudWatchFullAccess
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforAWSCodeDeploy
 
   DNS:
     Type: AWS::Route53::RecordSet
@@ -109,6 +119,9 @@ Resources:
       Type: network
       Subnets:
         - !Ref Subnet
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
 
   LoadBalancerListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
@@ -133,6 +146,9 @@ Resources:
       HealthCheckProtocol: HTTPS
       Targets:
         - Id: !GetAtt Instance.PrivateIp
+      Tags:
+        - Key: Name
+          Value: !Ref AWS::StackName
 
   VPC:
     Type: AWS::EC2::VPC

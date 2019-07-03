@@ -15,10 +15,12 @@ Parameters:
     Type: String
     NoEcho: true
     Description: 'Use a personal access token from https://github.com/settings/tokens with "repo" and "admin:repo_hook" permissions.'
-  EC2InstanceType:
+  EC2StagingInstanceType:
     Type: String
-    Default: t3.micro
-    Description: 'The staging host EC2 instance type. Only tested on x86_64.'
+    Description: 'The EC2 instance type for the staging host.'
+  EC2DemoInstanceType:
+    Type: String
+    Description: 'The EC2 instance type for the demo host.'
   EC2AMI:
     Type: String
     Description: 'The EC2 AMI. Only tested on Amazon Linux 2.'
@@ -186,7 +188,7 @@ Resources:
       TemplateURL: stage.yml
       TimeoutInMinutes: 30
       Parameters:
-        EC2InstanceType: !Ref EC2InstanceType
+        EC2InstanceType: !Ref EC2StagingInstanceType
         EC2AMI: !Ref EC2AMI
         Certificate: !Ref Certificate
         Domain: !Ref Domain
@@ -198,7 +200,7 @@ Resources:
       TemplateURL: stage.yml
       TimeoutInMinutes: 30
       Parameters:
-        EC2InstanceType: !Ref EC2InstanceType
+        EC2InstanceType: !Ref EC2DemoInstanceType
         EC2AMI: !Ref EC2AMI
         Certificate: !Ref Certificate
         Domain: !Ref Domain
