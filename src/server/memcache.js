@@ -90,7 +90,7 @@ MemCache.prototype.pushTransaction = function (transaction) {
 
   const transactionToPush = {
     ...transaction,
-    persistingToDisk: process.hrtime(),
+    persistingToDdb: process.hrtime(),
   }
   const sequenceNo = this.transactionLogByUserId[userId].transactionArray.push(transactionToPush) - 1
 
@@ -102,35 +102,42 @@ MemCache.prototype.pushTransaction = function (transaction) {
   }
 }
 
-MemCache.prototype.transactionPersistedToDisk = function (transactionWithSequenceNo) {
+MemCache.prototype.transactionPersistedToDdb = function (transactionWithSequenceNo) {
   const userId = transactionWithSequenceNo['user-id']
   const sequenceNo = transactionWithSequenceNo['sequence-no']
-  delete this.transactionLogByUserId[userId].transactionArray[sequenceNo].persistingToDisk
+  delete this.transactionLogByUserId[userId].transactionArray[sequenceNo].persistingToDdb
 }
 
-MemCache.prototype.transactionRolledBack = function (transactionWithSequenceNo) {
-  const userId = transactionWithSequenceNo['user-id']
-  const sequenceNo = transactionWithSequenceNo['sequence-no']
-  this.transactionLogByUserId[userId].transactionArray[sequenceNo] = undefined
+MemCache.prototype.transactionRolledBack = function (transactionWithRollbackCommand) {
+  const userId = transactionWithRollbackCommand['user-id']
+  const sequenceNo = transactionWithRollbackCommand['sequence-no']
+  this.transactionLogByUserId[userId].transactionArray[sequenceNo] = transactionWithRollbackCommand
 }
 
 MemCache.prototype.getTransactions = function (userId, startingSeqNo) {
   const transactionLog = this.transactionLogByUserId[userId].transactionArray
+
   const result = []
+  let encounteredTransactionPersistingToDdb = false
   for (let i = startingSeqNo; i < transactionLog.length; i++) {
     const transaction = transactionLog[i]
 
-    if (transaction && transaction.persistingToDisk) {
+    if (transaction && transaction.persistingToDdb) {
+      encounteredTransactionPersistingToDdb = true
 
-      const timeSinceAttemptToPersistToDisk = process.hrtime(transaction.persistingToDisk)
-      const secondsSinceAttemptToPersistToDisk = timeSinceAttemptToPersistToDisk[0]
+      const timeSinceAttemptToPersistToDdb = process.hrtime(transaction.persistingToDdb)
+      const secondsSinceAttemptToPersistToDdb = timeSinceAttemptToPersistToDdb[0]
 
-      if (secondsSinceAttemptToPersistToDisk > SECONDS_BEFORE_ROLLBACK_TRIGGERED) {
+      if (secondsSinceAttemptToPersistToDdb > SECONDS_BEFORE_ROLLBACK_TRIGGERED) {
+        // attempt to rollback so that next query gets further than this. No
+        // need to hold up query waiting for this to finish and do not need
+        // to know whether or not this rollback succeeds
         db.rollbackTransaction(transaction)
+      } else {
+        break
       }
 
-      break
-    } else if (transaction && transaction.command !== 'rollback') {
+    } else if (transaction && transaction.command !== 'rollback' && !encounteredTransactionPersistingToDdb) {
       result.push(transaction)
     }
   }

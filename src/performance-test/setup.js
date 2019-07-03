@@ -4,21 +4,40 @@ const PASSWORD = 'Test1234'
 
 const MAX_TCP_CONNECTIONS = 6 // max TCP sockets chrome allows: https://developers.google.com/web/tools/chrome-devtools/network/reference#timing-explanation
 
-const INSERTION_BATCH_SIZE = 75
-const UPDATE_BATCH_SIZE = 65
+const INSERTION_BATCH_SIZE = 70
+const UPDATE_BATCH_SIZE = 60
 const DELETE_BATCH_SIZE = 100
 
-const wrapInTryCatch = async (promise) => {
+const wrapInTryCatch = async (promise, counter) => {
+  if (!counter) counter = 1
+  else counter += 1
+
   try {
     const result = await promise()
     return result
   } catch (e) {
     console.log(e)
+
+    const maxAttempts = 10
+    if (counter < maxAttempts) {
+      console.log(`Retry attempt ${counter} / ${maxAttempts}...`)
+      return wrapInTryCatch(promise, counter)
+    } else {
+      throw e
+    }
+
   }
 }
 
 const init = async (username, limit) => {
-  await encd.signUp(username, PASSWORD)
+  alert('Open the browser console!')
+
+  try {
+    await encd.signUp(username, PASSWORD)
+  } catch (e) {
+    alert('Wait for the server to finish setting up, then hit refresh')
+    throw e
+  }
 
   // INSERT
   let insertionBatch = []
@@ -105,11 +124,13 @@ const init = async (username, limit) => {
     }
   }
 
+  console.log(encd.db.getLatestState())
+
   const key = localStorage.getItem('key')
   console.log(`To test user ${username}, input this into the console:
   localStorage.setItem('key', '${key}'), then sign in with password ${PASSWORD}.`)
 }
 
-init('test-1k' + Math.random(), 1000)
-// init('test-10k' + Math.random(), 10000)
+init('test-1k', 1000)
+// init('test-10k', 10000)
 // init('test-100k', 100000)

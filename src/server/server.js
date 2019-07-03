@@ -46,6 +46,8 @@ if (process.env.NODE_ENV == 'development') {
     app.post('/api/db/batch-update', auth.authenticateUser, db.batchUpdate)
     app.post('/api/db/batch-delete', auth.authenticateUser, db.batchDelete)
 
+    app.post('/api/db/acq-bundle-tx-log-lock', auth.authenticateUser, db.acquireBundleTransactionLogLock)
+    app.post('/api/db/rel-bundle-tx-log-lock', auth.authenticateUser, db.releaseBundleTransactionLogLock)
     app.post('/api/db/bundle-tx-log', auth.authenticateUser, db.bundleTransactionLog)
 
     if (fs.existsSync(httpsKey) && fs.existsSync(httpsCert)) {

@@ -1,3 +1,4 @@
+import uuidv4 from 'uuid/v4'
 import connection from './connection'
 import setup from './setup'
 import statusCodes from './statusCodes'
@@ -14,16 +15,25 @@ const FOUR_HUNDRED_KB = 400 * ONE_KB
 
 const BATCH_SIZE_LIMIT = 10 * ONE_MB
 
+/**
+ * Attempts to rollback a transaction that has not persisted to DDB
+ * yet. Does not return anything because the caller does not need to
+ * know whether or not this succeeds.
+ *
+ * @param {*} transaction
+ */
 const rollbackTransaction = async function (transaction) {
+  const transactionWithRollbackCommand = {
+    'user-id': transaction['user-id'],
+    'sequence-no': transaction['sequence-no'],
+    'item-id': transaction['item-id'],
+    command: 'rollback'
+  }
+
   const rollbackTransactionParams = {
     TableName: setup.databaseTableName,
-    Item: {
-      'user-id': transaction['user-id'],
-      'sequence-no': transaction['sequence-no'],
-      'item-id': transaction['item-id'],
-      command: 'rollback'
-    },
-    // if this user id + seq no does not exist, insert
+    Item: transactionWithRollbackCommand,
+    // if user id + seq no does not exist, insert
     // if it already exists and command is rollback, overwrite
     // if it already exists and command isn't rollback, fail with ConditionalCheckFailedException
     ConditionExpression: 'attribute_not_exists(#userId) or command = :command',
@@ -39,13 +49,14 @@ const rollbackTransaction = async function (transaction) {
     const ddbClient = connection.ddbClient()
     await ddbClient.put(rollbackTransactionParams).promise()
 
-    memcache.transactionRolledBack(transaction)
+    memcache.transactionRolledBack(transactionWithRollbackCommand)
   } catch (e) {
     if (e.name === 'ConditionalCheckFailedException') {
       // This is good -- must have been persisted to disk because it exists and was not rolled back
-      memcache.transactionPersistedToDisk(transaction)
+      memcache.transactionPersistedToDdb(transaction)
       console.log('Failed to rollback -- transaction already persisted to disk')
     } else {
+      // No need to throw, can fail gracefully and log error
       console.warn(`Failed to rollback with ${e}`)
     }
   }
@@ -69,13 +80,13 @@ const putTransaction = async function (transaction) {
     const ddbClient = connection.ddbClient()
     await ddbClient.put(params).promise()
 
-    memcache.transactionPersistedToDisk(transactionWithSequenceNo)
+    memcache.transactionPersistedToDdb(transactionWithSequenceNo)
   } catch (e) {
+    console.log(`Transaction ${transactionWithSequenceNo['sequence-no']} failed with ${e}! Rolling back...`)
 
-    console.log(`Transaction failed with ${e}! Rolling back...`)
-    await rollbackTransaction(transactionWithSequenceNo)
+    rollbackTransaction(transactionWithSequenceNo)
 
-    throw new Error(`Failed with ${e}. Transaction rolled back.`)
+    throw new Error(`Failed with ${e}.`)
   }
 
   return {
@@ -99,8 +110,6 @@ exports.insert = async function (req, res) {
 
   try {
     // Warning: if the server receives many large simultaneous requests, memory could fill up here.
-    // The solution to this is to read the buffer in small chunks and pipe the chunks to
-    // S3 and store the S3 URL in DynamoDB.
     const buffer = req.read()
 
     const command = 'Insert'
@@ -138,8 +147,8 @@ exports.delete = async function (req, res) {
       command
     }
 
-    const result = await putTransaction(res, transaction)
-    return result
+    const result = await putTransaction(transaction)
+    return res.send(result)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -162,8 +171,6 @@ exports.update = async function (req, res) {
   try {
 
     // Warning: if the server receives many large simultaneous requests, memory could fill up here.
-    // The solution to this is to read the buffer in small chunks and pipe the chunks to
-    // S3 and store the S3 URL in DynamoDB.
     const buffer = req.read()
 
     const command = 'Update'
@@ -391,15 +398,89 @@ exports.batchDelete = async function (req, res) {
   }
 }
 
+const locks = {}
+const SECONDS_ALLOWED_TO_KEEP_BUNDLE_LOCK = 300
+
+exports.acquireBundleTransactionLogLock = function (req, res) {
+  const userId = res.locals.userId
+
+  const lock = locks[userId]
+  if (lock) {
+    const timeSinceLockWasAcquired = process.hrtime(lock.timeAcquired)
+    const secondsSinceLockWasAcquired = timeSinceLockWasAcquired[0]
+
+    if (secondsSinceLockWasAcquired < SECONDS_ALLOWED_TO_KEEP_BUNDLE_LOCK) {
+      return res
+        .status(statusCodes['Unauthorized'])
+        .send({ readableMessage: 'Failed to acquire lock' })
+    } else {
+      // if this warning appears in the logs often, consider raising SECONDS_ALLOWED_TO_KEEP_BUNDLE_LOCK
+      console.warn(`User ${userId} has been holding lock ${lock.lockId} for ${secondsSinceLockWasAcquired}`)
+    }
+  }
+
+  const newLock = {
+    timeAcquired: process.hrtime(),
+    lockId: uuidv4()
+  }
+
+  locks[userId] = newLock
+  return res.send(newLock.lockId)
+}
+
+const releaseBundleTransactionLogLock = function (userId, lockId) {
+  const lock = locks[userId]
+  if (lock && lock.lockId === lockId) locks[userId] = null
+}
+
+exports.releaseBundleTransactionLogLock = function (req, res) {
+  const userId = res.locals.userId
+  const lockId = req.query.lockId
+
+  if (!lockId) return res
+    .status(statusCodes['Bad Request'])
+    .send({ readableMessage: 'Missing lock id' })
+
+  const lock = locks[userId]
+
+  if (!lock || lock.lockId !== lockId) return res
+    .status(statusCodes['Unauthorized'])
+    .send({ readableMessage: 'Caller does not own this lock' })
+
+  releaseBundleTransactionLogLock(userId, lockId)
+
+  return res.send('Success!')
+}
+
 exports.bundleTransactionLog = async function (req, res) {
   const userId = res.locals.userId
   const bundleSeqNo = req.query.bundleSeqNo
+  const lockId = req.query.lockId
 
   if (!bundleSeqNo) return res
     .status(statusCodes['Bad Request'])
     .send({ readableMessage: 'Missing bundle sequence number' })
 
+  if (!lockId) return res
+    .status(statusCodes['Bad Request'])
+    .send({ readableMessage: 'Missing lock id' })
+
   try {
+
+    // Warning: this isn't a perfect mutually exclusive lock that only allows this code
+    // to execute once at a time. If it takes >= SECONDS_ALLOWED_TO_KEEP_BUNDLE_LOCK
+    // for the code after this if statement to finish executing, it's possible the user
+    // can acquire a new lock, allowing the user to call the function again and get past
+    // this if statement -- even though this function would still continue executing.
+    //
+    // Note that THIS IS OK because a user can safely call this function twice. This
+    // lock is simply an optimization to try to prevent both the client
+    // and server from doing extra unnecessary work if possible.
+    const lock = locks[userId]
+    if (!lock || lock.lockId !== lockId) return res
+      .status(statusCodes['Unauthorized'])
+      .send({ readableMessage: 'Caller does not own this lock' })
+
     const user = await userController.findUserByUserId(userId)
     if (user.bundleSeqNo >= bundleSeqNo) return res
       .status(statusCodes['Bad Request'])
@@ -437,8 +518,13 @@ exports.bundleTransactionLog = async function (req, res) {
 
     memcache.setBundleSeqNo(userId, bundleSeqNo)
 
+    releaseBundleTransactionLogLock(userId, lockId)
+
     return res.send('Success!')
   } catch (e) {
+
+    releaseBundleTransactionLogLock(userId, lockId)
+
     return res
       .status(statusCodes['Internal Server Error'])
       .send({ err: `Failed to flush db state with ${e}` })

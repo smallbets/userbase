@@ -31,14 +31,17 @@ const windowOrSelfObject = () => {
     : self
 }
 
-const generateKey = () => window.crypto.subtle.generateKey(
-  {
-    name: ALGORITHIM_NAME,
-    length: BIT_SIZE
-  },
-  KEY_IS_EXTRACTABLE,
-  KEY_WILL_BE_USED_TO
-)
+const generateKey = async () => {
+  const key = await window.crypto.subtle.generateKey(
+    {
+      name: ALGORITHIM_NAME,
+      length: BIT_SIZE
+    },
+    KEY_IS_EXTRACTABLE,
+    KEY_WILL_BE_USED_TO
+  )
+  return key
+}
 
 const saveKeyToLocalStorage = async (key) => {
   const extractedJsonKey = await window.crypto.subtle.exportKey(EXTRACTED_KEY_TYPE, key)
@@ -46,14 +49,15 @@ const saveKeyToLocalStorage = async (key) => {
   localStorage.setItem('key', jsonKeyAsString)
 }
 
-const getKeyFromLocalStorage = () => {
+const getKeyFromLocalStorage = async () => {
   const jsonKeyAsString = localStorage.getItem('key')
-  return importKey(jsonKeyAsString)
+  const key = await importKey(jsonKeyAsString)
+  return key
 }
 
-const importKey = (keyString) => {
+const importKey = async (keyString) => {
   const jsonKey = JSON.parse(keyString)
-  return windowOrSelfObject().crypto.subtle.importKey(
+  const key = await windowOrSelfObject().crypto.subtle.importKey(
     EXTRACTED_KEY_TYPE,
     jsonKey,
     {
@@ -62,6 +66,7 @@ const importKey = (keyString) => {
     KEY_IS_EXTRACTABLE,
     KEY_WILL_BE_USED_TO
   )
+  return key
 }
 
 /**
@@ -82,16 +87,15 @@ const encrypt = async (key, plaintext) => {
 
   const iv = windowOrSelfObject().crypto.getRandomValues(new Uint8Array(RECOMMENDED_IV_BYTE_SIZE))
 
-  const ciphertextArrayBuffer = await (typeof window !== 'undefined' ? window : self)
-    .crypto.subtle.encrypt(
-      {
-        name: ALGORITHIM_NAME,
-        iv,
-        tagLength: RECOMMENDED_AUTHENTICATION_TAG_LENGTH
-      },
-      key,
-      plaintextArrayBuffer
-    )
+  const ciphertextArrayBuffer = await windowOrSelfObject().crypto.subtle.encrypt(
+    {
+      name: ALGORITHIM_NAME,
+      iv,
+      tagLength: RECOMMENDED_AUTHENTICATION_TAG_LENGTH
+    },
+    key,
+    plaintextArrayBuffer
+  )
 
   return appendBuffer(ciphertextArrayBuffer, iv)
 }

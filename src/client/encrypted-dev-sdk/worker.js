@@ -8,52 +8,97 @@ const ONE_KB = 1024
 const ONE_MB = 1024 * ONE_KB
 const NINETY_PERCENT_OF_ONE_MB = Math.floor(.9 * ONE_MB)
 
-self.onmessage = async (e) => {
-  const keyString = e.data
-  const key = await crypto.aesGcm.importKey(keyString)
+const getDbState = async (key, oldBundleSeqNo) => {
+  if (oldBundleSeqNo) {
+    const dbStateResponse = await axios({
+      url: '/api/db/query/db-state',
+      method: 'GET',
+      params: {
+        bundleSeqNo: oldBundleSeqNo
+      },
+      responseType: 'arraybuffer'
+    })
 
-  const transactionLogResponse = await axios.get('/api/db/query/tx-log')
+    const encryptedDbState = dbStateResponse.data
 
-  const transactionLog = transactionLogResponse.data
-  const oldBundleSeqNo = Number(transactionLogResponse.headers['bundle-seq-no'])
+    const dbState = await crypto.aesGcm.decrypt(key, encryptedDbState)
+    return dbState
+  } else {
+    return {
+      itemsInOrderOfInsertion: [],
+      itemIdsToOrderOfInsertion: {}
+    }
+  }
+}
 
-  if (sizeOfDdbItems(transactionLog) > NINETY_PERCENT_OF_ONE_MB) {
-    console.log('Bundling transaction log!')
+const bundleTransactionLog = async (key, transactionLog, oldBundleSeqNo, lockId) => {
+  const dbState = await getDbState(key, oldBundleSeqNo)
 
-    let dbState
-    if (oldBundleSeqNo) {
-      const dbStateResponse = await axios({
-        url: '/api/db/query/db-state',
-        method: 'GET',
-        params: {
-          bundleSeqNo: oldBundleSeqNo
-        },
-        responseType: 'arraybuffer'
-      })
+  const newDbState = await stateManager.applyTransactionsToDbState(key, dbState, transactionLog)
 
-      const encryptedDbState = dbStateResponse.data
-      dbState = await crypto.aesGcm.decrypt(key, encryptedDbState)
+  const newBundleSeqNo = newDbState.maxSequenceNo
 
+  const encryptedDbState = await crypto.aesGcm.encrypt(key, newDbState)
+
+  await axios({
+    method: 'POST',
+    url: '/api/db/bundle-tx-log',
+    params: {
+      bundleSeqNo: newBundleSeqNo,
+      lockId
+    },
+    data: encryptedDbState
+  })
+}
+
+const releaseLock = async (lockId) => {
+  await axios({
+    method: 'POST',
+    url: '/api/db/rel-bundle-tx-log-lock',
+    params: {
+      lockId
+    }
+  })
+}
+
+const handleMessage = async (keyString) => {
+  let lockId
+  try {
+    const lockResponse = await axios.post('/api/db/acq-bundle-tx-log-lock')
+    lockId = lockResponse.data
+
+    const key = await crypto.aesGcm.importKey(keyString)
+
+    const transactionLogResponse = await axios.get('/api/db/query/tx-log')
+
+    const transactionLog = transactionLogResponse.data
+    const oldBundleSeqNo = Number(transactionLogResponse.headers['bundle-seq-no'])
+
+    if (sizeOfDdbItems(transactionLog) > NINETY_PERCENT_OF_ONE_MB) {
+      console.log('Bundling transaction log!')
+      await bundleTransactionLog(key, transactionLog, oldBundleSeqNo, lockId)
     } else {
-      dbState = {
-        itemsInOrderOfInsertion: [],
-        itemIdsToOrderOfInsertion: {}
-      }
+      await releaseLock(lockId)
     }
 
-    dbState = await stateManager.applyTransactionsToDbState(key, dbState, transactionLog)
+  } catch (e) {
+    if (!e.response || e.response.data.readableMessage !== 'Failed to acquire lock') {
+      console.log(`Error in bundle transaction log worker process ${e}`)
+    }
 
-    const newBundleSeqNo = dbState.maxSequenceNo
-
-    const encryptedDbState = await crypto.aesGcm.encrypt(key, dbState)
-
-    await axios({
-      method: 'POST',
-      url: '/api/db/bundle-tx-log',
-      params: {
-        bundleSeqNo: newBundleSeqNo
-      },
-      data: encryptedDbState
-    })
+    if (lockId) {
+      try {
+        await releaseLock(lockId)
+      } catch (err) {
+        console.log(`Failed to release bundle transaction log lock with ${e}`)
+      }
+    }
   }
+
+  self.close() // allows garbage collector to free memory allocated to this worker
+}
+
+self.onmessage = (e) => {
+  const keyString = e.data
+  handleMessage(keyString)
 }

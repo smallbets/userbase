@@ -137,8 +137,12 @@ EncryptedDevSdk.prototype.applyTransactionsToDbState = async (key, dbState, tran
     if (!maxSequenceNo || currentTransaction['sequence-no'] > maxSequenceNo) maxSequenceNo = currentTransaction['sequence-no']
     if (currentTransaction.command === 'Insert') {
       const currentItemId = currentTransaction['item-id']
-      const item = mostRecentStateOfItems[currentItemId] || null
-      itemIdsToOrderOfInsertion[currentItemId] = itemsInOrderOfInsertion.push(item) - 1
+
+      const thisIsNotADuplicateInsertion = !itemIdsToOrderOfInsertion[currentItemId]
+      if (thisIsNotADuplicateInsertion) {
+        const item = mostRecentStateOfItems[currentItemId] || null
+        itemIdsToOrderOfInsertion[currentItemId] = itemsInOrderOfInsertion.push(item) - 1
+      }
     }
 
     // iterate backwards picking up the most recent state of the item
