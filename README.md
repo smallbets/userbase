@@ -1,24 +1,31 @@
-# encrypted.dev
+[![A proof of concept for an end-to-end encrypted web developmenet framework](docs/proof_of_concept.png)](https://encrypted.dev)
 
-- Current Master Plan: https://twitter.com/dvassallo/status/1126925437790081024
-- Proof of Concept Plan: https://public.3.basecamp.com/p/Y8xjrvcwfwDt3ARTzd58uw3z
+# An end-to-end encrypted web app
+This is a simple to-do web app, with a twist: All user data is end-to-end encrypted!
 
----
+The to-do data gets encrypted by the browser with an AES-256 key that is never sent to the server. The app user gets data privacy, while the app developer gets spared from the burden of handling user data. A win-win.
+
+For now, this is just a prototype app. It was built as a proof of concept to demonstrate that it is possible for web apps like this to work without the need of running database queries on the server. With end-to-end encryption, all database queries run in the browser, and the server is there only for storing encrypting blobs of data and for access control.
+
+## Demo
+
+Check out https://demo.encrypted.dev for a live demo.
 
 ## Development
 
 Add your AWS credentials in `~/.aws/credentials` under a profile called "encrypted":
 
 ```
+echo "
 [encrypted]
-aws_access_key_id=A******************F
-aws_secret_access_key=1**************************************k
+aws_access_key_id=<YOUR ACCESS KEY>
+aws_secret_access_key=<YOUR SECRET KEY>" >> ~/.aws/credentials
 ```
 
 Check out the repo:
 
 ```
-git clone https://github.com/dvassallo/encrypted.dev.git
+git clone https://github.com/encrypted-dev/proof-of-concept.git
 ```
 
 Install the dependencies:
@@ -32,8 +39,6 @@ Start the dev server:
 ```
 npm start
 ```
-
-___
 
 ## Performance Test
 
@@ -58,3 +63,7 @@ npm start
 ```
 
 A browser should open to localhost:3000 with the normal app this time. Open the browser console and paste to set the user's encryption key. Then sign in with the username and password from above. Results on the query operation will be shown in the console.
+
+## License
+
+This project is released under the [MIT License](LICENSE).
