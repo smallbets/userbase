@@ -11,6 +11,8 @@ For now, this is just a prototype app. It was built as a proof of concept to dem
 
 Check out https://demo.encrypted.dev for a live demo.
 
+[![Proof of concept demo](docs/demo.png)](https://demo.encrypted.dev)
+
 ## Development
 
 Add your AWS credentials in `~/.aws/credentials` under a profile called "encrypted":
