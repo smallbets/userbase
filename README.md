@@ -19,17 +19,17 @@ Check out https://demo.encrypted.dev for a live demo.
 
 Creating a new user account:
 ```
-await auth.singUp('username', 'password')
+await auth.signUp('username', 'password')
 ```
 
 Signing in:
 ```
-await auth.singIn('username', 'password')
+await auth.signIn('username', 'password')
 ```
 
 Signing out:
 ```
-await auth.singOut()
+await auth.signOut()
 ```
 
 #### Database
@@ -41,7 +41,7 @@ let milk = await db.insert({ task: 'Buy 1 gallon of milk' })
 
 Searching for an item:
 ```
-let milk = (await db.query()).items.find(e => e.includes('milk'))
+let milk = (await db.query()).find(e => e.record.task.includes('milk'))
 ```
 
 Updating an item:
