@@ -13,6 +13,47 @@ Check out https://demo.encrypted.dev for a live demo.
 
 [![Proof of concept demo](docs/demo.png)](https://demo.encrypted.dev)
 
+## SDK
+
+#### Auth
+
+Creating a new user account:
+```
+await auth.singUp('username', 'password')
+```
+
+Signing in:
+```
+await auth.singIn('username', 'password')
+```
+
+Signing out:
+```
+await auth.singOut()
+```
+
+#### Database
+
+Inserting an item:
+```
+let milk = await db.insert({ task: 'Buy 1 gallon of milk' })
+```
+
+Searching for an item:
+```
+let milk = (await db.query()).items.find(e => e.includes('milk'))
+```
+
+Updating an item:
+```
+await db.update(milk, { task: 'Buy 5 gallons of milk' })
+```
+
+Deleting an item:
+```
+await db.delete(milk)
+```
+
 ## Development
 
 Add your AWS credentials in `~/.aws/credentials` under a profile called "encrypted":
@@ -41,6 +82,8 @@ Start the dev server:
 ```
 npm start
 ```
+
+Go to http://localhost:3000 and you should see the welcome screen.
 
 ## Performance Test
 
