@@ -3,9 +3,9 @@
 # An end-to-end encrypted web app
 This is a simple to-do web app, with a twist: All user data is end-to-end encrypted!
 
-The to-do data gets encrypted by the browser with an AES-256 key that is never sent to the server. The app user gets data privacy, while the app developer gets spared from the burden of handling user data. A win-win.
+The to-do data gets encrypted by the browser with an AES-256 key that never goes to the server. The app user gets data privacy, while the app developer gets spared from the burden of handling user data. A win-win.
 
-For now, this is just a prototype app. It was built as a proof of concept to demonstrate that it is possible for web apps like this to work without the need of running database queries on the server. With end-to-end encryption, all database queries run in the browser, and the server is there only for storing encrypting blobs of data and for access control.
+For now, this is just a prototype app. It is a proof of concept to demonstrate that web apps like this can work and perform adequately without server-side database queries. With end-to-end encryption, all database queries happen in the browser. The server is there to handle access control and store the encrypted data.
 
 ## Demo
 
