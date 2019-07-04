@@ -6,6 +6,11 @@ body {
   font-size: 1.25em;
 }
 
+textarea {
+  font-family: 'PT Serif';
+  border-radius: 3px;
+}
+
 .welcome {
   display: inline-block;
   margin-top: 10px;
@@ -22,14 +27,22 @@ body {
 
 input[type='submit'],
 button {
-  height: 30px;
-  border-radius: 5px;
+  height: 35px;
+  border-radius: 25px;
   cursor: pointer;
 }
 
 input[type='submit']:disabled,
 button:disabled {
   cursor: not-allowed;
+}
+
+button,
+input[type='submit'] {
+  font-family: 'PT Serif';
+  font-size: 14px;
+  padding-left: 20px;
+  padding-right: 20px;
 }
 
 .loader {

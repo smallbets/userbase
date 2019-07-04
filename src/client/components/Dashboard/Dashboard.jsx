@@ -2,6 +2,19 @@ import React, { Component } from 'react'
 import { object, func } from 'prop-types'
 import userLogic from '../User/logic'
 import dbLogic from './logic'
+import AddTodoForm from './AddTodoForm'
+import EditTodoForm from './EditTodoForm'
+
+const userHasNoTodos = (todos) => {
+  let encounteredActiveTodo = false
+  for (const todo of todos) {
+    if (todo.command === 'Insert' || todo.command === 'Update') {
+      encounteredActiveTodo = true
+      break
+    }
+  }
+  return !encounteredActiveTodo
+}
 
 class Dashboard extends Component {
   constructor(props) {
@@ -11,15 +24,16 @@ class Dashboard extends Component {
       error: '',
       loading: false,
       todos: [],
-      selectedTodos: {}
+      editingTodos: {},
+      addTodoFormOpen: false
     }
 
     this.handleSignOut = this.handleSignOut.bind(this)
-    this.handleInputChange = this.handleInputChange.bind(this)
-    this.handleAddTodo = this.handleAddTodo.bind(this)
-    this.handleToggleSelectedTodo = this.handleToggleSelectedTodo.bind(this)
-    this.handleDeleteSelectedTodos = this.handleDeleteSelectedTodos.bind(this)
-    this.handleMarkSelectedTodosCompleted = this.handleMarkSelectedTodosCompleted.bind(this)
+    this.handleSetTodos = this.handleSetTodos.bind(this)
+    this.handleToggleTodo = this.handleToggleTodo.bind(this)
+    this.handleToggleEditTodo = this.handleToggleEditTodo.bind(this)
+    this.handleOpenAddTodoForm = this.handleOpenAddTodoForm.bind(this)
+    this.handleCloseAddTodoForm = this.handleCloseAddTodoForm.bind(this)
   }
 
   async componentWillMount() {
@@ -28,159 +42,134 @@ class Dashboard extends Component {
   }
 
   async handleSignOut() {
+    this.setState({ signingOut: true })
     await userLogic.signOut()
     this.props.handleRemoveUserAuthentication()
   }
 
-  handleInputChange(event) {
-    if (this.state.error) this.setState({ error: undefined })
-
-    const target = event.target
-    const value = target.value
-    const name = target.name
-
-    this.setState({
-      [name]: value
-    })
+  handleSetTodos(todos) {
+    this.setState({ todos, addTodoFormOpen: false })
   }
 
-  async handleAddTodo(event) {
-    const { todoInput } = this.state
+  async handleToggleTodo(todo) {
+    const result = await dbLogic.toggleTodo(todo)
+    this.setState({ todos: result.todos })
+  }
+
+  handleToggleEditTodo(event, todo) {
     event.preventDefault()
-
-    await this.setState({ loading: true, error: undefined })
-
-    const result = await dbLogic.insertTodo(todoInput)
-
-    if (result.error) this.setState({ error: result.error, loading: false })
-    else this.setState({ todos: result.todos, todoInput: '', loading: false })
+    if (todo.record.completed) return
+    const { editingTodos } = this.state
+    editingTodos[todo['sequence-no']] = !editingTodos[todo['sequence-no']]
+    this.setState({ editingTodos })
   }
 
-  handleToggleSelectedTodo(todo) {
-    const { selectedTodos } = this.state
-    const updatedSelectedTodos = { ...selectedTodos }
-
-    const itemId = todo['item-id']
-    if (selectedTodos[itemId]) {
-      delete updatedSelectedTodos[itemId]
-    } else {
-      updatedSelectedTodos[itemId] = todo
-    }
-
-    this.setState({ selectedTodos: updatedSelectedTodos })
+  handleOpenAddTodoForm() {
+    this.setState({ addTodoFormOpen: true })
   }
 
-  async handleDeleteSelectedTodos(event) {
-    const { selectedTodos } = this.state
-    event.preventDefault()
-
-    await this.setState({ loading: true, error: undefined })
-
-    const result = await dbLogic.deleteTodos(Object.values(selectedTodos))
-
-    const updatedState = {
-      loading: false,
-      selectedTodos: []
-    }
-
-    if (result.error) this.setState({ error: result.error, ...updatedState })
-    else this.setState({ todos: result.todos, ...updatedState })
-  }
-
-  async handleMarkSelectedTodosCompleted(event) {
-    const { selectedTodos } = this.state
-    event.preventDefault()
-
-    await this.setState({ loading: true, error: undefined })
-
-    const result = await dbLogic.markTodosCompleted(Object.values(selectedTodos))
-
-    const updatedState = {
-      loading: false,
-      selectedTodos: []
-    }
-
-    if (result.error) this.setState({ error: result.error, ...updatedState })
-    else this.setState({ todos: result.todos, ...updatedState })
+  handleCloseAddTodoForm(e) {
+    e.preventDefault()
+    this.setState({ addTodoFormOpen: false })
   }
 
   render() {
     const { user } = this.props
-    const { todoInput, error, loading, todos, selectedTodos } = this.state
+    const {
+      todos,
+      signingOut,
+      addTodoFormOpen,
+      editingTodos
+    } = this.state
+
+    const displayAddFirstTodoButton = !addTodoFormOpen && userHasNoTodos(todos)
 
     return (
       <div style={{ marginTop: '50px', maxWidth: '400px', wordBreak: 'break-word' }}>
-        <div >
+        <div style={{ display: 'flex', height: '100%', lineHeight: '100%' }}>
           Welcome, {user.username}!
+
+          {signingOut
+            ? <div className='loader' style={{ marginLeft: 'auto', marginRight: '40px', height: '15px', width: '15px' }} />
+            : <button
+              style={{
+                color: 'red',
+                borderColor: 'red',
+                height: '100%',
+                marginLeft: 'auto'
+              }}
+              onClick={this.handleSignOut}
+            >
+              Sign Out
+            </button>
+          }
+
         </div>
 
-        <form style={{ marginTop: '25px' }}>
-
-          <div style={{ display: 'flex' }}>
-            <span style={{ display: 'inline-flex', width: '20%' }}>
-              To-do:
-            </span>
-            <input
-              style={{ display: 'inline-flex', width: '80%', marginLeft: 'auto', padding: '5px' }}
-              type='text'
-              name='todoInput'
-              value={todoInput}
-              onChange={this.handleInputChange}
-            />
+        {displayAddFirstTodoButton
+          ? <div style={{ marginTop: '75px', marginBottom: '50px' }}>
+            <button onClick={this.handleOpenAddTodoForm} >Add your first To-Do!</button>
           </div>
+          : <div style={{ marginTop: '30px' }}>
 
-          <div style={{ display: 'flex', marginTop: '20px' }}>
-            {loading
-              ? <div className='loader' style={{ margin: 'auto', height: '15px', width: '15px' }} />
-              : <input
-                style={{ width: '100%' }}
-                type='submit'
-                value='Add'
-                disabled={!todoInput}
-                onClick={this.handleAddTodo}
-              />
-            }
-          </div>
+            {todos && todos.length !== 0 && todos.map((todo) => {
+              return todo.command !== 'Delete'
+                ? (
+                  <div
+                    style={{
+                      textAlign: 'left',
+                      marginTop: '10px',
+                      textDecoration: todo.record.completed ? 'line-through' : null
+                    }}
+                    key={todo['sequence-no']}
+                  >
 
-          <div style={{ display: 'flex', marginTop: '20px' }}>
-            <button disabled={!Object.keys(selectedTodos).length} style={{ width: '150px', marginLeft: '7%' }} onClick={this.handleMarkSelectedTodosCompleted}>Mark Selected Complete</button>
-            <button disabled={!Object.keys(selectedTodos).length} style={{ width: '150px', marginRight: '7%', marginLeft: 'auto' }} onClick={this.handleDeleteSelectedTodos}>Delete Selected</button>
-          </div>
+                    {editingTodos[todo['sequence-no']]
 
-          {todos && todos.length !== 0 && todos.map((todo) => {
-            return todo.command !== 'Delete'
-              ? (
-                <div
-                  style={{
-                    textAlign: 'left',
-                    marginTop: '10px',
-                    textDecoration: todo.record.completed ? 'line-through' : null
-                  }}
-                  key={todo['sequence-no']}
-                >
-                  <input type='checkbox' style={{ marginRight: '1vw' }} onClick={() => this.handleToggleSelectedTodo(todo)} />
-                  {todo.record.todo}
+                      ? <EditTodoForm
+                        handleToggleEditTodo={this.handleToggleEditTodo}
+                        handleSetTodos={this.handleSetTodos}
+                        todo={todo}
+                      />
+
+                      :
+                      <span style={{ display: 'flex' }}>
+                        <input
+                          type='checkbox'
+                          style={{ marginRight: '1vw', cursor: 'pointer' }}
+                          onChange={() => this.handleToggleTodo(todo)}
+                          checked={todo.record.completed}
+                        />
+                        <span
+                          onClick={(e) => this.handleToggleEditTodo(e, todo)}
+                          style={{
+                            cursor: todo.record.completed ? 'normal' : 'pointer',
+                            fontSize: '16px'
+                          }}
+                        >
+                          {todo.record.todo}
+                        </span>
+                      </span>
+                    }
+
+                  </div>
+                )
+                : null
+            })}
+
+            <div style={{ marginTop: '30px' }}>
+              {addTodoFormOpen
+                ? <AddTodoForm
+                  handleCloseAddTodoForm={this.handleCloseAddTodoForm}
+                  handleSetTodos={this.handleSetTodos}
+                />
+                : <div style={{ textAlign: 'left' }}>
+                  <button onClick={this.handleOpenAddTodoForm}>Add To-Do!</button>
                 </div>
-              )
-              : null
-          })}
-
-          {error && (
-            <div style={{
-              marginTop: '10px',
-              color: 'red',
-              fontSize: '.75em',
-              textAlign: 'left',
-              wordBreak: 'break-word',
-              fontStyle: 'italic'
-            }}>
-              {error}
+              }
             </div>
-          )}
-
-        </form>
-
-        <button style={{ marginTop: '25px' }} onClick={this.handleSignOut}>Sign Out</button>
+          </div>
+        }
 
       </div>
     )

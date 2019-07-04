@@ -285,9 +285,7 @@ exports.batchInsert = async function (req, res) {
         .status(statusCodes['Bad Request'])
         .send({ readableMessage: `Item ${i} missing item id` })
 
-      // Warning: if the server receives many large simultaneous requests, memory could fill up here.
-      // The solution to this is to read the buffer in small chunks and pipe the chunks to
-      // S3 and store the S3 URL in DynamoDB.
+      // Warning: if the server receives many large simultaneous requests, memory could fill up here
       const buffer = req.read(byteLength)
 
       const transaction = {
@@ -341,9 +339,7 @@ exports.batchUpdate = async function (req, res) {
         .status(statusCodes['Bad Request'])
         .send({ readableMessage: `Item ${i} missing item id` })
 
-      // Warning: if the server receives many large simultaneous requests, memory could fill up here.
-      // The solution to this is to read the buffer in small chunks and pipe the chunks to
-      // S3 and store the S3 URL in DynamoDB.
+      // Warning: if the server receives many large simultaneous requests, memory could fill up here
       const buffer = req.read(byteLength)
 
       const transaction = {

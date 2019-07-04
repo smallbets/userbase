@@ -30,32 +30,45 @@ const getTodos = async () => {
   }
 }
 
-const deleteTodos = async (todos) => {
+const deleteTodo = async (todo) => {
   try {
-    const deletePromises = todos.map(todo => encd.db.delete(todo))
-    await Promise.all(deletePromises)
+    await encd.db.delete(todo)
     return { todos: encd.db.getLatestState() }
   } catch (e) {
     return _errorHandler(e, 'delete todos')
   }
 }
 
-const markTodosCompleted = async (todos) => {
+const toggleTodo = async (todo) => {
   try {
-    const updatedTodosPromises = todos.map(todo => encd.db.update(todo, { todo: todo.record.todo, completed: true }))
-    const udpatedTodos = await Promise.all(updatedTodosPromises)
-    udpatedTodos.forEach((updatedTodo) => {
-      console.log(`Completed todo '${updatedTodo.record.todo}' encrypted and stored as '${arrayBufferToString(updatedTodo.encryptedRecord)}'`)
-    })
+    const markingComplete = !todo.record.completed
+    const updatedTodo = await encd.db.update(todo, { todo: todo.record.todo, completed: markingComplete })
+    if (markingComplete) {
+      console.log(`Completing todo '${updatedTodo.record.todo}' encrypted and stored as '${arrayBufferToString(updatedTodo.encryptedRecord)}'`)
+    } else {
+      console.log(`Marking todo '${updatedTodo.record.todo}' incomplete encrypted and stored as '${arrayBufferToString(updatedTodo.encryptedRecord)}'`)
+    }
+
     return { todos: encd.db.getLatestState() }
   } catch (e) {
-    return _errorHandler(e, 'mark todos completed')
+    return _errorHandler(e, 'toggle todos')
+  }
+}
+
+const updateTodo = async (todo, newTodoInput) => {
+  try {
+    const updatedTodo = await encd.db.update(todo, { todo: newTodoInput, completed: todo.record.completed })
+    console.log(`Updated todo '${updatedTodo.record.todo}' encrypted and stored as '${arrayBufferToString(updatedTodo.encryptedRecord)}'`)
+    return { todos: encd.db.getLatestState() }
+  } catch (e) {
+    return _errorHandler(e, 'update todo')
   }
 }
 
 export default {
   insertTodo,
   getTodos,
-  deleteTodos,
-  markTodosCompleted,
+  deleteTodo,
+  toggleTodo,
+  updateTodo,
 }
