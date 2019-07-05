@@ -1,7 +1,7 @@
 const webpack = require('webpack')
 const merge = require('webpack-merge')
 const common = require('./webpack.common.js')
-const OpenBrowserPlugin = require('open-browser-webpack-plugin')
+const OpenBrowserPlugin = require('opn-browser-webpack-plugin')
 
 module.exports = merge(common, {
   entry: {
