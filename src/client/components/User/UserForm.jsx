@@ -47,57 +47,58 @@ class UserForm extends Component {
   render() {
     const { username, password, error, loading } = this.state
 
+    const disabled = !username || !password
+
     return (
       <form onSubmit={this.handleSubmit}>
 
-        <div style={{ width: '250px', margin: 'auto' }}>
+        <div className='container max-w-sm font-bold bg-white p-8 shadow-md'>
 
-          <div style={{ display: 'flex' }}>
-            Username:
-            <input
-              style={{ marginLeft: 'auto', padding: '5px' }}
-              type="text"
-              name="username"
-              autoComplete="username"
-              onChange={this.handleInputChange}
-            />
-          </div>
+          <div className='table'>
 
-          <div style={{ display: 'flex', marginTop: '10px' }}>
-            Password:
-            <input
-              style={{ marginLeft: 'auto', padding: '5px' }}
-              type="password"
-              name="password"
-              autoComplete="new-password"
-              onChange={this.handleInputChange}
-            />
-          </div>
-
-          <div style={{ display: 'flex', marginTop: '20px' }}>
-            {loading
-              ? <div className='loader' style={{ margin: 'auto', height: '15px', width: '15px' }} />
-              : <input
-                style={{ width: '100%' }}
-                type="submit"
-                value={this.props.formType}
-                disabled={!username || !password}
-              />
-            }
-          </div>
-
-          {error && (
-            <div style={{
-              marginTop: '10px',
-              color: 'red',
-              fontSize: '.75em',
-              textAlign: 'left',
-              wordBreak: 'break-word',
-              fontStyle: 'italic'
-            }}>
-              {error}
+            <div className='table-row'>
+              <div className='table-cell p-2 text-right'>Username</div>
+              <div className='table-cell p-2'>
+                <input
+                  className='font-light text-sm h-8 p-2 border border-gray-500 outline-none'
+                  type='text'
+                  name='username'
+                  autoComplete='username'
+                  onChange={this.handleInputChange}
+                />
+              </div>
             </div>
-          )}
+
+            <div className='table-row'>
+              <div className='table-cell p-2 text-right'>Password</div>
+              <div className='table-cell p-2'>
+                <input
+                  className='font-light text-sm h-8 p-2 border border-gray-500 outline-none'
+                  type='password'
+                  name='password'
+                  autoComplete='new-password'
+                  onChange={this.handleInputChange}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className='text-center mt-3 h-16'>
+            <div className='h-6'>
+              {loading
+                ? <div className='loader inline-block w-6 h-6' />
+                : <input
+                  className='btn w-24'
+                  type='submit'
+                  value={this.props.formType}
+                  disabled={disabled}
+                />
+              }
+            </div>
+
+            <div className='error'>{error}</div>
+          </div>
+
 
         </div>
 

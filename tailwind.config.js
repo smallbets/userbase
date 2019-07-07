@@ -1,7 +1,17 @@
 module.exports = {
   theme: {
-    extend: {}
+    container: {
+      center: true,
+    },
+    extend: {
+      colors: {
+        primary: '#ffe77a',
+        secondary: '#ffd005'
+      }
+    }
   },
-  variants: {},
+  variants: {
+    visibility: ['responsive', 'group-hover']
+  },
   plugins: []
 }

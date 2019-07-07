@@ -11,7 +11,9 @@ For now, this is just a prototype app. It is a proof of concept to demonstrate t
 
 Check out https://demo.encrypted.dev for a live demo.
 
-[![Proof of concept demo](docs/demo.png)](https://demo.encrypted.dev)
+<p align="center">
+  <img width="669" alt="Proof of concept demo" src="docs/demo.png">
+</p>
 
 ## SDK
 

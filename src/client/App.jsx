@@ -17,6 +17,7 @@ class Welcome extends Component {
     }
 
     this.handleAuthenticateUser = this.handleAuthenticateUser.bind(this)
+    this.handleSignOut = this.handleSignOut.bind(this)
     this.handleRemoveUserAuthentication = this.handleRemoveUserAuthentication.bind(this)
     this.handleReadHash = this.handleReadHash.bind(this)
   }
@@ -52,48 +53,50 @@ class Welcome extends Component {
     })
   }
 
+  async handleSignOut() {
+    this.setState({ signingOut: true })
+    await userLogic.signOut()
+    this.handleRemoveUserAuthentication()
+  }
+
   render() {
     const { loading, user, displaySignInForm, displaySignUpForm } = this.state
 
     const userIsAuthenticated = !!user
 
     return (
-      <div className="welcome">
-        <div className="logo" style={{ margin: 'auto' }} />
+      <div>
+        <nav className='container flex flex-row items-center min-w-full text-xl font-extrabold bg-white shadow-md p-2 h-16 mb-10'>
+          <div className='flex-1 ml-2'>
+            <a href='#'><img src={require('./img/icon.png')} className='h-12'></img></a>
+          </div>
+          <div className='flex-1 text-right tracking-tight mr-5'>
+            {!userIsAuthenticated
+              ? <ul>
+                <li className='inline-block ml-4'><a className='hover:underline' href='#sign-in'>Sign in</a></li>
+                <li className='inline-block ml-4'><a className='hover:underline' href='#sign-up'>New account</a></li>
+              </ul>
+              : <ul>
+                <li className='inline-block ml-4 font-light'>{user.username}</li>
+                <li className='inline-block ml-4'><a className='hover:underline' href='#' onClick={this.handleSignOut}>Sign out</a></li>
+              </ul>
+            }
+          </div>
+        </nav>
 
         {userIsAuthenticated
           ? <Dashboard user={user} handleRemoveUserAuthentication={this.handleRemoveUserAuthentication} />
-          : <div style={{ marginTop: '150px' }}>
-            {loading
-              ? <div style={{ marginLeft: 'auto', marginRight: 'auto' }} className='loader' />
-              : <div>
+          : loading
+            ? <div className='text-center'><div className='loader w-6 h-6 inline-block' /></div>
+            : <div>
+              {displaySignInForm &&
+                <UserForm handleAuthenticateUser={this.handleAuthenticateUser} formType='Sign In' />
+              }
 
-                {!displaySignInForm && !displaySignUpForm &&
-                  <div>
-                    <a href='#sign-in' tabIndex={0}>
-                      <button style={{ width: '30%' }}>Sign In</button>
-                    </a>
-
-                    <span style={{ width: '10%', display: 'inline-block' }} />
-
-                    <a href='#sign-up' tabIndex={0}>
-                      <button style={{ width: '30%' }}>Sign Up</button>
-                    </a>
-
-                  </div>
-                }
-
-                {displaySignInForm &&
-                  <UserForm handleAuthenticateUser={this.handleAuthenticateUser} formType='Sign In' />
-                }
-
-                {displaySignUpForm &&
-                  <UserForm handleAuthenticateUser={this.handleAuthenticateUser} formType='Sign Up' />
-                }
-
-              </div>
-            }
-          </div>
+              {displaySignUpForm &&
+                <UserForm handleAuthenticateUser={this.handleAuthenticateUser} formType='Sign Up' />
+              }
+            </div>
         }
       </div>
     )

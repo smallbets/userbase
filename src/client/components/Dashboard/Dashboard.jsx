@@ -1,20 +1,8 @@
 import React, { Component } from 'react'
 import { object, func } from 'prop-types'
-import userLogic from '../User/logic'
 import dbLogic from './logic'
 import AddTodoForm from './AddTodoForm'
 import EditTodoForm from './EditTodoForm'
-
-const userHasNoTodos = (todos) => {
-  let encounteredActiveTodo = false
-  for (const todo of todos) {
-    if (todo.command === 'Insert' || todo.command === 'Update') {
-      encounteredActiveTodo = true
-      break
-    }
-  }
-  return !encounteredActiveTodo
-}
 
 class Dashboard extends Component {
   constructor(props) {
@@ -28,12 +16,10 @@ class Dashboard extends Component {
       addTodoFormOpen: false
     }
 
-    this.handleSignOut = this.handleSignOut.bind(this)
     this.handleSetTodos = this.handleSetTodos.bind(this)
     this.handleToggleTodo = this.handleToggleTodo.bind(this)
     this.handleToggleEditTodo = this.handleToggleEditTodo.bind(this)
-    this.handleOpenAddTodoForm = this.handleOpenAddTodoForm.bind(this)
-    this.handleCloseAddTodoForm = this.handleCloseAddTodoForm.bind(this)
+    this.handleDeleteTodo = this.handleDeleteTodo.bind(this)
   }
 
   async componentWillMount() {
@@ -41,14 +27,8 @@ class Dashboard extends Component {
     this.setState({ todos: result.todos })
   }
 
-  async handleSignOut() {
-    this.setState({ signingOut: true })
-    await userLogic.signOut()
-    this.props.handleRemoveUserAuthentication()
-  }
-
   handleSetTodos(todos) {
-    this.setState({ todos, addTodoFormOpen: false })
+    this.setState({ todos })
   }
 
   async handleToggleTodo(todo) {
@@ -64,113 +44,75 @@ class Dashboard extends Component {
     this.setState({ editingTodos })
   }
 
-  handleOpenAddTodoForm() {
-    this.setState({ addTodoFormOpen: true })
-  }
+  async handleDeleteTodo(event, todo) {
+    event.preventDefault()
 
-  handleCloseAddTodoForm(e) {
-    e.preventDefault()
-    this.setState({ addTodoFormOpen: false })
+    await this.setState({ loading: true, error: undefined })
+
+    const result = await dbLogic.deleteTodo(todo)
+
+    if (result.error) this.setState({ error: result.error, loading: false })
+    else this.handleSetTodos(result.todos)
   }
 
   render() {
-    const { user } = this.props
     const {
       todos,
-      signingOut,
-      addTodoFormOpen,
       editingTodos
     } = this.state
 
-    const displayAddFirstTodoButton = !addTodoFormOpen && userHasNoTodos(todos)
-
     return (
-      <div style={{ marginTop: '50px', maxWidth: '400px', wordBreak: 'break-word' }}>
-        <div style={{ display: 'flex', height: '100%', lineHeight: '100%' }}>
-          Welcome, {user.username}!
+      <div className='container max-w-md font-bold bg-white p-8 shadow-md'>
+        <div>
+          {todos && todos.length !== 0 && todos.map((todo) => {
+            return todo.command !== 'Delete'
+              ? (
+                <div
+                  className={editingTodos[todo['sequence-no']] ?
+                    'cursor-default relative container group' :
+                    'cursor-pointer relative hover:bg-yellow-200 rounded container group'}
+                  key={todo['sequence-no']}
+                >
 
-          {signingOut
-            ? <div className='loader' style={{ marginLeft: 'auto', marginRight: '40px', height: '15px', width: '15px' }} />
-            : <button
-              style={{
-                color: 'red',
-                borderColor: 'red',
-                height: '100%',
-                marginLeft: 'auto'
-              }}
-              onClick={this.handleSignOut}
-            >
-              Sign Out
-            </button>
-          }
+                  {editingTodos[todo['sequence-no']]
 
-        </div>
+                    ? <EditTodoForm
+                      handleToggleEditTodo={this.handleToggleEditTodo}
+                      handleSetTodos={this.handleSetTodos}
+                      todo={todo}
+                    />
 
-        {displayAddFirstTodoButton
-          ? <div style={{ marginTop: '75px', marginBottom: '50px' }}>
-            <button onClick={this.handleOpenAddTodoForm} >Add your first To-Do!</button>
-          </div>
-          : <div style={{ marginTop: '30px' }}>
-
-            {todos && todos.length !== 0 && todos.map((todo) => {
-              return todo.command !== 'Delete'
-                ? (
-                  <div
-                    style={{
-                      textAlign: 'left',
-                      marginTop: '10px',
-                      textDecoration: todo.record.completed ? 'line-through' : null
-                    }}
-                    key={todo['sequence-no']}
-                  >
-
-                    {editingTodos[todo['sequence-no']]
-
-                      ? <EditTodoForm
-                        handleToggleEditTodo={this.handleToggleEditTodo}
-                        handleSetTodos={this.handleSetTodos}
-                        todo={todo}
+                    :
+                    <div className='py-2 container flex'>
+                      <div
+                        className={todo.record.completed ? 'checkbox-checked fa-check' : 'checkbox fa-check-empty'}
+                        onClick={() => this.handleToggleTodo(todo)}
                       />
+                      <div
+                        className={todo.record.completed ?
+                          'inline-block ml-2 font-semibold line-through text-gray-600 flex-1' :
+                          'inline-block ml-2 font-semibold flex-1'}
+                        onClick={(e) => this.handleToggleEditTodo(e, todo)}
+                      >
+                        {todo.record.todo}
+                      </div>
+                      <div
+                        className='fas fa-trash-alt absolute inset-y-0 right-0 mr-2 rounded-lg pt-2 pb-2 bg-transparent font-normal text-yellow-700 invisible group-hover:visible'
+                        onClick={(e) => this.handleDeleteTodo(e, todo)}
+                      />
+                    </div>
+                  }
 
-                      :
-                      <span style={{ display: 'flex' }}>
-                        <input
-                          type='checkbox'
-                          style={{ marginRight: '1vw', cursor: 'pointer' }}
-                          onChange={() => this.handleToggleTodo(todo)}
-                          checked={todo.record.completed}
-                        />
-                        <span
-                          onClick={(e) => this.handleToggleEditTodo(e, todo)}
-                          style={{
-                            cursor: todo.record.completed ? 'normal' : 'pointer',
-                            fontSize: '16px'
-                          }}
-                        >
-                          {todo.record.todo}
-                        </span>
-                      </span>
-                    }
-
-                  </div>
-                )
-                : null
-            })}
-
-            <div style={{ marginTop: '30px' }}>
-              {addTodoFormOpen
-                ? <AddTodoForm
-                  handleCloseAddTodoForm={this.handleCloseAddTodoForm}
-                  handleSetTodos={this.handleSetTodos}
-                />
-                : <div style={{ textAlign: 'left' }}>
-                  <button onClick={this.handleOpenAddTodoForm}>Add To-Do!</button>
                 </div>
-              }
-            </div>
-          </div>
-        }
+              )
+              : null
+          })}
 
+          <div>
+            <hr className='border border-t-0 border-gray-400 mt-4 mb-4' />
+            <AddTodoForm handleSetTodos={this.handleSetTodos} />
+          </div>
+        </div>
       </div>
     )
   }
