@@ -66,9 +66,9 @@ class Welcome extends Component {
 
     return (
       <div>
-        <nav className='container flex flex-row items-center min-w-full text-xl font-extrabold bg-white shadow-md p-2 h-16 mb-10'>
-          <div className='flex-1 ml-2'>
-            <a href='#'><img src={require('./img/icon.png')} className='h-12'></img></a>
+        <nav className='flex items-center min-w-full text-sm sm:text-lg font-extrabold bg-white shadow-md p-2 h-14 sm:h-16 mb-10'>
+          <div className='flex-0 ml-2'>
+            <a href='#'><img src={require('./img/icon.png')} className='h-10 sm:h-12'></img></a>
           </div>
           <div className='flex-1 text-right tracking-tight mr-5'>
             {!userIsAuthenticated

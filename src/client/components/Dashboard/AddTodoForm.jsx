@@ -51,7 +51,7 @@ class AddTodoForm extends Component {
       <div>
         {loading ? <div className='loader inline-block w-6 h-6' /> : <div />}
 
-        <form className='container flex'>
+        <form className='flex'>
           <div className='flex-1'>
             <input
               className='todo-text'
