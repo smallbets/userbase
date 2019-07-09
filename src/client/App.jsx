@@ -8,7 +8,7 @@ const displaySignInForm = () => window.location.hash.substring(1) === 'sign-in'
 const displaySignUpForm = () => window.location.hash.substring(1) === 'sign-up'
 const displayShowKeyForm = () => window.location.hash.substring(1) === 'show-key'
 
-class Welcome extends Component {
+class App extends Component {
   constructor(props) {
     super(props)
 
@@ -138,4 +138,4 @@ class Welcome extends Component {
   }
 }
 
-export default Welcome
+export default App

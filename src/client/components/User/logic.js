@@ -37,6 +37,10 @@ const getSession = () => {
 }
 
 const getKey = () => {
+  if (!getSession()) {
+    return undefined
+  }
+
   const key = JSON.parse(localStorage.getItem('key.' + getSession().username)).k
   const numChunks = Math.ceil(key.length / 4)
   const chunks = new Array(numChunks)
