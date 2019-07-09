@@ -1,6 +1,7 @@
 import uuidv4 from 'uuid/v4'
 import axios from 'axios'
 import Worker from './worker.js'
+import auth from './auth'
 import crypto from './Crypto'
 import stateManager from './stateManager'
 import { appendBuffers } from './Crypto/utils'
@@ -13,9 +14,10 @@ import { getSecondsSinceT0 } from './utils'
     called after every write to the server.
 
  */
-const initializeBundlingProcess = () => {
+const initializeBundlingProcess = async (key) => {
   const worker = new Worker()
-  worker.postMessage(localStorage.getItem('key')) // can't read localStorage from worker
+  if (!key) key = await auth.getKeyFromLocalStorage() // can't read local storage from worker
+  worker.postMessage(key)
 }
 
 /**
@@ -52,7 +54,7 @@ const initializeBundlingProcess = () => {
 
  */
 const insert = async (item) => {
-  const key = await crypto.aesGcm.getKeyFromLocalStorage()
+  const key = await auth.getKeyFromLocalStorage()
   const encryptedItem = await crypto.aesGcm.encrypt(key, item)
 
   const response = await axios({
@@ -74,13 +76,13 @@ const insert = async (item) => {
 
   stateManager.insertItem(itemToReturn)
 
-  initializeBundlingProcess()
+  initializeBundlingProcess(key)
 
   return itemToReturn
 }
 
 const batchInsert = async (items) => {
-  const key = await crypto.aesGcm.getKeyFromLocalStorage()
+  const key = await auth.getKeyFromLocalStorage()
   const encryptionPromises = items.map(item => crypto.aesGcm.encrypt(key, item))
   const encryptedItems = await Promise.all(encryptionPromises)
 
@@ -110,13 +112,13 @@ const batchInsert = async (items) => {
 
   stateManager.insertItems(itemsToReturn)
 
-  initializeBundlingProcess()
+  initializeBundlingProcess(key)
 
   return itemsToReturn
 }
 
 const update = async (oldItem, newItem) => {
-  const key = await crypto.aesGcm.getKeyFromLocalStorage()
+  const key = await auth.getKeyFromLocalStorage()
   const encryptedItem = await crypto.aesGcm.encrypt(key, newItem)
 
   const response = await axios({
@@ -139,13 +141,13 @@ const update = async (oldItem, newItem) => {
 
   stateManager.updateItem(itemToReturn)
 
-  initializeBundlingProcess()
+  initializeBundlingProcess(key)
 
   return itemToReturn
 }
 
 const batchUpdate = async (oldItems, newItems) => {
-  const key = await crypto.aesGcm.getKeyFromLocalStorage()
+  const key = await auth.getKeyFromLocalStorage()
   const encryptionPromises = newItems.map(item => crypto.aesGcm.encrypt(key, item))
   const encryptedItems = await Promise.all(encryptionPromises)
 
@@ -180,7 +182,7 @@ const batchUpdate = async (oldItems, newItems) => {
     return itemToReturn
   })
 
-  initializeBundlingProcess()
+  initializeBundlingProcess(key)
 
   return itemsToReturn
 }
@@ -268,7 +270,7 @@ const queryEncryptedDbState = async (bundleSeqNo) => {
 }
 
 const query = async () => {
-  const key = await crypto.aesGcm.getKeyFromLocalStorage()
+  const key = await auth.getKeyFromLocalStorage()
 
   // retrieving user's transaction log
   let t0 = performance.now()

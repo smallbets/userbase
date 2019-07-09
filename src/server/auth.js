@@ -47,7 +47,7 @@ const createSession = async function (userId, res) {
     secure: process.env.NODE_ENV === 'production'
   }
   res.cookie(SESSION_COOKIE_NAME, sessionId, cookieResponseHeaders)
-  return true
+  return sessionId
 }
 
 exports.signUp = async function (req, res) {
@@ -90,8 +90,8 @@ exports.signUp = async function (req, res) {
       throw e
     }
 
-    const successfullyCreatedSession = await createSession(user['user-id'], res)
-    if (successfullyCreatedSession) return res.json(user)
+    const sessionId = await createSession(user['user-id'], res)
+    if (sessionId) return res.send(sessionId)
     else throw new Error('Failed to create session')
   } catch (e) {
     return res
@@ -125,8 +125,8 @@ exports.signIn = async function (req, res) {
       .status(statusCodes['Unauthorized'])
       .send({ readableMessage: 'Incorrect password' })
 
-    const successfullyCreatedSession = await createSession(user['user-id'], res)
-    if (successfullyCreatedSession) return res.json(user)
+    const sessionId = await createSession(user['user-id'], res)
+    if (sessionId) return res.send(sessionId)
     else throw new Error('Failed to create session')
   } catch (e) {
     return res

@@ -8,8 +8,8 @@ const _errorHandler = (e, operation) => {
 
 const signUp = async (username, password) => {
   try {
-    const user = await encd.signUp(username, password)
-    return { user }
+    const sessionId = await encd.signUp(username, password)
+    return sessionId
   } catch (e) {
     return _errorHandler(e, 'sign up')
   }
@@ -17,8 +17,7 @@ const signUp = async (username, password) => {
 
 const signOut = async () => {
   try {
-    const user = await encd.signOut()
-    return { user }
+    await encd.signOut()
   } catch (e) {
     return _errorHandler(e, 'sign out')
   }
@@ -26,26 +25,20 @@ const signOut = async () => {
 
 const signIn = async (username, password) => {
   try {
-    const user = await encd.signIn(username, password)
-    return { user }
+    const sessionId = await encd.signIn(username, password)
+    return sessionId
   } catch (e) {
     return _errorHandler(e, 'sign in')
   }
 }
 
-const isUserSignedIn = async () => {
-  try {
-    const result = await encd.isUserSignedIn()
-    return result
-  } catch (e) {
-    console.log(e)
-    return false
-  }
+const getSession = () => {
+  return encd.getCurrentSession()
 }
 
 export default {
   signUp,
   signOut,
   signIn,
-  isUserSignedIn,
+  getSession,
 }

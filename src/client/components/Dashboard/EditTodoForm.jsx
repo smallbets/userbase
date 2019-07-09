@@ -22,7 +22,7 @@ class EditTodoForm extends Component {
   }
 
   async handleSaveTodo(event) {
-    const { todo, handleSetTodos } = this.props
+    const { todo, handleSetTodos, handleRemoveUserAuthentication } = this.props
     const { todoInput } = this.state
 
     event.preventDefault()
@@ -31,7 +31,7 @@ class EditTodoForm extends Component {
 
     await this.setState({ loading: true, error: undefined })
 
-    const result = await dbLogic.updateTodo(todo, todoInput)
+    const result = await dbLogic.updateTodo(todo, todoInput, handleRemoveUserAuthentication)
 
     if (result.error) this.setState({ error: result.error, loading: false })
     else handleSetTodos(result.todos)
@@ -90,6 +90,7 @@ class EditTodoForm extends Component {
 }
 
 EditTodoForm.propTypes = {
+  handleRemoveUserAuthentication: func,
   handleToggleEditTodo: func,
   handleSetTodos: func,
   todo: object

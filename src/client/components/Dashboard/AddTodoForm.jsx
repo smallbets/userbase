@@ -30,7 +30,7 @@ class AddTodoForm extends Component {
 
     await this.setState({ loading: true, error: undefined })
 
-    const result = await dbLogic.insertTodo(todoInput)
+    const result = await dbLogic.insertTodo(todoInput, this.props.handleRemoveUserAuthentication)
 
     if (result.error) {
       this.setState({ error: result.error, loading: false })
@@ -84,6 +84,7 @@ class AddTodoForm extends Component {
 }
 
 AddTodoForm.propTypes = {
+  handleRemoveUserAuthentication: func,
   handleSetTodos: func
 }
 

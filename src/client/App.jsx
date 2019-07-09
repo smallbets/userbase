@@ -9,23 +9,28 @@ const displaySignUpForm = () => window.location.hash.substring(1) === 'sign-up'
 class Welcome extends Component {
   constructor(props) {
     super(props)
+
+    const session = userLogic.getSession()
+
+    const isFirstTimeVisit = !session
+    const userMustLogInAgain = session && !session.sessionId
+
+    if (isFirstTimeVisit) {
+      window.location.hash = 'sign-up'
+    } else if (userMustLogInAgain) {
+      window.location.hash = 'sign-in'
+    }
+
     this.state = {
-      loading: true,
-      user: undefined,
+      session,
       displaySignInForm: displaySignInForm(),
       displaySignUpForm: displaySignUpForm()
     }
 
-    this.handleAuthenticateUser = this.handleAuthenticateUser.bind(this)
+    this.handleSetSessionInState = this.handleSetSessionInState.bind(this)
     this.handleSignOut = this.handleSignOut.bind(this)
     this.handleRemoveUserAuthentication = this.handleRemoveUserAuthentication.bind(this)
     this.handleReadHash = this.handleReadHash.bind(this)
-  }
-
-  async componentWillMount() {
-    const result = await userLogic.isUserSignedIn()
-    if (result) return this.setState({ user: result, loading: false })
-    else return this.setState({ loading: false })
   }
 
   componentDidMount() {
@@ -36,14 +41,25 @@ class Welcome extends Component {
     window.removeEventListener('hashchange', this.handleReadHash, false)
   }
 
-  handleAuthenticateUser(user) {
+  handleSetSessionInState(session) {
     window.location.hash = ''
-    this.setState({ user })
+    this.setState({ session })
   }
 
   handleRemoveUserAuthentication() {
-    window.location.hash = ''
-    this.setState({ user: undefined })
+    const { session } = this.state
+    window.location.hash = 'sign-in'
+    this.setState({
+      session: {
+        username: session && session.username,
+        sessionId: null
+      }
+    })
+  }
+
+  async handleSignOut() {
+    await userLogic.signOut()
+    this.handleRemoveUserAuthentication()
   }
 
   handleReadHash() {
@@ -53,16 +69,10 @@ class Welcome extends Component {
     })
   }
 
-  async handleSignOut() {
-    this.setState({ signingOut: true })
-    await userLogic.signOut()
-    this.handleRemoveUserAuthentication()
-  }
-
   render() {
-    const { loading, user, displaySignInForm, displaySignUpForm } = this.state
+    const { session, displaySignInForm, displaySignUpForm } = this.state
 
-    const userIsAuthenticated = !!user
+    const userHasActiveSession = session && session.sessionId
 
     return (
       <div>
@@ -71,32 +81,34 @@ class Welcome extends Component {
             <a href='#'><img src={require('./img/icon.png')} className='h-10 sm:h-12'></img></a>
           </div>
           <div className='flex-1 text-right tracking-tight mr-5'>
-            {!userIsAuthenticated
+            {!userHasActiveSession
               ? <ul>
                 <li className='inline-block ml-4'><a className='hover:underline' href='#sign-in'>Sign in</a></li>
                 <li className='inline-block ml-4'><a className='hover:underline' href='#sign-up'>New account</a></li>
               </ul>
               : <ul>
-                <li className='inline-block ml-4 font-light'>{user.username}</li>
+                <li className='inline-block ml-4 font-light'>{session.username}</li>
                 <li className='inline-block ml-4'><a className='hover:underline' href='#' onClick={this.handleSignOut}>Sign out</a></li>
               </ul>
             }
           </div>
         </nav>
 
-        {userIsAuthenticated
-          ? <Dashboard user={user} handleRemoveUserAuthentication={this.handleRemoveUserAuthentication} />
-          : loading
-            ? <div className='text-center'><div className='loader w-6 h-6 inline-block' /></div>
-            : <div>
-              {displaySignInForm &&
-                <UserForm handleAuthenticateUser={this.handleAuthenticateUser} formType='Sign In' />
-              }
+        {userHasActiveSession
+          ? <Dashboard handleRemoveUserAuthentication={this.handleRemoveUserAuthentication} />
+          : <div>
+            {displaySignInForm &&
+              <UserForm
+                handleSetSessionInState={this.handleSetSessionInState}
+                formType='Sign In'
+                placeholderUsername={session && session.username}
+              />
+            }
 
-              {displaySignUpForm &&
-                <UserForm handleAuthenticateUser={this.handleAuthenticateUser} formType='Sign Up' />
-              }
-            </div>
+            {displaySignUpForm &&
+              <UserForm handleSetSessionInState={this.handleSetSessionInState} formType='Sign Up' />
+            }
+          </div>
         }
       </div>
     )

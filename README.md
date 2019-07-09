@@ -98,7 +98,7 @@ npm run perftest
 A browser should open to localhost:3001. Open the browser console. You should see logs indicating the test is setting up. Wait until the test is finished setting up and the following message is logged:
 
 ```
-To test user <username>, input this into the console: localStorage.setItem('key', <user's key>), then sign in with password 'Test1234'.
+To test user <username>, input this into the console: localStorage.setItem('<username>', '<user's key>'), then sign in with password 'Test1234'.
 ```
 
 Copy the entire `localStorage.setItem()` function.

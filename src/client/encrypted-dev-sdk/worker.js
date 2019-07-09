@@ -61,13 +61,11 @@ const releaseLock = async (lockId) => {
   })
 }
 
-const handleMessage = async (keyString) => {
+const handleMessage = async (key) => {
   let lockId
   try {
     const lockResponse = await axios.post('/api/db/acq-bundle-tx-log-lock')
     lockId = lockResponse.data
-
-    const key = await crypto.aesGcm.importKey(keyString)
 
     const transactionLogResponse = await axios.get('/api/db/query/tx-log')
 
@@ -99,6 +97,6 @@ const handleMessage = async (keyString) => {
 }
 
 self.onmessage = (e) => {
-  const keyString = e.data
-  handleMessage(keyString)
+  const key = e.data
+  handleMessage(key)
 }

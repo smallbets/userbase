@@ -43,19 +43,13 @@ const generateKey = async () => {
   return key
 }
 
-const saveKeyToLocalStorage = async (key) => {
+const getKeyStringFromKey = async (key) => {
   const extractedJsonKey = await window.crypto.subtle.exportKey(EXTRACTED_KEY_TYPE, key)
-  const jsonKeyAsString = JSON.stringify(extractedJsonKey)
-  localStorage.setItem('key', jsonKeyAsString)
+  const keyString = JSON.stringify(extractedJsonKey)
+  return keyString
 }
 
-const getKeyFromLocalStorage = async () => {
-  const jsonKeyAsString = localStorage.getItem('key')
-  const key = await importKey(jsonKeyAsString)
-  return key
-}
-
-const importKey = async (keyString) => {
+const getKeyFromKeyString = async (keyString) => {
   const jsonKey = JSON.parse(keyString)
   const key = await windowOrSelfObject().crypto.subtle.importKey(
     EXTRACTED_KEY_TYPE,
@@ -127,9 +121,8 @@ const decrypt = async (key, encrypted) => {
 
 export default {
   generateKey,
-  saveKeyToLocalStorage,
-  getKeyFromLocalStorage,
-  importKey,
+  getKeyStringFromKey,
+  getKeyFromKeyString,
   encrypt,
   decrypt,
 }

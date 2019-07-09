@@ -6,7 +6,7 @@ class UserForm extends Component {
   constructor(props) {
     super(props)
     this.state = {
-      username: '',
+      username: this.props.placeholderUsername,
       password: '',
       error: '',
       loading: false
@@ -29,7 +29,7 @@ class UserForm extends Component {
   }
 
   async handleSubmit(event) {
-    const { formType, handleAuthenticateUser } = this.props
+    const { formType, handleSetSessionInState } = this.props
     const { username, password } = this.state
     event.preventDefault()
 
@@ -41,7 +41,7 @@ class UserForm extends Component {
     else return console.error('Unknown form type')
 
     if (result.error) this.setState({ error: result.error, loading: false })
-    else handleAuthenticateUser(result.user) // re-routes to different component
+    else handleSetSessionInState({ username, sessionId: result }) // re-routes to different component
   }
 
   render() {
@@ -65,6 +65,7 @@ class UserForm extends Component {
                   name='username'
                   autoComplete='username'
                   onChange={this.handleInputChange}
+                  defaultValue={username}
                 />
               </div>
             </div>
@@ -108,8 +109,9 @@ class UserForm extends Component {
 }
 
 UserForm.propTypes = {
-  handleAuthenticateUser: func,
-  formType: string
+  handleSetSessionInState: func,
+  formType: string,
+  placeholderUsername: string
 }
 
 export default UserForm

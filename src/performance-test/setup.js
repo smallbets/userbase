@@ -128,7 +128,7 @@ const init = async (username, limit) => {
 
   const key = localStorage.getItem('key')
   console.log(`To test user ${username}, input this into the console:
-  localStorage.setItem('key', '${key}'), then sign in with password ${PASSWORD}.`)
+  localStorage.setItem('${username}', '${key}'), then sign in with password ${PASSWORD}.`)
 }
 
 init('test-1k', 1000)

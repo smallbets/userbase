@@ -1,11 +1,11 @@
 import crypto from './Crypto'
 
-function EncryptedDevSdk() {
+function StateManager() {
   this.itemsInOrderOfInsertion = []
   this.itemIdsToIndexes = {}
 }
 
-EncryptedDevSdk.prototype.setItems = function (itemsInOrderOfInsertion, itemIdsToIndexes) {
+StateManager.prototype.setItems = function (itemsInOrderOfInsertion, itemIdsToIndexes) {
   this.itemsInOrderOfInsertion = itemsInOrderOfInsertion
   this.itemIdsToIndexes = itemIdsToIndexes
 }
@@ -34,7 +34,7 @@ EncryptedDevSdk.prototype.setItems = function (itemsInOrderOfInsertion, itemIdsT
     to insert it in the correct place in the array.
 
 */
-EncryptedDevSdk.prototype.insertItem = function (item) {
+StateManager.prototype.insertItem = function (item) {
   let i = this.itemsInOrderOfInsertion.length - 1
   while (i >= 0 && item['sequence-no'] < i) {
     const itemThatWillBeMoved = this.itemsInOrderOfInsertion[i]
@@ -49,7 +49,7 @@ EncryptedDevSdk.prototype.insertItem = function (item) {
   this.itemIdsToIndexes[item['item-id']] = indexToInsertItem
 }
 
-EncryptedDevSdk.prototype.insertItems = function (newItems) {
+StateManager.prototype.insertItems = function (newItems) {
   let i = this.itemsInOrderOfInsertion.length - 1
   while (i >= 0 && newItems[0]['sequence-no'] < i) {
     const itemThatWillBeMoved = this.itemsInOrderOfInsertion[i]
@@ -66,7 +66,7 @@ EncryptedDevSdk.prototype.insertItems = function (newItems) {
   }
 }
 
-EncryptedDevSdk.prototype.updateItem = function (item) {
+StateManager.prototype.updateItem = function (item) {
   const index = this.itemIdsToIndexes[item['item-id']]
   const currentItem = this.itemsInOrderOfInsertion[index]
   if (item['sequence-no'] > currentItem['sequence-no'] && currentItem.command !== 'Delete') {
@@ -74,10 +74,10 @@ EncryptedDevSdk.prototype.updateItem = function (item) {
   }
 }
 
-EncryptedDevSdk.prototype.getItems = function () { return this.itemsInOrderOfInsertion }
-EncryptedDevSdk.prototype.getItemIdsToIndexes = function () { return this.itemIdsToIndexes }
+StateManager.prototype.getItems = function () { return this.itemsInOrderOfInsertion }
+StateManager.prototype.getItemIdsToIndexes = function () { return this.itemIdsToIndexes }
 
-EncryptedDevSdk.prototype.clearState = function () { state = new EncryptedDevSdk() }
+StateManager.prototype.clearState = function () { state = new StateManager() }
 
 /**
 
@@ -118,7 +118,7 @@ EncryptedDevSdk.prototype.clearState = function () { state = new EncryptedDevSdk
       ]
 
   */
-EncryptedDevSdk.prototype.applyTransactionsToDbState = async (key, dbState, transactionLog) => {
+StateManager.prototype.applyTransactionsToDbState = async (key, dbState, transactionLog) => {
   const {
     itemsInOrderOfInsertion,
     itemIdsToOrderOfInsertion
@@ -206,5 +206,5 @@ EncryptedDevSdk.prototype.applyTransactionsToDbState = async (key, dbState, tran
   }
 }
 
-let state = new EncryptedDevSdk()
+let state = new StateManager()
 export default state
