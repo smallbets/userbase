@@ -36,9 +36,22 @@ const getSession = () => {
   return encd.getCurrentSession()
 }
 
+const getKey = () => {
+  const key = JSON.parse(localStorage.getItem('key.' + getSession().username)).k
+  const numChunks = Math.ceil(key.length / 4)
+  const chunks = new Array(numChunks)
+
+  for (let i = 0, o = 0; i < numChunks; ++i, o += 4) {
+    chunks[i] = key.substr(o, 4)
+  }
+
+  return chunks.join('-')
+}
+
 export default {
   signUp,
   signOut,
   signIn,
   getSession,
+  getKey
 }
