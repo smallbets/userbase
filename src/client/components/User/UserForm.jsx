@@ -41,7 +41,7 @@ class UserForm extends Component {
     else return console.error('Unknown form type')
 
     if (result.error) this.setState({ error: result.error, loading: false })
-    else handleSetSessionInState({ username, sessionId: result }) // re-routes to different component
+    else handleSetSessionInState(result) // re-routes to different component
   }
 
   render() {

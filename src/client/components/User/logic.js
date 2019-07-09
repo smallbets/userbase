@@ -8,8 +8,8 @@ const _errorHandler = (e, operation) => {
 
 const signUp = async (username, password) => {
   try {
-    const sessionId = await encd.signUp(username, password)
-    return sessionId
+    const session = await encd.signUp(username, password)
+    return session
   } catch (e) {
     return _errorHandler(e, 'sign up')
   }
@@ -25,8 +25,8 @@ const signOut = async () => {
 
 const signIn = async (username, password) => {
   try {
-    const sessionId = await encd.signIn(username, password)
-    return sessionId
+    const session = await encd.signIn(username, password)
+    return session
   } catch (e) {
     return _errorHandler(e, 'sign in')
   }

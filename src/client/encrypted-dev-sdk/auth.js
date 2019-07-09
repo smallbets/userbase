@@ -4,9 +4,10 @@ import crypto from './Crypto'
 import stateManager from './stateManager'
 
 const _setCurrentSession = (username, sessionId) => {
-  const currentSession = { username, sessionId }
-  const currentSessionString = JSON.stringify(currentSession)
-  localStorage.setItem('currentSession', currentSessionString)
+  const session = { username, sessionId }
+  const sessionString = JSON.stringify(session)
+  localStorage.setItem('currentSession', sessionString)
+  return session
 }
 
 const getCurrentSession = () => {
@@ -17,32 +18,33 @@ const getCurrentSession = () => {
 
 const saveKeyToLocalStorage = async (username, key) => {
   const keyString = await crypto.aesGcm.getKeyStringFromKey(key)
-  localStorage.setItem(username, keyString)
+  localStorage.setItem('key.' + username, keyString)
 }
 
 const getKeyFromLocalStorage = async () => {
   const currentSession = getCurrentSession()
   const username = currentSession.username
 
-  const keyString = localStorage.getItem(username)
+  const keyString = localStorage.getItem('key.' + username)
   const key = await crypto.aesGcm.getKeyFromKeyString(keyString)
   return key
 }
 
 const signUp = async (username, password) => {
   const symmetricKey = await crypto.aesGcm.generateKey()
-  await saveKeyToLocalStorage(username, symmetricKey)
+
+  const lowerCaseUsername = username.toLowerCase()
+  await saveKeyToLocalStorage(lowerCaseUsername, symmetricKey)
 
   const response = await axios.post('/api/auth/sign-up', {
-    username,
+    username: lowerCaseUsername,
     password,
     userId: uuidv4()
   })
   const sessionId = response.data
 
-  _setCurrentSession(username, sessionId)
-
-  return sessionId
+  const session = _setCurrentSession(lowerCaseUsername, sessionId)
+  return session
 }
 
 const signOut = async () => {
@@ -55,15 +57,16 @@ const signOut = async () => {
 }
 
 const signIn = async (username, password) => {
+  const lowerCaseUsername = username.toLowerCase()
+
   const response = await axios.post('/api/auth/sign-in', {
-    username,
+    username: lowerCaseUsername,
     password
   })
   const sessionId = response.data
 
-  _setCurrentSession(username, sessionId)
-
-  return sessionId
+  const session = _setCurrentSession(lowerCaseUsername, sessionId)
+  return session
 }
 
 export default {
