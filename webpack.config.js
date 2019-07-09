@@ -86,7 +86,7 @@ module.exports = (env, argv) => {
       inline: true,
 
       host: 'localhost',
-      port: argv.mode != 'perftest' ? 3000 : 3001,
+      port: argv.run != 'perftest' ? 3000 : 3001,
       proxy: {
         '/api/*': {
           target: 'http://localhost:8080/',
@@ -95,13 +95,13 @@ module.exports = (env, argv) => {
       }
     }
 
-    if (argv.mode == 'perftest') {
+    if (argv.run == 'perftest') {
       config.entry.main = ['./src/performance-test/setup.js']
     }
 
     config.plugins.push(new webpack.HotModuleReplacementPlugin())
     config.plugins.push(new OpenBrowserPlugin({
-      url: argv.mode != 'perftest' ? 'http://localhost:3000' : 'http://localhost:3001'
+      url: argv.run != 'perftest' ? 'http://localhost:3000' : 'http://localhost:3001'
     }))
   }
 
