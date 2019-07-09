@@ -52,7 +52,7 @@ class UserForm extends Component {
     return (
       <form onSubmit={this.handleSubmit}>
 
-        <div className='container max-w-sm font-bold bg-white p-8 shadow-md'>
+        <div className='container content'>
 
           <div className='table'>
 
@@ -99,7 +99,6 @@ class UserForm extends Component {
 
             <div className='error'>{error}</div>
           </div>
-
 
         </div>
 

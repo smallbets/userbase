@@ -67,7 +67,7 @@ class Dashboard extends Component {
         {
           loading
             ? <div className='text-center'><div className='loader w-6 h-6 inline-block' /></div>
-            : <div className='container max-w-md font-bold bg-white p-8 shadow-md'>
+            : <div className='container content'>
               <div>
                 {todos && todos.length !== 0 && todos.map((todo) => {
                   return todo.command !== 'Delete'

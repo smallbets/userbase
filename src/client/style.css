@@ -28,6 +28,10 @@ body {
   @apply rounded-lg w-20 pt-1 pb-1 bg-secondary font-bold cursor-pointer text-yellow-900;
 }
 
+.content {
+  @apply max-w-md font-bold bg-white p-8 shadow-md;
+}
+
 .btn:disabled {
   @apply cursor-not-allowed text-yellow-600;
 }
@@ -52,6 +56,10 @@ body {
 
 .error {
   @apply text-red-600 text-xs italic mt-6 font-medium;
+}
+
+.message {
+  @apply text-gray-600 text-xs italic mt-6 font-medium;
 }
 
 @tailwind utilities;
