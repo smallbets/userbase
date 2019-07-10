@@ -54,6 +54,10 @@ body {
   @apply font-light text-sm h-8 p-2 border border-gray-500 outline-none;
 }
 
+.todo-item {
+  @apply inline-block ml-2 font-semibold flex-1 pr-6
+}
+
 .error {
   @apply text-red-600 text-xs italic mt-6 font-medium;
 }

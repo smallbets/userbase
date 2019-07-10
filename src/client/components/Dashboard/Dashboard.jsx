@@ -93,8 +93,8 @@ class Dashboard extends Component {
                         />
                         <div
                           className={todo.record.completed ?
-                            'inline-block ml-2 font-semibold line-through text-gray-600 flex-1' :
-                            'inline-block ml-2 font-semibold flex-1'}
+                            'todo-item line-through text-gray-600 ' :
+                            'todo-item'}
                           onClick={(e) => this.handleToggleEditTodo(e, todo)}
                         >
                           {todo.record.todo}
