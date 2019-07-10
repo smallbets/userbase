@@ -41,11 +41,7 @@ class AddTodoForm extends Component {
   }
 
   render() {
-    const {
-      todoInput,
-      error,
-      loading
-    } = this.state
+    const { todoInput, error, loading } = this.state
 
     return (
       <div>

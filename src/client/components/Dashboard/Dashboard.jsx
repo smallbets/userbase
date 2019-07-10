@@ -22,9 +22,9 @@ class Dashboard extends Component {
     this.handleDeleteTodo = this.handleDeleteTodo.bind(this)
   }
 
-  async componentWillMount() {
+  async componentDidMount() {
     const result = await dbLogic.getTodos(this.props.handleRemoveUserAuthentication)
-    if (result) this.setState({ todos: result.todos, loading: false })
+    if (result) await this.setState({ todos: result.todos, loading: false })
   }
 
   handleSetTodos(todos) {

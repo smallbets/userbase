@@ -20,7 +20,7 @@ class ShowKey extends Component {
 
           <div className='table-row'>
             <div className='table-cell p-0'>
-              <div className='font-light text-xs p-0 select-all font-mono'>
+              <div className='font-light text-sm p-0 select-all font-mono'>
                 {this.props.keyString}
               </div>
             </div>

@@ -3,28 +3,36 @@ import userLogic from './components/User/logic'
 import Dashboard from './components/Dashboard/Dashboard'
 import UserForm from './components/User/UserForm'
 import ShowKey from './components/User/ShowKey'
+import SaveKey from './components/User/SaveKey'
 
+const displayHome = () => window.location.hash.substring(1) === ''
 const displaySignInForm = () => window.location.hash.substring(1) === 'sign-in'
 const displaySignUpForm = () => window.location.hash.substring(1) === 'sign-up'
 const displayShowKeyForm = () => window.location.hash.substring(1) === 'show-key'
+const displaySaveKeyForm = () => window.location.hash.substring(1) === 'save-key'
 
 class App extends Component {
   constructor(props) {
     super(props)
 
     this.state = {
-      displaySignInForm: displaySignInForm(),
-      displaySignUpForm: displaySignUpForm(),
-      displayShowKeyForm: displayShowKeyForm()
+      key: undefined,
+      mode: undefined
     }
 
     this.handleSetSessionInState = this.handleSetSessionInState.bind(this)
+    this.handleSetKeyInState = this.handleSetKeyInState.bind(this)
     this.handleSignOut = this.handleSignOut.bind(this)
     this.handleRemoveUserAuthentication = this.handleRemoveUserAuthentication.bind(this)
     this.handleReadHash = this.handleReadHash.bind(this)
+    this.handleAutoRedirects = this.handleAutoRedirects.bind(this)
   }
 
-  componentDidMount() {
+  async componentDidMount() {
+    const key = await userLogic.getHumanReadableKey()
+    this.setState({ key, mode: this.getViewMode() })
+    this.handleAutoRedirects()
+
     window.addEventListener('hashchange', this.handleReadHash, false)
   }
 
@@ -32,9 +40,33 @@ class App extends Component {
     window.removeEventListener('hashchange', this.handleReadHash, false)
   }
 
-  handleSetSessionInState(session, isNewAccount) {
+  handleAutoRedirects() {
+    const { key } = this.state
+
+    const session = userLogic.getSession()
+
+    const isFirstTimeVisit = !session
+    const userMustLogInAgain = session && !session.sessionId
+    const userHasActiveSession = session && session.sessionId
+
+    if (!displaySignInForm() && isFirstTimeVisit) {
+      window.location.hash = 'sign-up'
+    } else if (!displaySignUpForm() && userMustLogInAgain) {
+      window.location.hash = 'sign-in'
+    } else if (userHasActiveSession && !key) {
+      window.location.hash = 'save-key'
+    }
+  }
+
+  async handleSetSessionInState(session, isNewAccount) {
+    const key = await userLogic.getHumanReadableKey()
+    this.setState({ session, key })
     window.location.hash = isNewAccount ? '#show-key' : ''
-    this.setState({ session })
+  }
+
+  handleSetKeyInState(key) {
+    this.setState({ key })
+    window.location.hash = ''
   }
 
   handleRemoveUserAuthentication() {
@@ -43,7 +75,8 @@ class App extends Component {
     this.setState({
       session: {
         username: session && session.username,
-        sessionId: null
+        sessionId: null,
+        key: undefined
       }
     })
   }
@@ -54,41 +87,41 @@ class App extends Component {
   }
 
   handleReadHash() {
-    this.setState({
-      displaySignInForm: displaySignInForm(),
-      displaySignUpForm: displaySignUpForm(),
-      displayShowKeyForm: displayShowKeyForm()
-    })
+    if (displayHome()) {
+      this.handleAutoRedirects()
+    }
+    this.setState({ mode: this.getViewMode() })
+  }
+
+  getViewMode() {
+    const session = userLogic.getSession()
+    const userHasActiveSession = session && session.sessionId
+
+    if (userHasActiveSession && displayShowKeyForm()) {
+      return 'show-key'
+    } else if (userHasActiveSession && displaySaveKeyForm()) {
+      return 'save-key'
+    } else if (userHasActiveSession) {
+      return 'dashboard'
+    } else if (displaySignInForm()) {
+      return 'sign-in'
+    } else if (displaySignUpForm()) {
+      return 'sign-up'
+    }
+
+    return undefined
   }
 
   render() {
-    const { displaySignInForm, displaySignUpForm, displayShowKeyForm } = this.state
+    const { key, mode } = this.state
+
+    if (!mode) {
+      return <div />
+    }
 
     const session = userLogic.getSession()
-    const key = userLogic.getKey()
-
-    const isFirstTimeVisit = !session
-    const userMustLogInAgain = session && !session.sessionId
-
-    if (!displaySignInForm && isFirstTimeVisit) {
-      window.location.hash = 'sign-up'
-    } else if (!displaySignUpForm && userMustLogInAgain) {
-      window.location.hash = 'sign-in'
-    }
 
     const userHasActiveSession = session && session.sessionId
-
-    let mode
-
-    if (userHasActiveSession && !displayShowKeyForm) {
-      mode = 'dashboard'
-    } else if (userHasActiveSession && displayShowKeyForm) {
-      mode = 'show-key'
-    } else if (displaySignInForm) {
-      mode = 'sign-in'
-    } else if (displaySignUpForm) {
-      mode = 'sign-up'
-    }
 
     return (
       <div>
@@ -117,6 +150,8 @@ class App extends Component {
               return <Dashboard handleRemoveUserAuthentication={this.handleRemoveUserAuthentication} />
             case 'show-key':
               return <ShowKey keyString={key} />
+            case 'save-key':
+              return <SaveKey handleSetKeyInState={this.handleSetKeyInState} />
             case 'sign-in':
               return <UserForm
                 handleSetSessionInState={this.handleSetSessionInState}

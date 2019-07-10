@@ -1,6 +1,7 @@
 import uuidv4 from 'uuid/v4'
 import axios from 'axios'
 import crypto from './Crypto'
+import base64 from 'base64-arraybuffer'
 import stateManager from './stateManager'
 
 const _setCurrentSession = (username, sessionId) => {
@@ -23,11 +24,38 @@ const saveKeyToLocalStorage = async (username, key) => {
 
 const getKeyFromLocalStorage = async () => {
   const currentSession = getCurrentSession()
+
+  if (!currentSession) {
+    return undefined
+  }
+
   const username = currentSession.username
 
   const keyString = localStorage.getItem('key.' + username)
+
+  if (!keyString) {
+    return undefined
+  }
+
   const key = await crypto.aesGcm.getKeyFromKeyString(keyString)
   return key
+}
+
+const getHumanReadableKey = async () => {
+  const key = await getKeyFromLocalStorage()
+  if (!key) {
+    return undefined
+  }
+  const rawKey = await crypto.aesGcm.getRawKeyFromKey(key)
+  const base64Key = base64.encode(rawKey)
+  return base64Key
+}
+
+const saveHumanReadableKey = async (base64Key) => {
+  const rawKey = base64.decode(base64Key)
+  const key = await crypto.aesGcm.getKeyFromKeyRaw(rawKey)
+  const currentSession = getCurrentSession()
+  saveKeyToLocalStorage(currentSession.username, key)
 }
 
 const signUp = async (username, password) => {
@@ -71,8 +99,9 @@ const signIn = async (username, password) => {
 
 export default {
   getCurrentSession,
-  saveKeyToLocalStorage,
   getKeyFromLocalStorage,
+  getHumanReadableKey,
+  saveHumanReadableKey,
   signUp,
   signOut,
   signIn,

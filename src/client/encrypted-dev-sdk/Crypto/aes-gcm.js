@@ -63,6 +63,24 @@ const getKeyFromKeyString = async (keyString) => {
   return key
 }
 
+const getKeyFromKeyRaw = async (rawKey) => {
+  const key = await windowOrSelfObject().crypto.subtle.importKey(
+    'raw',
+    rawKey,
+    {
+      name: ALGORITHIM_NAME
+    },
+    KEY_IS_EXTRACTABLE,
+    KEY_WILL_BE_USED_TO
+  )
+  return key
+}
+
+const getRawKeyFromKey = async (key) => {
+  const rawKey = await windowOrSelfObject().crypto.subtle.exportKey('raw', key)
+  return rawKey
+}
+
 /**
  *
  * @param {CryptoKey} key
@@ -123,6 +141,8 @@ export default {
   generateKey,
   getKeyStringFromKey,
   getKeyFromKeyString,
+  getKeyFromKeyRaw,
+  getRawKeyFromKey,
   encrypt,
   decrypt,
 }
