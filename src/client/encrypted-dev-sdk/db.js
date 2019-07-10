@@ -205,7 +205,7 @@ const deleteFunction = async (item) => {
 
   delete itemToReturn.record
 
-  stateManager.updateItem(itemToReturn)
+  stateManager.deleteItem(itemToReturn)
 
   initializeBundlingProcess()
 
@@ -231,7 +231,7 @@ const batchDelete = async (items) => {
       ...deletedItem
     }
 
-    stateManager.updateItem(itemToReturn)
+    stateManager.deleteItem(itemToReturn)
 
     return itemToReturn
   })

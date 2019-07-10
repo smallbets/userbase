@@ -70,7 +70,7 @@ class Dashboard extends Component {
             : <div className='container content'>
               <div>
                 {todos && todos.length !== 0 && todos.map((todo) => {
-                  return todo.command !== 'Delete'
+                  return todo
                     ? (
                       <div
                         className={editingTodos[todo['item-id']] ?

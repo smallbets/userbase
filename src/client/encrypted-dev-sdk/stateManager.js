@@ -69,9 +69,14 @@ StateManager.prototype.insertItems = function (newItems) {
 StateManager.prototype.updateItem = function (item) {
   const index = this.itemIdsToIndexes[item['item-id']]
   const currentItem = this.itemsInOrderOfInsertion[index]
-  if (item['sequence-no'] > currentItem['sequence-no'] && currentItem.command !== 'Delete') {
+  if (item['sequence-no'] > currentItem['sequence-no']) {
     this.itemsInOrderOfInsertion[index] = item
   }
+}
+
+StateManager.prototype.deleteItem = function (item) {
+  const index = this.itemIdsToIndexes[item['item-id']]
+  this.itemsInOrderOfInsertion[index] = undefined
 }
 
 StateManager.prototype.getItems = function () { return this.itemsInOrderOfInsertion }
@@ -164,11 +169,7 @@ const getFinalItem = (itemId, mostRecentStateOfNewItems, decryptedRecords) => {
       record: decryptedRecords[decryptedRecordIndex]
     }
   } else {
-    return {
-      'item-id': itemId,
-      'sequence-no': item['sequence-no'],
-      command: 'Delete'
-    }
+    return undefined
   }
 }
 
@@ -196,20 +197,43 @@ const setDecryptedItemsInOrderOfInsertion = function (
     is included in the state.
 
     If an item has been deleted, it's possible that it will still
-    show up in this result.
+    show up in the result as an undefined element.
 
     If the filterAllDeletedItems flag is set to true, then no deleted
     items will be returned.
 
     For example, after the following sequence of actions:
 
-      const milk = db.insert({ todo: 'remember the milk' })
-      const orangeJuice = db.insert({ todo: 'buy orange juice' })
-      db.delete(orangeJuice)
-      db.insert({ todo: 'create the most useful app of all time' })
-      db.update(milk, { todo: milk.record.todo, completed: true })
+      const milk = await db.insert({ todo: 'remember the milk' })
+      const orangeJuice = await db.insert({ todo: 'buy orange juice' })
+      await db.insert({ todo: 'create the most useful app of all time' })
+      await db.delete(orangeJuice)
+      await db.update(milk, { todo: milk.record.todo, completed: true })
 
-    The response would look like this:
+    Without setting the filterAllDeletedItems to true, the response would
+    look like this:
+
+      [
+        {
+          'item-id: '50bf2e6e-9776-441e-8215-08966581fcec',
+          'sequence-no': 4,
+          record: {
+            todo: 'remember the milk',
+            completed: true
+          }
+        },
+        undefined, // the deleted orange juice
+        {
+          'item-id': 'b09cf9c2-86bd-499c-af06-709d5c11f64b',
+          'sequence-no': 2,
+          record: {
+            todo: 'create the most useful app of all time'
+          }
+        }
+      ]
+
+    With setting the filterAllDeletedItems flag to true, the response would
+    look like this:
 
       [
         {
@@ -222,7 +246,7 @@ const setDecryptedItemsInOrderOfInsertion = function (
         },
         {
           'item-id': 'b09cf9c2-86bd-499c-af06-709d5c11f64b',
-          'sequence-no': 3,
+          'sequence-no': 2,
           record: {
             todo: 'create the most useful app of all time'
           }

@@ -28,7 +28,7 @@ const getTodos = async (handleRemoveUserAuthentication) => {
     const t1 = performance.now()
     const timeToRun = `${((t1 - t0) / 1000).toFixed(2)}`
     console.log('Call to SDK db query took ' + timeToRun + 's')
-    return { todos: Object.values(response) }
+    return { todos: response }
   } catch (e) {
     return _errorHandler(e, 'get todos', handleRemoveUserAuthentication)
   }
