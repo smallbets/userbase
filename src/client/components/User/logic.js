@@ -36,12 +36,12 @@ const getSession = () => {
   return encd.getCurrentSession()
 }
 
-const getHumanReadableKey = () => {
-  return encd.getHumanReadableKey()
+const getKey = () => {
+  return encd.getKey()
 }
 
-const saveHumanReadableKey = (key) => {
-  encd.saveHumanReadableKey(key)
+const saveKey = (key) => {
+  encd.saveKey(key)
 }
 
 export default {
@@ -49,6 +49,6 @@ export default {
   signOut,
   signIn,
   getSession,
-  getHumanReadableKey,
-  saveHumanReadableKey
+  getKey,
+  saveKey
 }

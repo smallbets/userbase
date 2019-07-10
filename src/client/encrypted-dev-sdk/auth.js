@@ -24,13 +24,11 @@ const saveKeyToLocalStorage = async (username, key) => {
 
 const getKeyFromLocalStorage = async () => {
   const currentSession = getCurrentSession()
-
   if (!currentSession) {
     return undefined
   }
 
   const username = currentSession.username
-
   const keyString = localStorage.getItem('key.' + username)
 
   if (!keyString) {
@@ -41,27 +39,27 @@ const getKeyFromLocalStorage = async () => {
   return key
 }
 
-const getHumanReadableKey = async () => {
+const getKey = async () => {
   const key = await getKeyFromLocalStorage()
   if (!key) {
     return undefined
   }
-  const rawKey = await crypto.aesGcm.getRawKeyFromKey(key)
+  const rawKey = await crypto.aesGcm.exportRawKey(key)
   const base64Key = base64.encode(rawKey)
   return base64Key
 }
 
-const saveHumanReadableKey = async (base64Key) => {
+const saveKey = async (base64Key) => {
   const rawKey = base64.decode(base64Key)
-  const key = await crypto.aesGcm.getKeyFromKeyRaw(rawKey)
+  const key = await crypto.aesGcm.importRawKey(rawKey)
   const currentSession = getCurrentSession()
   saveKeyToLocalStorage(currentSession.username, key)
 }
 
 const signUp = async (username, password) => {
   const symmetricKey = await crypto.aesGcm.generateKey()
-
   const lowerCaseUsername = username.toLowerCase()
+
   await saveKeyToLocalStorage(lowerCaseUsername, symmetricKey)
 
   const response = await axios.post('/api/auth/sign-up', {
@@ -100,8 +98,8 @@ const signIn = async (username, password) => {
 export default {
   getCurrentSession,
   getKeyFromLocalStorage,
-  getHumanReadableKey,
-  saveHumanReadableKey,
+  getKey,
+  saveKey,
   signUp,
   signOut,
   signIn,

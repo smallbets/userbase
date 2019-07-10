@@ -2,13 +2,13 @@ import aws from 'aws-sdk'
 import os from 'os'
 import memcache from './memcache'
 
-const tableNamePrefix = (process.env.NODE_ENV == 'development') ? os.userInfo().username + '-' : ''
+// if running in dev mode, prefix the DynamoDB tables and S3 buckets with the username
+const usernamePrefix = (process.env.NODE_ENV == 'development') ? os.userInfo().username + '-' : ''
 
-const usersTableName = tableNamePrefix + 'users'
-const sessionsTableName = tableNamePrefix + 'sessions'
-const databaseTableName = tableNamePrefix + 'database'
-
-const dbStatesBucketName = tableNamePrefix + 'db-states'
+const usersTableName = usernamePrefix + 'users'
+const sessionsTableName = usernamePrefix + 'sessions'
+const databaseTableName = usernamePrefix + 'database'
+const dbStatesBucketName = usernamePrefix + 'db-states'
 
 exports.usersTableName = usersTableName
 exports.sessionsTableName = sessionsTableName
@@ -20,8 +20,10 @@ exports.s3 = getS3Connection
 exports.dbStatesBucketName = dbStatesBucketName
 
 exports.init = async function () {
+  // look for AWS credentials under the 'encrypted' profile
   const profile = 'encrypted'
 
+  // create a custom AWS credentials chain to provide the custom profile
   const chain = new aws.CredentialProviderChain([
     function () { return new aws.EnvironmentCredentials('AWS') },
     function () { return new aws.EnvironmentCredentials('AMAZON') },
@@ -46,6 +48,7 @@ exports.init = async function () {
 async function setupDdb() {
   const ddb = new aws.DynamoDB({ apiVersion: '2012-08-10' })
 
+  // the users table holds a record per user
   const usersTableParams = {
     TableName: usersTableName,
     BillingMode: 'PAY_PER_REQUEST',
@@ -65,6 +68,7 @@ async function setupDdb() {
     }]
   }
 
+  // the sessions table holds a record per user session
   const sessionsTableParams = {
     AttributeDefinitions: [
       { AttributeName: 'session-id', AttributeType: 'S' }
@@ -76,6 +80,7 @@ async function setupDdb() {
     TableName: sessionsTableName
   }
 
+  // the database table holds a record per db transaction
   const databaseTableParams = {
     AttributeDefinitions: [
       { AttributeName: 'user-id', AttributeType: 'S' },

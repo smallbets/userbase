@@ -29,7 +29,7 @@ class App extends Component {
   }
 
   async componentDidMount() {
-    const key = await userLogic.getHumanReadableKey()
+    const key = await userLogic.getKey()
     this.setState({ key, mode: this.getViewMode() })
     this.handleAutoRedirects()
 
@@ -40,6 +40,7 @@ class App extends Component {
     window.removeEventListener('hashchange', this.handleReadHash, false)
   }
 
+  // this auto redirects to an appropriate view based on current state
   handleAutoRedirects() {
     const { key } = this.state
 
@@ -50,16 +51,19 @@ class App extends Component {
     const userHasActiveSession = session && session.sessionId
 
     if (!displaySignInForm() && isFirstTimeVisit) {
+      // if the user is visiting the app for the very first time, redirect to the sign-up form
       window.location.hash = 'sign-up'
     } else if (!displaySignUpForm() && userMustLogInAgain) {
+      // if the user is logged out, but had a session in the past, redirect to the sign-in form
       window.location.hash = 'sign-in'
     } else if (userHasActiveSession && !key) {
+      // if the user is logged in, but the browser doesn't have a key for the user, redirect to the save-key form
       window.location.hash = 'save-key'
     }
   }
 
   async handleSetSessionInState(session, isNewAccount) {
-    const key = await userLogic.getHumanReadableKey()
+    const key = await userLogic.getKey()
     this.setState({ session, key })
     window.location.hash = isNewAccount ? '#show-key' : ''
   }
@@ -69,6 +73,7 @@ class App extends Component {
     window.location.hash = ''
   }
 
+  // this is called when the user signs out, or when the server says the session has expired
   handleRemoveUserAuthentication() {
     const { session } = this.state
     window.location.hash = 'sign-in'
@@ -88,39 +93,47 @@ class App extends Component {
 
   handleReadHash() {
     if (displayHome()) {
+      // if the hash is empty, see if the user should be redirected to an appropriate view
       this.handleAutoRedirects()
     }
     this.setState({ mode: this.getViewMode() })
   }
 
+  // this is a primitive router based on the hash and component state
   getViewMode() {
     const session = userLogic.getSession()
     const userHasActiveSession = session && session.sessionId
 
     if (userHasActiveSession && displayShowKeyForm()) {
+      // if the user has a session and the hash says show-key, then show the show-key form
       return 'show-key'
     } else if (userHasActiveSession && displaySaveKeyForm()) {
+      // if the user has a session and the hash says save-key, then show the save-key form
       return 'save-key'
     } else if (userHasActiveSession) {
+      // if the user has a session, then show the todo dashboard
       return 'dashboard'
     } else if (displaySignInForm()) {
+      // if the hash says sign-in, show the sign-in form
       return 'sign-in'
     } else if (displaySignUpForm()) {
+      // if the hash says sign-up, show the sign-up form
       return 'sign-up'
     }
 
+    // this happens when the App is loading initially, and will not render anything except the nav bar
     return undefined
   }
 
   render() {
     const { key, mode } = this.state
 
+    // if mode is undefined, just render an empty div
     if (!mode) {
       return <div />
     }
 
     const session = userLogic.getSession()
-
     const userHasActiveSession = session && session.sessionId
 
     return (

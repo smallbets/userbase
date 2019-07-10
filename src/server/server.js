@@ -48,10 +48,12 @@ if (process.env.NODE_ENV == 'development') {
     app.post('/api/db/bundle-tx-log', auth.authenticateUser, db.bundleTransactionLog)
 
     if (fs.existsSync(httpsKey) && fs.existsSync(httpsCert)) {
+      // tls certs found, so launch an https server
       console.log('Starting https server')
       https.createServer({ key: fs.readFileSync(httpsKey), cert: fs.readFileSync(httpsCert) }, app)
         .listen(httpsPort, () => console.log(`App listening on https port ${httpsPort}....`))
     } else {
+      // if no tls certs, launch an http server
       console.log('Starting http server')
       http.createServer(app).listen(httpPort, () => console.log(`App listening on http port ${httpPort}....`))
     }

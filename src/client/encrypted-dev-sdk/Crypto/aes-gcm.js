@@ -4,7 +4,8 @@ const ALGORITHIM_NAME = 'AES-GCM'
 const BIT_SIZE = 256
 const KEY_IS_EXTRACTABLE = true
 const KEY_WILL_BE_USED_TO = ['encrypt', 'decrypt']
-const EXTRACTED_KEY_TYPE = 'jwk' // json web key
+const JSON_KEY_TYPE = 'jwk' // json web key
+const RAW_KEY_TYPE = 'raw' // raw key
 
 /**
  * NIST recommendation:
@@ -44,7 +45,7 @@ const generateKey = async () => {
 }
 
 const getKeyStringFromKey = async (key) => {
-  const extractedJsonKey = await window.crypto.subtle.exportKey(EXTRACTED_KEY_TYPE, key)
+  const extractedJsonKey = await window.crypto.subtle.exportKey(JSON_KEY_TYPE, key)
   const keyString = JSON.stringify(extractedJsonKey)
   return keyString
 }
@@ -52,7 +53,7 @@ const getKeyStringFromKey = async (key) => {
 const getKeyFromKeyString = async (keyString) => {
   const jsonKey = JSON.parse(keyString)
   const key = await windowOrSelfObject().crypto.subtle.importKey(
-    EXTRACTED_KEY_TYPE,
+    JSON_KEY_TYPE,
     jsonKey,
     {
       name: ALGORITHIM_NAME
@@ -63,9 +64,9 @@ const getKeyFromKeyString = async (keyString) => {
   return key
 }
 
-const getKeyFromKeyRaw = async (rawKey) => {
+const importRawKey = async (rawKey) => {
   const key = await windowOrSelfObject().crypto.subtle.importKey(
-    'raw',
+    RAW_KEY_TYPE,
     rawKey,
     {
       name: ALGORITHIM_NAME
@@ -76,8 +77,8 @@ const getKeyFromKeyRaw = async (rawKey) => {
   return key
 }
 
-const getRawKeyFromKey = async (key) => {
-  const rawKey = await windowOrSelfObject().crypto.subtle.exportKey('raw', key)
+const exportRawKey = async (key) => {
+  const rawKey = await windowOrSelfObject().crypto.subtle.exportKey(RAW_KEY_TYPE, key)
   return rawKey
 }
 
@@ -141,8 +142,8 @@ export default {
   generateKey,
   getKeyStringFromKey,
   getKeyFromKeyString,
-  getKeyFromKeyRaw,
-  getRawKeyFromKey,
+  importRawKey,
+  exportRawKey,
   encrypt,
   decrypt,
 }
