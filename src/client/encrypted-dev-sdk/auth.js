@@ -4,8 +4,8 @@ import crypto from './Crypto'
 import base64 from 'base64-arraybuffer'
 import stateManager from './stateManager'
 
-const _setCurrentSession = (username, sessionId) => {
-  const session = { username, sessionId }
+const _setCurrentSession = (username, signedIn) => {
+  const session = { username, signedIn }
   const sessionString = JSON.stringify(session)
   localStorage.setItem('currentSession', sessionString)
   return session
@@ -62,14 +62,14 @@ const signUp = async (username, password) => {
 
   await saveKeyToLocalStorage(lowerCaseUsername, symmetricKey)
 
-  const response = await axios.post('/api/auth/sign-up', {
+  await axios.post('/api/auth/sign-up', {
     username: lowerCaseUsername,
     password,
     userId: uuidv4()
   })
-  const sessionId = response.data
 
-  const session = _setCurrentSession(lowerCaseUsername, sessionId)
+  const signedIn = true
+  const session = _setCurrentSession(lowerCaseUsername, signedIn)
   return session
 }
 
@@ -77,21 +77,23 @@ const signOut = async () => {
   await axios.post('/api/auth/sign-out')
 
   const currentSession = getCurrentSession()
-  _setCurrentSession(currentSession.username, null)
+  const signedIn = false
+  const session = _setCurrentSession(currentSession.username, signedIn)
 
   stateManager.clearState()
+  return session
 }
 
 const signIn = async (username, password) => {
   const lowerCaseUsername = username.toLowerCase()
 
-  const response = await axios.post('/api/auth/sign-in', {
+  await axios.post('/api/auth/sign-in', {
     username: lowerCaseUsername,
     password
   })
-  const sessionId = response.data
 
-  const session = _setCurrentSession(lowerCaseUsername, sessionId)
+  const signedIn = true
+  const session = _setCurrentSession(lowerCaseUsername, signedIn)
   return session
 }
 

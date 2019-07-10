@@ -30,15 +30,8 @@ const createSession = async function (userId, res) {
     Item: session
   }
 
-  try {
-    const ddbClient = connection.ddbClient()
-    await ddbClient.put(params).promise()
-  } catch (e) {
-    res
-      .status(e.statusCode)
-      .send({ err: `Failed to create session with ${e}` })
-    return false
-  }
+  const ddbClient = connection.ddbClient()
+  await ddbClient.put(params).promise()
 
   const cookieResponseHeaders = {
     maxAge: SESSION_LENGTH,
@@ -46,8 +39,8 @@ const createSession = async function (userId, res) {
     sameSite: 'Strict',
     secure: process.env.NODE_ENV === 'production'
   }
+
   res.cookie(SESSION_COOKIE_NAME, sessionId, cookieResponseHeaders)
-  return sessionId
 }
 
 exports.signUp = async function (req, res) {
@@ -90,9 +83,8 @@ exports.signUp = async function (req, res) {
       throw e
     }
 
-    const sessionId = await createSession(user['user-id'], res)
-    if (sessionId) return res.send(sessionId)
-    else throw new Error('Failed to create session')
+    await createSession(user['user-id'], res)
+    return res.end()
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -125,9 +117,8 @@ exports.signIn = async function (req, res) {
       .status(statusCodes['Unauthorized'])
       .send({ readableMessage: 'Incorrect password' })
 
-    const sessionId = await createSession(user['user-id'], res)
-    if (sessionId) return res.send(sessionId)
-    else throw new Error('Failed to create session')
+    await createSession(user['user-id'], res)
+    return res.end()
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])

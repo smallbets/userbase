@@ -47,8 +47,8 @@ class App extends Component {
     const session = userLogic.getSession()
 
     const isFirstTimeVisit = !session
-    const userMustLogInAgain = session && !session.sessionId
-    const userHasActiveSession = session && session.sessionId
+    const userMustLogInAgain = session && !session.signedIn
+    const userHasActiveSession = session && session.signedIn
 
     if (!displaySignInForm() && isFirstTimeVisit) {
       // if the user is visiting the app for the very first time, redirect to the sign-up form
@@ -80,7 +80,7 @@ class App extends Component {
     this.setState({
       session: {
         username: session && session.username,
-        sessionId: null,
+        signedIn: false,
         key: undefined
       }
     })
@@ -102,7 +102,7 @@ class App extends Component {
   // this is a primitive router based on the hash and component state
   getViewMode() {
     const session = userLogic.getSession()
-    const userHasActiveSession = session && session.sessionId
+    const userHasActiveSession = session && session.signedIn
 
     if (userHasActiveSession && displayShowKeyForm()) {
       // if the user has a session and the hash says show-key, then show the show-key form
@@ -134,7 +134,7 @@ class App extends Component {
     }
 
     const session = userLogic.getSession()
-    const userHasActiveSession = session && session.sessionId
+    const userHasActiveSession = session && session.signedIn
 
     return (
       <div>
