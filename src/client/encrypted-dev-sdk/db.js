@@ -317,7 +317,7 @@ const setIteratorsToSkipDeletedItems = (itemsInOrderOfInsertion) => {
   itemsInOrderOfInsertion.map = getMapFunctionThatUsesIterator(itemsInOrderOfInsertion)
 }
 
-const query = async (setSkipDeletedItemsIterator = false) => {
+const query = async () => {
   const key = await auth.getKeyFromLocalStorage()
 
   // retrieving user's transaction log
@@ -344,19 +344,15 @@ const query = async (setSkipDeletedItemsIterator = false) => {
   const itemsInOrderOfInsertion = await setupClientState(key, transactionLog, encryptedDbState)
   console.log(`Set up client side state in ${getSecondsSinceT0(t0)}s`)
 
-  if (setSkipDeletedItemsIterator) {
-    setIteratorsToSkipDeletedItems(itemsInOrderOfInsertion)
-  }
+  setIteratorsToSkipDeletedItems(itemsInOrderOfInsertion)
 
   return itemsInOrderOfInsertion
 }
 
-const getLatestState = (setSkipDeletedItemsIterator = false) => {
+const getLatestState = () => {
   const itemsInOrderOfInsertion = stateManager.getItems()
 
-  if (setSkipDeletedItemsIterator) {
-    setIteratorsToSkipDeletedItems(itemsInOrderOfInsertion)
-  }
+  setIteratorsToSkipDeletedItems(itemsInOrderOfInsertion)
 
   return itemsInOrderOfInsertion
 }
