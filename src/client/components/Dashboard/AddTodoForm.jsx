@@ -50,7 +50,7 @@ class AddTodoForm extends Component {
         <form className='flex'>
           <div className='flex-1'>
             <input
-              className='todo-text'
+              className='todo-text w-48'
               type='text'
               name='todoInput'
               autoComplete='off'

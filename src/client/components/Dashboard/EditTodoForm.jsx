@@ -41,7 +41,7 @@ class EditTodoForm extends Component {
   }
 
   render() {
-    const { handleToggleEditTodo, todo } = this.props
+    const { handleToggleEditTodo, handleDeleteTodo, todo } = this.props
     const {
       todoInput,
       error,
@@ -50,12 +50,12 @@ class EditTodoForm extends Component {
 
     return (
       <div className="py-1">
-        {loading ? <div className='loader inline-block w-6 h-6' /> : <div />}
+        {loading && <div className="h-8"><div className='loader inline-block w-6 h-6' /></div>}
 
-        <form className='container flex'>
+        {!loading && <form className='container flex h-8'>
           <div className='flex-1'>
             <input
-              className='todo-text'
+              className='todo-text w-48'
               type='text'
               name='todoInput'
               autoComplete='off'
@@ -74,15 +74,16 @@ class EditTodoForm extends Component {
               onClick={this.handleSaveTodo}
             />
           </div>
-          <div className='flex-1 ml-2'>
-            <input
-              className='btn-cancel'
-              type='button'
-              value='Cancel'
-              onClick={(e) => handleToggleEditTodo(e, todo)}
-            />
-          </div>
+          <div
+            className='fas fa-trash-alt ml-4 pt-1 font-normal text-lg cursor-pointer text-yellow-700'
+            onClick={(e) => handleDeleteTodo(e, todo)}
+          />
+          <div
+            className='fas fa-times-circle ml-4 pt-1 font-normal text-lg cursor-pointer text-yellow-700'
+            onClick={(e) => handleToggleEditTodo(e, todo)}
+          />
         </form>
+        }
 
         {error && (
           <div className='error'>{error}</div>
@@ -95,6 +96,7 @@ class EditTodoForm extends Component {
 EditTodoForm.propTypes = {
   handleRemoveUserAuthentication: func,
   handleToggleEditTodo: func,
+  handleDeleteTodo: func,
   handleSetTodos: func,
   todo: object
 }

@@ -55,7 +55,7 @@ body {
 }
 
 .todo-item {
-  @apply inline-block ml-2 font-semibold flex-1 mr-8
+  @apply inline-block ml-2 font-semibold flex-1
 }
 
 .error {
@@ -105,4 +105,9 @@ body {
 .fa-key:before {
   font-family: 'Font Awesome 5 Free';
   content: "\f084";
+}
+
+.fa-times-circle:before {
+  font-family: 'Font Awesome 5 Free';
+  content: "\f057";
 }

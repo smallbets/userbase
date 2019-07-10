@@ -13,11 +13,13 @@ module.exports = {
       colors: {
         primary: '#ffe77a',
         secondary: '#ffd005'
+      },
+      screens: {
+        // for devices with the ability to hover
+        'mouse': { 'raw': '(hover)' },
       }
     }
   },
-  variants: {
-    visibility: ['responsive', 'group-hover']
-  },
+  variants: {},
   plugins: []
 }

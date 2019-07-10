@@ -85,7 +85,7 @@ module.exports = (env, argv) => {
       hot: true,
       inline: true,
 
-      host: 'localhost',
+      host: '192.168.0.178',
       port: argv.run != 'perftest' ? 3000 : 3001,
       proxy: {
         '/api/*': {
