@@ -55,7 +55,7 @@ body {
 }
 
 .todo-item {
-  @apply inline-block ml-2 font-semibold flex-1 pr-6
+  @apply inline-block ml-2 font-semibold flex-1 mr-8
 }
 
 .error {

@@ -93,7 +93,7 @@ class Dashboard extends Component {
                         />
                         <div
                           className={todo.record.completed ?
-                            'todo-item line-through text-gray-600 ' :
+                            'todo-item line-through text-gray-600' :
                             'todo-item'}
                           onClick={(e) => this.handleToggleEditTodo(e, todo)}
                         >
