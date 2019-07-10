@@ -269,7 +269,55 @@ const queryEncryptedDbState = async (bundleSeqNo) => {
   return encryptedDbStateResponse.data
 }
 
-const query = async () => {
+const getMapFunctionThatUsesIterator = (arr) => {
+  return function (cb, thisArg) {
+    const result = []
+    let index = 0
+    cb.bind(thisArg)
+    for (const a of arr) {
+      result.push(cb(a, index, arr))
+      index++
+    }
+    return result
+  }
+}
+
+const getIteratorToSkipDeletedItems = (itemsInOrderOfInsertion) => {
+  return function () {
+    return {
+      current: 0,
+      last: itemsInOrderOfInsertion.length - 1,
+
+      next() {
+        let item = itemsInOrderOfInsertion[this.current]
+        let itemIsDeleted = !item
+
+        while (itemIsDeleted && this.current < this.last) {
+          this.current++
+          item = itemsInOrderOfInsertion[this.current]
+          itemIsDeleted = !item
+        }
+
+        if (this.current < this.last || (this.current === this.last && !itemIsDeleted)) {
+          this.current++
+          return { done: false, value: item }
+        } else {
+          return { done: true }
+        }
+      }
+    }
+  }
+}
+
+const setIteratorsToSkipDeletedItems = (itemsInOrderOfInsertion) => {
+  itemsInOrderOfInsertion[Symbol.iterator] = getIteratorToSkipDeletedItems(itemsInOrderOfInsertion)
+
+  // hacky solution to overwrite native map function. All other native Array functions
+  // remain unaffected
+  itemsInOrderOfInsertion.map = getMapFunctionThatUsesIterator(itemsInOrderOfInsertion)
+}
+
+const query = async (setSkipDeletedItemsIterator = false) => {
   const key = await auth.getKeyFromLocalStorage()
 
   // retrieving user's transaction log
@@ -296,11 +344,21 @@ const query = async () => {
   const itemsInOrderOfInsertion = await setupClientState(key, transactionLog, encryptedDbState)
   console.log(`Set up client side state in ${getSecondsSinceT0(t0)}s`)
 
+  if (setSkipDeletedItemsIterator) {
+    setIteratorsToSkipDeletedItems(itemsInOrderOfInsertion)
+  }
+
   return itemsInOrderOfInsertion
 }
 
-const getLatestState = () => {
-  return stateManager.getItems()
+const getLatestState = (setSkipDeletedItemsIterator = false) => {
+  const itemsInOrderOfInsertion = stateManager.getItems()
+
+  if (setSkipDeletedItemsIterator) {
+    setIteratorsToSkipDeletedItems(itemsInOrderOfInsertion)
+  }
+
+  return itemsInOrderOfInsertion
 }
 
 export default {

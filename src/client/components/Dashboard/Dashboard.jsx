@@ -69,49 +69,47 @@ class Dashboard extends Component {
             ? <div className='text-center'><div className='loader w-6 h-6 inline-block' /></div>
             : <div className='container content'>
               <div>
-                {todos && todos.length !== 0 && todos.map((todo) => {
-                  return todo
-                    ? (
-                      <div
-                        className={editingTodos[todo['item-id']] ?
-                          'cursor-default relative container group' :
-                          'cursor-pointer relative hover:bg-yellow-200 rounded container group'}
-                        key={todo['item-id']}
-                      >
+                {todos && todos.length !== 0 && todos.map((todo) => (
+                  <div
+                    className={editingTodos[todo['item-id']] ?
+                      'cursor-default relative container group' :
+                      'cursor-pointer relative hover:bg-yellow-200 rounded container group'}
+                    key={todo['item-id']}
+                  >
 
-                        {editingTodos[todo['item-id']]
+                    {editingTodos[todo['item-id']]
 
-                          ? <EditTodoForm
-                            handleToggleEditTodo={this.handleToggleEditTodo}
-                            handleSetTodos={this.handleSetTodos}
-                            todo={todo}
-                          />
+                      ? <EditTodoForm
+                        handleToggleEditTodo={this.handleToggleEditTodo}
+                        handleSetTodos={this.handleSetTodos}
+                        todo={todo}
+                      />
 
-                          :
-                          <div className='py-2 container flex'>
-                            <div
-                              className={todo.record.completed ? 'checkbox-checked fa-check' : 'checkbox fa-check-empty'}
-                              onClick={() => this.handleToggleTodo(todo)}
-                            />
-                            <div
-                              className={todo.record.completed ?
-                                'inline-block ml-2 font-semibold line-through text-gray-600 flex-1' :
-                                'inline-block ml-2 font-semibold flex-1'}
-                              onClick={(e) => this.handleToggleEditTodo(e, todo)}
-                            >
-                              {todo.record.todo}
-                            </div>
-                            <div
-                              className='fas fa-trash-alt absolute inset-y-0 right-0 mr-2 rounded-lg pt-2 pb-2 bg-transparent font-normal text-yellow-700 invisible group-hover:visible'
-                              onClick={(e) => this.handleDeleteTodo(e, todo)}
-                            />
-                          </div>
-                        }
-
+                      :
+                      <div className='py-2 container flex'>
+                        <div
+                          className={todo.record.completed ? 'checkbox-checked fa-check' : 'checkbox fa-check-empty'}
+                          onClick={() => this.handleToggleTodo(todo)}
+                        />
+                        <div
+                          className={todo.record.completed ?
+                            'inline-block ml-2 font-semibold line-through text-gray-600 flex-1' :
+                            'inline-block ml-2 font-semibold flex-1'}
+                          onClick={(e) => this.handleToggleEditTodo(e, todo)}
+                        >
+                          {todo.record.todo}
+                        </div>
+                        <div
+                          className='fas fa-trash-alt absolute inset-y-0 right-0 mr-2 rounded-lg pt-2 pb-2 bg-transparent font-normal text-yellow-700 invisible group-hover:visible'
+                          onClick={(e) => this.handleDeleteTodo(e, todo)}
+                        />
                       </div>
-                    )
-                    : null
-                })}
+                    }
+
+                  </div>
+                )
+
+                )}
 
                 <div>
                   <hr className='border border-t-0 border-gray-400 mt-4 mb-4' />
