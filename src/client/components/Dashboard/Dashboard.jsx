@@ -37,10 +37,10 @@ class Dashboard extends Component {
   }
 
   handleToggleEditTodo(event, todo) {
-    event.preventDefault()
+    if (event) event.preventDefault()
     if (todo.record.completed) return
     const { editingTodos } = this.state
-    editingTodos[todo['sequence-no']] = !editingTodos[todo['sequence-no']]
+    editingTodos[todo['item-id']] = !editingTodos[todo['item-id']]
     this.setState({ editingTodos })
   }
 
@@ -73,13 +73,13 @@ class Dashboard extends Component {
                   return todo.command !== 'Delete'
                     ? (
                       <div
-                        className={editingTodos[todo['sequence-no']] ?
+                        className={editingTodos[todo['item-id']] ?
                           'cursor-default relative container group' :
                           'cursor-pointer relative hover:bg-yellow-200 rounded container group'}
-                        key={todo['sequence-no']}
+                        key={todo['item-id']}
                       >
 
-                        {editingTodos[todo['sequence-no']]
+                        {editingTodos[todo['item-id']]
 
                           ? <EditTodoForm
                             handleToggleEditTodo={this.handleToggleEditTodo}

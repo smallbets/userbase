@@ -126,9 +126,9 @@ const init = async (username, limit) => {
 
   console.log(encd.db.getLatestState())
 
-  const key = localStorage.getItem('key')
+  const key = localStorage.getItem('key.' + username)
   console.log(`To test user ${username}, input this into the console:
-  localStorage.setItem('${username}', '${key}'), then sign in with password ${PASSWORD}.`)
+  localStorage.setItem('key.${username}', '${key}'), then sign in with password ${PASSWORD}.`)
 }
 
 init('test-1k', 1000)

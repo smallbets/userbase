@@ -34,7 +34,10 @@ const getDbState = async (key, oldBundleSeqNo) => {
 const bundleTransactionLog = async (key, transactionLog, oldBundleSeqNo, lockId) => {
   const dbState = await getDbState(key, oldBundleSeqNo)
 
-  const newDbState = await stateManager.applyTransactionsToDbState(key, dbState, transactionLog)
+  const filterDeletedItemsFromState = true
+  const newDbState = await stateManager.applyTransactionsToDbState(
+    key, dbState, transactionLog, filterDeletedItemsFromState
+  )
 
   const newBundleSeqNo = newDbState.maxSequenceNo
 
