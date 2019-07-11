@@ -66,7 +66,7 @@ class UserForm extends Component {
               <div className='table-cell p-2 text-right'>Username</div>
               <div className='table-cell p-2'>
                 <input
-                  className='font-light text-xs xs:text-sm w-40 xs:w-64 h-8 p-2 border border-gray-500 outline-none'
+                  className='font-light text-xs xs:text-sm w-48 sm:w-64 h-8 p-2 border border-gray-500 outline-none'
                   type='text'
                   name='username'
                   autoComplete='username'
@@ -80,7 +80,7 @@ class UserForm extends Component {
               <div className='table-cell p-2 text-right'>Password</div>
               <div className='table-cell p-2'>
                 <input
-                  className='font-light text-xs xs:text-sm w-40 xs:w-64 h-8 p-2 border border-gray-500 outline-none'
+                  className='font-light text-xs xs:text-sm w-48 sm:w-64 h-8 p-2 border border-gray-500 outline-none'
                   type='password'
                   name='password'
                   autoComplete='new-password'
