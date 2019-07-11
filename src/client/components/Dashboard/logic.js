@@ -14,7 +14,7 @@ const _errorHandler = (e, operation, handleRemoveUserAuthentication) => {
 const insertTodo = async (todo, handleRemoveUserAuthentication) => {
   try {
     const insertedItem = await encd.db.insert({ todo })
-    console.log(`Todo '${todo}' encrypted and stored as '${arrayBufferToString(insertedItem.encryptedRecord)}'`)
+    console.log(`Todo '${todo}' encrypted and stored as '${arrayBufferToString(insertedItem.ciphertext)}'`)
     return { todos: encd.db.getLatestState() }
   } catch (e) {
     return _errorHandler(e, 'insert todo', handleRemoveUserAuthentication)
@@ -48,9 +48,9 @@ const toggleTodo = async (todo, handleRemoveUserAuthentication) => {
     const markingComplete = !todo.record.completed
     const updatedTodo = await encd.db.update(todo, { todo: todo.record.todo, completed: markingComplete })
     if (markingComplete) {
-      console.log(`Completing todo '${updatedTodo.record.todo}' encrypted and stored as '${arrayBufferToString(updatedTodo.encryptedRecord)}'`)
+      console.log(`Completing todo '${updatedTodo.record.todo}' encrypted and stored as '${arrayBufferToString(updatedTodo.ciphertext)}'`)
     } else {
-      console.log(`Marking todo '${updatedTodo.record.todo}' incomplete encrypted and stored as '${arrayBufferToString(updatedTodo.encryptedRecord)}'`)
+      console.log(`Marking todo '${updatedTodo.record.todo}' incomplete encrypted and stored as '${arrayBufferToString(updatedTodo.ciphertext)}'`)
     }
 
     return { todos: encd.db.getLatestState() }
@@ -62,7 +62,7 @@ const toggleTodo = async (todo, handleRemoveUserAuthentication) => {
 const updateTodo = async (todo, newTodoInput, handleRemoveUserAuthentication) => {
   try {
     const updatedTodo = await encd.db.update(todo, { todo: newTodoInput, completed: todo.record.completed })
-    console.log(`Updated todo '${updatedTodo.record.todo}' encrypted and stored as '${arrayBufferToString(updatedTodo.encryptedRecord)}'`)
+    console.log(`Updated todo '${updatedTodo.record.todo}' encrypted and stored as '${arrayBufferToString(updatedTodo.ciphertext)}'`)
     return { todos: encd.db.getLatestState() }
   } catch (e) {
     return _errorHandler(e, 'update todo', handleRemoveUserAuthentication)

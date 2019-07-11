@@ -25,60 +25,45 @@ const initializeBundlingProcess = async (key) => {
     Takes an item as input, encrypts the item client-side,
     then sends the encrypted item to the database for storage.
 
-    Returns the item id of the item stored in the database
-    as well as the sequence number of the write operation. A
-    user's sequence number increases monotonically with each
-    write operation to the database.
-
     Example call:
 
-      db.insert({
-        todo: 'remember the milk'
-      }).then(function (item) {
-        // asynchronously called
-      });
+      const milk = await db.insert({ todo: 'remember the milk' })
 
-    Response:
-
-      item-id {String} - GUID for item inserted into the database
-      sequence-no {Integer} - counter for user's write operations on the database
-      command {String} - the write operation type
-
-      Example:
-
-        {
-          'item-id': 'b09cf9c2-86bd-499c-af06-709d5c11f64b',
-          'sequence-no': 1,
-          command: 'Insert'
-        }
+      console.log(milk)
+      // Output:
+      //
+      //    {
+      //      item-id {String} - client side generated GUID for item
+      //      record {object} - decrypted object provided by the user
+      //      ciphertext {ArrayBuffer} - encrypted record
+      //    }
+      //
 
  */
 const insert = async (item) => {
   const key = await auth.getKeyFromLocalStorage()
   const encryptedItem = await crypto.aesGcm.encrypt(key, item)
 
+  const itemId = uuidv4()
+
   const response = await axios({
     method: 'POST',
     url: '/api/db/insert',
     params: {
-      itemId: uuidv4()
+      itemId
     },
     data: encryptedItem
   })
+  const sequenceNo = response.data.sequenceNo
 
-  const insertedItem = response.data
-
-  const itemToReturn = {
-    ...insertedItem,
-    encryptedRecord: encryptedItem,
-    record: item
-  }
-
-  stateManager.insertItem(itemToReturn)
+  const result = stateManager.insertItem(itemId, sequenceNo, item)
 
   initializeBundlingProcess(key)
 
-  return itemToReturn
+  return {
+    ...result,
+    ciphertext: encryptedItem
+  }
 }
 
 const batchInsert = async (items) => {
@@ -101,49 +86,69 @@ const batchInsert = async (items) => {
     },
     data: buffer
   })
+  const sequenceNos = response.data.sequenceNos
 
-  const insertedItems = response.data
+  const itemsToReturn = sequenceNos.map((sequenceNo, i) => {
+    const itemId = itemsMetadata[i].itemId
+    const record = items[i]
 
-  const itemsToReturn = insertedItems.map((insertedItem, index) => ({
-    ...insertedItem,
-    encryptedRecord: encryptedItems[index],
-    record: items[index]
-  }))
+    const result = stateManager.insertItem(itemId, sequenceNo, record)
 
-  stateManager.insertItems(itemsToReturn)
+    return {
+      ...result,
+      ciphertext: encryptedItems[i]
+    }
+  })
 
   initializeBundlingProcess(key)
 
   return itemsToReturn
 }
 
+/**
+
+    Takes the old item and new item as input, encrypts the new
+    item client-side, then sends the encrypted item along
+    with the item id to the database for storage.
+
+    Example call:
+
+      const orangeJuice = await db.update(milk, { todo: 'remember the orange juice' })
+
+      console.log(orangeJuice)
+      // Output:
+      //
+      //    {
+      //      item-id {String} - client side generated GUID for item
+      //      ciphertext {ArrayBuffer}
+      //    }
+      //
+
+ */
 const update = async (oldItem, newItem) => {
   const key = await auth.getKeyFromLocalStorage()
   const encryptedItem = await crypto.aesGcm.encrypt(key, newItem)
+
+  const itemId = oldItem['item-id']
 
   const response = await axios({
     method: 'POST',
     url: '/api/db/update',
     params: {
-      itemId: oldItem['item-id']
+      itemId
     },
     data: encryptedItem
   })
+  const sequenceNo = response.data.sequenceNo
 
-  const updatedItem = response.data
-
-  const itemToReturn = {
-    ...oldItem,
-    ...updatedItem,
-    encryptedRecord: encryptedItem,
-    record: newItem
-  }
-
-  stateManager.updateItem(itemToReturn)
+  const result = stateManager.updateItem(itemId, sequenceNo, newItem)
 
   initializeBundlingProcess(key)
 
-  return itemToReturn
+  return {
+    ...result,
+    ciphertext: encryptedItem
+  }
 }
 
 const batchUpdate = async (oldItems, newItems) => {
@@ -166,20 +171,18 @@ const batchUpdate = async (oldItems, newItems) => {
     },
     data: buffer
   })
+  const sequenceNos = response.data.sequenceNos
 
-  const updatedItems = response.data
+  const itemsToReturn = sequenceNos.map((sequenceNo, i) => {
+    const itemId = updatedItemsMetadata[i].itemId
+    const record = newItems[i]
 
-  const itemsToReturn = updatedItems.map((updatedItem, index) => {
-    const itemToReturn = {
-      ...oldItems[index],
-      ...updatedItem,
-      encryptedRecord: encryptedItems[index],
-      record: newItems[index]
+    const result = stateManager.updateItem(itemId, sequenceNo, record)
+
+    return {
+      ...result,
+      ciphertext: encryptedItems[i]
     }
-
-    stateManager.updateItem(itemToReturn)
-
-    return itemToReturn
   })
 
   initializeBundlingProcess(key)
@@ -187,29 +190,32 @@ const batchUpdate = async (oldItems, newItems) => {
   return itemsToReturn
 }
 
+/**
+
+    Deletes the provided item. Returns true if successful.
+
+    Example call:
+
+      await db.delete(orangeJuice)
+
+ */
 const deleteFunction = async (item) => {
+  const itemId = item['item-id']
+
   const response = await axios({
     method: 'POST',
     url: '/api/db/delete',
     data: {
-      itemId: item['item-id']
+      itemId
     }
   })
+  const sequenceNo = response.data.sequenceNo
 
-  const deletedItem = response.data
-
-  const itemToReturn = {
-    ...item,
-    ...deletedItem
-  }
-
-  delete itemToReturn.record
-
-  stateManager.deleteItem(itemToReturn)
+  stateManager.deleteItem(itemId, sequenceNo)
 
   initializeBundlingProcess()
 
-  return itemToReturn
+  return true
 }
 
 const batchDelete = async (items) => {
@@ -222,23 +228,17 @@ const batchDelete = async (items) => {
       itemIds
     }
   })
+  const sequenceNos = response.data.sequenceNos
 
-  const deletedItems = response.data
+  sequenceNos.forEach((sequenceNo, i) => {
+    const itemId = itemIds[i]
 
-  const itemsToReturn = deletedItems.map((deletedItem, index) => {
-    const itemToReturn = {
-      ...items[index],
-      ...deletedItem
-    }
-
-    stateManager.deleteItem(itemToReturn)
-
-    return itemToReturn
+    stateManager.deleteItem(itemId, sequenceNo)
   })
 
   initializeBundlingProcess()
 
-  return itemsToReturn
+  return true
 }
 
 const setupClientState = async (key, transactionLog, encryptedDbState) => {
@@ -317,6 +317,45 @@ const setIteratorsToSkipDeletedItems = (itemsInOrderOfInsertion) => {
   itemsInOrderOfInsertion.map = getMapFunctionThatUsesIterator(itemsInOrderOfInsertion)
 }
 
+/**
+
+    Returns the latest state of all items in the db in the order they
+    were originally inserted.
+
+    If an item has been updated, the most recent version of the item
+    is included in the state.
+
+    If an item has been deleted, it's possible that it will still
+    show up in the result as an undefined element.
+
+    For example, after the following sequence of actions:
+
+      const milk = await db.insert({ todo: 'remember the milk' })
+      const orangeJuice = await db.insert({ todo: 'buy orange juice' })
+      await db.insert({ todo: 'create the most useful app of all time' })
+      await db.delete(orangeJuice)
+      await db.update(milk, { todo: milk.record.todo, completed: true })
+
+    The response would look like this:
+
+      [
+        {
+          'item-id: '50bf2e6e-9776-441e-8215-08966581fcec',
+          record: {
+            todo: 'remember the milk',
+            completed: true
+          }
+        },
+        undefined, // the deleted orange juice
+        {
+          'item-id': 'b09cf9c2-86bd-499c-af06-709d5c11f64b',
+          record: {
+            todo: 'create the most useful app of all time'
+          }
+        }
+      ]
+
+  */
 const query = async () => {
   const key = await auth.getKeyFromLocalStorage()
 
@@ -349,6 +388,14 @@ const query = async () => {
   return itemsInOrderOfInsertion
 }
 
+/**
+
+    Gets the items in order of insertion from memory. If a client
+    is using 2 devices to access the application and inserts a new item
+    from another device, this function will not return the newly inserted item.
+    For that, use the query() function.
+
+ */
 const getLatestState = () => {
   const itemsInOrderOfInsertion = stateManager.getItems()
 

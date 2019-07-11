@@ -3,11 +3,45 @@ import crypto from './Crypto'
 function StateManager() {
   this.itemsInOrderOfInsertion = []
   this.itemIdsToIndexes = {}
+
+  // these are used to manage state without exposing sequence-no in itemsInOrderOfInsertion array
+  this.insertionIndexToInsertSeqNoInTransactionLog = {}
+  this.insertionIndexToCurrentSeqNoInTransactionLog = {}
 }
 
 StateManager.prototype.setItems = function (itemsInOrderOfInsertion, itemIdsToIndexes) {
   this.itemsInOrderOfInsertion = itemsInOrderOfInsertion
   this.itemIdsToIndexes = itemIdsToIndexes
+}
+
+StateManager.prototype.needToMoveItemWithLowerSeqNo = function (i, itemSequenceNo) {
+  const sequenceNoNextItemWasInsertedAt = this.insertionIndexToInsertSeqNoInTransactionLog[i]
+  const atStartOfTransactionLog = !sequenceNoNextItemWasInsertedAt
+  return !atStartOfTransactionLog && itemSequenceNo < sequenceNoNextItemWasInsertedAt
+}
+
+StateManager.prototype.getItemsInsertionIndex = function (itemSequenceNo) {
+  let i = this.itemsInOrderOfInsertion.length - 1
+
+  while (this.needToMoveItemWithLowerSeqNo(i, itemSequenceNo)) {
+    const itemThatWillBeMoved = this.itemsInOrderOfInsertion[i]
+    const itemIdThatWillBeMoved = itemThatWillBeMoved['item-id']
+
+    const oldInsertionIndex = this.itemIdsToIndexes[itemIdThatWillBeMoved]
+
+    const insertSeqNoThatWillBeMoved = this.insertionIndexToInsertSeqNoInTransactionLog[oldInsertionIndex]
+    const currentSeqNoThatWillBeMoved = this.insertionIndexToCurrentSeqNoInTransactionLog[oldInsertionIndex]
+
+    const newInsertionIndex = oldInsertionIndex + 1
+
+    this.itemIdsToIndexes[itemIdThatWillBeMoved] = newInsertionIndex
+    this.insertionIndexToInsertSeqNoInTransactionLog[newInsertionIndex] = insertSeqNoThatWillBeMoved
+    this.insertionIndexToCurrentSeqNoInTransactionLog[newInsertionIndex] = currentSeqNoThatWillBeMoved
+
+    i--
+  }
+
+  return i + 1
 }
 
 /**
@@ -34,49 +68,56 @@ StateManager.prototype.setItems = function (itemsInOrderOfInsertion, itemIdsToIn
     to insert it in the correct place in the array.
 
 */
-StateManager.prototype.insertItem = function (item) {
-  let i = this.itemsInOrderOfInsertion.length - 1
-  while (i >= 0 && item['sequence-no'] < i) {
-    const itemThatWillBeMoved = this.itemsInOrderOfInsertion[i]
-    const itemIdThatWillBeMoved = itemThatWillBeMoved['item-id']
-    this.itemIdsToIndexes[itemIdThatWillBeMoved] = this.itemIdsToIndexes[itemIdThatWillBeMoved] + 1
-    i--
-  }
+StateManager.prototype.insertItem = function (itemId, sequenceNo, record) {
+  // possible applyTransactionsToDbState picked the item up, don't re-insert it
+  const itemAlreadyInserted = !!this.itemIdsToIndexes[itemId]
+  if (itemAlreadyInserted) return
 
-  const indexToInsertItem = i + 1
+  const insertionIndex = this.getItemsInsertionIndex(sequenceNo)
+
   const deleteCount = 0
-  this.itemsInOrderOfInsertion.splice(indexToInsertItem, deleteCount, item)
-  this.itemIdsToIndexes[item['item-id']] = indexToInsertItem
+
+  const finalItem = {
+    'item-id': itemId,
+    record
+  }
+  this.itemsInOrderOfInsertion.splice(insertionIndex, deleteCount, finalItem)
+  this.itemIdsToIndexes[itemId] = insertionIndex
+  this.insertionIndexToInsertSeqNoInTransactionLog[insertionIndex] = sequenceNo
+  this.insertionIndexToCurrentSeqNoInTransactionLog[insertionIndex] = sequenceNo
+
+  return finalItem
 }
 
-StateManager.prototype.insertItems = function (newItems) {
-  let i = this.itemsInOrderOfInsertion.length - 1
-  while (i >= 0 && newItems[0]['sequence-no'] < i) {
-    const itemThatWillBeMoved = this.itemsInOrderOfInsertion[i]
-    const itemIdThatWillBeMoved = itemThatWillBeMoved['item-id']
-    this.itemIdsToIndexes[itemIdThatWillBeMoved] = this.itemIdsToIndexes[itemIdThatWillBeMoved] + newItems.length
-    i--
-  }
+StateManager.prototype.updateItem = function (itemId, updatedSeqNo, record) {
+  const insertionIndex = this.itemIdsToIndexes[itemId]
 
-  const indexToInsertItems = i + 1
-  const deleteCount = 0
-  this.itemsInOrderOfInsertion.splice(indexToInsertItems, deleteCount, ...newItems)
-  for (let i = 0; i < newItems.length; i++) {
-    this.itemIdsToIndexes[newItems[i]['item-id']] = indexToInsertItems + i
+  const currentItem = this.itemsInOrderOfInsertion[insertionIndex]
+  const itemIsDeleted = !currentItem
+  if (itemIsDeleted) throw new Error('Item is already deleted')
+
+  const currentSequenceNo = this.insertionIndexToCurrentSeqNoInTransactionLog[insertionIndex]
+
+  if (!currentSequenceNo || updatedSeqNo > currentSequenceNo) {
+    const finalItem = {
+      'item-id': itemId,
+      record: record
+    }
+
+    this.itemsInOrderOfInsertion[insertionIndex] = finalItem
+    this.insertionIndexToCurrentSeqNoInTransactionLog[insertionIndex] = updatedSeqNo
+
+    return finalItem
+  } else {
+    return currentItem
   }
 }
 
-StateManager.prototype.updateItem = function (item) {
-  const index = this.itemIdsToIndexes[item['item-id']]
-  const currentItem = this.itemsInOrderOfInsertion[index]
-  if (item['sequence-no'] > currentItem['sequence-no']) {
-    this.itemsInOrderOfInsertion[index] = item
-  }
-}
+StateManager.prototype.deleteItem = function (itemId, sequenceNo) {
+  const insertionIndex = this.itemIdsToIndexes[itemId]
+  this.itemsInOrderOfInsertion[insertionIndex] = undefined
 
-StateManager.prototype.deleteItem = function (item) {
-  const index = this.itemIdsToIndexes[item['item-id']]
-  this.itemsInOrderOfInsertion[index] = undefined
+  this.insertionIndexToCurrentSeqNoInTransactionLog[insertionIndex] = sequenceNo
 }
 
 StateManager.prototype.getItems = function () { return this.itemsInOrderOfInsertion }
@@ -90,9 +131,10 @@ const filterDeletedItems = function (unfilteredItemsInOrderOfInsertion) {
 
   for (let i = 0; i < unfilteredItemsInOrderOfInsertion.length; i++) {
     const item = unfilteredItemsInOrderOfInsertion[i]
-    const itemId = item['item-id']
+    const itemIsDeleted = !item
 
-    if (item.command !== 'Delete') {
+    if (!itemIsDeleted) {
+      const itemId = item['item-id']
       itemIdsToOrderOfInsertion[itemId] = itemsInOrderOfInsertion.push(item) - 1
     }
   }
@@ -165,7 +207,6 @@ const getFinalItem = (itemId, mostRecentStateOfNewItems, decryptedRecords) => {
 
     return {
       'item-id': itemId,
-      'sequence-no': item['sequence-no'],
       record: decryptedRecords[decryptedRecordIndex]
     }
   } else {
@@ -190,68 +231,59 @@ const setDecryptedItemsInOrderOfInsertion = function (
 
 /**
 
-    Returns the latest state of all items in the db in the order they
-    were originally inserted.
+    Applies all transactions in the transaction log to the provided
+    db state.
 
-    If an item has been updated, the most recent version of the item
-    is included in the state.
+    Returns an object that looks like this:
 
-    If an item has been deleted, it's possible that it will still
-    show up in the result as an undefined element.
+      {
+        itemsInOrderOfInsertion: [],
+        itemIdsToOrderOfInsertion: {},
+        maxSequenceNo: Integer
+      }
+
+    For example, assume the following input:
+
+      dbState = {
+        itemsInOrderOfInsertion: [{
+          'item-id: '50bf2e6e-9776-441e-8215-08966581fcec',
+          record: {
+            todo: 'remember the milk'
+          }
+        }],
+        itemIdsToOrderOfInsertion: {
+          '50bf2e6e-9776-441e-8215-08966581fcec': 0
+        },
+        maxSequenceNo: 0
+      }
+
+      transactionLog = [{
+        'item-id: '50bf2e6e-9776-441e-8215-08966581fcec',
+        'sequence-no': 1,
+        record: {
+          todo: 'remember the milk',
+          completed: true
+        }
+      }]
+
+    The output would be:
+
+       {
+        itemsInOrderOfInsertion: [{
+          'item-id: '50bf2e6e-9776-441e-8215-08966581fcec',
+          record: {
+            todo: 'remember the milk',
+            completed: true
+          }
+        }],
+        itemIdsToOrderOfInsertion: {
+          '50bf2e6e-9776-441e-8215-08966581fcec': 0
+        },
+        maxSequenceNo: 1
+      }
 
     If the filterAllDeletedItems flag is set to true, then no deleted
-    items will be returned.
-
-    For example, after the following sequence of actions:
-
-      const milk = await db.insert({ todo: 'remember the milk' })
-      const orangeJuice = await db.insert({ todo: 'buy orange juice' })
-      await db.insert({ todo: 'create the most useful app of all time' })
-      await db.delete(orangeJuice)
-      await db.update(milk, { todo: milk.record.todo, completed: true })
-
-    Without setting the filterAllDeletedItems to true, the response would
-    look like this:
-
-      [
-        {
-          'item-id: '50bf2e6e-9776-441e-8215-08966581fcec',
-          'sequence-no': 4,
-          record: {
-            todo: 'remember the milk',
-            completed: true
-          }
-        },
-        undefined, // the deleted orange juice
-        {
-          'item-id': 'b09cf9c2-86bd-499c-af06-709d5c11f64b',
-          'sequence-no': 2,
-          record: {
-            todo: 'create the most useful app of all time'
-          }
-        }
-      ]
-
-    With setting the filterAllDeletedItems flag to true, the response would
-    look like this:
-
-      [
-        {
-          'item-id: '50bf2e6e-9776-441e-8215-08966581fcec',
-          'sequence-no': 4,
-          record: {
-            todo: 'remember the milk',
-            completed: true
-          }
-        },
-        {
-          'item-id': 'b09cf9c2-86bd-499c-af06-709d5c11f64b',
-          'sequence-no': 2,
-          record: {
-            todo: 'create the most useful app of all time'
-          }
-        }
-      ]
+    items (or undefined elements) will be included in the result.
 
   */
 StateManager.prototype.applyTransactionsToDbState = async (key, dbState, transactionLog, filterAllDeletedItems = false) => {
