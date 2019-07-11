@@ -8,11 +8,24 @@ For now, this is just a prototype app. It's a proof of concept to demonstrate th
 
 ## Demo
 
-Here's a demo you can try right now: https://demo.encrypted.dev. The point of the demo is that it should feel indistinguishable from a regular web app, despite the fact that all database queries are running over encrypted data, and in the browser.
+The point of the demo is that it should feel indistinguishable from a regular web app, despite the fact that all database queries are running over encrypted data, and in the browser.
+
+Give it a go, and judge for yourself: **https://demo.encrypted.dev**
+
 
 <p align="center">
   <a href="https://demo.encrypted.dev"><img width="649" alt="Proof of concept demo" src="docs/demo.png"></a>
 </p>
+
+This is how the data for that view got stored:
+
+<p align="center">
+  <img width="1078" alt="Proof of concept demo" src="docs/database.jpg">
+</p>
+
+The `update` at seq #3 was to mark item #2 as complete. The `update` at seq #8 was to put the 🔑 emoji in item #5. And the `delete` in seq #9 was to delete an item inserted at seq #7 (which doesn't show in the app anymore).
+
+Whenever the browser runs a database query, it asks the server for any new transactions since the last seq # it had seen, and then it applies any new transactions to its store. The browser will also periodically compact the transaction log and re-upload it to the server — encrypted, obviously. This allows updates and deletes to get squashed whenever the transaction log reaches a certain size.
 
 ## Performance
 
