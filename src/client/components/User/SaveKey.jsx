@@ -39,7 +39,7 @@ class SaveKey extends PureComponent {
 
     return (
       <form>
-        <div className='container content'>
+        <div className='container content text-xs xs:text-base'>
 
           <div className="font-normal mb-4">Finish signing in by providing your secret key:</div>
 
@@ -73,7 +73,7 @@ class SaveKey extends PureComponent {
             </div>
           </div>
           <hr className='border border-t-0 border-gray-400 mt-4 mb-4' />
-          <div className="font-normal mb-4 text-sm text-gray-800">You received your secret key when you created your account. You can also find your key by signing in from a device you used before.</div>
+          <div className="font-normal mb-4 t-xs xs:text-sm text-gray-800">You received your secret key when you created your account. You can also find your key by signing in from a device you used before.</div>
         </div>
 
       </form>

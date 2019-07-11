@@ -53,7 +53,7 @@ class UserForm extends Component {
     return (
       <form onSubmit={this.handleSubmit}>
 
-        <div className='container content'>
+        <div className='container content text-xs xs:text-base'>
 
           {formType === 'Sign In'
             ? <div className="font-normal mb-4">Sign in with your username and password:</div>
@@ -66,7 +66,7 @@ class UserForm extends Component {
               <div className='table-cell p-2 text-right'>Username</div>
               <div className='table-cell p-2'>
                 <input
-                  className='font-light text-sm h-8 p-2 border border-gray-500 outline-none w-64'
+                  className='font-light text-xs xs:text-sm w-40 xs:w-64 h-8 p-2 border border-gray-500 outline-none'
                   type='text'
                   name='username'
                   autoComplete='username'
@@ -80,7 +80,7 @@ class UserForm extends Component {
               <div className='table-cell p-2 text-right'>Password</div>
               <div className='table-cell p-2'>
                 <input
-                  className='font-light text-sm h-8 p-2 border border-gray-500 outline-none w-64'
+                  className='font-light text-xs xs:text-sm w-40 xs:w-64 h-8 p-2 border border-gray-500 outline-none'
                   type='password'
                   name='password'
                   autoComplete='new-password'
@@ -108,7 +108,7 @@ class UserForm extends Component {
 
           {formType === 'Sign In' && <div>
             <hr className='border border-t-0 border-gray-400 mt-4 mb-4' />
-            <div className="font-normal mb-4 text-sm">Or, <a href='#sign-up'>create a new account</a>.</div>
+            <div className="font-normal mb-4 text-xs xs:text-sm">Or, <a href='#sign-up'>create a new account</a>.</div>
           </div>}
 
         </div>

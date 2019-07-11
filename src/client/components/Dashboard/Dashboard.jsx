@@ -62,7 +62,7 @@ class Dashboard extends Component {
     } = this.state
 
     return (
-      <div>
+      <div className='text-xs xs:text-base'>
         {
           loading
             ? <div className='text-center'><div className='loader w-6 h-6 inline-block' /></div>
@@ -93,8 +93,8 @@ class Dashboard extends Component {
                         />
                         <div
                           className={todo.record.completed ?
-                            'todo-item line-through text-gray-600' :
-                            'todo-item'}
+                            'todo-item text-sm xs:text-base line-through text-gray-600' :
+                            'todo-item text-sm xs:text-base'}
                           onClick={(e) => this.handleToggleEditTodo(e, todo)}
                         >
                           {todo.record.todo}

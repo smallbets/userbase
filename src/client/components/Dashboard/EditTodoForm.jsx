@@ -55,7 +55,7 @@ class EditTodoForm extends Component {
         {!loading && <form className='container flex h-8'>
           <div className='flex-1'>
             <input
-              className='todo-text w-48'
+              className='todo-text text-xs xs:text-sm w-24 xs:w-40 sm:w-48'
               type='text'
               name='todoInput'
               autoComplete='off'

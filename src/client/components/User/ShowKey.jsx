@@ -14,7 +14,7 @@ class ShowKey extends Component {
 
   render() {
     return (
-      <div className='container content'>
+      <div className='container content text-xs xs:text-base'>
 
         <div className="font-normal mb-4">Your secret key:</div>
 
@@ -22,7 +22,7 @@ class ShowKey extends Component {
 
           <div className='table-row'>
             <div className='table-cell p-0'>
-              <div className='font-light text-sm p-0 select-all font-mono text-red-600'>
+              <div className='font-light text-xs xs:text-sm break-all p-0 select-all font-mono text-red-600'>
                 {this.props.keyString}
               </div>
             </div>
@@ -52,7 +52,7 @@ class ShowKey extends Component {
           </div>
         </div>
         <hr className='border border-t-0 border-gray-400 mt-4 mb-4' />
-        <div className="font-normal mb-4 text-sm">Store this key somewhere safe. You will need your secret key to sign in on other devices.</div>
+        <div className="font-normal mb-4 text-xs xs:text-sm">Store this key somewhere safe. You will need your secret key to sign in on other devices.</div>
       </div>
     )
   }
