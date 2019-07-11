@@ -46,6 +46,7 @@ class UserForm extends Component {
 
   render() {
     const { username, password, error, loading } = this.state
+    const { formType } = this.props
 
     const disabled = !username || !password
 
@@ -53,6 +54,11 @@ class UserForm extends Component {
       <form onSubmit={this.handleSubmit}>
 
         <div className='container content'>
+
+          {formType === 'Sign In'
+            ? <div className="font-normal mb-4">Sign in with your username and password:</div>
+            : <div className="font-normal mb-4">Create a new account:</div>
+          }
 
           <div className='table'>
 
@@ -91,7 +97,7 @@ class UserForm extends Component {
                 : <input
                   className='btn w-24'
                   type='submit'
-                  value={this.props.formType}
+                  value={formType}
                   disabled={disabled}
                 />
               }
@@ -99,6 +105,11 @@ class UserForm extends Component {
 
             <div className='error'>{error}</div>
           </div>
+
+          {formType === 'Sign In' && <div>
+            <hr className='border border-t-0 border-gray-400 mt-4 mb-4' />
+            <div className="font-normal mb-4 text-sm">Or, <a href='#sign-up'>create a new account</a>.</div>
+          </div>}
 
         </div>
 

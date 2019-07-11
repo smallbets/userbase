@@ -41,6 +41,8 @@ class SaveKey extends PureComponent {
       <form>
         <div className='container content'>
 
+          <div className="font-normal mb-4">Finish signing in by providing your secret key:</div>
+
           <div className='table min-w-full'>
 
             <div className='table-row min-w-full'>
@@ -50,7 +52,7 @@ class SaveKey extends PureComponent {
                   type='text'
                   autoComplete='off'
                   onChange={this.handleInputChange}
-                  placeholder='Paste key here'
+                  placeholder='Paste your secret key here'
                 />
               </div>
             </div>
@@ -70,6 +72,8 @@ class SaveKey extends PureComponent {
               {error}
             </div>
           </div>
+          <hr className='border border-t-0 border-gray-400 mt-4 mb-4' />
+          <div className="font-normal mb-4 text-sm text-gray-800">You received your secret key when you created your account. You can also find your key by signing in from a device you used before.</div>
         </div>
 
       </form>

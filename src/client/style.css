@@ -24,6 +24,14 @@ body {
   @apply bg-primary;
 }
 
+a {
+  @apply underline;
+}
+
+a:hover {
+  @apply text-orange-700;
+}
+
 .btn {
   @apply rounded-lg w-20 pt-1 pb-1 bg-secondary font-bold cursor-pointer text-yellow-900;
 }

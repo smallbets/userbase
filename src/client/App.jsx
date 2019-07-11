@@ -43,18 +43,12 @@ class App extends Component {
   // this auto redirects to an appropriate view based on current state
   handleAutoRedirects() {
     const { key } = this.state
-
     const session = userLogic.getSession()
-
-    const isFirstTimeVisit = !session
-    const userMustLogInAgain = session && !session.signedIn
+    const userMustLogInAgain = !session || !session.signedIn
     const userHasActiveSession = session && session.signedIn
 
-    if (!displaySignInForm() && isFirstTimeVisit) {
-      // if the user is visiting the app for the very first time, redirect to the sign-up form
-      window.location.hash = 'sign-up'
-    } else if (!displaySignUpForm() && userMustLogInAgain) {
-      // if the user is logged out, but had a session in the past, redirect to the sign-in form
+    if (!displaySignUpForm() && userMustLogInAgain) {
+      // if the user is logged out, redirect to the sign-in form
       window.location.hash = 'sign-in'
     } else if (userHasActiveSession && !key) {
       // if the user is logged in, but the browser doesn't have a key for the user, redirect to the save-key form
@@ -145,13 +139,13 @@ class App extends Component {
           <div className='flex-1 text-right tracking-tight mr-5'>
             {!userHasActiveSession
               ? <ul>
-                <li className='inline-block ml-4'><a className='hover:underline' href='#sign-in'>Sign in</a></li>
-                <li className='inline-block ml-4'><a className='hover:underline' href='#sign-up'>New account</a></li>
+                <li className='inline-block ml-4'><a className={mode === 'sign-in' ? 'text-orange-600' : ''} href='#sign-in'>Sign in</a></li>
+                <li className='inline-block ml-4'><a className={mode === 'sign-up' ? 'text-orange-600' : ''} href='#sign-up'>New account</a></li>
               </ul>
               : <ul>
                 <li className='inline-block ml-4 font-light'>{session.username}</li>
-                <li className='inline-block ml-4'><a className='fa-key hover:underline' href='#show-key'></a></li>
-                <li className='inline-block ml-4'><a className='hover:underline' href='#' onClick={this.handleSignOut}>Sign out</a></li>
+                <li className='inline-block ml-4'><a className={'fa-key no-underline ' + (mode === 'show-key' ? 'text-orange-600' : '')} href='#show-key'></a></li>
+                <li className='inline-block ml-4'><a href='#' onClick={this.handleSignOut}>Sign out</a></li>
               </ul>
             }
           </div>

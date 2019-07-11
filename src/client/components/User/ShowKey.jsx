@@ -16,11 +16,13 @@ class ShowKey extends Component {
     return (
       <div className='container content'>
 
+        <div className="font-normal mb-4">Your secret key:</div>
+
         <div className='table'>
 
           <div className='table-row'>
             <div className='table-cell p-0'>
-              <div className='font-light text-sm p-0 select-all font-mono'>
+              <div className='font-light text-sm p-0 select-all font-mono text-red-600'>
                 {this.props.keyString}
               </div>
             </div>
@@ -36,8 +38,7 @@ class ShowKey extends Component {
               onClick={() => {
                 copy(this.props.keyString)
                 this.setState({ showCopiedMessage: true })
-              }
-              }
+              }}
             />
             <input
               className='btn-cancel w-24 ml-4'
@@ -50,6 +51,8 @@ class ShowKey extends Component {
             {this.state.showCopiedMessage && <div className='message'>Key copied to clipboard</div>}
           </div>
         </div>
+        <hr className='border border-t-0 border-gray-400 mt-4 mb-4' />
+        <div className="font-normal mb-4 text-sm">Store this key somewhere safe. You will need your secret key to sign in on other devices.</div>
       </div>
     )
   }
