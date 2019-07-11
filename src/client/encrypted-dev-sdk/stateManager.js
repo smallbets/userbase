@@ -146,8 +146,10 @@ const filterDeletedItems = function (unfilteredItemsInOrderOfInsertion) {
 }
 
 const setItemOrderOfInsertion = function (
+  i,
   transaction,
-  itemIdsToOrderOfInsertion
+  itemIdsToOrderOfInsertion,
+  itemsInOrderOfInsertion
 ) {
   if (transaction.command === 'Insert') {
     const itemId = transaction['item-id']
@@ -155,7 +157,7 @@ const setItemOrderOfInsertion = function (
     const thisIsNotADuplicateInsertion = !itemIdsToOrderOfInsertion[itemId]
 
     if (thisIsNotADuplicateInsertion) {
-      itemIdsToOrderOfInsertion[itemId] = Object.keys(itemIdsToOrderOfInsertion).length
+      itemIdsToOrderOfInsertion[itemId] = itemsInOrderOfInsertion.length + i
     }
   }
 }
@@ -302,7 +304,7 @@ StateManager.prototype.applyTransactionsToDbState = async (key, dbState, transac
   for (let i = 0; i < transactionLog.length; i++) {
     // iterate forwards picking up the items in the order they were first inserted
     const currentTransaction = transactionLog[i]
-    setItemOrderOfInsertion(currentTransaction, itemIdsToOrderOfInsertion)
+    setItemOrderOfInsertion(i, currentTransaction, itemIdsToOrderOfInsertion, itemsInOrderOfInsertion)
 
     // iterate backwards picking up the most recent state of the item
     const mostRecentTransaction = transactionLog[transactionLog.length - 1 - i]

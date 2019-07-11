@@ -455,7 +455,7 @@ exports.bundleTransactionLog = async function (req, res) {
       Body: req
     }
 
-    console.log('Uploading db state to S3...')
+    console.log(`Uploading user ${userId}'s db state to S3 at bundle seq no ${bundleSeqNo}...`)
     const s3 = setup.s3()
     await s3.upload(dbStateParams).promise()
 
@@ -482,6 +482,7 @@ exports.bundleTransactionLog = async function (req, res) {
     memcache.setBundleSeqNo(userId, bundleSeqNo)
 
     lock.releaseLock(userId, lockId)
+    console.log(`Released user ${userId}'s bundle lock ${lockId}...`)
 
     return res.send('Success!')
   } catch (e) {
