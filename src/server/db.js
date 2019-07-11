@@ -1,8 +1,8 @@
-import uuidv4 from 'uuid/v4'
 import connection from './connection'
 import setup from './setup'
 import statusCodes from './statusCodes'
 import memcache from './memcache'
+import lock from './lock'
 import userController from './user'
 
 const getS3DbStateKey = (userId, bundleSeqNo) => `${userId}/${bundleSeqNo}`
@@ -389,39 +389,16 @@ exports.batchDelete = async function (req, res) {
   }
 }
 
-const locks = {}
-const SECONDS_ALLOWED_TO_KEEP_BUNDLE_LOCK = 300
-
 exports.acquireBundleTransactionLogLock = function (req, res) {
   const userId = res.locals.userId
 
-  const lock = locks[userId]
-  if (lock) {
-    const timeSinceLockWasAcquired = process.hrtime(lock.timeAcquired)
-    const secondsSinceLockWasAcquired = timeSinceLockWasAcquired[0]
+  const newLock = lock.acquireLock(userId)
 
-    if (secondsSinceLockWasAcquired < SECONDS_ALLOWED_TO_KEEP_BUNDLE_LOCK) {
-      return res
-        .status(statusCodes['Unauthorized'])
-        .send({ readableMessage: 'Failed to acquire lock' })
-    } else {
-      // if this warning appears in the logs often, consider raising SECONDS_ALLOWED_TO_KEEP_BUNDLE_LOCK
-      console.warn(`User ${userId} has been holding lock ${lock.lockId} for ${secondsSinceLockWasAcquired}`)
-    }
-  }
+  if (!newLock) return res
+    .status(statusCodes['Unauthorized'])
+    .send({ readableMessage: 'Failed to acquire lock' })
 
-  const newLock = {
-    timeAcquired: process.hrtime(),
-    lockId: uuidv4()
-  }
-
-  locks[userId] = newLock
   return res.send(newLock.lockId)
-}
-
-const releaseBundleTransactionLogLock = function (userId, lockId) {
-  const lock = locks[userId]
-  if (lock && lock.lockId === lockId) locks[userId] = null
 }
 
 exports.releaseBundleTransactionLogLock = function (req, res) {
@@ -432,13 +409,9 @@ exports.releaseBundleTransactionLogLock = function (req, res) {
     .status(statusCodes['Bad Request'])
     .send({ readableMessage: 'Missing lock id' })
 
-  const lock = locks[userId]
-
-  if (!lock || lock.lockId !== lockId) return res
+  if (!lock.releaseLock(userId, lockId)) return res
     .status(statusCodes['Unauthorized'])
     .send({ readableMessage: 'Caller does not own this lock' })
-
-  releaseBundleTransactionLogLock(userId, lockId)
 
   return res.send('Success!')
 }
@@ -467,8 +440,7 @@ exports.bundleTransactionLog = async function (req, res) {
     // Note that THIS IS OK because a user can safely call this function twice. This
     // lock is simply an optimization to try to prevent both the client
     // and server from doing extra unnecessary work if possible.
-    const lock = locks[userId]
-    if (!lock || lock.lockId !== lockId) return res
+    if (!lock.callerOwnsLock(userId, lockId)) return res
       .status(statusCodes['Unauthorized'])
       .send({ readableMessage: 'Caller does not own this lock' })
 
@@ -509,12 +481,12 @@ exports.bundleTransactionLog = async function (req, res) {
 
     memcache.setBundleSeqNo(userId, bundleSeqNo)
 
-    releaseBundleTransactionLogLock(userId, lockId)
+    lock.releaseLock(userId, lockId)
 
     return res.send('Success!')
   } catch (e) {
 
-    releaseBundleTransactionLogLock(userId, lockId)
+    lock.releaseLock(userId, lockId)
 
     return res
       .status(statusCodes['Internal Server Error'])
