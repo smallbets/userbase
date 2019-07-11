@@ -1,64 +1,39 @@
 [![A proof of concept for an end-to-end encrypted web developmenet framework](docs/proof_of_concept.png)](https://encrypted.dev)
 
-# An end-to-end encrypted web app
-This is a simple to-do web app, with a twist: All user data is end-to-end encrypted!
+This is a simple to-do web app with a twist: All user data is **end-to-end encrypted**.
 
-The to-do data gets encrypted by the browser with an AES-256 key that never goes to the server. The app user gets data privacy, while the app developer gets spared from the burden of handling user data. A win-win.
+Every to-do item gets encrypted by the browser with a secret key that never goes to the server. The user gets data privacy, while the app developer gets spared the liability of user data. A win-win.
 
-For now, this is just a prototype app. It is a proof of concept to demonstrate that web apps like this can work and perform adequately without server-side database queries. With end-to-end encryption, all database queries happen in the browser. The server is there to handle access control and store the encrypted data.
+For now, this is just a prototype app. It's a proof of concept to demonstrate that web apps like this can work and perform adequately without server-side database queries. With end-to-end encryption, all database queries must happen in the browser. The server is there just to handle access control and store the encrypted data.
 
 ## Demo
 
-Check out https://demo.encrypted.dev for a live demo.
+Here's a demo you can try right now: https://demo.encrypted.dev. The point of the demo is that it should feel indistinguishable from a regular web app, despite the fact that all database queries are running over encrypted data, and in the browser.
 
 <p align="center">
-  <img width="646" alt="Proof of concept demo" src="docs/demo.png">
+  <a href="https://demo.encrypted.dev"><img width="649" alt="Proof of concept demo" src="docs/demo.png"></a>
 </p>
 
-## SDK
+## Performance
 
-#### Auth
+A major focus of the proof of concept was on performance. The repo includes 3 load tests that set up the app with 1K, 10K, and 100K to-do items. On a 2.9 GHz i9 MacBook Pro with 100 Mbps network, the app was able to fetch 1K items in 0.3s, 10K in 0.7s, and 100K in 5.7s. Once the app loaded the data, querying was nearly instantaneous, with 1K at 0.05s, 10K at 0.06s, and 100K at 0.42s.
 
-Creating a new user account:
-```
-await auth.signUp('username', 'password')
-```
+Performance is still an area under development, and more results will be published soon. You can also run the perf tests yourself by following [these instructions](docs/perftest.md).
 
-Signing in:
-```
-await auth.signIn('username', 'password')
-```
+## What's Next?
 
-Signing out:
-```
-await auth.signOut()
-```
+A framework will be extracted from this prototype to help anyone build web and mobile apps with end-to-end encrypted user data. The framework will be 100% open source and MIT licensed. If you want to keep up to date with its progress you can [subscribe to the mailing list](https://updates.encrypted.dev/subscribe). (No more than one or two emails a month.) You can also [follow on Twitter](https://twitter.com/dvassallo) for more frequent updates.
 
-#### Database
+There are still a few things being explored that haven't been validated by this proof of concept yet:
 
-Inserting an item:
-```
-let milk = await db.insert({ task: 'Buy 1 gallon of milk' })
-```
-
-Searching for an item:
-```
-let milk = (await db.query()).find(e => e.record.task.includes('milk'))
-```
-
-Updating an item:
-```
-await db.update(milk, { task: 'Buy 5 gallons of milk' })
-```
-
-Deleting an item:
-```
-await db.delete(milk)
-```
+- Data sharing across users.
+- Secret key rotation or revocation.
+- Real-time live queries and push notifications.
+- Other ways of distributing the secret key across devices (beyond copy/pasting).
 
 ## Development
 
-Add your AWS credentials in `~/.aws/credentials` under a profile called "encrypted":
+Running this app requires an AWS account. You just need to provide your AWS credentials and the app will automatically create all the AWS resources it needs: 3 DynamoDB tables with per-request billing, and 1 S3 bucket. To run the app locally, put your AWS credentials in `~/.aws/credentials` under a profile called `encrypted`:
 
 ```
 echo "
@@ -85,31 +60,7 @@ Start the dev server:
 npm start
 ```
 
-Go to http://localhost:3000 and you should see the welcome screen.
-
-## Performance Test
-
-Make sure no other tabs with localhost:3001 are open, then run:
-
-```
-npm run perftest
-```
-
-A browser should open to localhost:3001. Open the browser console. You should see logs indicating the test is setting up. Wait until the test is finished setting up and the following message is logged:
-
-```
-To test user <username>, input this into the console: localStorage.setItem('<username>', '<user's key>'), then sign in with password 'Test1234'.
-```
-
-Copy the entire `localStorage.setItem()` function.
-
-Once copied, run:
-
-```
-npm start
-```
-
-A browser should open to localhost:3000 with the normal app this time. Open the browser console and paste to set the user's encryption key. Then sign in with the username and password from above. Results on the query operation will be shown in the console.
+Go to http://localhost:3000 and you should see the sign in screen.
 
 ## License
 
