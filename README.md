@@ -16,7 +16,7 @@ Here's a demo you can try right now: https://demo.encrypted.dev. The point of th
 
 ## Performance
 
-A major focus of the proof of concept was on performance. The repo includes 3 load tests that set up the app with 1K, 10K, and 100K to-do items. On a 2.9 GHz i9 MacBook Pro with 100 Mbps network, the app was able to fetch 1K items in 0.3s, 10K in 0.7s, and 100K in 5.7s. Once the app loaded the data, querying was nearly instantaneous, with 1K at 0.05s, 10K at 0.06s, and 100K at 0.42s.
+A major focus of the proof of concept was on performance. The repo includes 3 load tests that set up the app with 1K, 10K, and 100K to-do items. On a 2.9 GHz i9 MacBook Pro with 100 Mbps network, the app was able to fetch and decrypt 1K items in 0.3s, 10K in 0.8s, and 100K in 6.4s. Once the app had loaded the data, querying it was nearly instantaneous.
 
 Performance is still an area under development, and more results will be published soon. You can also run the perf tests yourself by following [these instructions](docs/perftest.md).
 
