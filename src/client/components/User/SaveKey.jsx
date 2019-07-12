@@ -30,7 +30,7 @@ class SaveKey extends PureComponent {
 
     if (keyString == '') return
 
-    userLogic.saveKey(keyString)
+    await userLogic.saveKey(keyString)
     handleSetKeyInState(keyString)
   }
 

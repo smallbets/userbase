@@ -36,12 +36,13 @@ const getSession = () => {
   return encd.getCurrentSession()
 }
 
-const getKey = () => {
-  return encd.getKey()
+const getKey = async () => {
+  const key = await encd.getKey()
+  return key
 }
 
-const saveKey = (key) => {
-  encd.saveKey(key)
+const saveKey = async (key) => {
+  await encd.saveKey(key)
 }
 
 export default {

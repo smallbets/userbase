@@ -15,6 +15,17 @@ class EditTodoForm extends Component {
     this.handleSaveTodo = this.handleSaveTodo.bind(this)
   }
 
+  // hacky fix to prevent last pass error in console: https://github.com/KillerCodeMonkey/ngx-quill/issues/351
+  componentDidMount() {
+    document.addEventListener('keydown', this.handleHitEnterToSaveTodo, true)
+  }
+  componentWillUnmount() {
+    document.removeEventListener('keydown', this.handleHitEnterToSaveTodo, true)
+  }
+  handleHitEnterToSaveTodo(e) {
+    e.stopPropagation()
+  }
+
   handleInputChange(event) {
     if (this.state.error) this.setState({ error: undefined })
 
