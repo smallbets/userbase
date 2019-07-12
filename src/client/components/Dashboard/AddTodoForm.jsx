@@ -17,13 +17,17 @@ class AddTodoForm extends Component {
 
   // hacky fix to prevent last pass error in console: https://github.com/KillerCodeMonkey/ngx-quill/issues/351
   componentDidMount() {
-    document.addEventListener('keydown', this.handleHitEnterToSaveTodo, true)
+    document.addEventListener('keydown', this.handleHitEnterToAddTodo, true)
   }
   componentWillUnmount() {
-    document.removeEventListener('keydown', this.handleHitEnterToSaveTodo, true)
+    document.removeEventListener('keydown', this.handleHitEnterToAddTodo, true)
   }
-  handleHitEnterToSaveTodo(e) {
-    e.stopPropagation()
+  handleHitEnterToAddTodo(e) {
+    const ENTER_KEY_CODE = 13
+    if (e.target.name === 'todoInput' &&
+      (e.key === 'Enter' || e.keyCode === ENTER_KEY_CODE)) {
+      e.stopPropagation()
+    }
   }
 
   handleInputChange(event) {

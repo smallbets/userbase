@@ -23,7 +23,11 @@ class EditTodoForm extends Component {
     document.removeEventListener('keydown', this.handleHitEnterToSaveTodo, true)
   }
   handleHitEnterToSaveTodo(e) {
-    e.stopPropagation()
+    const ENTER_KEY_CODE = 13
+    if (e.target.name === 'todoInput' &&
+      (e.key === 'Enter' || e.keyCode === ENTER_KEY_CODE)) {
+      e.stopPropagation()
+    }
   }
 
   handleInputChange(event) {

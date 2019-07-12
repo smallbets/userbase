@@ -16,15 +16,19 @@ class UserForm extends Component {
     this.handleSubmit = this.handleSubmit.bind(this)
   }
 
-  // hacky fix to prevent last pass error in console: https://github.com/KillerCodeMonkey/ngx-quill/issues/351
+  // prevent last pass error in console: https://github.com/KillerCodeMonkey/ngx-quill/issues/351
   componentDidMount() {
-    document.addEventListener('keydown', this.handleHitEnterToSaveTodo, true)
+    document.addEventListener('keydown', this.handleHitEnter, true)
   }
   componentWillUnmount() {
-    document.removeEventListener('keydown', this.handleHitEnterToSaveTodo, true)
+    document.removeEventListener('keydown', this.handleHitEnter, true)
   }
-  handleHitEnterToSaveTodo(e) {
-    e.stopPropagation()
+  handleHitEnter(e) {
+    const ENTER_KEY_CODE = 13
+    if ((e.target.name === 'username' || e.target.name === 'password') &&
+      (e.key === 'Enter' || e.keyCode === ENTER_KEY_CODE)) {
+      e.stopPropagation()
+    }
   }
 
   handleInputChange(event) {
