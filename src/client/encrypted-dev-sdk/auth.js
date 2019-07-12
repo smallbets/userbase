@@ -57,10 +57,7 @@ const saveKey = async (base64Key) => {
 }
 
 const signUp = async (username, password) => {
-  const symmetricKey = await crypto.aesGcm.generateKey()
   const lowerCaseUsername = username.toLowerCase()
-
-  await saveKeyToLocalStorage(lowerCaseUsername, symmetricKey)
 
   await axios.post('/api/auth/sign-up', {
     username: lowerCaseUsername,
@@ -68,19 +65,23 @@ const signUp = async (username, password) => {
     userId: uuidv4()
   })
 
+  const symmetricKey = await crypto.aesGcm.generateKey()
+  await saveKeyToLocalStorage(lowerCaseUsername, symmetricKey)
+
   const signedIn = true
   const session = _setCurrentSession(lowerCaseUsername, signedIn)
   return session
 }
 
 const signOut = async () => {
+  stateManager.clearState()
+
   await axios.post('/api/auth/sign-out')
 
   const currentSession = getCurrentSession()
   const signedIn = false
   const session = _setCurrentSession(currentSession.username, signedIn)
 
-  stateManager.clearState()
   return session
 }
 

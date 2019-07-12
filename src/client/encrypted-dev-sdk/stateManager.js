@@ -1,12 +1,16 @@
 import crypto from './Crypto'
 
-function StateManager() {
+StateManager.prototype.setInitialState = function () {
   this.itemsInOrderOfInsertion = []
   this.itemIdsToIndexes = {}
 
   // these are used to manage state without exposing sequence-no in itemsInOrderOfInsertion array
   this.insertionIndexToInsertSeqNoInTransactionLog = {}
   this.insertionIndexToCurrentSeqNoInTransactionLog = {}
+}
+
+function StateManager() {
+  this.setInitialState()
 }
 
 StateManager.prototype.setItems = function (itemsInOrderOfInsertion, itemIdsToIndexes) {
@@ -123,7 +127,7 @@ StateManager.prototype.deleteItem = function (itemId, sequenceNo) {
 StateManager.prototype.getItems = function () { return this.itemsInOrderOfInsertion }
 StateManager.prototype.getItemIdsToIndexes = function () { return this.itemIdsToIndexes }
 
-StateManager.prototype.clearState = function () { state = new StateManager() }
+StateManager.prototype.clearState = function () { this.setInitialState() }
 
 const filterDeletedItems = function (unfilteredItemsInOrderOfInsertion) {
   const itemsInOrderOfInsertion = []
@@ -333,5 +337,4 @@ StateManager.prototype.applyTransactionsToDbState = async (key, dbState, transac
   }
 }
 
-let state = new StateManager()
-export default state
+export default new StateManager()
