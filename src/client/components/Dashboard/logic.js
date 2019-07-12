@@ -5,7 +5,7 @@ const _errorHandler = (e, operation, handleRemoveUserAuthentication) => {
   console.log(`Failed to ${operation} with`, e, e.response && e.response.data)
 
   const unauthorized = e.response && e.response.status === 401
-  if (unauthorized) return handleRemoveUserAuthentication()
+  if (unauthorized) handleRemoveUserAuthentication()
 
   const errorMsg = (e.response && e.response.data.readableMessage) || e.message
   return { error: errorMsg }

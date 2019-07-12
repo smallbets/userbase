@@ -82,6 +82,7 @@ class Dashboard extends Component {
                         handleToggleEditTodo={this.handleToggleEditTodo}
                         handleDeleteTodo={this.handleDeleteTodo}
                         handleSetTodos={this.handleSetTodos}
+                        handleRemoveUserAuthentication={this.props.handleRemoveUserAuthentication}
                         todo={todo}
                       />
 
@@ -109,7 +110,10 @@ class Dashboard extends Component {
 
                 <div>
                   <hr className='border border-t-0 border-gray-400 mt-4 mb-4' />
-                  <AddTodoForm handleSetTodos={this.handleSetTodos} />
+                  <AddTodoForm
+                    handleSetTodos={this.handleSetTodos}
+                    handleRemoveUserAuthentication={this.props.handleRemoveUserAuthentication}
+                  />
                 </div>
               </div>
             </div>
