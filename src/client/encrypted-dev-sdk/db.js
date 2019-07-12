@@ -7,6 +7,17 @@ import stateManager from './stateManager'
 import { appendBuffers } from './Crypto/utils'
 import { getSecondsSinceT0 } from './utils'
 
+const wrapInAuthenticationErrorCatcher = async (promise) => {
+  try {
+    const response = await promise
+    return response
+  } catch (e) {
+    const unauthorized = e.response && e.response.status === 401
+    if (unauthorized) auth.clearAuthenticatedDataFromBrowser()
+    throw e
+  }
+}
+
 /**
 
     Webworker runs to determine if user's transaction log size
@@ -46,7 +57,9 @@ const insert = async (item) => {
 
   const itemId = uuidv4()
 
-  const sequenceNo = await server.db.insert(itemId, encryptedItem)
+  const sequenceNo = await wrapInAuthenticationErrorCatcher(
+    server.db.insert(itemId, encryptedItem)
+  )
 
   const result = stateManager.insertItem(itemId, sequenceNo, item)
 
@@ -70,7 +83,9 @@ const batchInsert = async (items) => {
     byteLength: byteLengths[i]
   }))
 
-  const sequenceNos = await server.db.batchInsert(itemsMetadata, buffer)
+  const sequenceNos = await wrapInAuthenticationErrorCatcher(
+    server.db.batchInsert(itemsMetadata, buffer)
+  )
 
   const itemsToReturn = sequenceNos.map((sequenceNo, i) => {
     const itemId = itemsMetadata[i].itemId
@@ -115,7 +130,9 @@ const update = async (oldItem, newItem) => {
 
   const itemId = oldItem['item-id']
 
-  const sequenceNo = await server.db.update(itemId, encryptedItem)
+  const sequenceNo = await wrapInAuthenticationErrorCatcher(
+    server.db.update(itemId, encryptedItem)
+  )
 
   const result = stateManager.updateItem(itemId, sequenceNo, newItem)
 
@@ -139,7 +156,9 @@ const batchUpdate = async (oldItems, newItems) => {
     byteLength: byteLengths[index]
   }))
 
-  const sequenceNos = await server.db.batchUpdate(updatedItemsMetadata, buffer)
+  const sequenceNos = await wrapInAuthenticationErrorCatcher(
+    server.db.batchUpdate(updatedItemsMetadata, buffer)
+  )
 
   const itemsToReturn = sequenceNos.map((sequenceNo, i) => {
     const itemId = updatedItemsMetadata[i].itemId
@@ -170,7 +189,9 @@ const batchUpdate = async (oldItems, newItems) => {
 const deleteFunction = async (item) => {
   const itemId = item['item-id']
 
-  const sequenceNo = await server.db.delete(itemId)
+  const sequenceNo = await wrapInAuthenticationErrorCatcher(
+    server.db.delete(itemId)
+  )
 
   stateManager.deleteItem(itemId, sequenceNo)
 
@@ -182,7 +203,9 @@ const deleteFunction = async (item) => {
 const batchDelete = async (items) => {
   const itemIds = items.map(item => item['item-id'])
 
-  const sequenceNos = await server.db.batchDelete(itemIds)
+  const sequenceNos = await wrapInAuthenticationErrorCatcher(
+    server.db.batchDelete(itemIds)
+  )
 
   sequenceNos.forEach((sequenceNo, i) => {
     const itemId = itemIds[i]
@@ -303,7 +326,9 @@ const query = async () => {
 
   // retrieving user's transaction log
   let t0 = performance.now()
-  const { transactionLog, bundleSeqNo } = await server.db.queryTransactionLog()
+  const { transactionLog, bundleSeqNo } = await wrapInAuthenticationErrorCatcher(
+    server.db.queryTransactionLog()
+  )
   console.log(`Retrieved user's transaction log in ${getSecondsSinceT0(t0)}s`)
 
   let encryptedDbState
@@ -313,7 +338,9 @@ const query = async () => {
   if (bundleSeqNo) {
     // retrieving user's encrypted db state
     t0 = performance.now()
-    encryptedDbState = await server.db.queryEncryptedDbState(bundleSeqNo)
+    encryptedDbState = await wrapInAuthenticationErrorCatcher(
+      server.db.queryEncryptedDbState(bundleSeqNo)
+    )
     console.log(`Retrieved user's encrypted db state in ${getSecondsSinceT0(t0)}s`)
   }
 

@@ -20,7 +20,7 @@ class App extends Component {
       mode: undefined
     }
 
-    this.handleSetSessionInState = this.handleSetSessionInState.bind(this)
+    this.handleGetKeyFromEncryptedDevSdk = this.handleGetKeyFromEncryptedDevSdk.bind(this)
     this.handleSetKeyInState = this.handleSetKeyInState.bind(this)
     this.handleSignOut = this.handleSignOut.bind(this)
     this.handleRemoveUserAuthentication = this.handleRemoveUserAuthentication.bind(this)
@@ -56,9 +56,9 @@ class App extends Component {
     }
   }
 
-  async handleSetSessionInState(session, isNewAccount) {
+  async handleGetKeyFromEncryptedDevSdk(isNewAccount) {
     const key = await userLogic.getKey()
-    this.setState({ session, key })
+    this.setState({ key })
     window.location.hash = isNewAccount ? '#show-key' : ''
   }
 
@@ -69,15 +69,7 @@ class App extends Component {
 
   // this is called when the user signs out, or when the server says the session has expired
   handleRemoveUserAuthentication() {
-    const { session } = this.state
     window.location.hash = 'sign-in'
-    this.setState({
-      session: {
-        username: session && session.username,
-        signedIn: false,
-        key: undefined
-      }
-    })
   }
 
   async handleSignOut() {
@@ -161,13 +153,13 @@ class App extends Component {
               return <SaveKey handleSetKeyInState={this.handleSetKeyInState} />
             case 'sign-in':
               return <UserForm
-                handleSetSessionInState={this.handleSetSessionInState}
+                handleGetKeyFromEncryptedDevSdk={this.handleGetKeyFromEncryptedDevSdk}
                 formType='Sign In'
                 key='sign-in'
                 placeholderUsername={session && session.username}
               />
             case 'sign-up':
-              return <UserForm handleSetSessionInState={this.handleSetSessionInState}
+              return <UserForm handleGetKeyFromEncryptedDevSdk={this.handleGetKeyFromEncryptedDevSdk}
                 formType='Sign Up'
                 key='sign-up'
                 placeholderUsername='' />

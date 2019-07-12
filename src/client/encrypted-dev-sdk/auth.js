@@ -58,8 +58,8 @@ const saveKey = async (base64Key) => {
 
 const signUp = async (username, password) => {
   const lowerCaseUsername = username.toLowerCase()
-
   const userId = uuidv4()
+
   await server.auth.signUp(lowerCaseUsername, password, userId)
 
   const symmetricKey = await crypto.aesGcm.generateKey()
@@ -70,14 +70,18 @@ const signUp = async (username, password) => {
   return session
 }
 
-const signOut = async () => {
+const clearAuthenticatedDataFromBrowser = () => {
   stateManager.clearState()
-
-  await server.auth.signOut()
 
   const currentSession = getCurrentSession()
   const signedIn = false
-  const session = _setCurrentSession(currentSession.username, signedIn)
+  return _setCurrentSession(currentSession.username, signedIn)
+}
+
+const signOut = async () => {
+  const session = clearAuthenticatedDataFromBrowser()
+
+  await server.auth.signOut()
 
   return session
 }
@@ -98,6 +102,7 @@ export default {
   getKey,
   saveKey,
   signUp,
+  clearAuthenticatedDataFromBrowser,
   signOut,
   signIn,
 }

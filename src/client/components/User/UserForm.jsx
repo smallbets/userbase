@@ -29,7 +29,7 @@ class UserForm extends Component {
   }
 
   async handleSubmit(event) {
-    const { formType, handleSetSessionInState } = this.props
+    const { formType, handleGetKeyFromEncryptedDevSdk } = this.props
     const { username, password } = this.state
     event.preventDefault()
 
@@ -41,7 +41,7 @@ class UserForm extends Component {
     else return console.error('Unknown form type')
 
     if (result.error) this.setState({ error: result.error, loading: false })
-    else handleSetSessionInState(result, formType === 'Sign Up') // re-routes to different component
+    else handleGetKeyFromEncryptedDevSdk(formType === 'Sign Up') // re-routes to different component
   }
 
   render() {
@@ -119,7 +119,7 @@ class UserForm extends Component {
 }
 
 UserForm.propTypes = {
-  handleSetSessionInState: func,
+  handleGetKeyFromEncryptedDevSdk: func,
   formType: string,
   placeholderUsername: string
 }
