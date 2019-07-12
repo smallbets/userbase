@@ -1,5 +1,5 @@
 import 'babel-polyfill'
-import axios from 'axios'
+import server from './server'
 import crypto from './Crypto'
 import stateManager from './stateManager'
 import { sizeOfDdbItems } from './utils'
@@ -10,16 +10,7 @@ const NINETY_PERCENT_OF_ONE_MB = Math.floor(.9 * ONE_MB)
 
 const getDbState = async (key, oldBundleSeqNo) => {
   if (oldBundleSeqNo) {
-    const dbStateResponse = await axios({
-      url: '/api/db/query/db-state',
-      method: 'GET',
-      params: {
-        bundleSeqNo: oldBundleSeqNo
-      },
-      responseType: 'arraybuffer'
-    })
-
-    const encryptedDbState = dbStateResponse.data
+    const encryptedDbState = await server.db.queryEncryptedDbState(oldBundleSeqNo)
 
     const dbState = await crypto.aesGcm.decrypt(key, encryptedDbState)
     return dbState
@@ -43,44 +34,26 @@ const bundleTransactionLog = async (key, transactionLog, oldBundleSeqNo, lockId)
 
   const encryptedDbState = await crypto.aesGcm.encrypt(key, newDbState)
 
-  await axios({
-    method: 'POST',
-    url: '/api/db/bundle-tx-log',
-    params: {
-      bundleSeqNo: newBundleSeqNo,
-      lockId
-    },
-    data: encryptedDbState
-  })
+  await server.db.bundleTxLog(newBundleSeqNo, lockId, encryptedDbState)
 }
 
-const releaseLock = async (lockId) => {
-  await axios({
-    method: 'POST',
-    url: '/api/db/rel-bundle-tx-log-lock',
-    params: {
-      lockId
-    }
-  })
-}
+
 
 const handleMessage = async (key) => {
   let lockId
   try {
-    const lockResponse = await axios.post('/api/db/acq-bundle-tx-log-lock')
-    lockId = lockResponse.data
+    lockId = await server.db.acquireLock()
 
-    const transactionLogResponse = await axios.get('/api/db/query/tx-log')
-
-    const transactionLog = transactionLogResponse.data
-    const oldBundleSeqNo = Number(transactionLogResponse.headers['bundle-seq-no'])
+    const transactionLogResponse = await server.db.queryTransactionLog()
+    const transactionLog = transactionLogResponse.transactionLog
+    const oldBundleSeqNo = transactionLogResponse.bundleSeqNo
 
     if (sizeOfDdbItems(transactionLog) > NINETY_PERCENT_OF_ONE_MB) {
       console.log('Bundling transaction log!')
       await bundleTransactionLog(key, transactionLog, oldBundleSeqNo, lockId)
       console.log('Finished bundling transaction log!')
     } else {
-      await releaseLock(lockId)
+      await server.db.releaseLock(lockId)
     }
 
   } catch (e) {
@@ -90,7 +63,7 @@ const handleMessage = async (key) => {
 
     if (lockId) {
       try {
-        await releaseLock(lockId)
+        await server.db.releaseLock(lockId)
       } catch (err) {
         console.log('Failed to release bundle transaction log lock with', e)
       }

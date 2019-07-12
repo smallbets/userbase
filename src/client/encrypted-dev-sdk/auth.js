@@ -1,5 +1,5 @@
 import uuidv4 from 'uuid/v4'
-import axios from 'axios'
+import server from './server'
 import crypto from './Crypto'
 import base64 from 'base64-arraybuffer'
 import stateManager from './stateManager'
@@ -59,11 +59,8 @@ const saveKey = async (base64Key) => {
 const signUp = async (username, password) => {
   const lowerCaseUsername = username.toLowerCase()
 
-  await axios.post('/api/auth/sign-up', {
-    username: lowerCaseUsername,
-    password,
-    userId: uuidv4()
-  })
+  const userId = uuidv4()
+  await server.auth.signUp(lowerCaseUsername, password, userId)
 
   const symmetricKey = await crypto.aesGcm.generateKey()
   await saveKeyToLocalStorage(lowerCaseUsername, symmetricKey)
@@ -76,7 +73,7 @@ const signUp = async (username, password) => {
 const signOut = async () => {
   stateManager.clearState()
 
-  await axios.post('/api/auth/sign-out')
+  await server.auth.signOut()
 
   const currentSession = getCurrentSession()
   const signedIn = false
@@ -88,10 +85,7 @@ const signOut = async () => {
 const signIn = async (username, password) => {
   const lowerCaseUsername = username.toLowerCase()
 
-  await axios.post('/api/auth/sign-in', {
-    username: lowerCaseUsername,
-    password
-  })
+  await server.auth.signIn(lowerCaseUsername, password)
 
   const signedIn = true
   const session = _setCurrentSession(lowerCaseUsername, signedIn)

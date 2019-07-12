@@ -1,5 +1,5 @@
 import uuidv4 from 'uuid/v4'
-import axios from 'axios'
+import server from './server'
 import Worker from './worker.js'
 import auth from './auth'
 import crypto from './Crypto'
@@ -46,15 +46,7 @@ const insert = async (item) => {
 
   const itemId = uuidv4()
 
-  const response = await axios({
-    method: 'POST',
-    url: '/api/db/insert',
-    params: {
-      itemId
-    },
-    data: encryptedItem
-  })
-  const sequenceNo = response.data.sequenceNo
+  const sequenceNo = await server.db.insert(itemId, encryptedItem)
 
   const result = stateManager.insertItem(itemId, sequenceNo, item)
 
@@ -78,15 +70,7 @@ const batchInsert = async (items) => {
     byteLength: byteLengths[i]
   }))
 
-  const response = await axios({
-    method: 'POST',
-    url: '/api/db/batch-insert',
-    params: {
-      itemsMetadata
-    },
-    data: buffer
-  })
-  const sequenceNos = response.data.sequenceNos
+  const sequenceNos = await server.db.batchInsert(itemsMetadata, buffer)
 
   const itemsToReturn = sequenceNos.map((sequenceNo, i) => {
     const itemId = itemsMetadata[i].itemId
@@ -131,15 +115,7 @@ const update = async (oldItem, newItem) => {
 
   const itemId = oldItem['item-id']
 
-  const response = await axios({
-    method: 'POST',
-    url: '/api/db/update',
-    params: {
-      itemId
-    },
-    data: encryptedItem
-  })
-  const sequenceNo = response.data.sequenceNo
+  const sequenceNo = await server.db.update(itemId, encryptedItem)
 
   const result = stateManager.updateItem(itemId, sequenceNo, newItem)
 
@@ -163,15 +139,7 @@ const batchUpdate = async (oldItems, newItems) => {
     byteLength: byteLengths[index]
   }))
 
-  const response = await axios({
-    method: 'POST',
-    url: '/api/db/batch-update',
-    params: {
-      updatedItemsMetadata
-    },
-    data: buffer
-  })
-  const sequenceNos = response.data.sequenceNos
+  const sequenceNos = await server.db.batchUpdate(updatedItemsMetadata, buffer)
 
   const itemsToReturn = sequenceNos.map((sequenceNo, i) => {
     const itemId = updatedItemsMetadata[i].itemId
@@ -202,14 +170,7 @@ const batchUpdate = async (oldItems, newItems) => {
 const deleteFunction = async (item) => {
   const itemId = item['item-id']
 
-  const response = await axios({
-    method: 'POST',
-    url: '/api/db/delete',
-    data: {
-      itemId
-    }
-  })
-  const sequenceNo = response.data.sequenceNo
+  const sequenceNo = await server.db.delete(itemId)
 
   stateManager.deleteItem(itemId, sequenceNo)
 
@@ -221,14 +182,7 @@ const deleteFunction = async (item) => {
 const batchDelete = async (items) => {
   const itemIds = items.map(item => item['item-id'])
 
-  const response = await axios({
-    method: 'POST',
-    url: '/api/db/batch-delete',
-    data: {
-      itemIds
-    }
-  })
-  const sequenceNos = response.data.sequenceNos
+  const sequenceNos = await server.db.batchDelete(itemIds)
 
   sequenceNos.forEach((sequenceNo, i) => {
     const itemId = itemIds[i]
@@ -255,18 +209,6 @@ const setupClientState = async (key, transactionLog, encryptedDbState) => {
   stateManager.setItems(itemsInOrderOfInsertion, itemIdsToOrderOfInsertion)
 
   return itemsInOrderOfInsertion
-}
-
-const queryEncryptedDbState = async (bundleSeqNo) => {
-  const encryptedDbStateResponse = await axios({
-    url: '/api/db/query/db-state',
-    method: 'GET',
-    params: {
-      bundleSeqNo
-    },
-    responseType: 'arraybuffer'
-  })
-  return encryptedDbStateResponse.data
 }
 
 const getMapFunctionThatUsesIterator = (arr) => {
@@ -361,11 +303,8 @@ const query = async () => {
 
   // retrieving user's transaction log
   let t0 = performance.now()
-  const transactionLogResponse = await axios.get('/api/db/query/tx-log')
+  const { transactionLog, bundleSeqNo } = await server.db.queryTransactionLog()
   console.log(`Retrieved user's transaction log in ${getSecondsSinceT0(t0)}s`)
-
-  const transactionLog = transactionLogResponse.data
-  const bundleSeqNo = Number(transactionLogResponse.headers['bundle-seq-no'])
 
   let encryptedDbState
   // if server sets bundle-seq-no header, that means the transaction log starts
@@ -374,7 +313,7 @@ const query = async () => {
   if (bundleSeqNo) {
     // retrieving user's encrypted db state
     t0 = performance.now()
-    encryptedDbState = await queryEncryptedDbState(bundleSeqNo)
+    encryptedDbState = await server.db.queryEncryptedDbState(bundleSeqNo)
     console.log(`Retrieved user's encrypted db state in ${getSecondsSinceT0(t0)}s`)
   }
 
