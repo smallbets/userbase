@@ -7,6 +7,9 @@ const _errorHandler = (e, operation, handleRemoveUserAuthentication) => {
   const unauthorized = e.response && e.response.status === 401
   if (unauthorized) handleRemoveUserAuthentication()
 
+  const timeout = e.response && e.response.status === 504 || e.message.includes('timeout')
+  if (timeout) return { error: 'Something went wrong, please try again!' }
+
   const errorMsg = (e.response && e.response.data.readableMessage) || e.message
   return { error: errorMsg }
 }

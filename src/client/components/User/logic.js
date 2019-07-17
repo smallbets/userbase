@@ -2,6 +2,10 @@ import encd from '../../encrypted-dev-sdk'
 
 const _errorHandler = (e, operation) => {
   console.log(`Failed to ${operation} with`, e, e.response && e.response.data)
+
+  const timeout = e.response && e.response.status === 504 || e.message.includes('timeout')
+  if (timeout) return { error: 'Something went wrong, please try again!' }
+
   const errorMsg = (e.response && e.response.data.readableMessage) || e.message
   return { error: errorMsg }
 }

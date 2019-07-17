@@ -1,5 +1,8 @@
 import axios from 'axios'
 
+const TEN_SECONDS_MS = 10 * 1000
+const TIMEOUT = TEN_SECONDS_MS
+
 const insert = async (itemId, encryptedItem) => {
   const response = await axios({
     method: 'POST',
@@ -7,7 +10,8 @@ const insert = async (itemId, encryptedItem) => {
     params: {
       itemId
     },
-    data: encryptedItem
+    data: encryptedItem,
+    timeout: TIMEOUT
   })
   return response.data.sequenceNo
 }
@@ -19,7 +23,8 @@ const batchInsert = async (itemsMetadata, buffer) => {
     params: {
       itemsMetadata
     },
-    data: buffer
+    data: buffer,
+    timeout: TIMEOUT
   })
   return response.data.sequenceNos
 }
@@ -31,7 +36,8 @@ const update = async (itemId, encryptedItem) => {
     params: {
       itemId
     },
-    data: encryptedItem
+    data: encryptedItem,
+    timeout: TIMEOUT
   })
   return response.data.sequenceNo
 }
@@ -43,7 +49,8 @@ const batchUpdate = async (updatedItemsMetadata, buffer) => {
     params: {
       updatedItemsMetadata
     },
-    data: buffer
+    data: buffer,
+    timeout: TIMEOUT
   })
   return response.data.sequenceNos
 }
@@ -54,7 +61,8 @@ const deleteFunction = async (itemId) => {
     url: '/api/db/delete',
     data: {
       itemId
-    }
+    },
+    timeout: TIMEOUT
   })
   return response.data.sequenceNo
 }
@@ -65,7 +73,8 @@ const batchDelete = async (itemIds) => {
     url: '/api/db/batch-delete',
     data: {
       itemIds
-    }
+    },
+    timeout: TIMEOUT
   })
   return response.data.sequenceNos
 }
