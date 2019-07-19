@@ -89,8 +89,6 @@ const putTransaction = async function (transaction) {
 
     throw new Error(`Failed with ${e}.`)
   }
-
-  return transactionWithSequenceNo['sequence-no']
 }
 
 exports.insert = async function (req, res) {
@@ -118,8 +116,8 @@ exports.insert = async function (req, res) {
       record: buffer
     }
 
-    const sequenceNo = await putTransaction(transaction)
-    return res.send({ sequenceNo })
+    await putTransaction(transaction)
+    return res.end()
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -144,8 +142,8 @@ exports.delete = async function (req, res) {
       command
     }
 
-    const sequenceNo = await putTransaction(transaction)
-    return res.send({ sequenceNo })
+    await putTransaction(transaction)
+    return res.end()
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -179,8 +177,8 @@ exports.update = async function (req, res) {
       record: buffer,
     }
 
-    const sequenceNo = await putTransaction(transaction)
-    return res.send({ sequenceNo })
+    await putTransaction(transaction)
+    return res.end()
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -295,8 +293,8 @@ exports.batchInsert = async function (req, res) {
       return putTransaction(transaction)
     })
 
-    const sequenceNos = await Promise.all(insertPromises)
-    return res.send({ sequenceNos })
+    await Promise.all(insertPromises)
+    return res.end()
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -348,8 +346,8 @@ exports.batchUpdate = async function (req, res) {
       return putTransaction(transaction)
     })
 
-    const sequenceNos = await Promise.all(updatePromises)
-    return res.send({ sequenceNos })
+    await Promise.all(updatePromises)
+    return res.end()
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -381,8 +379,8 @@ exports.batchDelete = async function (req, res) {
       return putTransaction(transaction)
     })
 
-    const sequenceNos = await Promise.all(deletePromises)
-    return res.send({ sequenceNos })
+    await Promise.all(deletePromises)
+    return res.end()
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
