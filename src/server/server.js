@@ -1,9 +1,11 @@
 import express from 'express'
+import expressLogger from 'express-pino-logger'
 import http from 'http'
 import https from 'https'
 import fs from 'fs'
 import bodyParser from 'body-parser'
 import cookieParser from 'cookie-parser'
+import logger from './logger'
 import setup from './setup'
 import auth from './auth'
 import db from './db'
@@ -18,13 +20,14 @@ const httpsPort = process.env.PORT || 8443
 process.title = 'encrypted-dev-server'
 
 if (process.env.NODE_ENV == 'development') {
-  console.log("Development Mode")
+  logger.warn('Development Mode')
 }
 
 (async () => {
   try {
     await setup.init()
 
+    app.use(expressLogger())
     app.use(express.static(distDir))
     app.use(bodyParser.json())
     app.use(cookieParser())
@@ -49,15 +52,15 @@ if (process.env.NODE_ENV == 'development') {
 
     if (fs.existsSync(httpsKey) && fs.existsSync(httpsCert)) {
       // tls certs found, so launch an https server
-      console.log('Starting https server')
+      logger.info('Starting https server')
       https.createServer({ key: fs.readFileSync(httpsKey), cert: fs.readFileSync(httpsCert) }, app)
-        .listen(httpsPort, () => console.log(`App listening on https port ${httpsPort}....`))
+        .listen(httpsPort, () => logger.info(`App listening on https port ${httpsPort}....`))
     } else {
       // if no tls certs, launch an http server
-      console.log('Starting http server')
-      http.createServer(app).listen(httpPort, () => console.log(`App listening on http port ${httpPort}....`))
+      logger.info('Starting http server')
+      http.createServer(app).listen(httpPort, () => logger.info(`App listening on http port ${httpPort}....`))
     }
   } catch (e) {
-    console.log(`Unhandled error while launching server: ${e}`)
+    logger.info(`Unhandled error while launching server: ${e}`)
   }
 })()

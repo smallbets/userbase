@@ -1,5 +1,6 @@
 import aws from 'aws-sdk'
 import os from 'os'
+import logger from './logger'
 import memcache from './memcache'
 
 // if running in dev mode, prefix the DynamoDB tables and S3 buckets with the username
@@ -33,16 +34,16 @@ exports.init = async function () {
     function () { return new aws.EC2MetadataCredentials() }
   ])
 
-  console.log('Loading AWS credentials')
+  logger.info('Loading AWS credentials')
   aws.config.credentials = await chain.resolvePromise()
   aws.config.update({ region: 'us-west-2' })
 
   await setupDdb()
   await setupS3()
 
-  console.log('Eager loading in-memory transaction log cache')
+  logger.info('Eager loading in-memory transaction log cache')
   await memcache.eagerLoad()
-  console.log('Loaded transaction log cache successfully')
+  logger.info('Loaded transaction log cache successfully')
 }
 
 async function setupDdb() {
@@ -94,7 +95,7 @@ async function setupDdb() {
     TableName: databaseTableName
   }
 
-  console.log('Creating DynamoDB tables if necessary')
+  logger.info('Creating DynamoDB tables if necessary')
   await Promise.all([
     createTable(ddb, usersTableParams),
     createTable(ddb, sessionsTableParams),
@@ -109,14 +110,14 @@ async function setupS3() {
     ACL: 'private'
   }
 
-  console.log('Creating S3 bucket if necessary')
+  logger.info('Creating S3 bucket if necessary')
   await createBucket(s3, bucketParams)
 }
 
 async function createTable(ddb, params) {
   try {
     await ddb.createTable(params).promise()
-    console.log(`Table ${params.TableName} created successfully`)
+    logger.info(`Table ${params.TableName} created successfully`)
   } catch (e) {
     if (!e.message.includes('Table already exists')) {
       throw e
@@ -129,7 +130,7 @@ async function createTable(ddb, params) {
 async function createBucket(s3, params) {
   try {
     await s3.createBucket(params).promise()
-    console.log(`Bucket ${params.Bucket} created successfully`)
+    logger.info(`Bucket ${params.Bucket} created successfully`)
   } catch (e) {
     if (!e.message.includes('Your previous request to create the named bucket succeeded')) {
       throw e

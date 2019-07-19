@@ -4,6 +4,7 @@ import statusCodes from './statusCodes'
 import memcache from './memcache'
 import lock from './lock'
 import userController from './user'
+import logger from './logger'
 
 const getS3DbStateKey = (userId, bundleSeqNo) => `${userId}/${bundleSeqNo}`
 
@@ -54,10 +55,10 @@ const rollbackTransaction = async function (transaction) {
     if (e.name === 'ConditionalCheckFailedException') {
       // This is good -- must have been persisted to disk because it exists and was not rolled back
       memcache.transactionPersistedToDdb(transaction)
-      console.log('Failed to rollback -- transaction already persisted to disk')
+      logger.info('Failed to rollback -- transaction already persisted to disk')
     } else {
       // No need to throw, can fail gracefully and log error
-      console.warn(`Failed to rollback with ${e}`)
+      logger.warn(`Failed to rollback with ${e}`)
     }
   }
 }
@@ -82,7 +83,7 @@ const putTransaction = async function (transaction) {
 
     memcache.transactionPersistedToDdb(transactionWithSequenceNo)
   } catch (e) {
-    console.log(`Transaction ${transactionWithSequenceNo['sequence-no']} failed with ${e}! Rolling back...`)
+    logger.info(`Transaction ${transactionWithSequenceNo['sequence-no']} failed with ${e}! Rolling back...`)
 
     rollbackTransaction(transactionWithSequenceNo)
 
@@ -455,11 +456,11 @@ exports.bundleTransactionLog = async function (req, res) {
       Body: req
     }
 
-    console.log(`Uploading user ${userId}'s db state to S3 at bundle seq no ${bundleSeqNo}...`)
+    logger.info(`Uploading user ${userId}'s db state to S3 at bundle seq no ${bundleSeqNo}...`)
     const s3 = setup.s3()
     await s3.upload(dbStateParams).promise()
 
-    console.log('Setting bundle sequence number on user...')
+    logger.info('Setting bundle sequence number on user...')
     const username = user.username
 
     const bundleParams = {
@@ -482,7 +483,7 @@ exports.bundleTransactionLog = async function (req, res) {
     memcache.setBundleSeqNo(userId, bundleSeqNo)
 
     lock.releaseLock(userId, lockId)
-    console.log(`Released user ${userId}'s bundle lock ${lockId}...`)
+    logger.info(`Released user ${userId}'s bundle lock ${lockId}...`)
 
     return res.send('Success!')
   } catch (e) {

@@ -12,7 +12,7 @@
     "stop": "pkill encrypted-dev-server",
     "watch:client": "webpack-dev-server --mode development --config webpack.config.js",
     "watch:perftest": "webpack-dev-server --mode development --run perftest --config webpack.config.js",
-    "watch:server": "NODE_ENV=development nodemon --exec babel-node ./src/server/server.js",
+    "watch:server": "NODE_ENV=development nodemon --exec babel-node ./src/server/server.js | pino-pretty",
     "deploy:infra": "./deploy/deploy-infra.sh"
   },
   "repository": "https://github.com/dvassallo/encrypted.dev",
@@ -32,6 +32,8 @@
     "cookie-parser": "^1.4.4",
     "copy-to-clipboard": "^3.2.0",
     "express": "^4.17.1",
+    "express-pino-logger": "^4.0.0",
+    "pino": "^5.13.0",
     "react": "^16.8.6",
     "react-dom": "^16.8.6",
     "uuid": "^3.3.2"
@@ -59,6 +61,7 @@
     "open": "6.0.0",
     "opn-browser-webpack-plugin": "0.0.7",
     "optimize-css-assets-webpack-plugin": "^5.0.1",
+    "pino-pretty": "^3.2.0",
     "postcss-loader": "^3.0.0",
     "style-loader": "^0.23.1",
     "tailwindcss": "^1.0.4",
