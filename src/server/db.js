@@ -83,7 +83,7 @@ const putTransaction = async function (transaction) {
 
     memcache.transactionPersistedToDdb(transactionWithSequenceNo)
   } catch (e) {
-    logger.info(`Transaction ${transactionWithSequenceNo['sequence-no']} failed with ${e}! Rolling back...`)
+    logger.warn(`Transaction ${transactionWithSequenceNo['sequence-no']} failed with ${e}! Rolling back...`)
 
     rollbackTransaction(transactionWithSequenceNo)
 
