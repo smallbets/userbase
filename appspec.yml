@@ -14,10 +14,6 @@ hooks:
       timeout: 60
       runas: root
   ApplicationStart:
-    - location: deploy/start-service.sh
-      timeout: 300
-      runas: ec2-user
-  ApplicationStop:
-    - location: deploy/stop-service.sh
+    - location: deploy/restart-service.sh
       timeout: 300
       runas: ec2-user
