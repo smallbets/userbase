@@ -1,3 +1,3 @@
 #!/bin/bash
-cd /home/ec2-user/encd/
-# npm stop
+cd /home/ec2-user/app/release
+npm stop

@@ -12,8 +12,8 @@ import db from './db'
 
 const app = express()
 const distDir = "./dist"
-const httpsKey = './keys/key.pem'
-const httpsCert = './keys/cert.pem'
+const httpsKey = '../keys/key.pem'
+const httpsCert = '../keys/cert.pem'
 const httpPort = process.env.PORT || 8080
 const httpsPort = process.env.PORT || 8443
 

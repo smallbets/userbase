@@ -8,7 +8,7 @@
     "clean": "rm -Rf build dist",
     "build": "npm run clean && babel src/server -d build && webpack --mode production --config webpack.config.js",
     "start": "npm-run-all -r -p watch:server watch:client",
-    "start:prod": "mkdir -p ./logs && forever stopall && forever --minUptime 5000 --spinSleepTime 1000 -l ./logs/encd.log -p $(pwd) -a restart ./build/server.js",
+    "start:prod": "mkdir -p ./logs && forever stopall && forever --minUptime 5000 --spinSleepTime 1000 -l ../logs/encd.log -p $(pwd) -a restart ./build/server.js",
     "stop": "forever stop ./build/server.js",
     "watch:client": "webpack-dev-server --mode development --config webpack.config.js",
     "watch:perftest": "webpack-dev-server --mode development --run perftest --config webpack.config.js",

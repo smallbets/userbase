@@ -45,10 +45,15 @@ Resources:
             ./install auto
 
             # Create a self-signed TLS certificate to communicate with the load balancer
-            mkdir -p /home/ec2-user/keys
-            cd /home/ec2-user/keys
+            mkdir -p /home/ec2-user/app/keys
+            cd /home/ec2-user/app/keys
             openssl req -new -newkey rsa:4096 -days 365 -nodes -x509 -subj "/C=/ST=/L=/O=/CN=localhost" -keyout key.pem -out cert.pem
-            chown -R ec2-user:ec2-user /home/ec2-user/keys
+
+            # Create logs directory
+            mkdir -p /home/ec2-user/app/logs
+
+            # Change app dir owner to ec2-user
+            chown -R ec2-user:ec2-user /home/ec2-user/app
 
             # Signal to CloudFormation that the instance is ready
             /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --region ${AWS::Region} --resource Instance

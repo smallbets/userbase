@@ -2,20 +2,13 @@ version: 0.0
 os: linux
 files:
   - source: /
-    destination: /home/ec2-user/encd
+    destination: /home/ec2-user/app/release
 permissions:
-  - object: /home/ec2-user/encd
+  - object: /home/ec2-user/encd/release
     pattern: "**"
     owner: ec2-user
     group: ec2-user
 hooks:
-  AfterInstall:
-    - location: deploy/create-logs-dir.sh
-      timeout: 60
-      runas: root
-    - location: deploy/install-cert.sh
-      timeout: 60
-      runas: root
   ApplicationStart:
     - location: deploy/start-service.sh
       timeout: 300
