@@ -10,10 +10,17 @@ permissions:
     group: ec2-user
 hooks:
   AfterInstall:
+    - location: deploy/create-logs-dir.sh
+      timeout: 60
+      runas: root
     - location: deploy/install-cert.sh
       timeout: 60
       runas: root
   ApplicationStart:
-    - location: deploy/restart-service.sh
+    - location: deploy/start-service.sh
+      timeout: 300
+      runas: ec2-user
+  ApplicationStop:
+    - location: deploy/stop-service.sh
       timeout: 300
       runas: ec2-user
