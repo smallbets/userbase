@@ -1,0 +1,3 @@
+#!/bin/bash
+DNS=$(npx babel-node ./src/tools/ssh.js $1)
+ssh -i /tmp/ec2connect ec2-user@$DNS
