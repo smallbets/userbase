@@ -3,19 +3,22 @@ import crypto from './Crypto'
 StateManager.prototype.setInitialState = function () {
   this.itemsInOrderOfInsertion = []
   this.itemIdsToIndexes = {}
+  this.maxSequenceNo = -1
 }
 
 function StateManager() {
   this.setInitialState()
 }
 
-StateManager.prototype.setItems = function (itemsInOrderOfInsertion, itemIdsToIndexes) {
+StateManager.prototype.setState = function (itemsInOrderOfInsertion, itemIdsToIndexes, maxSequenceNo) {
   this.itemsInOrderOfInsertion = itemsInOrderOfInsertion
   this.itemIdsToIndexes = itemIdsToIndexes
+  this.maxSequenceNo = maxSequenceNo
 }
 
 StateManager.prototype.getItems = function () { return this.itemsInOrderOfInsertion }
 StateManager.prototype.getItemIdsToIndexes = function () { return this.itemIdsToIndexes }
+StateManager.prototype.getMaxSequenceNo = function () { return this.maxSequenceNo }
 
 StateManager.prototype.clearState = function () { this.setInitialState() }
 
@@ -141,37 +144,43 @@ const setDecryptedItemsInOrderOfInsertion = function (
     For example, assume the following input:
 
       dbState = {
-        itemsInOrderOfInsertion: [{
-          'item-id: '50bf2e6e-9776-441e-8215-08966581fcec',
-          record: {
-            todo: 'remember the milk'
+        itemsInOrderOfInsertion: [
+          {
+            'item-id: '50bf2e6e-9776-441e-8215-08966581fcec',
+            record: {
+              todo: 'remember the milk'
+            }
           }
-        }],
+        ],
         itemIdsToOrderOfInsertion: {
           '50bf2e6e-9776-441e-8215-08966581fcec': 0
         },
         maxSequenceNo: 0
       }
 
-      transactionLog = [{
-        'item-id: '50bf2e6e-9776-441e-8215-08966581fcec',
-        'sequence-no': 1,
-        record: {
-          todo: 'remember the milk',
-          completed: true
-        }
-      }]
-
-    The output would be:
-
-       {
-        itemsInOrderOfInsertion: [{
+      transactionLog = [
+        {
           'item-id: '50bf2e6e-9776-441e-8215-08966581fcec',
+          'sequence-no': 1,
           record: {
             todo: 'remember the milk',
             completed: true
           }
-        }],
+        }
+      ]
+
+    The output would be:
+
+       {
+        itemsInOrderOfInsertion: [
+          {
+            'item-id: '50bf2e6e-9776-441e-8215-08966581fcec',
+            record: {
+              todo: 'remember the milk',
+              completed: true
+            }
+          }
+        ],
         itemIdsToOrderOfInsertion: {
           '50bf2e6e-9776-441e-8215-08966581fcec': 0
         },

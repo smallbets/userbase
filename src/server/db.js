@@ -188,15 +188,18 @@ exports.update = async function (req, res) {
 
 exports.queryTransactionLog = async function (req, res) {
   const userId = res.locals.userId
+  let startingSeqNo = req.query.startingSeqNo || 0
 
   try {
     const bundleSeqNo = memcache.getBundleSeqNo(userId)
 
-    const startingSeqNo = memcache.getStartingSeqNo(bundleSeqNo)
+    const userShouldAlsoQueryForBundle = startingSeqNo <= bundleSeqNo
+    if (userShouldAlsoQueryForBundle) {
+      res.set('bundle-seq-no', bundleSeqNo)
+      startingSeqNo = memcache.getStartingSeqNo(bundleSeqNo)
+    }
 
     const transactionLog = memcache.getTransactions(userId, startingSeqNo)
-
-    res.set('bundle-seq-no', bundleSeqNo)
 
     return res.send(transactionLog)
   } catch (e) {

@@ -163,20 +163,41 @@ const batchDelete = async (itemIds) => {
   initializeBundlingProcess()
 }
 
-const setupClientState = async (key, transactionLog, encryptedDbState) => {
-  let dbState = encryptedDbState
+const setupClientState = async (transactionLog, encryptedDbState) => {
+  const key = await auth.getKeyFromLocalStorage()
+
+  const dbState = encryptedDbState
     ? await crypto.aesGcm.decrypt(key, encryptedDbState)
     : {
-      itemsInOrderOfInsertion: [],
-      itemIdsToOrderOfInsertion: {}
+      itemsInOrderOfInsertion: stateManager.getItems(),
+      itemIdsToOrderOfInsertion: stateManager.getItemIdsToIndexes(),
+      maxSequenceNo: stateManager.getMaxSequenceNo()
     }
 
-  dbState = await stateManager.applyTransactionsToDbState(key, dbState, transactionLog)
 
-  const { itemsInOrderOfInsertion, itemIdsToOrderOfInsertion } = dbState
-  stateManager.setItems(itemsInOrderOfInsertion, itemIdsToOrderOfInsertion)
+  debugger
+  const {
+    itemsInOrderOfInsertion,
+    itemIdsToOrderOfInsertion,
+    maxSequenceNo
+  } = await stateManager.applyTransactionsToDbState(key, dbState, transactionLog)
 
-  return itemsInOrderOfInsertion
+  debugger
+
+  stateManager.setState(itemsInOrderOfInsertion, itemIdsToOrderOfInsertion, maxSequenceNo)
+}
+
+const getFilterFunctionThatUsesIterator = (arr) => {
+  return function (cb, thisArg) {
+    const result = []
+    let index = 0
+    cb.bind(thisArg)
+    for (const a of arr) {
+      if (cb(a, index, arr)) result.push(a)
+      index++
+    }
+    return result
+  }
 }
 
 const getMapFunctionThatUsesIterator = (arr) => {
@@ -222,9 +243,10 @@ const getIteratorToSkipDeletedItems = (itemsInOrderOfInsertion) => {
 const setIteratorsToSkipDeletedItems = (itemsInOrderOfInsertion) => {
   itemsInOrderOfInsertion[Symbol.iterator] = getIteratorToSkipDeletedItems(itemsInOrderOfInsertion)
 
-  // hacky solution to overwrite native map function. All other native Array functions
+  // hacky solution to overwrite some native Array functions. All other native Array functions
   // remain unaffected
   itemsInOrderOfInsertion.map = getMapFunctionThatUsesIterator(itemsInOrderOfInsertion)
+  itemsInOrderOfInsertion.filter = getFilterFunctionThatUsesIterator(itemsInOrderOfInsertion)
 }
 
 /**
@@ -266,13 +288,13 @@ const setIteratorsToSkipDeletedItems = (itemsInOrderOfInsertion) => {
       ]
 
   */
-const query = async () => {
-  const key = await auth.getKeyFromLocalStorage()
+const sync = async () => {
+  const startingSeqNo = stateManager.getMaxSequenceNo() + 1
 
   // retrieving user's transaction log
   let t0 = performance.now()
   const { transactionLog, bundleSeqNo } = await wrapInAuthenticationErrorCatcher(
-    server.db.queryTransactionLog()
+    server.db.queryTransactionLog(startingSeqNo)
   )
   console.log(`Retrieved user's transaction log in ${getSecondsSinceT0(t0)}s`)
 
@@ -291,23 +313,17 @@ const query = async () => {
 
   // starting to set up client state
   t0 = performance.now()
-  const itemsInOrderOfInsertion = await setupClientState(key, transactionLog, encryptedDbState)
+  await setupClientState(transactionLog, encryptedDbState)
   console.log(`Set up client side state in ${getSecondsSinceT0(t0)}s`)
-
-  setIteratorsToSkipDeletedItems(itemsInOrderOfInsertion)
-
-  return itemsInOrderOfInsertion
 }
 
 /**
 
-    Gets the items in order of insertion from memory. If a client
-    is using 2 devices to access the application and inserts a new item
-    from another device, this function will not return the newly inserted item.
-    For that, use the query() function.
+    Gets the items in order of insertion from memory. Make sure to call
+    sync() before calling this function to get the latest state.
 
  */
-const getLatestState = () => {
+const getItems = () => {
   const itemsInOrderOfInsertion = stateManager.getItems()
 
   setIteratorsToSkipDeletedItems(itemsInOrderOfInsertion)
@@ -322,6 +338,6 @@ export default {
   batchUpdate,
   'delete': deleteFunction,
   batchDelete,
-  query,
-  getLatestState
+  sync,
+  getItems
 }
