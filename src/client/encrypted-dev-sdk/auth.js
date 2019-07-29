@@ -60,10 +60,25 @@ const signUp = async (username, password) => {
   const lowerCaseUsername = username.toLowerCase()
   const userId = uuidv4()
 
-  await server.auth.signUp(lowerCaseUsername, password, userId)
+  const aesKey = await crypto.aesGcm.generateKey()
+  const rawAesKey = await crypto.aesGcm.exportRawKey(aesKey)
+  const { publicKey, sharedSecret } = crypto.diffieHellman.createDiffieHellmanUsingAesKey(rawAesKey)
 
-  const symmetricKey = await crypto.aesGcm.generateKey()
-  await saveKeyToLocalStorage(lowerCaseUsername, symmetricKey)
+  const encryptedValidationMessage = await server.auth.signUp(
+    lowerCaseUsername, password, userId, publicKey
+  )
+
+  const sharedKeyArrayBuffer = await crypto.sha256.hash(sharedSecret)
+  const sharedKey = await crypto.aesGcm.importRawKey(sharedKeyArrayBuffer)
+
+  const validationMessage = await crypto.aesGcm.decrypt(sharedKey, encryptedValidationMessage)
+
+  // Saves to local storage before validation to ensure user has it.
+  // Warning: if user hits the sign up button twice,
+  // it's possible the key will be overwritten here and will be lost
+  await saveKeyToLocalStorage(lowerCaseUsername, aesKey)
+
+  await server.auth.validateKey(validationMessage)
 
   const signedIn = true
   const session = _setCurrentSession(lowerCaseUsername, signedIn)

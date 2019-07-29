@@ -4,3 +4,4 @@ build
 coverage
 deploy/cfn/output
 .DS_Store
+src/server/.env

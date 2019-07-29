@@ -88,7 +88,11 @@ const exportRawKey = async (key) => {
  * @param {object | string} plaintext
  * @returns {ArrayBuffer} encrypted Array Buffer
  *
- *     encrypted is a concatentation of ciphertext + IV Array Buffers
+ *     encrypted is a concatentation of Array Buffers [ciphertext, auth tag, IV]
+ *
+ *     The Authentication Tag is a hash of the plaintext to ensure the same data that
+ *     is ecncrypted is the resulting data when decrypted. Note that the browser crypto
+ *     library's result is the concatenation of Array Buffers [ciphertext, auth tag]
  *
  *     The IV is a random intialization vector that prevents an attacker
  *     from determining a user's key. It can be exposed alongside the ciphertext safely.
@@ -100,6 +104,7 @@ const encrypt = async (key, plaintext) => {
 
   const iv = windowOrSelfObject().crypto.getRandomValues(new Uint8Array(RECOMMENDED_IV_BYTE_SIZE))
 
+  // this result is the concatenation of Array Buffers [ciphertext, auth tag]
   const ciphertextArrayBuffer = await windowOrSelfObject().crypto.subtle.encrypt(
     {
       name: ALGORITHIM_NAME,
@@ -133,7 +138,11 @@ const decrypt = async (key, encrypted) => {
     key,
     ciphertextArrayBuffer
   )
+  return plaintextArrayBuffer
+}
 
+const decryptJson = async (key, encryptedJson) => {
+  const plaintextArrayBuffer = await decrypt(key, encryptedJson)
   const plaintextString = arrayBufferToString(plaintextArrayBuffer)
   return JSON.parse(plaintextString)
 }
@@ -146,4 +155,5 @@ export default {
   exportRawKey,
   encrypt,
   decrypt,
+  decryptJson,
 }

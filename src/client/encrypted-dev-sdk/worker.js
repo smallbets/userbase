@@ -12,7 +12,7 @@ const getDbState = async (key, oldBundleSeqNo) => {
   if (oldBundleSeqNo) {
     const encryptedDbState = await server.db.queryEncryptedDbState(oldBundleSeqNo)
 
-    const dbState = await crypto.aesGcm.decrypt(key, encryptedDbState)
+    const dbState = await crypto.aesGcm.decryptJson(key, encryptedDbState)
     return dbState
   } else {
     return {

@@ -80,7 +80,7 @@ const setMostRecentStateOfNewItem = function (
         const itemRecord = transaction.record
         const encryptedRecord = itemRecord.data
 
-        const decryptedRecordPromise = crypto.aesGcm.decrypt(key, new Uint8Array(encryptedRecord))
+        const decryptedRecordPromise = crypto.aesGcm.decryptJson(key, new Uint8Array(encryptedRecord))
         const decryptedRecordIndex = decryptedRecordsPromises.push(decryptedRecordPromise) - 1
 
         mostRecentStateOfNewItems[itemId].decryptedRecordIndex = decryptedRecordIndex

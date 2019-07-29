@@ -123,8 +123,8 @@ const batchUpdate = async (itemIds, items) => {
 
   const { buffer, byteLengths } = appendBuffers(encryptedItems)
 
-  const updatedItemsMetadata = itemIds.map((item, index) => ({
-    itemId: item['item-id'],
+  const updatedItemsMetadata = itemIds.map((itemId, index) => ({
+    itemId,
     byteLength: byteLengths[index]
   }))
 
@@ -167,22 +167,18 @@ const setupClientState = async (transactionLog, encryptedDbState) => {
   const key = await auth.getKeyFromLocalStorage()
 
   const dbState = encryptedDbState
-    ? await crypto.aesGcm.decrypt(key, encryptedDbState)
+    ? await crypto.aesGcm.decryptJson(key, encryptedDbState)
     : {
       itemsInOrderOfInsertion: stateManager.getItems(),
       itemIdsToOrderOfInsertion: stateManager.getItemIdsToIndexes(),
       maxSequenceNo: stateManager.getMaxSequenceNo()
     }
 
-
-  debugger
   const {
     itemsInOrderOfInsertion,
     itemIdsToOrderOfInsertion,
     maxSequenceNo
   } = await stateManager.applyTransactionsToDbState(key, dbState, transactionLog)
-
-  debugger
 
   stateManager.setState(itemsInOrderOfInsertion, itemIdsToOrderOfInsertion, maxSequenceNo)
 }

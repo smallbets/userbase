@@ -65,7 +65,7 @@ async function setupDdb() {
       KeySchema: [
         { AttributeName: 'user-id', KeyType: 'HASH' }
       ],
-      Projection: { ProjectionType: 'KEYS_ONLY' }
+      Projection: { ProjectionType: 'ALL' }
     }]
   }
 

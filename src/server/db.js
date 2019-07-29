@@ -92,7 +92,7 @@ const putTransaction = async function (transaction) {
 }
 
 exports.insert = async function (req, res) {
-  const userId = res.locals.userId
+  const userId = res.locals.user['user-id']
   const itemId = req.query.itemId
 
   if (req.readableLength > FOUR_HUNDRED_KB) return res
@@ -126,7 +126,7 @@ exports.insert = async function (req, res) {
 }
 
 exports.delete = async function (req, res) {
-  const userId = res.locals.userId
+  const userId = res.locals.user['user-id']
   const itemId = req.body.itemId
 
   if (!itemId) return res
@@ -152,7 +152,7 @@ exports.delete = async function (req, res) {
 }
 
 exports.update = async function (req, res) {
-  const userId = res.locals.userId
+  const userId = res.locals.user['user-id']
   const itemId = req.query.itemId
 
   if (req.readableLength > FOUR_HUNDRED_KB) return res
@@ -187,7 +187,7 @@ exports.update = async function (req, res) {
 }
 
 exports.queryTransactionLog = async function (req, res) {
-  const userId = res.locals.userId
+  const userId = res.locals.user['user-id']
   let startingSeqNo = req.query.startingSeqNo || 0
 
   try {
@@ -210,7 +210,7 @@ exports.queryTransactionLog = async function (req, res) {
 }
 
 exports.queryDbState = async function (req, res) {
-  const userId = res.locals.userId
+  const userId = res.locals.user['user-id']
   const bundleSeqNo = req.query.bundleSeqNo
 
   if (!bundleSeqNo && bundleSeqNo !== 0) return res
@@ -253,7 +253,7 @@ exports.queryDbState = async function (req, res) {
 }
 
 exports.batchInsert = async function (req, res) {
-  const userId = res.locals.userId
+  const userId = res.locals.user['user-id']
   const itemsMetadata = req.query.itemsMetadata
 
   if (req.readableLength > BATCH_SIZE_LIMIT) return res
@@ -306,7 +306,7 @@ exports.batchInsert = async function (req, res) {
 }
 
 exports.batchUpdate = async function (req, res) {
-  const userId = res.locals.userId
+  const userId = res.locals.user['user-id']
   const updatedItemsMetadata = req.query.updatedItemsMetadata
 
   if (req.readableLength > BATCH_SIZE_LIMIT) return res
@@ -360,7 +360,7 @@ exports.batchUpdate = async function (req, res) {
 
 exports.batchDelete = async function (req, res) {
   const itemIds = req.body.itemIds
-  const userId = res.locals.userId
+  const userId = res.locals.user['user-id']
 
   if (!itemIds || itemIds.length === 0) return res
     .status(statusCodes['Bad Request'])
@@ -392,7 +392,7 @@ exports.batchDelete = async function (req, res) {
 }
 
 exports.acquireBundleTransactionLogLock = function (req, res) {
-  const userId = res.locals.userId
+  const userId = res.locals.user['user-id']
 
   const newLock = lock.acquireLock(userId)
 
@@ -404,7 +404,7 @@ exports.acquireBundleTransactionLogLock = function (req, res) {
 }
 
 exports.releaseBundleTransactionLogLock = function (req, res) {
-  const userId = res.locals.userId
+  const userId = res.locals.user['user-id']
   const lockId = req.query.lockId
 
   if (!lockId) return res
@@ -419,7 +419,8 @@ exports.releaseBundleTransactionLogLock = function (req, res) {
 }
 
 exports.bundleTransactionLog = async function (req, res) {
-  const userId = res.locals.userId
+  const user = res.locals.user
+  const userId = user['user-id']
   const bundleSeqNo = req.query.bundleSeqNo
   const lockId = req.query.lockId
 
@@ -446,8 +447,7 @@ exports.bundleTransactionLog = async function (req, res) {
       .status(statusCodes['Unauthorized'])
       .send({ readableMessage: 'Caller does not own this lock' })
 
-    const user = await userController.findUserByUserId(userId)
-    if (user.bundleSeqNo >= bundleSeqNo) return res
+    if (user['bundle-seq-no'] >= bundleSeqNo) return res
       .status(statusCodes['Bad Request'])
       .send({ readableMessage: 'Bundle sequence no must be greater than current bundle' })
 
