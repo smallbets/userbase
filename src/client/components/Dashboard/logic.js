@@ -16,7 +16,9 @@ const _errorHandler = (e, operation, handleRemoveUserAuthentication) => {
 const insertTodo = async (todo, handleRemoveUserAuthentication) => {
   try {
     await encd.db.insert({ todo })
-    return { todos: encd.db.getLatestState() }
+    await encd.db.sync()
+    const todos = encd.db.getItems()
+    return { todos }
   } catch (e) {
     return _errorHandler(e, 'insert todo', handleRemoveUserAuthentication)
   }
@@ -25,11 +27,12 @@ const insertTodo = async (todo, handleRemoveUserAuthentication) => {
 const getTodos = async (handleRemoveUserAuthentication) => {
   try {
     const t0 = performance.now()
-    const response = await encd.db.query()
+    await encd.db.sync()
+    const todos = encd.db.getItems()
     const t1 = performance.now()
     const timeToRun = `${((t1 - t0) / 1000).toFixed(2)}`
     console.log('Call to SDK db query took ' + timeToRun + 's')
-    return { todos: response }
+    return { todos }
   } catch (e) {
     return _errorHandler(e, 'get todos', handleRemoveUserAuthentication)
   }
@@ -39,7 +42,9 @@ const deleteTodo = async (todo, handleRemoveUserAuthentication) => {
   try {
     const itemId = todo['item-id']
     await encd.db.delete(itemId)
-    return { todos: encd.db.getLatestState() }
+    await encd.db.sync()
+    const todos = encd.db.getItems()
+    return { todos }
   } catch (e) {
     return _errorHandler(e, 'delete todo', handleRemoveUserAuthentication)
   }
@@ -50,7 +55,9 @@ const toggleTodo = async (todo, handleRemoveUserAuthentication) => {
     const markingComplete = !todo.record.completed
     const itemId = todo['item-id']
     await encd.db.update(itemId, { todo: todo.record.todo, completed: markingComplete })
-    return { todos: encd.db.getLatestState() }
+    await encd.db.sync()
+    const todos = encd.db.getItems()
+    return { todos }
   } catch (e) {
     return _errorHandler(e, 'toggle todo', handleRemoveUserAuthentication)
   }
@@ -60,7 +67,9 @@ const updateTodo = async (todo, newTodoInput, handleRemoveUserAuthentication) =>
   try {
     const itemId = todo['item-id']
     await encd.db.update(itemId, { todo: newTodoInput, completed: todo.record.completed })
-    return { todos: encd.db.getLatestState() }
+    await encd.db.sync()
+    const todos = encd.db.getItems()
+    return { todos }
   } catch (e) {
     return _errorHandler(e, 'update todo', handleRemoveUserAuthentication)
   }

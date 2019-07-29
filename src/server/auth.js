@@ -75,8 +75,8 @@ exports.signUp = async function (req, res) {
       TableName: setup.usersTableName,
       Item: user,
       // if username does not exist, insert
-      // if it already exists and has a validation message, overwrite
-      // if it already exists and does not have a validation message, fail with ConditionalCheckFailedException
+      // if it already exists and has a validation message, overwrite (bc key hasn't been validated yet)
+      // if it already exists and does not have a validation message, fail with ConditionalCheckFailedException (bc already validated)
       ConditionExpression: 'attribute_not_exists(username) or attribute_exists(#validationMsg)',
       ExpressionAttributeNames: {
         '#validationMsg': 'validation-message'

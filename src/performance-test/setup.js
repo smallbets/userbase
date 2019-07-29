@@ -63,7 +63,8 @@ const init = async (username, limit) => {
     }
   }
 
-  let items = encd.db.getLatestState()
+  await encd.db.sync()
+  let items = encd.db.getItems()
 
   // UPDATE
   const ninetyNinePercentOfLimit = Math.floor(limit * .99)
@@ -74,7 +75,7 @@ const init = async (username, limit) => {
   let batchOfUpdateBatches = []
   for (let i = 0; i < ninetyNinePercentOfLimit; i++) {
     updateBatch.itemIds.push(items[i]['item-id'])
-    updateBatch.items.push({ completed: true })
+    updateBatch.items.push({ todo: items[i].record.todo, completed: true })
 
     if (updateBatch.itemIds.length === UPDATE_BATCH_SIZE || i === ninetyNinePercentOfLimit - 1) {
       batchOfUpdateBatches.push(updateBatch)
@@ -90,14 +91,17 @@ const init = async (username, limit) => {
         .reduce((sum, len) => sum + len)
       console.log(`Marking todos ${i - numUpdatesInBatch + 1} through ${i} complete...`)
 
-      const promises = batchOfUpdateBatches.map(batch => wrapInTryCatch(() => encd.db.batchUpdate(batch.itemIds, batch.items)))
+      const promises = batchOfUpdateBatches.map(batch => wrapInTryCatch(
+        () => encd.db.batchUpdate(batch.itemIds, batch.items)
+      ))
       await Promise.all(promises)
 
       batchOfUpdateBatches = []
     }
   }
 
-  items = encd.db.getLatestState()
+  await encd.db.sync()
+  items = encd.db.getItems()
 
   // DELETE
   const fiftyPercentOfLimit = Math.floor(limit * .5)
@@ -124,7 +128,8 @@ const init = async (username, limit) => {
     }
   }
 
-  console.log(encd.db.getLatestState())
+  await encd.db.sync()
+  console.log(encd.db.getItems())
 
   const key = localStorage.getItem('key.' + username)
   console.log(`

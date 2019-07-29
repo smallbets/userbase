@@ -421,7 +421,7 @@ exports.releaseBundleTransactionLogLock = function (req, res) {
 exports.bundleTransactionLog = async function (req, res) {
   const user = res.locals.user
   const userId = user['user-id']
-  const bundleSeqNo = req.query.bundleSeqNo
+  const bundleSeqNo = Number(req.query.bundleSeqNo)
   const lockId = req.query.lockId
 
   if (!bundleSeqNo) return res
