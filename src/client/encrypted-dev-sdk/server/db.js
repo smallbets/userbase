@@ -55,7 +55,7 @@ const batchUpdate = async (updatedItemsMetadata, buffer) => {
   return response.data.sequenceNos
 }
 
-const deleteFunction = async (itemId) => {
+const delete_ = async (itemId) => {
   const response = await axios({
     method: 'POST',
     url: '/api/db/delete',
@@ -91,18 +91,6 @@ const queryEncryptedDbState = async (bundleSeqNo) => {
   return encryptedDbStateResponse.data
 }
 
-const queryTransactionLog = async () => {
-  const transactionLogResponse = await axios.get('/api/db/query/tx-log')
-
-  const transactionLog = transactionLogResponse.data
-  const bundleSeqNo = Number(transactionLogResponse.headers['bundle-seq-no'])
-
-  return {
-    transactionLog,
-    bundleSeqNo
-  }
-}
-
 const acquireLock = async () => {
   const lockResponse = await axios.post('/api/db/acq-bundle-tx-log-lock')
   const lockId = lockResponse.data
@@ -133,13 +121,12 @@ const bundleTxLog = async (bundleSeqNo, lockId, encryptedDbState) => {
 
 export default {
   insert,
-  batchInsert,
   update,
+  delete: delete_,
+  batchInsert,
   batchUpdate,
-  delete: deleteFunction,
   batchDelete,
   queryEncryptedDbState,
-  queryTransactionLog,
   acquireLock,
   releaseLock,
   bundleTxLog,

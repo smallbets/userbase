@@ -2,7 +2,6 @@ import uuidv4 from 'uuid/v4'
 import server from './server'
 import crypto from './Crypto'
 import base64 from 'base64-arraybuffer'
-import stateManager from './stateManager'
 
 const _setCurrentSession = (username, signedIn) => {
   const session = { username, signedIn }
@@ -71,8 +70,6 @@ const signUp = async (username, password) => {
 }
 
 const clearAuthenticatedDataFromBrowser = () => {
-  stateManager.clearState()
-
   const currentSession = getCurrentSession()
   const signedIn = false
   return _setCurrentSession(currentSession.username, signedIn)

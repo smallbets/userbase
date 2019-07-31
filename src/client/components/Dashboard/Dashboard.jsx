@@ -4,7 +4,7 @@ import dbLogic from './logic'
 import AddTodoForm from './AddTodoForm'
 import EditTodoForm from './EditTodoForm'
 
-class Dashboard extends Component {
+export default class Dashboard extends Component {
   constructor(props) {
     super(props)
     this.state = {
@@ -16,42 +16,33 @@ class Dashboard extends Component {
       addTodoFormOpen: false
     }
 
-    this.handleSetTodos = this.handleSetTodos.bind(this)
+    this.handleDbChange = this.handleDbChange.bind(this)
     this.handleToggleTodo = this.handleToggleTodo.bind(this)
     this.handleToggleEditTodo = this.handleToggleEditTodo.bind(this)
-    this.handleDeleteTodo = this.handleDeleteTodo.bind(this)
   }
 
   async componentDidMount() {
-    const result = await dbLogic.getTodos(this.props.handleRemoveUserAuthentication)
-    if (result) await this.setState({ todos: result.todos, loading: false })
+    dbLogic.init(this.handleDbChange, () => this.setState({ loading: false }))
+    this.setState({ loading: true })
   }
 
-  handleSetTodos(todos) {
-    this.setState({ todos })
+  handleDbChange(todos) {
+    this.setState({ todos, loading: false })
   }
 
   async handleToggleTodo(todo) {
-    const result = await dbLogic.toggleTodo(todo, this.props.handleRemoveUserAuthentication)
-    this.setState({ todos: result.todos })
+    try {
+      await dbLogic.toggleTodo(todo, this.props.handleRemoveUserAuthentication)
+    } catch (error) {
+      this.setState({ error })
+    }
   }
 
   handleToggleEditTodo(event, todo) {
     if (event) event.preventDefault()
     const { editingTodos } = this.state
-    editingTodos[todo['item-id']] = !editingTodos[todo['item-id']]
+    editingTodos[todo.itemId] = !editingTodos[todo.itemId]
     this.setState({ editingTodos })
-  }
-
-  async handleDeleteTodo(event, todo) {
-    event.preventDefault()
-
-    await this.setState({ error: undefined })
-
-    const result = await dbLogic.deleteTodo(todo, this.props.handleRemoveUserAuthentication)
-
-    if (result.error) this.setState({ error: result.error })
-    else this.handleSetTodos(result.todos)
   }
 
   render() {
@@ -70,18 +61,16 @@ class Dashboard extends Component {
               <div>
                 {todos && todos.length !== 0 && todos.map((todo) => (
                   <div
-                    className={editingTodos[todo['item-id']] ?
+                    className={editingTodos[todo.itemId] ?
                       'cursor-default container' :
                       'cursor-pointer mouse:hover:bg-yellow-200 rounded container'}
-                    key={todo['item-id']}
+                    key={todo.itemId}
                   >
 
-                    {editingTodos[todo['item-id']]
+                    {editingTodos[todo.itemId]
 
                       ? <EditTodoForm
                         handleToggleEditTodo={this.handleToggleEditTodo}
-                        handleDeleteTodo={this.handleDeleteTodo}
-                        handleSetTodos={this.handleSetTodos}
                         handleRemoveUserAuthentication={this.props.handleRemoveUserAuthentication}
                         todo={todo}
                       />
@@ -110,10 +99,7 @@ class Dashboard extends Component {
 
                 <div>
                   <hr className='border border-t-0 border-gray-400 mt-4 mb-4' />
-                  <AddTodoForm
-                    handleSetTodos={this.handleSetTodos}
-                    handleRemoveUserAuthentication={this.props.handleRemoveUserAuthentication}
-                  />
+                  <AddTodoForm handleRemoveUserAuthentication={this.props.handleRemoveUserAuthentication} />
                 </div>
               </div>
             </div>
@@ -126,5 +112,3 @@ class Dashboard extends Component {
 Dashboard.propTypes = {
   handleRemoveUserAuthentication: func
 }
-
-export default Dashboard

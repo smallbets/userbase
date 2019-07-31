@@ -2,7 +2,7 @@ import React, { PureComponent } from 'react'
 import { string, func } from 'prop-types'
 import userLogic from './logic'
 
-class SaveKey extends PureComponent {
+export default class SaveKey extends PureComponent {
 
   constructor(props) {
     super(props)
@@ -85,5 +85,3 @@ SaveKey.propTypes = {
   handleSetKeyInState: func,
   keyString: string
 }
-
-export default SaveKey

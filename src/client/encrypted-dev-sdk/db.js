@@ -3,77 +3,214 @@ import server from './server'
 import Worker from './worker.js'
 import auth from './auth'
 import crypto from './Crypto'
-import stateManager from './stateManager'
+import SortedArray from 'sorted-array'
 import { appendBuffers } from './Crypto/utils'
-import { getSecondsSinceT0 } from './utils'
 
-const wrapInAuthenticationErrorCatcher = async (promise) => {
-  try {
-    const response = await promise
-    return response
-  } catch (e) {
-    const unauthorized = e.response && e.response.status === 401
-    if (unauthorized) auth.clearAuthenticatedDataFromBrowser()
-    throw e
+const TransactionCodes = Object.freeze({
+  'success': 1,
+  'item-already-exists': 2,
+  'item-already-deleted': 3,
+  'update-conflict': 4
+})
+
+class UnverifiedTransaction {
+  constructor(startSeqNo) {
+    this.startSeqNo = startSeqNo
+    this.txSeqNo = null
+    this.transactions = {}
+    this.promiseResolve = null
+    this.promiseReject = null
+    this.index = null
+  }
+
+  getStartSeqNo() {
+    return this.startSeqNo
+  }
+
+  getIndex() {
+    return this.index
+  }
+
+  setIndex(index) {
+    this.index = index
+  }
+
+  async getResult(seqNo) {
+    this.txSeqNo = seqNo
+
+    const promise = new Promise((resolve, reject) => {
+      this.promiseResolve = resolve
+      this.promiseReject = reject
+
+      setTimeout(() => { reject('timeout') }, 5000)
+    })
+
+    this.verifyPromise()
+
+    return promise
+  }
+
+  verifyPromise() {
+    if (!this.txSeqNo && this.txSeqNo != 0) {
+      return
+    }
+
+    if (!this.promiseResolve || !this.promiseReject) {
+      return
+    }
+
+    if (this.transactions[this.txSeqNo]) {
+      if (this.transactions[this.txSeqNo] == TransactionCodes['success']) {
+        this.promiseResolve()
+      } else {
+        this.promiseReject(this.transactions[this.txSeqNo])
+      }
+    }
+  }
+
+  addTransaction(transaction, code) {
+    this.transactions[transaction['sequence-no']] = code
+    this.verifyPromise()
   }
 }
 
-/**
+class Database {
+  constructor() {
+    this.items = {}
+    this.itemsIndex = SortedArray.comparing('seqNo', [])
+    this.unverifiedTransactions = []
+    this.lastSeqNo = -1
+  }
 
-    Webworker runs to determine if user's transaction log size
-    is above the limit and bundles it to S3 if so. This is
-    called after every write to the server.
+  async applyTransactions(transactions) {
+    const key = await auth.getKeyFromLocalStorage()
 
- */
-const initializeBundlingProcess = async (key) => {
-  const worker = new Worker()
-  if (!key) key = await auth.getKeyFromLocalStorage() // can't read local storage from worker
-  worker.postMessage(key)
+    for (let i = 0; i < transactions.length; i++) {
+      const itemId = transactions[i]['item-id']
+      const seqNo = transactions[i]['sequence-no']
+      const command = transactions[i]['command']
+      const record = transactions[i]['record'] ? await crypto.aesGcm.decrypt(key, new Uint8Array(transactions[i]['record'].data)) : undefined
+
+      this.lastSeqNo = seqNo
+
+      let transactionCode = null
+
+      switch (command) {
+        case 'Insert':
+          if (this.items[itemId]) {
+            transactionCode = TransactionCodes['item-already-exists']
+            break
+          }
+          this.items[itemId] = { seqNo, record }
+          this.itemsIndex.insert({ seqNo, itemId })
+          transactionCode = TransactionCodes['success']
+          break
+
+        case 'Update':
+          if (!this.items[itemId]) {
+            transactionCode = TransactionCodes['item-already-deleted']
+            break
+          }
+          this.items[itemId].record = record
+          transactionCode = TransactionCodes['success']
+          break
+
+
+        case 'Delete':
+          if (!this.items[itemId]) {
+            transactionCode = TransactionCodes['item-already-deleted']
+            break
+          }
+          this.itemsIndex.remove(this.items[itemId])
+          delete this.items[itemId]
+          transactionCode = TransactionCodes['success']
+          break
+      }
+
+      for (let j = 0; j < this.unverifiedTransactions.length; j++) {
+        if (!this.unverifiedTransactions[j] || seqNo < this.unverifiedTransactions[j].getStartSeqNo()) {
+          continue
+        }
+        this.unverifiedTransactions[j].addTransaction(transactions[i], transactionCode)
+      }
+    }
+  }
+
+  registerUnverifiedTransaction() {
+    const unverifiedTransaction = new UnverifiedTransaction(this.lastSeqNo)
+    const i = this.unverifiedTransactions.push(unverifiedTransaction)
+    unverifiedTransaction.setIndex(i)
+    return unverifiedTransaction
+  }
+
+  unregisterUnverifiedTransaction(pendingTransaction) {
+    delete this.unverifiedTransactions[pendingTransaction.getIndex()]
+  }
+
+  getItems() {
+    const result = []
+    for (let i = 0; i < this.itemsIndex.array.length; i++) {
+      const itemId = this.itemsIndex.array[i].itemId
+      const record = this.items[itemId].record
+      result.push({ itemId, record })
+    }
+    return result
+  }
 }
 
-/**
+const state = {}
 
-    Takes an item as input, encrypts the item client-side,
-    then sends the encrypted item to the database for storage.
+const init = async (onDbChangeHandler, onFirstResponse) => {
+  state.database = new Database()
+  state.key = await auth.getKeyFromLocalStorage()
 
-    Example call:
+  const url = ((window.location.protocol === 'https:') ?
+    'wss://' : 'ws://') + window.location.host + '/api'
 
-      const milk = await db.insert({ todo: 'remember the milk' })
+  let isFirstMessage = true
 
-      console.log(milk)
-      // Output:
-      //
-      //    {
-      //      item-id {String} - client side generated GUID for item
-      //      record {object} - decrypted object provided by the user
-      //      ciphertext {ArrayBuffer} - encrypted record
-      //    }
-      //
+  const connectWebSocket = () => {
+    const ws = new WebSocket(url)
 
- */
+    ws.onmessage = async (e) => {
+      const newTransactions = JSON.parse(e.data)
+      await state.database.applyTransactions(newTransactions)
+      onDbChangeHandler(state.database.getItems())
+
+      if (isFirstMessage) {
+        onFirstResponse()
+        isFirstMessage = false
+      }
+    }
+
+    ws.onclose = () => setTimeout(() => { connectWebSocket() }, 1000)
+    ws.onerror = () => ws.close()
+  }
+
+  connectWebSocket()
+}
+
 const insert = async (item) => {
-  const key = await auth.getKeyFromLocalStorage()
-  const encryptedItem = await crypto.aesGcm.encrypt(key, item)
-
+  const encryptedItem = await crypto.aesGcm.encrypt(state.key, item)
   const itemId = uuidv4()
 
-  const sequenceNo = await wrapInAuthenticationErrorCatcher(
-    server.db.insert(itemId, encryptedItem)
-  )
+  await postTransaction(server.db.insert(itemId, encryptedItem))
 
-  const result = stateManager.insertItem(itemId, sequenceNo, item)
+  return itemId
+}
 
-  initializeBundlingProcess(key)
+const update = async (oldItem, newItem) => {
+  const encryptedItem = await crypto.aesGcm.encrypt(state.key, newItem)
 
-  return {
-    ...result,
-    ciphertext: encryptedItem
-  }
+  await postTransaction(server.db.update(oldItem.itemId, encryptedItem))
+}
+
+const delete_ = async (item) => {
+  await postTransaction(server.db.delete(item.itemId))
 }
 
 const batchInsert = async (items) => {
-  const key = await auth.getKeyFromLocalStorage()
-  const encryptionPromises = items.map(item => crypto.aesGcm.encrypt(key, item))
+  const encryptionPromises = items.map(item => crypto.aesGcm.encrypt(state.key, item))
   const encryptedItems = await Promise.all(encryptionPromises)
 
   const { buffer, byteLengths } = appendBuffers(encryptedItems)
@@ -83,300 +220,60 @@ const batchInsert = async (items) => {
     byteLength: byteLengths[i]
   }))
 
-  const sequenceNos = await wrapInAuthenticationErrorCatcher(
-    server.db.batchInsert(itemsMetadata, buffer)
-  )
-
-  const itemsToReturn = sequenceNos.map((sequenceNo, i) => {
-    const itemId = itemsMetadata[i].itemId
-    const record = items[i]
-
-    const result = stateManager.insertItem(itemId, sequenceNo, record)
-
-    return {
-      ...result,
-      ciphertext: encryptedItems[i]
-    }
-  })
-
-  initializeBundlingProcess(key)
-
-  return itemsToReturn
-}
-
-/**
-
-    Takes the old item and new item as input, encrypts the new
-    item client-side, then sends the encrypted item along
-    with the item id to the database for storage.
-
-    Example call:
-
-      const orangeJuice = await db.update(milk, { todo: 'remember the orange juice' })
-
-      console.log(orangeJuice)
-      // Output:
-      //
-      //    {
-      //      item-id {String} - client side generated GUID for item
-      //      ciphertext {ArrayBuffer}
-      //    }
-      //
-
- */
-const update = async (oldItem, newItem) => {
-  const key = await auth.getKeyFromLocalStorage()
-  const encryptedItem = await crypto.aesGcm.encrypt(key, newItem)
-
-  const itemId = oldItem['item-id']
-
-  const sequenceNo = await wrapInAuthenticationErrorCatcher(
-    server.db.update(itemId, encryptedItem)
-  )
-
-  const result = stateManager.updateItem(itemId, sequenceNo, newItem)
-
-  initializeBundlingProcess(key)
-
-  return {
-    ...result,
-    ciphertext: encryptedItem
-  }
+  await postTransaction(server.db.batchInsert(itemsMetadata, buffer))
 }
 
 const batchUpdate = async (oldItems, newItems) => {
-  const key = await auth.getKeyFromLocalStorage()
-  const encryptionPromises = newItems.map(item => crypto.aesGcm.encrypt(key, item))
+  const encryptionPromises = newItems.map(item => crypto.aesGcm.encrypt(state.key, item))
   const encryptedItems = await Promise.all(encryptionPromises)
 
   const { buffer, byteLengths } = appendBuffers(encryptedItems)
 
   const updatedItemsMetadata = oldItems.map((item, index) => ({
-    itemId: item['item-id'],
+    itemId: item.itemId,
     byteLength: byteLengths[index]
   }))
 
-  const sequenceNos = await wrapInAuthenticationErrorCatcher(
-    server.db.batchUpdate(updatedItemsMetadata, buffer)
-  )
-
-  const itemsToReturn = sequenceNos.map((sequenceNo, i) => {
-    const itemId = updatedItemsMetadata[i].itemId
-    const record = newItems[i]
-
-    const result = stateManager.updateItem(itemId, sequenceNo, record)
-
-    return {
-      ...result,
-      ciphertext: encryptedItems[i]
-    }
-  })
-
-  initializeBundlingProcess(key)
-
-  return itemsToReturn
-}
-
-/**
-
-    Deletes the provided item. Returns true if successful.
-
-    Example call:
-
-      await db.delete(orangeJuice)
-
- */
-const deleteFunction = async (item) => {
-  const itemId = item['item-id']
-
-  const sequenceNo = await wrapInAuthenticationErrorCatcher(
-    server.db.delete(itemId)
-  )
-
-  stateManager.deleteItem(itemId, sequenceNo)
-
-  initializeBundlingProcess()
-
-  return true
+  await postTransaction(server.db.batchUpdate(updatedItemsMetadata, buffer))
 }
 
 const batchDelete = async (items) => {
-  const itemIds = items.map(item => item['item-id'])
+  const itemIds = items.map(item => item.itemId)
 
-  const sequenceNos = await wrapInAuthenticationErrorCatcher(
-    server.db.batchDelete(itemIds)
-  )
-
-  sequenceNos.forEach((sequenceNo, i) => {
-    const itemId = itemIds[i]
-
-    stateManager.deleteItem(itemId, sequenceNo)
-  })
-
-  initializeBundlingProcess()
-
-  return true
+  await postTransaction(server.db.batchDelete(itemIds))
 }
 
-const setupClientState = async (key, transactionLog, encryptedDbState) => {
-  let dbState = encryptedDbState
-    ? await crypto.aesGcm.decrypt(key, encryptedDbState)
-    : {
-      itemsInOrderOfInsertion: [],
-      itemIdsToOrderOfInsertion: {}
-    }
+const postTransaction = async (promise) => {
+  try {
+    const pendingTx = state.database.registerUnverifiedTransaction()
+    const seqNo = await promise
 
-  dbState = await stateManager.applyTransactionsToDbState(key, dbState, transactionLog)
+    await pendingTx.getResult(seqNo)
 
-  const { itemsInOrderOfInsertion, itemIdsToOrderOfInsertion } = dbState
-  stateManager.setItems(itemsInOrderOfInsertion, itemIdsToOrderOfInsertion)
+    state.database.unregisterUnverifiedTransaction(pendingTx)
 
-  return itemsInOrderOfInsertion
-}
+    initializeBundlingProcess(state.key)
 
-const getMapFunctionThatUsesIterator = (arr) => {
-  return function (cb, thisArg) {
-    const result = []
-    let index = 0
-    cb.bind(thisArg)
-    for (const a of arr) {
-      result.push(cb(a, index, arr))
-      index++
-    }
-    return result
+    return seqNo
+  } catch (e) {
+    const unauthorized = e.response && e.response.status === 401
+    if (unauthorized) auth.clearAuthenticatedDataFromBrowser()
+    throw e
   }
 }
 
-const getIteratorToSkipDeletedItems = (itemsInOrderOfInsertion) => {
-  return function () {
-    return {
-      current: 0,
-      last: itemsInOrderOfInsertion.length - 1,
-
-      next() {
-        let item = itemsInOrderOfInsertion[this.current]
-        let itemIsDeleted = !item
-
-        while (itemIsDeleted && this.current < this.last) {
-          this.current++
-          item = itemsInOrderOfInsertion[this.current]
-          itemIsDeleted = !item
-        }
-
-        if (this.current < this.last || (this.current === this.last && !itemIsDeleted)) {
-          this.current++
-          return { done: false, value: item }
-        } else {
-          return { done: true }
-        }
-      }
-    }
-  }
-}
-
-const setIteratorsToSkipDeletedItems = (itemsInOrderOfInsertion) => {
-  itemsInOrderOfInsertion[Symbol.iterator] = getIteratorToSkipDeletedItems(itemsInOrderOfInsertion)
-
-  // hacky solution to overwrite native map function. All other native Array functions
-  // remain unaffected
-  itemsInOrderOfInsertion.map = getMapFunctionThatUsesIterator(itemsInOrderOfInsertion)
-}
-
-/**
-
-    Returns the latest state of all items in the db in the order they
-    were originally inserted.
-
-    If an item has been updated, the most recent version of the item
-    is included in the state.
-
-    If an item has been deleted, it's possible that it will still
-    show up in the result as an undefined element.
-
-    For example, after the following sequence of actions:
-
-      const milk = await db.insert({ todo: 'remember the milk' })
-      const orangeJuice = await db.insert({ todo: 'buy orange juice' })
-      await db.insert({ todo: 'create the most useful app of all time' })
-      await db.delete(orangeJuice)
-      await db.update(milk, { todo: milk.record.todo, completed: true })
-
-    The response would look like this:
-
-      [
-        {
-          'item-id: '50bf2e6e-9776-441e-8215-08966581fcec',
-          record: {
-            todo: 'remember the milk',
-            completed: true
-          }
-        },
-        undefined, // the deleted orange juice
-        {
-          'item-id': 'b09cf9c2-86bd-499c-af06-709d5c11f64b',
-          record: {
-            todo: 'create the most useful app of all time'
-          }
-        }
-      ]
-
-  */
-const query = async () => {
-  const key = await auth.getKeyFromLocalStorage()
-
-  // retrieving user's transaction log
-  let t0 = performance.now()
-  const { transactionLog, bundleSeqNo } = await wrapInAuthenticationErrorCatcher(
-    server.db.queryTransactionLog()
-  )
-  console.log(`Retrieved user's transaction log in ${getSecondsSinceT0(t0)}s`)
-
-  let encryptedDbState
-  // if server sets bundle-seq-no header, that means the transaction log starts
-  // with transactions with sequence number > bundle-seq-no. Thus the transactions
-  // in the log need to be applied to the db state bundled at bundle-seq-no
-  if (bundleSeqNo) {
-    // retrieving user's encrypted db state
-    t0 = performance.now()
-    encryptedDbState = await wrapInAuthenticationErrorCatcher(
-      server.db.queryEncryptedDbState(bundleSeqNo)
-    )
-    console.log(`Retrieved user's encrypted db state in ${getSecondsSinceT0(t0)}s`)
-  }
-
-  // starting to set up client state
-  t0 = performance.now()
-  const itemsInOrderOfInsertion = await setupClientState(key, transactionLog, encryptedDbState)
-  console.log(`Set up client side state in ${getSecondsSinceT0(t0)}s`)
-
-  setIteratorsToSkipDeletedItems(itemsInOrderOfInsertion)
-
-  return itemsInOrderOfInsertion
-}
-
-/**
-
-    Gets the items in order of insertion from memory. If a client
-    is using 2 devices to access the application and inserts a new item
-    from another device, this function will not return the newly inserted item.
-    For that, use the query() function.
-
- */
-const getLatestState = () => {
-  const itemsInOrderOfInsertion = stateManager.getItems()
-
-  setIteratorsToSkipDeletedItems(itemsInOrderOfInsertion)
-
-  return itemsInOrderOfInsertion
+const initializeBundlingProcess = async (key) => {
+  const worker = new Worker()
+  if (!key) key = await auth.getKeyFromLocalStorage() // can't read local storage from worker
+  worker.postMessage(key)
 }
 
 export default {
+  init,
   insert,
-  batchInsert,
   update,
+  'delete': delete_,
+  batchInsert,
   batchUpdate,
-  'delete': deleteFunction,
-  batchDelete,
-  query,
-  getLatestState
+  batchDelete
 }

@@ -4,6 +4,7 @@ import statusCodes from './statusCodes'
 import memcache from './memcache'
 import lock from './lock'
 import userController from './user'
+import connRegistry from './ws'
 import logger from './logger'
 
 const getS3DbStateKey = (userId, bundleSeqNo) => `${userId}/${bundleSeqNo}`
@@ -89,6 +90,8 @@ const putTransaction = async function (transaction) {
 
     throw new Error(`Failed with ${e}.`)
   }
+
+  connRegistry.push(transaction['user-id'])
 
   return transactionWithSequenceNo['sequence-no']
 }
@@ -185,26 +188,6 @@ exports.update = async function (req, res) {
     return res
       .status(statusCodes['Internal Server Error'])
       .send({ err: `Failed to update with ${e}` })
-  }
-}
-
-exports.queryTransactionLog = async function (req, res) {
-  const userId = res.locals.userId
-
-  try {
-    const bundleSeqNo = memcache.getBundleSeqNo(userId)
-
-    const startingSeqNo = memcache.getStartingSeqNo(bundleSeqNo)
-
-    const transactionLog = memcache.getTransactions(userId, startingSeqNo)
-
-    res.set('bundle-seq-no', bundleSeqNo)
-
-    return res.send(transactionLog)
-  } catch (e) {
-    return res
-      .status(statusCodes['Internal Server Error'])
-      .send({ err: `Failed to query db state with ${e}` })
   }
 }
 

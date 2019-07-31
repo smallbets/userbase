@@ -2,7 +2,7 @@ import React, { Component } from 'react'
 import { string } from 'prop-types'
 import copy from 'copy-to-clipboard'
 
-class ShowKey extends Component {
+export default class ShowKey extends Component {
 
   constructor(props) {
     super(props)
@@ -61,5 +61,3 @@ class ShowKey extends Component {
 ShowKey.propTypes = {
   keyString: string
 }
-
-export default ShowKey

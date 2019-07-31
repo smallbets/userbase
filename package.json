@@ -37,7 +37,9 @@
     "pino": "^5.13.0",
     "react": "^16.8.6",
     "react-dom": "^16.8.6",
-    "uuid": "^3.3.2"
+    "sorted-array": "^2.0.4",
+    "uuid": "^3.3.2",
+    "ws": "^7.1.1"
   },
   "devDependencies": {
     "@babel/cli": "^7.4.4",
@@ -74,5 +76,9 @@
     "webpack-dev-server": "^3.5.1",
     "webpack-merge": "^4.2.1",
     "worker-loader": "^2.0.0"
+  },
+  "optionalDependencies": {
+    "bufferutil": "^4.0.1",
+    "utf-8-validate": "^5.0.2"
   }
 }
