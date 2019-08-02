@@ -6,14 +6,41 @@ const GENERATOR = [2]
 
 const SERVER_PUBLIC_KEY = hexStringToArrayBuffer('928d47c374679d8c5350209c1568fb1a7064b050dee544965e07971d0c48b9109cccb293606debc39f2260967fdba8eb1770f59d0f6e1a18324adc4fbbf67158966eb44421535ae6d43d364269501b37dad03f05f8d42698b994843d872bd8773cbf709d94ca60be13e2971c66183dcb18a2c3b01f383fd1b60f6ae369ee2ffe08389836bdaf3ced8ae174f7d1b4d1a935cc3f60349d4821ffc7a8b40a6265cc44bd543f08006c6cf7acd8821bae2d45150cc13e2ed7e308d9be92981bee7136e6714b59ef7c464f10fd2adce564ad432240e62da2bed66ded6b0e9a44cc424939c8b36beb92aafb8365aa3d1d7c3f9d4db6a646c4f371e4a4fcc306b080b6b3')
 
-const createDiffieHellmanUsingAesKey = (aesKey) => {
+const setPrivateKeyAndGenerateKeys = (diffieHellman, privateKey) => {
+  diffieHellman.setPrivateKey(privateKey)
+  diffieHellman.generateKeys()
+  return diffieHellman
+}
+
+const createDiffieHellman = (privateKey) => {
   const diffieHellman = DH.createDiffieHellman(PRIME, GENERATOR)
-  diffieHellman.setPrivateKey(aesKey)
-  const publicKey = diffieHellman.generateKeys()
-  const sharedSecret = diffieHellman.computeSecret(SERVER_PUBLIC_KEY)
+  return setPrivateKeyAndGenerateKeys(diffieHellman, privateKey)
+}
+
+const getPublicKeyAndSharedSecret = (privateKey, otherPublicKey) => {
+  const diffieHellman = createDiffieHellman(privateKey)
+  const publicKey = diffieHellman.getPublicKey()
+  const sharedSecret = diffieHellman.computeSecret(otherPublicKey)
   return { publicKey, sharedSecret }
 }
 
+const getSharedSecret = (privateKey, otherPublicKey) => {
+  const diffieHellman = createDiffieHellman(privateKey)
+  return diffieHellman.computeSecret(otherPublicKey)
+}
+
+const getPublicKey = (privateKey) => {
+  const diffieHellman = createDiffieHellman(privateKey)
+  return diffieHellman.getPublicKey()
+}
+
+const getPublicKeyAndSharedSecretWithServer = (privateKey) => {
+  return getPublicKeyAndSharedSecret(privateKey, SERVER_PUBLIC_KEY)
+}
+
 export default {
-  createDiffieHellmanUsingAesKey
+  getPublicKey,
+  getSharedSecret,
+  getPublicKeyAndSharedSecret,
+  getPublicKeyAndSharedSecretWithServer,
 }

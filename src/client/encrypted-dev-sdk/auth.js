@@ -1,5 +1,5 @@
 import uuidv4 from 'uuid/v4'
-import server from './server'
+import api from './api'
 import crypto from './Crypto'
 import base64 from 'base64-arraybuffer'
 import stateManager from './stateManager'
@@ -39,12 +39,20 @@ const getKeyFromLocalStorage = async () => {
   return key
 }
 
-const getKey = async () => {
+const getRawKey = async () => {
   const key = await getKeyFromLocalStorage()
   if (!key) {
     return undefined
   }
   const rawKey = await crypto.aesGcm.exportRawKey(key)
+  return rawKey
+}
+
+const getKey = async () => {
+  const rawKey = await getRawKey()
+  if (!rawKey) {
+    return undefined
+  }
   const base64Key = base64.encode(rawKey)
   return base64Key
 }
@@ -62,14 +70,12 @@ const signUp = async (username, password) => {
 
   const aesKey = await crypto.aesGcm.generateKey()
   const rawAesKey = await crypto.aesGcm.exportRawKey(aesKey)
-  const { publicKey, sharedSecret } = crypto.diffieHellman.createDiffieHellmanUsingAesKey(rawAesKey)
+  const { publicKey, sharedSecret } = crypto.diffieHellman.getPublicKeyAndSharedSecretWithServer(rawAesKey)
 
-  const encryptedValidationMessage = await server.auth.signUp(
-    lowerCaseUsername, password, userId, publicKey
-  )
-
-  const sharedKeyArrayBuffer = await crypto.sha256.hash(sharedSecret)
-  const sharedKey = await crypto.aesGcm.importRawKey(sharedKeyArrayBuffer)
+  const [encryptedValidationMessage, sharedKey] = await Promise.all([
+    api.auth.signUp(lowerCaseUsername, password, userId, publicKey),
+    crypto.aesGcm.importRawKey(await crypto.sha256.hash(sharedSecret))
+  ])
 
   const validationMessage = await crypto.aesGcm.decrypt(sharedKey, encryptedValidationMessage)
 
@@ -78,7 +84,7 @@ const signUp = async (username, password) => {
   // it's possible the key will be overwritten here and will be lost
   await saveKeyToLocalStorage(lowerCaseUsername, aesKey)
 
-  await server.auth.validateKey(validationMessage)
+  await api.auth.validateKey(validationMessage)
 
   const signedIn = true
   const session = _setCurrentSession(lowerCaseUsername, signedIn)
@@ -96,7 +102,7 @@ const clearAuthenticatedDataFromBrowser = () => {
 const signOut = async () => {
   const session = clearAuthenticatedDataFromBrowser()
 
-  await server.auth.signOut()
+  await api.auth.signOut()
 
   return session
 }
@@ -104,11 +110,95 @@ const signOut = async () => {
 const signIn = async (username, password) => {
   const lowerCaseUsername = username.toLowerCase()
 
-  await server.auth.signIn(lowerCaseUsername, password)
+  await api.auth.signIn(lowerCaseUsername, password)
+
+  const rawMasterKey = await getRawKey()
+  if (!rawMasterKey) await requestMasterKey(lowerCaseUsername)
+  else await sendMasterKeyToRequesters(rawMasterKey)
 
   const signedIn = true
   const session = _setCurrentSession(lowerCaseUsername, signedIn)
   return session
+}
+
+const requestMasterKey = async (lowerCaseUsername) => {
+  // this could be random bytes -- it's not used to encrypt/decrypt anything, only to generate DH
+  const tempKeyToRequestMasterKey = await crypto.aesGcm.exportRawKey(await crypto.aesGcm.generateKey())
+  const requesterPublicKey = await crypto.diffieHellman.getPublicKey(tempKeyToRequestMasterKey)
+
+  const senderPublicKey = await api.auth.requestMasterKey(requesterPublicKey)
+
+  let counter = 0
+  const ATTEMPTS = 12
+  const SECONDS_MS = 5000
+
+  // polls every 5 seconds for 60 seconds
+  const receiveMasterKeyPromise = new Promise(res => {
+    const receiveMasterKey = async () => {
+      if (counter < ATTEMPTS) {
+        console.log(`Check ${counter} if master key received yet...`)
+
+        try {
+          if (counter === 0) alert('Sign in from a device that has the key to receive the master key!')
+
+          const encryptedMasterKey = await api.auth.receiveMasterKey(requesterPublicKey)
+
+          if (encryptedMasterKey) return res(encryptedMasterKey)
+        } catch (e) {
+          const notFound = e.response && e.response.status === 404
+          if (!notFound) throw e // if not found, safe to try again. anything else, throw
+        }
+
+      } else {
+        throw new Error(`Did not receive master key in ${ATTEMPTS * SECONDS_MS / 1000} seconds`)
+      }
+
+      counter += 1
+      setTimeout(receiveMasterKey, SECONDS_MS)
+    }
+
+    receiveMasterKey()
+  })
+
+  const encryptedMasterKey = await receiveMasterKeyPromise
+
+  const sharedSecret = crypto.diffieHellman.getSharedSecret(tempKeyToRequestMasterKey, senderPublicKey)
+  const sharedRawKey = await crypto.sha256.hash(sharedSecret)
+  const sharedKey = await crypto.aesGcm.importRawKey(sharedRawKey)
+
+  const masterRawKey = await crypto.aesGcm.decrypt(sharedKey, encryptedMasterKey)
+  const masterKey = await crypto.aesGcm.importRawKey(masterRawKey)
+
+  await saveKeyToLocalStorage(lowerCaseUsername, masterKey)
+}
+
+const sendMasterKeyToRequesters = async (rawMasterKey) => {
+  const masterKeyRequests = await api.auth.getMasterKeyRequests()
+
+  if (masterKeyRequests.length) {
+
+    const sharedRawKeyPromises = masterKeyRequests.map(masterKeyRequest => {
+      const requesterPublicKey = new Uint8Array(masterKeyRequest['requester-public-key'].data)
+
+      const sharedSecret = crypto.diffieHellman.getSharedSecret(rawMasterKey, requesterPublicKey)
+
+      return crypto.sha256.hash(sharedSecret)
+    })
+    const sharedRawKeys = await Promise.all(sharedRawKeyPromises)
+
+    const sharedKeyPromises = sharedRawKeys.map(rawKey => crypto.aesGcm.importRawKey(rawKey))
+    const sharedKeys = await Promise.all(sharedKeyPromises)
+
+    const encryptedMasterKeyPromises = sharedKeys.map(sharedKey => crypto.aesGcm.encrypt(sharedKey, rawMasterKey))
+    const encryptedMasterKeys = await Promise.all(encryptedMasterKeyPromises)
+
+    const sendMasterKeyPromises = encryptedMasterKeys.map((encryptedMasterKey, i) => {
+      const requesterPublicKey = masterKeyRequests[i]['requester-public-key'].data
+
+      return api.auth.sendMasterKey(requesterPublicKey, encryptedMasterKey)
+    })
+    await Promise.all(sendMasterKeyPromises)
+  }
 }
 
 export default {

@@ -37,6 +37,11 @@ if (process.env.NODE_ENV == 'development') {
     app.post('/api/auth/sign-in', auth.signIn)
     app.post('/api/auth/sign-out', auth.authenticateUser, auth.signOut)
 
+    app.post('/api/auth/request-master-key', auth.authenticateUser, auth.requestMasterKey)
+    app.get('/api/auth/get-master-key-requests', auth.authenticateUser, auth.queryMasterKeyRequests)
+    app.post('/api/auth/send-master-key', auth.authenticateUser, auth.sendMasterKey)
+    app.post('/api/auth/receive-master-key', auth.authenticateUser, auth.receiveMasterKey)
+
     app.post('/api/db/insert', auth.authenticateUser, db.insert)
     app.post('/api/db/update', auth.authenticateUser, db.update)
     app.post('/api/db/delete', auth.authenticateUser, db.delete)

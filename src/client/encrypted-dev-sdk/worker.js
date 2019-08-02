@@ -1,5 +1,5 @@
 import 'babel-polyfill'
-import server from './server'
+import api from './api'
 import crypto from './Crypto'
 import stateManager from './stateManager'
 import { sizeOfDdbItems } from './utils'
@@ -10,7 +10,7 @@ const NINETY_PERCENT_OF_ONE_MB = Math.floor(.9 * ONE_MB)
 
 const getDbState = async (key, oldBundleSeqNo) => {
   if (oldBundleSeqNo) {
-    const encryptedDbState = await server.db.queryEncryptedDbState(oldBundleSeqNo)
+    const encryptedDbState = await api.db.queryEncryptedDbState(oldBundleSeqNo)
 
     const dbState = await crypto.aesGcm.decryptJson(key, encryptedDbState)
     return dbState
@@ -32,9 +32,9 @@ const bundleTransactionLog = async (key, transactionLog, oldBundleSeqNo, lockId)
 
   const newBundleSeqNo = newDbState.maxSequenceNo
 
-  const encryptedDbState = await crypto.aesGcm.encrypt(key, newDbState)
+  const encryptedDbState = await crypto.aesGcm.encryptJson(key, newDbState)
 
-  await server.db.bundleTxLog(newBundleSeqNo, lockId, encryptedDbState)
+  await api.db.bundleTxLog(newBundleSeqNo, lockId, encryptedDbState)
 }
 
 
@@ -42,9 +42,9 @@ const bundleTransactionLog = async (key, transactionLog, oldBundleSeqNo, lockId)
 const handleMessage = async (key) => {
   let lockId
   try {
-    lockId = await server.db.acquireLock()
+    lockId = await api.db.acquireLock()
 
-    const transactionLogResponse = await server.db.queryTransactionLog()
+    const transactionLogResponse = await api.db.queryTransactionLog()
     const transactionLog = transactionLogResponse.transactionLog
     const oldBundleSeqNo = transactionLogResponse.bundleSeqNo
 
@@ -53,7 +53,7 @@ const handleMessage = async (key) => {
       await bundleTransactionLog(key, transactionLog, oldBundleSeqNo, lockId)
       console.log('Finished bundling transaction log!')
     } else {
-      await server.db.releaseLock(lockId)
+      await api.db.releaseLock(lockId)
     }
 
   } catch (e) {
@@ -63,7 +63,7 @@ const handleMessage = async (key) => {
 
     if (lockId) {
       try {
-        await server.db.releaseLock(lockId)
+        await api.db.releaseLock(lockId)
       } catch (err) {
         console.log('Failed to release bundle transaction log lock with', e)
       }

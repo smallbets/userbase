@@ -190,7 +190,7 @@ exports.signIn = async function (req, res) {
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
-      .send({ err: `Failed to sign up with ${e}` })
+      .send({ err: `Failed to sign in with ${e}` })
   }
 }
 
@@ -273,5 +273,151 @@ exports.authenticateUser = async function (req, res, next) {
     return res
       .status(statusCodes['Internal Server Error'])
       .send({ err: `Failed to authenticate user with ${e}` })
+  }
+}
+
+exports.requestMasterKey = async function (req, res) {
+  const user = res.locals.user
+  const userId = user['user-id']
+
+  const requesterPublicKey = req.body.requesterPublicKey
+
+  if (!requesterPublicKey) return res
+    .status(statusCodes['Bad Request'])
+    .send({ readableMessage: 'Missing requester public key' })
+
+  const requesterPublicKeyArrayBuffer = new Uint8Array(requesterPublicKey.data)
+
+  const keyExchange = {
+    'user-id': userId,
+    'requester-public-key': requesterPublicKeyArrayBuffer
+  }
+
+  const params = {
+    TableName: setup.keyExchangeTableName,
+    Item: keyExchange
+  }
+
+  try {
+    const ddbClient = connection.ddbClient()
+    await ddbClient.put(params).promise()
+    const senderPublicKey = user['public-key']
+    return res.send(senderPublicKey)
+  } catch (e) {
+    return res
+      .status(statusCodes['Internal Server Error'])
+      .send({ err: `Failed to request master key with ${e}` })
+  }
+}
+
+exports.queryMasterKeyRequests = async function (req, res) {
+  const userId = res.locals.user['user-id']
+
+  const params = {
+    TableName: setup.keyExchangeTableName,
+    KeyName: '#userId',
+    KeyConditionExpression: '#userId = :userId',
+    ExpressionAttributeNames: {
+      '#userId': 'user-id'
+    },
+    ExpressionAttributeValues: {
+      ':userId': userId
+    },
+  }
+
+  try {
+    const ddbClient = connection.ddbClient()
+    const masterKeyRequests = await ddbClient.query(params).promise()
+    return res.send(masterKeyRequests.Items)
+  } catch (e) {
+    return res
+      .status(statusCodes['Internal Server Error'])
+      .send({ err: `Failed to query master key requests with ${e}` })
+  }
+}
+
+exports.sendMasterKey = async function (req, res) {
+  const userId = res.locals.user['user-id']
+
+  const requesterPublicKey = req.body.requesterPublicKey
+  const encryptedMasterKey = req.body.encryptedMasterKey
+
+  if (!requesterPublicKey || !encryptedMasterKey) return res
+    .status(statusCodes['Bad Request'])
+    .send({ readableMessage: 'Missing required items' })
+
+  const requesterPublicKeyArrayBuffer = new Uint8Array(requesterPublicKey.data)
+  const encryptedMasterKeyArrayBuffer = new Uint8Array(encryptedMasterKey.data)
+
+  const updateKeyExchangeParams = {
+    TableName: setup.keyExchangeTableName,
+    Key: {
+      'user-id': userId
+    },
+    UpdateExpression: 'set #encryptedMasterKey = :encryptedMasterKey',
+    ConditionExpression: '#requesterPublicKey = :requesterPublicKey',
+    ExpressionAttributeNames: {
+      '#requesterPublicKey': 'requester-public-key',
+      '#encryptedMasterKey': 'encrypted-master-key'
+    },
+    ExpressionAttributeValues: {
+      ':requesterPublicKey': requesterPublicKeyArrayBuffer,
+      ':encryptedMasterKey': encryptedMasterKeyArrayBuffer
+    },
+  }
+
+  try {
+    const ddbClient = connection.ddbClient()
+    await ddbClient.update(updateKeyExchangeParams).promise()
+    return res.end()
+  } catch (e) {
+    return res
+      .status(statusCodes['Internal Server Error'])
+      .send({ err: `Failed to send master key with ${e}` })
+  }
+}
+
+exports.receiveMasterKey = async function (req, res) {
+  const user = res.locals.user
+  const userId = user['user-id']
+
+  const requesterPublicKey = req.body.requesterPublicKey
+
+  if (!requesterPublicKey) return res
+    .status(statusCodes['Bad Request'])
+    .send({ readableMessage: 'Missing public key' })
+
+  const requesterPublicKeyArrayBuffer = new Uint8Array(requesterPublicKey.data)
+
+  const deleteKeyExchangeParams = {
+    TableName: setup.keyExchangeTableName,
+    Key: {
+      'user-id': userId
+    },
+    ConditionExpression: '#requesterPublicKey = :requesterPublicKey and attribute_exists(#encryptedMasterKey)',
+    ExpressionAttributeNames: {
+      '#requesterPublicKey': 'requester-public-key',
+      '#encryptedMasterKey': 'encrypted-master-key'
+    },
+    ExpressionAttributeValues: {
+      ':requesterPublicKey': requesterPublicKeyArrayBuffer,
+    },
+    ReturnValues: 'ALL_OLD'
+  }
+
+  try {
+    const ddbClient = connection.ddbClient()
+    const deletedKeyExchange = await ddbClient.delete(deleteKeyExchangeParams).promise()
+    const encryptedMasterKey = deletedKeyExchange.Attributes['encrypted-master-key']
+    return res.send(encryptedMasterKey)
+  } catch (e) {
+    if (e.name === 'ConditionalCheckFailedException') {
+      return res
+        .status(statusCodes['Not Found'])
+        .send({ readableMessage: 'Encrypted master key not found' })
+    }
+    return res
+      .status(statusCodes['Internal Server Error'])
+      .send({ err: `Failed to receive master key with ${e}` })
   }
 }

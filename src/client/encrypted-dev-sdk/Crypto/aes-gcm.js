@@ -85,7 +85,7 @@ const exportRawKey = async (key) => {
 /**
  *
  * @param {CryptoKey} key
- * @param {object | string} plaintext
+ * @param {ArrayBuffer} plaintext
  * @returns {ArrayBuffer} encrypted Array Buffer
  *
  *     encrypted is a concatentation of Array Buffers [ciphertext, auth tag, IV]
@@ -99,9 +99,6 @@ const exportRawKey = async (key) => {
  *
  */
 const encrypt = async (key, plaintext) => {
-  const plaintextString = JSON.stringify(plaintext)
-  const plaintextArrayBuffer = stringToArrayBuffer(plaintextString)
-
   const iv = windowOrSelfObject().crypto.getRandomValues(new Uint8Array(RECOMMENDED_IV_BYTE_SIZE))
 
   // this result is the concatenation of Array Buffers [ciphertext, auth tag]
@@ -112,10 +109,17 @@ const encrypt = async (key, plaintext) => {
       tagLength: RECOMMENDED_AUTHENTICATION_TAG_LENGTH
     },
     key,
-    plaintextArrayBuffer
+    plaintext
   )
 
   return appendBuffer(ciphertextArrayBuffer, iv)
+}
+
+const encryptJson = async (key, plaintextJson) => {
+  const plaintextString = JSON.stringify(plaintextJson)
+  const plaintextArrayBuffer = stringToArrayBuffer(plaintextString)
+  const encrypted = await encrypt(key, plaintextArrayBuffer)
+  return encrypted
 }
 
 /**
@@ -154,6 +158,7 @@ export default {
   importRawKey,
   exportRawKey,
   encrypt,
+  encryptJson,
   decrypt,
   decryptJson,
 }

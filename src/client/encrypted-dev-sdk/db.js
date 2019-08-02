@@ -1,5 +1,5 @@
 import uuidv4 from 'uuid/v4'
-import server from './server'
+import api from './api'
 import Worker from './worker.js'
 import auth from './auth'
 import crypto from './Crypto'
@@ -48,12 +48,12 @@ const initializeBundlingProcess = async (key) => {
  */
 const insert = async (item) => {
   const key = await auth.getKeyFromLocalStorage()
-  const encryptedItem = await crypto.aesGcm.encrypt(key, item)
+  const encryptedItem = await crypto.aesGcm.encryptJson(key, item)
 
   const itemId = uuidv4()
 
   await wrapInAuthenticationErrorCatcher(
-    server.db.insert(itemId, encryptedItem)
+    api.db.insert(itemId, encryptedItem)
   )
 
   initializeBundlingProcess(key)
@@ -63,7 +63,7 @@ const insert = async (item) => {
 
 const batchInsert = async (items) => {
   const key = await auth.getKeyFromLocalStorage()
-  const encryptionPromises = items.map(item => crypto.aesGcm.encrypt(key, item))
+  const encryptionPromises = items.map(item => crypto.aesGcm.encryptJson(key, item))
   const encryptedItems = await Promise.all(encryptionPromises)
 
   const { buffer, byteLengths } = appendBuffers(encryptedItems)
@@ -74,7 +74,7 @@ const batchInsert = async (items) => {
   }))
 
   await wrapInAuthenticationErrorCatcher(
-    server.db.batchInsert(itemsMetadata, buffer)
+    api.db.batchInsert(itemsMetadata, buffer)
   )
 
   initializeBundlingProcess(key)
@@ -107,10 +107,10 @@ const batchInsert = async (items) => {
  */
 const update = async (itemId, item) => {
   const key = await auth.getKeyFromLocalStorage()
-  const encryptedItem = await crypto.aesGcm.encrypt(key, item)
+  const encryptedItem = await crypto.aesGcm.encryptJson(key, item)
 
   await wrapInAuthenticationErrorCatcher(
-    server.db.update(itemId, encryptedItem)
+    api.db.update(itemId, encryptedItem)
   )
 
   initializeBundlingProcess(key)
@@ -118,7 +118,7 @@ const update = async (itemId, item) => {
 
 const batchUpdate = async (itemIds, items) => {
   const key = await auth.getKeyFromLocalStorage()
-  const encryptionPromises = items.map(item => crypto.aesGcm.encrypt(key, item))
+  const encryptionPromises = items.map(item => crypto.aesGcm.encryptJson(key, item))
   const encryptedItems = await Promise.all(encryptionPromises)
 
   const { buffer, byteLengths } = appendBuffers(encryptedItems)
@@ -129,7 +129,7 @@ const batchUpdate = async (itemIds, items) => {
   }))
 
   await wrapInAuthenticationErrorCatcher(
-    server.db.batchUpdate(updatedItemsMetadata, buffer)
+    api.db.batchUpdate(updatedItemsMetadata, buffer)
   )
 
   initializeBundlingProcess(key)
@@ -149,7 +149,7 @@ const batchUpdate = async (itemIds, items) => {
  */
 const deleteFunction = async (itemId) => {
   await wrapInAuthenticationErrorCatcher(
-    server.db.delete(itemId)
+    api.db.delete(itemId)
   )
 
   initializeBundlingProcess()
@@ -157,7 +157,7 @@ const deleteFunction = async (itemId) => {
 
 const batchDelete = async (itemIds) => {
   await wrapInAuthenticationErrorCatcher(
-    server.db.batchDelete(itemIds)
+    api.db.batchDelete(itemIds)
   )
 
   initializeBundlingProcess()
@@ -290,7 +290,7 @@ const sync = async () => {
   // retrieving user's transaction log
   let t0 = performance.now()
   const { transactionLog, bundleSeqNo } = await wrapInAuthenticationErrorCatcher(
-    server.db.queryTransactionLog(startingSeqNo)
+    api.db.queryTransactionLog(startingSeqNo)
   )
   console.log(`Retrieved user's transaction log in ${getSecondsSinceT0(t0)}s`)
 
@@ -302,7 +302,7 @@ const sync = async () => {
     // retrieving user's encrypted db state
     t0 = performance.now()
     encryptedDbState = await wrapInAuthenticationErrorCatcher(
-      server.db.queryEncryptedDbState(bundleSeqNo)
+      api.db.queryEncryptedDbState(bundleSeqNo)
     )
     console.log(`Retrieved user's encrypted db state in ${getSecondsSinceT0(t0)}s`)
   }
