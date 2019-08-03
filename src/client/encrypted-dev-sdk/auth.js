@@ -113,15 +113,17 @@ const signIn = async (username, password) => {
   await api.auth.signIn(lowerCaseUsername, password)
 
   const rawMasterKey = await getRawKey()
-  if (!rawMasterKey) await requestMasterKey(lowerCaseUsername)
-  else await sendMasterKeyToRequesters(rawMasterKey)
+  if (rawMasterKey) await sendMasterKeyToRequesters(rawMasterKey)
 
   const signedIn = true
   const session = _setCurrentSession(lowerCaseUsername, signedIn)
   return session
 }
 
-const requestMasterKey = async (lowerCaseUsername) => {
+const requestMasterKey = async () => {
+  const { username, signedIn } = getCurrentSession()
+  if (!username || !signedIn) throw new Error('Sign in first!')
+
   // this could be random bytes -- it's not used to encrypt/decrypt anything, only to generate DH
   const tempKeyToRequestMasterKey = await crypto.aesGcm.exportRawKey(await crypto.aesGcm.generateKey())
   const requesterPublicKey = await crypto.diffieHellman.getPublicKey(tempKeyToRequestMasterKey)
@@ -169,7 +171,8 @@ const requestMasterKey = async (lowerCaseUsername) => {
   const masterRawKey = await crypto.aesGcm.decrypt(sharedKey, encryptedMasterKey)
   const masterKey = await crypto.aesGcm.importRawKey(masterRawKey)
 
-  await saveKeyToLocalStorage(lowerCaseUsername, masterKey)
+  await saveKeyToLocalStorage(username, masterKey)
+  return base64.encode(masterRawKey)
 }
 
 const sendMasterKeyToRequesters = async (rawMasterKey) => {
@@ -210,4 +213,5 @@ export default {
   clearAuthenticatedDataFromBrowser,
   signOut,
   signIn,
+  requestMasterKey,
 }
