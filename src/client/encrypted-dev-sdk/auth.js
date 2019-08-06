@@ -50,6 +50,9 @@ const getRawKey = async () => {
 
 const getRawKeyByUsername = async (username) => {
   const keyString = localStorage.getItem('key.' + username)
+  if (!keyString) {
+    return undefined
+  }
   const key = await crypto.aesGcm.getKeyFromKeyString(keyString)
   const rawKey = await crypto.aesGcm.exportRawKey(key)
   return rawKey
