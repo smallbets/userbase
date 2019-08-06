@@ -3,7 +3,6 @@ import setup from './setup'
 import statusCodes from './statusCodes'
 import memcache from './memcache'
 import lock from './lock'
-import userController from './user'
 import logger from './logger'
 
 const getS3DbStateKey = (userId, bundleSeqNo) => `${userId}/${bundleSeqNo}`

@@ -48,6 +48,13 @@ const getRawKey = async () => {
   return rawKey
 }
 
+const getRawKeyByUsername = async (username) => {
+  const keyString = localStorage.getItem('key.' + username)
+  const key = await crypto.aesGcm.getKeyFromKeyString(keyString)
+  const rawKey = await crypto.aesGcm.exportRawKey(key)
+  return rawKey
+}
+
 const getKey = async () => {
   const rawKey = await getRawKey()
   if (!rawKey) {
@@ -112,7 +119,7 @@ const signIn = async (username, password) => {
 
   await api.auth.signIn(lowerCaseUsername, password)
 
-  const rawMasterKey = await getRawKey()
+  const rawMasterKey = await getRawKeyByUsername(lowerCaseUsername)
   if (rawMasterKey) await sendMasterKeyToRequesters(rawMasterKey)
 
   const signedIn = true
