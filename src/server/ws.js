@@ -19,7 +19,7 @@ class Connection {
       return
     }
     this.ws.send(JSON.stringify(transactionLog))
-    this.lastSeqNo = transactionLog[transactionLog.length - 1]['sequence-no']
+    this.lastSeqNo = transactionLog[transactionLog.length - 1]['seqNo']
   }
 }
 

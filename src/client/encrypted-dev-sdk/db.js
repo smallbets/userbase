@@ -69,7 +69,7 @@ class UnverifiedTransaction {
   }
 
   addTransaction(transaction, code) {
-    this.transactions[transaction['sequence-no']] = code
+    this.transactions[transaction.seqNo] = code
     this.verifyPromise()
   }
 }
@@ -86,10 +86,12 @@ class Database {
     const key = await auth.getKeyFromLocalStorage()
 
     for (let i = 0; i < transactions.length; i++) {
-      const itemId = transactions[i]['item-id']
-      const seqNo = transactions[i]['sequence-no']
-      const command = transactions[i]['command']
-      const record = transactions[i]['record'] ? await crypto.aesGcm.decrypt(key, new Uint8Array(transactions[i]['record'].data)) : undefined
+      const itemId = transactions[i].itemId
+      const seqNo = transactions[i].seqNo
+      const command = transactions[i].op
+      const record = transactions[i].record ?
+        await crypto.aesGcm.decrypt(key, Uint8Array.from(atob(transactions[i].record), c => c.charCodeAt(0))) :
+        undefined
 
       this.lastSeqNo = seqNo
 

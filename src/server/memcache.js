@@ -139,7 +139,14 @@ MemCache.prototype.getTransactions = function (userId, startingSeqNo, inclusive 
 
     } else if (transaction && transaction.command !== 'rollback' && !encounteredTransactionPersistingToDdb) {
       if (inclusive || transaction['sequence-no'] > startingSeqNo) {
-        result.push(transaction)
+        const outputTransaction = {
+          seqNo: transaction['sequence-no'],
+          op: transaction['command'],
+          itemId: transaction['item-id'],
+          record: transaction['record'] ? transaction['record'].toString('base64') : undefined
+        }
+
+        result.push(outputTransaction)
       }
     }
   }
