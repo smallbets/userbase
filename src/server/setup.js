@@ -9,11 +9,13 @@ const usernamePrefix = (process.env.NODE_ENV == 'development') ? os.userInfo().u
 const usersTableName = usernamePrefix + 'users'
 const sessionsTableName = usernamePrefix + 'sessions'
 const databaseTableName = usernamePrefix + 'database'
+const keyExchangeTableName = usernamePrefix + 'key-exchange'
 const dbStatesBucketName = usernamePrefix + 'db-states'
 
 exports.usersTableName = usersTableName
 exports.sessionsTableName = sessionsTableName
 exports.databaseTableName = databaseTableName
+exports.keyExchangeTableName = keyExchangeTableName
 
 let s3
 const getS3Connection = () => s3
@@ -65,7 +67,7 @@ async function setupDdb() {
       KeySchema: [
         { AttributeName: 'user-id', KeyType: 'HASH' }
       ],
-      Projection: { ProjectionType: 'KEYS_ONLY' }
+      Projection: { ProjectionType: 'ALL' }
     }]
   }
 
@@ -95,11 +97,24 @@ async function setupDdb() {
     TableName: databaseTableName
   }
 
+  // the key exchange table holds key data per user request
+  const keyExchangeTableParams = {
+    AttributeDefinitions: [
+      { AttributeName: 'user-id', AttributeType: 'S' },
+    ],
+    KeySchema: [
+      { AttributeName: 'user-id', KeyType: 'HASH' },
+    ],
+    BillingMode: 'PAY_PER_REQUEST',
+    TableName: keyExchangeTableName
+  }
+
   logger.info('Creating DynamoDB tables if necessary')
   await Promise.all([
     createTable(ddb, usersTableParams),
     createTable(ddb, sessionsTableParams),
-    createTable(ddb, databaseTableParams)])
+    createTable(ddb, databaseTableParams),
+    createTable(ddb, keyExchangeTableParams)])
 }
 
 async function setupS3() {

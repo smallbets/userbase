@@ -63,48 +63,52 @@ const init = async (username, limit) => {
     }
   }
 
-  let items = encd.db.getLatestState()
+  await encd.db.sync()
+  let items = encd.db.getItems()
 
   // UPDATE
   const ninetyNinePercentOfLimit = Math.floor(limit * .99)
   let updateBatch = {
-    oldItems: [],
-    newItems: []
+    itemIds: [],
+    items: []
   }
   let batchOfUpdateBatches = []
   for (let i = 0; i < ninetyNinePercentOfLimit; i++) {
-    updateBatch.oldItems.push(items[i])
-    updateBatch.newItems.push({ todo: items[i].record.todo, completed: true })
+    updateBatch.itemIds.push(items[i]['item-id'])
+    updateBatch.items.push({ todo: items[i].record.todo, completed: true })
 
-    if (updateBatch.oldItems.length === UPDATE_BATCH_SIZE || i === ninetyNinePercentOfLimit - 1) {
+    if (updateBatch.itemIds.length === UPDATE_BATCH_SIZE || i === ninetyNinePercentOfLimit - 1) {
       batchOfUpdateBatches.push(updateBatch)
       updateBatch = {
-        oldItems: [],
-        newItems: []
+        itemIds: [],
+        items: []
       }
     }
 
     if (batchOfUpdateBatches.length === MAX_TCP_CONNECTIONS || i === ninetyNinePercentOfLimit - 1) {
       const numUpdatesInBatch = batchOfUpdateBatches
-        .map(batch => batch.oldItems.length)
+        .map(batch => batch.itemIds.length)
         .reduce((sum, len) => sum + len)
       console.log(`Marking todos ${i - numUpdatesInBatch + 1} through ${i} complete...`)
 
-      const promises = batchOfUpdateBatches.map(batch => wrapInTryCatch(() => encd.db.batchUpdate(batch.oldItems, batch.newItems)))
+      const promises = batchOfUpdateBatches.map(batch => wrapInTryCatch(
+        () => encd.db.batchUpdate(batch.itemIds, batch.items)
+      ))
       await Promise.all(promises)
 
       batchOfUpdateBatches = []
     }
   }
 
-  items = encd.db.getLatestState()
+  await encd.db.sync()
+  items = encd.db.getItems()
 
   // DELETE
   const fiftyPercentOfLimit = Math.floor(limit * .5)
   let deleteBatch = []
   let batchOfDeleteBatches = []
   for (let i = 0; i < fiftyPercentOfLimit; i++) {
-    deleteBatch.push(items[i])
+    deleteBatch.push(items[i]['item-id'])
 
     if (deleteBatch.length === DELETE_BATCH_SIZE || i === fiftyPercentOfLimit - 1) {
       batchOfDeleteBatches.push(deleteBatch)
@@ -124,7 +128,8 @@ const init = async (username, limit) => {
     }
   }
 
-  console.log(encd.db.getLatestState())
+  await encd.db.sync()
+  console.log(encd.db.getItems())
 
   const key = localStorage.getItem('key.' + username)
   console.log(`

@@ -5,3 +5,4 @@ coverage
 deploy/cfn/output
 logs
 .DS_Store
+src/server/.env

@@ -81,8 +81,8 @@ const batchDelete = async (itemIds) => {
 
 const queryEncryptedDbState = async (bundleSeqNo) => {
   const encryptedDbStateResponse = await axios({
-    url: '/api/db/query/db-state',
     method: 'GET',
+    url: '/api/db/query/db-state',
     params: {
       bundleSeqNo
     },
@@ -91,8 +91,14 @@ const queryEncryptedDbState = async (bundleSeqNo) => {
   return encryptedDbStateResponse.data
 }
 
-const queryTransactionLog = async () => {
-  const transactionLogResponse = await axios.get('/api/db/query/tx-log')
+const queryTransactionLog = async (startingSeqNo) => {
+  const transactionLogResponse = await axios({
+    method: 'GET',
+    url: '/api/db/query/tx-log',
+    params: {
+      startingSeqNo
+    }
+  })
 
   const transactionLog = transactionLogResponse.data
   const bundleSeqNo = Number(transactionLogResponse.headers['bundle-seq-no'])

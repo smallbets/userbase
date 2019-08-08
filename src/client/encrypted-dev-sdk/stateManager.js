@@ -3,129 +3,22 @@ import crypto from './Crypto'
 StateManager.prototype.setInitialState = function () {
   this.itemsInOrderOfInsertion = []
   this.itemIdsToIndexes = {}
-
-  // these are used to manage state without exposing sequence-no in itemsInOrderOfInsertion array
-  this.insertionIndexToInsertSeqNoInTransactionLog = {}
-  this.insertionIndexToCurrentSeqNoInTransactionLog = {}
+  this.maxSequenceNo = -1
 }
 
 function StateManager() {
   this.setInitialState()
 }
 
-StateManager.prototype.setItems = function (itemsInOrderOfInsertion, itemIdsToIndexes) {
+StateManager.prototype.setState = function (itemsInOrderOfInsertion, itemIdsToIndexes, maxSequenceNo) {
   this.itemsInOrderOfInsertion = itemsInOrderOfInsertion
   this.itemIdsToIndexes = itemIdsToIndexes
-}
-
-StateManager.prototype.needToMoveItemWithLowerSeqNo = function (i, itemSequenceNo) {
-  const sequenceNoNextItemWasInsertedAt = this.insertionIndexToInsertSeqNoInTransactionLog[i]
-  const atStartOfTransactionLog = !sequenceNoNextItemWasInsertedAt
-  return !atStartOfTransactionLog && itemSequenceNo < sequenceNoNextItemWasInsertedAt
-}
-
-StateManager.prototype.getItemsInsertionIndex = function (itemSequenceNo) {
-  let i = this.itemsInOrderOfInsertion.length - 1
-
-  while (this.needToMoveItemWithLowerSeqNo(i, itemSequenceNo)) {
-    const itemThatWillBeMoved = this.itemsInOrderOfInsertion[i]
-    const itemIdThatWillBeMoved = itemThatWillBeMoved['item-id']
-
-    const oldInsertionIndex = this.itemIdsToIndexes[itemIdThatWillBeMoved]
-
-    const insertSeqNoThatWillBeMoved = this.insertionIndexToInsertSeqNoInTransactionLog[oldInsertionIndex]
-    const currentSeqNoThatWillBeMoved = this.insertionIndexToCurrentSeqNoInTransactionLog[oldInsertionIndex]
-
-    const newInsertionIndex = oldInsertionIndex + 1
-
-    this.itemIdsToIndexes[itemIdThatWillBeMoved] = newInsertionIndex
-    this.insertionIndexToInsertSeqNoInTransactionLog[newInsertionIndex] = insertSeqNoThatWillBeMoved
-    this.insertionIndexToCurrentSeqNoInTransactionLog[newInsertionIndex] = currentSeqNoThatWillBeMoved
-
-    i--
-  }
-
-  return i + 1
-}
-
-/**
-
-    Insert item where its sequence number is highest.
-
-    You can't assume that this will be called every time the latest item is inserted,
-    therefore it might need to insert it somewhere close to the back rather than the
-    very back of the array.
-
-    For example, a user calls:
-
-      Promise.all([
-        db.insert(todo1),
-        db.insert(todo2),
-        db.insert(todo3)
-      ])
-
-    It's possible the database may insert in this order: todo2, todo3, todo1
-
-    However the client will call this insertItem function in this order: todo1, todo2, todo3
-
-    Thus, each time this function is called, it uses the item's given sequence number
-    to insert it in the correct place in the array.
-
-*/
-StateManager.prototype.insertItem = function (itemId, sequenceNo, record) {
-  // possible applyTransactionsToDbState picked the item up, don't re-insert it
-  const itemAlreadyInserted = !!this.itemIdsToIndexes[itemId]
-  if (itemAlreadyInserted) return
-
-  const insertionIndex = this.getItemsInsertionIndex(sequenceNo)
-
-  const deleteCount = 0
-
-  const finalItem = {
-    'item-id': itemId,
-    record
-  }
-  this.itemsInOrderOfInsertion.splice(insertionIndex, deleteCount, finalItem)
-  this.itemIdsToIndexes[itemId] = insertionIndex
-  this.insertionIndexToInsertSeqNoInTransactionLog[insertionIndex] = sequenceNo
-  this.insertionIndexToCurrentSeqNoInTransactionLog[insertionIndex] = sequenceNo
-
-  return finalItem
-}
-
-StateManager.prototype.updateItem = function (itemId, updatedSeqNo, record) {
-  const insertionIndex = this.itemIdsToIndexes[itemId]
-
-  const currentItem = this.itemsInOrderOfInsertion[insertionIndex]
-  const itemIsDeleted = !currentItem
-  if (itemIsDeleted) throw new Error('Item is already deleted')
-
-  const currentSequenceNo = this.insertionIndexToCurrentSeqNoInTransactionLog[insertionIndex]
-
-  if (!currentSequenceNo || updatedSeqNo > currentSequenceNo) {
-    const finalItem = {
-      'item-id': itemId,
-      record: record
-    }
-
-    this.itemsInOrderOfInsertion[insertionIndex] = finalItem
-    this.insertionIndexToCurrentSeqNoInTransactionLog[insertionIndex] = updatedSeqNo
-
-    return finalItem
-  } else {
-    return currentItem
-  }
-}
-
-StateManager.prototype.deleteItem = function (itemId, sequenceNo) {
-  const insertionIndex = this.itemIdsToIndexes[itemId]
-  this.itemsInOrderOfInsertion[insertionIndex] = undefined
-
-  this.insertionIndexToCurrentSeqNoInTransactionLog[insertionIndex] = sequenceNo
+  this.maxSequenceNo = maxSequenceNo
 }
 
 StateManager.prototype.getItems = function () { return this.itemsInOrderOfInsertion }
 StateManager.prototype.getItemIdsToIndexes = function () { return this.itemIdsToIndexes }
+StateManager.prototype.getMaxSequenceNo = function () { return this.maxSequenceNo }
 
 StateManager.prototype.clearState = function () { this.setInitialState() }
 
@@ -187,7 +80,7 @@ const setMostRecentStateOfNewItem = function (
         const itemRecord = transaction.record
         const encryptedRecord = itemRecord.data
 
-        const decryptedRecordPromise = crypto.aesGcm.decrypt(key, new Uint8Array(encryptedRecord))
+        const decryptedRecordPromise = crypto.aesGcm.decryptJson(key, new Uint8Array(encryptedRecord))
         const decryptedRecordIndex = decryptedRecordsPromises.push(decryptedRecordPromise) - 1
 
         mostRecentStateOfNewItems[itemId].decryptedRecordIndex = decryptedRecordIndex
@@ -251,37 +144,43 @@ const setDecryptedItemsInOrderOfInsertion = function (
     For example, assume the following input:
 
       dbState = {
-        itemsInOrderOfInsertion: [{
-          'item-id: '50bf2e6e-9776-441e-8215-08966581fcec',
-          record: {
-            todo: 'remember the milk'
+        itemsInOrderOfInsertion: [
+          {
+            'item-id: '50bf2e6e-9776-441e-8215-08966581fcec',
+            record: {
+              todo: 'remember the milk'
+            }
           }
-        }],
+        ],
         itemIdsToOrderOfInsertion: {
           '50bf2e6e-9776-441e-8215-08966581fcec': 0
         },
         maxSequenceNo: 0
       }
 
-      transactionLog = [{
-        'item-id: '50bf2e6e-9776-441e-8215-08966581fcec',
-        'sequence-no': 1,
-        record: {
-          todo: 'remember the milk',
-          completed: true
-        }
-      }]
-
-    The output would be:
-
-       {
-        itemsInOrderOfInsertion: [{
+      transactionLog = [
+        {
           'item-id: '50bf2e6e-9776-441e-8215-08966581fcec',
+          'sequence-no': 1,
           record: {
             todo: 'remember the milk',
             completed: true
           }
-        }],
+        }
+      ]
+
+    The output would be:
+
+       {
+        itemsInOrderOfInsertion: [
+          {
+            'item-id: '50bf2e6e-9776-441e-8215-08966581fcec',
+            record: {
+              todo: 'remember the milk',
+              completed: true
+            }
+          }
+        ],
         itemIdsToOrderOfInsertion: {
           '50bf2e6e-9776-441e-8215-08966581fcec': 0
         },

@@ -62,3 +62,16 @@ export const appendBuffers = (buffers) => {
     byteLengths: bufferByteLengths
   }
 }
+
+export const hexStringToArrayBuffer = (hexString) => {
+  if (hexString.length % 2 !== 0) throw new Error('Hex string must be even length')
+  const halfHexStringLen = hexString.length / 2
+  const array = []
+  for (let i = 0; i < halfHexStringLen; i++) {
+    const byteStartIndex = i * 2
+    const byte = hexString.substring(byteStartIndex, byteStartIndex + 2)
+    const byteAsInt = parseInt(byte, 16)
+    array.push(byteAsInt)
+  }
+  return new Uint8Array(array)
+}
