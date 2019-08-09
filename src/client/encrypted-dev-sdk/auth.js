@@ -124,65 +124,11 @@ const signIn = async (username, password) => {
 
   const rawMasterKey = await getRawKeyByUsername(lowerCaseUsername)
   if (rawMasterKey) await sendMasterKeyToRequesters(rawMasterKey)
+  else await receiveRequestedMasterKey(lowerCaseUsername)
 
   const signedIn = true
   const session = _setCurrentSession(lowerCaseUsername, signedIn)
   return session
-}
-
-const requestMasterKey = async () => {
-  const { username, signedIn } = getCurrentSession()
-  if (!username || !signedIn) throw new Error('Sign in first!')
-
-  // this could be random bytes -- it's not used to encrypt/decrypt anything, only to generate DH
-  const tempKeyToRequestMasterKey = await crypto.aesGcm.exportRawKey(await crypto.aesGcm.generateKey())
-  const requesterPublicKey = await crypto.diffieHellman.getPublicKey(tempKeyToRequestMasterKey)
-
-  const senderPublicKey = await api.auth.requestMasterKey(requesterPublicKey)
-
-  let counter = 0
-  const ATTEMPTS = 12
-  const SECONDS_MS = 5000
-
-  // polls every 5 seconds for 60 seconds
-  const receiveMasterKeyPromise = new Promise(res => {
-    const receiveMasterKey = async () => {
-      if (counter < ATTEMPTS) {
-        console.log(`Check ${counter} if master key received yet...`)
-
-        try {
-          if (counter === 0) alert('Sign in from a device that has the key to receive the master key!')
-
-          const encryptedMasterKey = await api.auth.receiveMasterKey(requesterPublicKey)
-
-          if (encryptedMasterKey) return res(encryptedMasterKey)
-        } catch (e) {
-          const notFound = e.response && e.response.status === 404
-          if (!notFound) throw e // if not found, safe to try again. anything else, throw
-        }
-
-      } else {
-        throw new Error(`Did not receive master key in ${ATTEMPTS * SECONDS_MS / 1000} seconds`)
-      }
-
-      counter += 1
-      setTimeout(receiveMasterKey, SECONDS_MS)
-    }
-
-    receiveMasterKey()
-  })
-
-  const encryptedMasterKey = await receiveMasterKeyPromise
-
-  const sharedSecret = crypto.diffieHellman.getSharedSecret(tempKeyToRequestMasterKey, senderPublicKey)
-  const sharedRawKey = await crypto.sha256.hash(sharedSecret)
-  const sharedKey = await crypto.aesGcm.importRawKey(sharedRawKey)
-
-  const masterRawKey = await crypto.aesGcm.decrypt(sharedKey, encryptedMasterKey)
-  const masterKey = await crypto.aesGcm.importRawKey(masterRawKey)
-
-  await saveKeyToLocalStorage(username, masterKey)
-  return base64.encode(masterRawKey)
 }
 
 const sendMasterKeyToRequesters = async (rawMasterKey) => {
@@ -214,6 +160,101 @@ const sendMasterKeyToRequesters = async (rawMasterKey) => {
   }
 }
 
+const receiveRequestedMasterKey = async (username) => {
+  const localStorageKey = `${username}.temp-key-to-request-master-key`
+
+  const alreadySavedTempKeyString = localStorage.getItem(localStorageKey)
+
+  if (alreadySavedTempKeyString) {
+    const tempKey = base64.decode(alreadySavedTempKeyString)
+
+    const requesterPublicKey = crypto.diffieHellman.getPublicKey(tempKey)
+    const senderPublicKey = await api.auth.requestMasterKey(requesterPublicKey)
+
+    const encryptedMasterKey = await checkIfMasterKeyReceived(requesterPublicKey)
+
+    if (encryptedMasterKey) {
+      await decryptAndSaveMasterKey(username, tempKey, senderPublicKey, encryptedMasterKey)
+    }
+  }
+}
+
+const checkIfMasterKeyReceived = async (requesterPublicKey) => {
+  try {
+    const encryptedMasterKey = await api.auth.receiveMasterKey(requesterPublicKey)
+    return encryptedMasterKey
+  } catch (e) {
+    const notFound = e.response && e.response.status === 404
+    if (notFound) return null
+    else throw e
+  }
+}
+
+const pollToReceiveMasterKey = (requesterPublicKey) => new Promise(res => {
+  let counter = 1
+  const SECONDS_MS = 5000
+
+  // polls every 5 seconds until received
+  const receiveMasterKey = async () => {
+    if (counter === 1) alert('Sign in from a device that has the key to receive the master key!')
+
+    console.log(`Check #${counter} to see if master key received yet...`)
+
+    const encryptedMasterKey = await checkIfMasterKeyReceived(requesterPublicKey)
+    if (encryptedMasterKey) return res(encryptedMasterKey)
+
+    counter += 1
+    setTimeout(receiveMasterKey, SECONDS_MS)
+  }
+
+  receiveMasterKey()
+})
+
+const decryptAndSaveMasterKey = async (username, tempKeyToRequestMasterKey, senderPublicKey, encryptedMasterKey) => {
+  const sharedSecret = crypto.diffieHellman.getSharedSecret(tempKeyToRequestMasterKey, senderPublicKey)
+  const sharedRawKey = await crypto.sha256.hash(sharedSecret)
+  const sharedKey = await crypto.aesGcm.importRawKey(sharedRawKey)
+
+  const masterRawKey = await crypto.aesGcm.decrypt(sharedKey, encryptedMasterKey)
+  const masterKey = await crypto.aesGcm.importRawKey(masterRawKey)
+
+  await saveKeyToLocalStorage(username, masterKey)
+  localStorage.removeItem(`${username}.temp-key-to-request-master-key`)
+  return masterRawKey
+}
+
+const requestMasterKey = async (username, tempKeyToRequestMasterKey) => {
+  const requesterPublicKey = crypto.diffieHellman.getPublicKey(tempKeyToRequestMasterKey)
+  const senderPublicKey = await api.auth.requestMasterKey(requesterPublicKey)
+
+  const encryptedMasterKey = await pollToReceiveMasterKey(requesterPublicKey)
+
+  const masterRawKey = await decryptAndSaveMasterKey(username, tempKeyToRequestMasterKey, senderPublicKey, encryptedMasterKey)
+  return base64.encode(masterRawKey)
+}
+
+const getTempKeyToRequestMasterKey = async (username) => {
+  const localStorageKey = `${username}.temp-key-to-request-master-key`
+
+  // this could be random bytes -- it's not used to encrypt/decrypt anything, only to generate DH
+  const tempKey = await crypto.aesGcm.exportRawKey(await crypto.aesGcm.generateKey())
+
+  const tempKeyString = base64.encode(tempKey)
+  localStorage.setItem(localStorageKey, tempKeyString)
+
+  return tempKey
+}
+
+const registerDevice = async () => {
+  const { username, signedIn } = getCurrentSession()
+  if (!username || !signedIn) throw new Error('Sign in first!')
+
+  const tempKeyToRequestMasterKey = await getTempKeyToRequestMasterKey(username)
+
+  const masterRawKey = await requestMasterKey(username, tempKeyToRequestMasterKey)
+  return masterRawKey
+}
+
 export default {
   getCurrentSession,
   getKeyFromLocalStorage,
@@ -223,5 +264,5 @@ export default {
   clearAuthenticatedDataFromBrowser,
   signOut,
   signIn,
-  requestMasterKey,
+  registerDevice,
 }

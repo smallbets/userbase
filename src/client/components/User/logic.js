@@ -50,7 +50,7 @@ const saveKey = async (key) => {
 }
 
 const requestKey = async () => {
-  const keyString = await encd.requestMasterKey()
+  const keyString = await encd.registerDevice()
   return keyString
 }
 

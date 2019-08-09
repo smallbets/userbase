@@ -101,9 +101,11 @@ async function setupDdb() {
   const keyExchangeTableParams = {
     AttributeDefinitions: [
       { AttributeName: 'user-id', AttributeType: 'S' },
+      { AttributeName: 'requester-public-key', AttributeType: 'B' }
     ],
     KeySchema: [
       { AttributeName: 'user-id', KeyType: 'HASH' },
+      { AttributeName: 'requester-public-key', KeyType: 'RANGE' }
     ],
     BillingMode: 'PAY_PER_REQUEST',
     TableName: keyExchangeTableName

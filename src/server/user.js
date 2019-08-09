@@ -12,6 +12,7 @@ exports.findUserByUserId = async function (userId) {
     ExpressionAttributeValues: {
       ':userId': userId
     },
+    Select: 'ALL_ATTRIBUTES'
   }
 
   const ddbClient = connection.ddbClient()

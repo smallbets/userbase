@@ -295,12 +295,27 @@ exports.requestMasterKey = async function (req, res) {
 
   const params = {
     TableName: setup.keyExchangeTableName,
-    Item: keyExchange
+    Item: keyExchange,
+    // do not overwrite if already exists. especially important if encrypted-master-key already exists,
+    // but no need to overwrite ever
+    ConditionExpression: 'attribute_not_exists(#userId)',
+    ExpressionAttributeNames: {
+      '#userId': 'user-id'
+    },
   }
 
   try {
     const ddbClient = connection.ddbClient()
-    await ddbClient.put(params).promise()
+
+    try {
+      await ddbClient.put(params).promise()
+    } catch (e) {
+      // ok if user's request for key already exists, no need to return failure in http response
+      if (e.name !== 'ConditionalCheckFailedException') {
+        throw e
+      }
+    }
+
     const senderPublicKey = user['public-key']
     return res.send(senderPublicKey)
   } catch (e) {
@@ -352,16 +367,14 @@ exports.sendMasterKey = async function (req, res) {
   const updateKeyExchangeParams = {
     TableName: setup.keyExchangeTableName,
     Key: {
-      'user-id': userId
+      'user-id': userId,
+      'requester-public-key': requesterPublicKeyArrayBuffer
     },
     UpdateExpression: 'set #encryptedMasterKey = :encryptedMasterKey',
-    ConditionExpression: '#requesterPublicKey = :requesterPublicKey',
     ExpressionAttributeNames: {
-      '#requesterPublicKey': 'requester-public-key',
       '#encryptedMasterKey': 'encrypted-master-key'
     },
     ExpressionAttributeValues: {
-      ':requesterPublicKey': requesterPublicKeyArrayBuffer,
       ':encryptedMasterKey': encryptedMasterKeyArrayBuffer
     },
   }
@@ -392,15 +405,12 @@ exports.receiveMasterKey = async function (req, res) {
   const deleteKeyExchangeParams = {
     TableName: setup.keyExchangeTableName,
     Key: {
-      'user-id': userId
+      'user-id': userId,
+      'requester-public-key': requesterPublicKeyArrayBuffer
     },
-    ConditionExpression: '#requesterPublicKey = :requesterPublicKey and attribute_exists(#encryptedMasterKey)',
+    ConditionExpression: 'attribute_exists(#encryptedMasterKey)',
     ExpressionAttributeNames: {
-      '#requesterPublicKey': 'requester-public-key',
       '#encryptedMasterKey': 'encrypted-master-key'
-    },
-    ExpressionAttributeValues: {
-      ':requesterPublicKey': requesterPublicKeyArrayBuffer,
     },
     ReturnValues: 'ALL_OLD'
   }
