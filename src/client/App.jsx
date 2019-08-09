@@ -11,7 +11,7 @@ const displaySignUpForm = () => window.location.hash.substring(1) === 'sign-up'
 const displayShowKeyForm = () => window.location.hash.substring(1) === 'show-key'
 const displaySaveKeyForm = () => window.location.hash.substring(1) === 'save-key'
 
-class App extends Component {
+export default class App extends Component {
   constructor(props) {
     super(props)
 
@@ -171,5 +171,3 @@ class App extends Component {
     )
   }
 }
-
-export default App

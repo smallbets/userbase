@@ -10,6 +10,7 @@ const itemAlreadyExists = 'Item already exists'
 const itemAlreadyDeleted = 'Item already deleted'
 const dbNotOpen = 'Database not open'
 
+
 class UnverifiedTransaction {
   constructor(startSeqNo) {
     this.startSeqNo = startSeqNo
