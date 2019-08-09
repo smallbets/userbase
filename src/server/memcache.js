@@ -114,7 +114,7 @@ MemCache.prototype.transactionRolledBack = function (transactionWithRollbackComm
   this.transactionLogByUserId[userId].transactionArray[sequenceNo] = transactionWithRollbackCommand
 }
 
-MemCache.prototype.getTransactions = function (userId, startingSeqNo) {
+MemCache.prototype.getTransactions = function (userId, startingSeqNo, inclusive = true) {
   const transactionLog = this.transactionLogByUserId[userId].transactionArray
 
   const result = []
@@ -138,7 +138,16 @@ MemCache.prototype.getTransactions = function (userId, startingSeqNo) {
       }
 
     } else if (transaction && transaction.command !== 'rollback' && !encounteredTransactionPersistingToDdb) {
-      result.push(transaction)
+      if (inclusive || transaction['sequence-no'] > startingSeqNo) {
+        const outputTransaction = {
+          seqNo: transaction['sequence-no'],
+          op: transaction['command'],
+          itemId: transaction['item-id'],
+          record: transaction['record'] ? transaction['record'].toString('base64') : undefined
+        }
+
+        result.push(outputTransaction)
+      }
     }
   }
 

@@ -2,7 +2,7 @@ import React, { Component } from 'react'
 import { func, string } from 'prop-types'
 import userLogic from './logic'
 
-class UserForm extends Component {
+export default class UserForm extends Component {
   constructor(props) {
     super(props)
     this.state = {
@@ -138,5 +138,3 @@ UserForm.propTypes = {
   formType: string,
   placeholderUsername: string
 }
-
-export default UserForm

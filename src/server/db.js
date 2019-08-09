@@ -3,6 +3,7 @@ import setup from './setup'
 import statusCodes from './statusCodes'
 import memcache from './memcache'
 import lock from './lock'
+import connections from './ws'
 import logger from './logger'
 
 const getS3DbStateKey = (userId, bundleSeqNo) => `${userId}/${bundleSeqNo}`
@@ -88,6 +89,10 @@ const putTransaction = async function (transaction) {
 
     throw new Error(`Failed with ${e}.`)
   }
+
+  connections.push(transaction['user-id'])
+
+  return transactionWithSequenceNo['sequence-no']
 }
 
 exports.insert = async function (req, res) {
@@ -115,8 +120,8 @@ exports.insert = async function (req, res) {
       record: buffer
     }
 
-    await putTransaction(transaction)
-    return res.end()
+    const sequenceNo = await putTransaction(transaction)
+    return res.send({ sequenceNo })
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -141,8 +146,8 @@ exports.delete = async function (req, res) {
       command
     }
 
-    await putTransaction(transaction)
-    return res.end()
+    const sequenceNo = await putTransaction(transaction)
+    return res.send({ sequenceNo })
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -176,8 +181,8 @@ exports.update = async function (req, res) {
       record: buffer,
     }
 
-    await putTransaction(transaction)
-    return res.end()
+    const sequenceNo = await putTransaction(transaction)
+    return res.send({ sequenceNo })
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])

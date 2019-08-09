@@ -2,7 +2,7 @@ import React, { Component } from 'react'
 import { func, object } from 'prop-types'
 import dbLogic from './logic'
 
-class EditTodoForm extends Component {
+export default class EditTodoForm extends Component {
   constructor(props) {
     super(props)
     this.state = {
@@ -13,20 +13,35 @@ class EditTodoForm extends Component {
 
     this.handleInputChange = this.handleInputChange.bind(this)
     this.handleSaveTodo = this.handleSaveTodo.bind(this)
+    this.handleDeleteTodo = this.handleDeleteTodo.bind(this)
   }
 
   // hacky fix to prevent last pass error in console: https://github.com/KillerCodeMonkey/ngx-quill/issues/351
   componentDidMount() {
     document.addEventListener('keydown', this.handleHitEnterToSaveTodo, true)
   }
+
   componentWillUnmount() {
     document.removeEventListener('keydown', this.handleHitEnterToSaveTodo, true)
   }
+
   handleHitEnterToSaveTodo(e) {
     const ENTER_KEY_CODE = 13
     if (e.target.name === 'todoInput' &&
       (e.key === 'Enter' || e.keyCode === ENTER_KEY_CODE)) {
       e.stopPropagation()
+    }
+  }
+
+  async handleDeleteTodo(event, todo) {
+    event.preventDefault()
+
+    await this.setState({ error: undefined })
+
+    try {
+      await dbLogic.deleteTodo(todo, this.props.handleRemoveUserAuthentication)
+    } catch (error) {
+      this.setState({ error })
     }
   }
 
@@ -37,7 +52,7 @@ class EditTodoForm extends Component {
   }
 
   async handleSaveTodo(event) {
-    const { todo, handleSetTodos, handleRemoveUserAuthentication, handleToggleEditTodo } = this.props
+    const { todo, handleRemoveUserAuthentication, handleToggleEditTodo } = this.props
     const { todoInput } = this.state
 
     event.preventDefault()
@@ -46,22 +61,18 @@ class EditTodoForm extends Component {
 
     await this.setState({ loading: true, error: undefined })
 
-    const result = await dbLogic.updateTodo(todo, todoInput, handleRemoveUserAuthentication)
-
-    if (result.error) this.setState({ error: result.error, loading: false })
-    else {
-      handleSetTodos(result.todos)
+    try {
+      await dbLogic.updateTodo(todo, todoInput, handleRemoveUserAuthentication)
+      this.setState({ loading: false })
       handleToggleEditTodo(null, todo)
+    } catch (error) {
+      this.setState({ error, loading: false })
     }
   }
 
   render() {
-    const { handleToggleEditTodo, handleDeleteTodo, todo } = this.props
-    const {
-      todoInput,
-      error,
-      loading
-    } = this.state
+    const { handleToggleEditTodo, todo } = this.props
+    const { todoInput, error, loading } = this.state
 
     return (
       <div className="py-1">
@@ -91,7 +102,7 @@ class EditTodoForm extends Component {
           </div>
           <div
             className='fas fa-trash-alt ml-4 pt-1 font-normal text-lg cursor-pointer text-yellow-700'
-            onClick={(e) => handleDeleteTodo(e, todo)}
+            onClick={(e) => this.handleDeleteTodo(e, todo)}
           />
           <div
             className='fas fa-times-circle ml-4 pt-1 font-normal text-lg cursor-pointer text-yellow-700'
@@ -100,9 +111,7 @@ class EditTodoForm extends Component {
         </form>
         }
 
-        {error && (
-          <div className='error'>{error}</div>
-        )}
+        {error && <div className='error'>{error.message}</div>}
       </div>
     )
   }
@@ -111,9 +120,5 @@ class EditTodoForm extends Component {
 EditTodoForm.propTypes = {
   handleRemoveUserAuthentication: func,
   handleToggleEditTodo: func,
-  handleDeleteTodo: func,
-  handleSetTodos: func,
   todo: object
 }
-
-export default EditTodoForm

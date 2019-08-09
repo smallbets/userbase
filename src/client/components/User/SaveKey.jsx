@@ -2,7 +2,7 @@ import React, { PureComponent } from 'react'
 import { string, func } from 'prop-types'
 import userLogic from './logic'
 
-class SaveKey extends PureComponent {
+export default class SaveKey extends PureComponent {
 
   constructor(props) {
     super(props)
@@ -14,7 +14,6 @@ class SaveKey extends PureComponent {
 
     this.handleInputChange = this.handleInputChange.bind(this)
     this.handleSaveKey = this.handleSaveKey.bind(this)
-    this.handleRequestKey = this.handleRequestKey.bind(this)
   }
 
   handleInputChange(event) {
@@ -33,13 +32,6 @@ class SaveKey extends PureComponent {
 
     await userLogic.saveKey(keyString)
     handleSetKeyInState(keyString)
-  }
-
-  async handleRequestKey(event) {
-    event.preventDefault()
-
-    const keyString = await userLogic.requestKey()
-    this.props.handleSetKeyInState(keyString)
   }
 
   render() {
@@ -81,15 +73,7 @@ class SaveKey extends PureComponent {
             </div>
           </div>
           <hr className='border border-t-0 border-gray-400 mt-4 mb-4' />
-          <div className="font-normal mb-4 t-xs xs:text-sm text-gray-800">You received your secret key when you created your account. You can find your key by signing in from a device you used before. Alternatively, simply click the button below then sign in from a device you used before:</div>
-          <div className='text-center mt-6'>
-            <input
-              className='btn w-48'
-              type='submit'
-              value='Request Secret Key'
-              onClick={this.handleRequestKey}
-            />
-          </div>
+          <div className="font-normal mb-4 t-xs xs:text-sm text-gray-800">You received your secret key when you created your account. You can also find your key by signing in from a device you used before.</div>
         </div>
 
       </form>
@@ -101,5 +85,3 @@ SaveKey.propTypes = {
   handleSetKeyInState: func,
   keyString: string
 }
-
-export default SaveKey

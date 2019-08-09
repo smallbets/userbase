@@ -2,7 +2,7 @@ import React, { Component } from 'react'
 import { func } from 'prop-types'
 import dbLogic from './logic'
 
-class AddTodoForm extends Component {
+export default class AddTodoForm extends Component {
   constructor(props) {
     super(props)
     this.state = {
@@ -19,9 +19,11 @@ class AddTodoForm extends Component {
   componentDidMount() {
     document.addEventListener('keydown', this.handleHitEnterToAddTodo, true)
   }
+
   componentWillUnmount() {
     document.removeEventListener('keydown', this.handleHitEnterToAddTodo, true)
   }
+
   handleHitEnterToAddTodo(e) {
     const ENTER_KEY_CODE = 13
     if (e.target.name === 'todoInput' &&
@@ -45,13 +47,11 @@ class AddTodoForm extends Component {
 
     await this.setState({ loading: true, error: undefined })
 
-    const result = await dbLogic.insertTodo(todoInput, this.props.handleRemoveUserAuthentication)
-
-    if (result.error) {
-      this.setState({ error: result.error, loading: false })
-    } else {
-      this.props.handleSetTodos(result.todos)
+    try {
+      await dbLogic.insertTodo(todoInput, this.props.handleRemoveUserAuthentication)
       this.setState({ loading: false, todoInput: '' })
+    } catch (error) {
+      this.setState({ error, loading: false })
     }
   }
 
@@ -87,7 +87,7 @@ class AddTodoForm extends Component {
         </form>
 
         {error && (
-          <div className='error'>{error}</div>
+          <div className='error'>{error.message}</div>
         )}
       </div>
     )
@@ -95,8 +95,5 @@ class AddTodoForm extends Component {
 }
 
 AddTodoForm.propTypes = {
-  handleRemoveUserAuthentication: func,
-  handleSetTodos: func
+  handleRemoveUserAuthentication: func
 }
-
-export default AddTodoForm

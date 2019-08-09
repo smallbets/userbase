@@ -49,17 +49,11 @@ const saveKey = async (key) => {
   await encd.saveKey(key)
 }
 
-const requestKey = async () => {
-  const keyString = await encd.requestMasterKey()
-  return keyString
-}
-
 export default {
   signUp,
   signOut,
   signIn,
   getSession,
   getKey,
-  saveKey,
-  requestKey,
+  saveKey
 }

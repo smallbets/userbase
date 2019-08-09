@@ -3,14 +3,230 @@ import api from './api'
 import Worker from './worker.js'
 import auth from './auth'
 import crypto from './Crypto'
-import stateManager from './stateManager'
-import { appendBuffers } from './Crypto/utils'
-import { getSecondsSinceT0 } from './utils'
+import SortedArray from 'sorted-array'
 
-const wrapInAuthenticationErrorCatcher = async (promise) => {
+const success = 'Success'
+const itemAlreadyExists = 'Item already exists'
+const itemAlreadyDeleted = 'Item already deleted'
+const dbNotOpen = 'Database not open'
+
+class UnverifiedTransaction {
+  constructor(startSeqNo) {
+    this.startSeqNo = startSeqNo
+    this.txSeqNo = null
+    this.transactions = {}
+    this.promiseResolve = null
+    this.promiseReject = null
+    this.index = null
+  }
+
+  getStartSeqNo() {
+    return this.startSeqNo
+  }
+
+  getIndex() {
+    return this.index
+  }
+
+  setIndex(index) {
+    this.index = index
+  }
+
+  async getResult(seqNo) {
+    this.txSeqNo = seqNo
+
+    const promise = new Promise((resolve, reject) => {
+      this.promiseResolve = resolve
+      this.promiseReject = reject
+
+      setTimeout(() => { reject('timeout') }, 5000)
+    })
+
+    this.verifyPromise()
+
+    return promise
+  }
+
+  verifyPromise() {
+    if (!this.txSeqNo && this.txSeqNo != 0) {
+      return
+    }
+
+    if (!this.promiseResolve || !this.promiseReject) {
+      return
+    }
+
+    if (this.transactions[this.txSeqNo]) {
+      if (this.transactions[this.txSeqNo] == 'Success') {
+        this.promiseResolve()
+      } else {
+        this.promiseReject(new Error(this.transactions[this.txSeqNo]))
+      }
+    }
+  }
+
+  addTransaction(transaction, code) {
+    this.transactions[transaction.seqNo] = code
+    this.verifyPromise()
+  }
+}
+
+class Database {
+  constructor() {
+    this.items = {}
+    this.itemsIndex = SortedArray.comparing('seqNo', [])
+    this.unverifiedTransactions = []
+    this.lastSeqNo = -1
+  }
+
+  async applyTransactions(transactions) {
+    const key = await auth.getKeyFromLocalStorage()
+
+    for (let i = 0; i < transactions.length; i++) {
+      const itemId = transactions[i].itemId
+      const seqNo = transactions[i].seqNo
+      const command = transactions[i].op
+      const record = transactions[i].record ?
+        await crypto.aesGcm.decryptJson(key, Uint8Array.from(atob(transactions[i].record), c => c.charCodeAt(0))) :
+        undefined
+
+      this.lastSeqNo = seqNo
+
+      let transactionCode = null
+
+      switch (command) {
+        case 'Insert':
+          if (this.items[itemId]) {
+            transactionCode = itemAlreadyExists
+            break
+          }
+          this.items[itemId] = { seqNo, record }
+          this.itemsIndex.insert({ seqNo, itemId })
+          transactionCode = success
+          break
+
+        case 'Update':
+          if (!this.items[itemId]) {
+            transactionCode = itemAlreadyDeleted
+            break
+          }
+          this.items[itemId].record = record
+          transactionCode = success
+          break
+
+
+        case 'Delete':
+          if (!this.items[itemId]) {
+            transactionCode = itemAlreadyDeleted
+            break
+          }
+          this.itemsIndex.remove(this.items[itemId])
+          delete this.items[itemId]
+          transactionCode = success
+          break
+      }
+
+      for (let j = 0; j < this.unverifiedTransactions.length; j++) {
+        if (!this.unverifiedTransactions[j] || seqNo < this.unverifiedTransactions[j].getStartSeqNo()) {
+          continue
+        }
+        this.unverifiedTransactions[j].addTransaction(transactions[i], transactionCode)
+      }
+    }
+  }
+
+  registerUnverifiedTransaction() {
+    const unverifiedTransaction = new UnverifiedTransaction(this.lastSeqNo)
+    const i = this.unverifiedTransactions.push(unverifiedTransaction)
+    unverifiedTransaction.setIndex(i)
+    return unverifiedTransaction
+  }
+
+  unregisterUnverifiedTransaction(pendingTransaction) {
+    delete this.unverifiedTransactions[pendingTransaction.getIndex()]
+  }
+
+  getItems() {
+    const result = []
+    for (let i = 0; i < this.itemsIndex.array.length; i++) {
+      const itemId = this.itemsIndex.array[i].itemId
+      const record = this.items[itemId].record
+      result.push({ itemId, record })
+    }
+    return result
+  }
+}
+
+const state = {}
+
+const init = async (onDbChangeHandler, onFirstResponse) => {
+  state.database = new Database()
+  state.key = await auth.getKeyFromLocalStorage()
+  state.init = true
+
+  const url = ((window.location.protocol === 'https:') ?
+    'wss://' : 'ws://') + window.location.host + '/api'
+
+  let isFirstMessage = true
+
+  const connectWebSocket = () => {
+    const ws = new WebSocket(url)
+
+    ws.onmessage = async (e) => {
+      const newTransactions = JSON.parse(e.data)
+      await state.database.applyTransactions(newTransactions)
+      onDbChangeHandler(state.database.getItems())
+
+      if (isFirstMessage) {
+        onFirstResponse()
+        isFirstMessage = false
+      }
+    }
+
+    ws.onclose = () => setTimeout(() => { connectWebSocket() }, 1000)
+    ws.onerror = () => ws.close()
+  }
+
+  connectWebSocket()
+}
+
+const insert = async (item) => {
+  if (!state.init) throw new Error(dbNotOpen)
+
+  const encryptedItem = await crypto.aesGcm.encryptJson(state.key, item)
+  const itemId = uuidv4()
+
+  await postTransaction(api.db.insert(itemId, encryptedItem))
+
+  return itemId
+}
+
+const update = async (oldItem, newItem) => {
+  if (!state.init) throw new Error(dbNotOpen)
+
+  const encryptedItem = await crypto.aesGcm.encryptJson(state.key, newItem)
+
+  await postTransaction(api.db.update(oldItem.itemId, encryptedItem))
+}
+
+const delete_ = async (item) => {
+  if (!state.init) throw new Error(dbNotOpen)
+
+  await postTransaction(api.db.delete(item.itemId))
+}
+
+const postTransaction = async (promise) => {
   try {
-    const response = await promise
-    return response
+    const pendingTx = state.database.registerUnverifiedTransaction()
+    const seqNo = await promise
+
+    await pendingTx.getResult(seqNo)
+
+    state.database.unregisterUnverifiedTransaction(pendingTx)
+
+    initializeBundlingProcess(state.key)
+
+    return seqNo
   } catch (e) {
     const unauthorized = e.response && e.response.status === 401
     if (unauthorized) auth.clearAuthenticatedDataFromBrowser()
@@ -18,322 +234,14 @@ const wrapInAuthenticationErrorCatcher = async (promise) => {
   }
 }
 
-/**
-
-    Webworker runs to determine if user's transaction log size
-    is above the limit and bundles it to S3 if so. This is
-    called after every write to the server.
-
- */
 const initializeBundlingProcess = async (key) => {
   const worker = new Worker()
-  if (!key) key = await auth.getKeyFromLocalStorage() // can't read local storage from worker
   worker.postMessage(key)
 }
 
-/**
-
-    Takes an item as input, encrypts the item client-side,
-    then sends the encrypted item to the database for storage.
-
-    Returns the item id, a GUID generated by the client.
-
-    Example call:
-
-      const item = { todo: 'Remember the milk' }
-      const itemId = await db.insert(item)
-
-      console.log(itemId) // '50bf2e6e-9776-441e-8215-08966581fcec'
-
- */
-const insert = async (item) => {
-  const key = await auth.getKeyFromLocalStorage()
-  const encryptedItem = await crypto.aesGcm.encryptJson(key, item)
-
-  const itemId = uuidv4()
-
-  await wrapInAuthenticationErrorCatcher(
-    api.db.insert(itemId, encryptedItem)
-  )
-
-  initializeBundlingProcess(key)
-
-  return itemId
-}
-
-const batchInsert = async (items) => {
-  const key = await auth.getKeyFromLocalStorage()
-  const encryptionPromises = items.map(item => crypto.aesGcm.encryptJson(key, item))
-  const encryptedItems = await Promise.all(encryptionPromises)
-
-  const { buffer, byteLengths } = appendBuffers(encryptedItems)
-
-  const itemsMetadata = items.map((item, i) => ({
-    itemId: uuidv4(),
-    byteLength: byteLengths[i]
-  }))
-
-  await wrapInAuthenticationErrorCatcher(
-    api.db.batchInsert(itemsMetadata, buffer)
-  )
-
-  initializeBundlingProcess(key)
-
-  return itemsMetadata.map(itemMetadata => itemMetadata.itemId)
-}
-
-/**
-
-    Takes the item id and updated item as inputs, encrypts the new
-    item client-side, then sends the encrypted item along
-    with the item id to the database for storage.
-
-    Example call:
-
-      const item = { todo: 'Remember the milk' }
-      const itemId = await db.insert(item)
-
-      item.completed = true
-      await db.update(itemId, item)
-
-      // The item now looks like this:
-      //
-      //    {
-      //      todo: 'Remember the milk',
-      //      completed: true
-      //    }
-      //
-
- */
-const update = async (itemId, item) => {
-  const key = await auth.getKeyFromLocalStorage()
-  const encryptedItem = await crypto.aesGcm.encryptJson(key, item)
-
-  await wrapInAuthenticationErrorCatcher(
-    api.db.update(itemId, encryptedItem)
-  )
-
-  initializeBundlingProcess(key)
-}
-
-const batchUpdate = async (itemIds, items) => {
-  const key = await auth.getKeyFromLocalStorage()
-  const encryptionPromises = items.map(item => crypto.aesGcm.encryptJson(key, item))
-  const encryptedItems = await Promise.all(encryptionPromises)
-
-  const { buffer, byteLengths } = appendBuffers(encryptedItems)
-
-  const updatedItemsMetadata = itemIds.map((itemId, index) => ({
-    itemId,
-    byteLength: byteLengths[index]
-  }))
-
-  await wrapInAuthenticationErrorCatcher(
-    api.db.batchUpdate(updatedItemsMetadata, buffer)
-  )
-
-  initializeBundlingProcess(key)
-}
-
-/**
-
-    Deletes the item associated with the provided id.
-
-    Example call:
-
-      const item = { todo: 'Remember the milk' }
-      const itemId = await db.insert(item)
-
-      await db.delete(itemId)
-
- */
-const deleteFunction = async (itemId) => {
-  await wrapInAuthenticationErrorCatcher(
-    api.db.delete(itemId)
-  )
-
-  initializeBundlingProcess()
-}
-
-const batchDelete = async (itemIds) => {
-  await wrapInAuthenticationErrorCatcher(
-    api.db.batchDelete(itemIds)
-  )
-
-  initializeBundlingProcess()
-}
-
-const setupClientState = async (transactionLog, encryptedDbState) => {
-  const key = await auth.getKeyFromLocalStorage()
-
-  const dbState = encryptedDbState
-    ? await crypto.aesGcm.decryptJson(key, encryptedDbState)
-    : {
-      itemsInOrderOfInsertion: stateManager.getItems(),
-      itemIdsToOrderOfInsertion: stateManager.getItemIdsToIndexes(),
-      maxSequenceNo: stateManager.getMaxSequenceNo()
-    }
-
-  const {
-    itemsInOrderOfInsertion,
-    itemIdsToOrderOfInsertion,
-    maxSequenceNo
-  } = await stateManager.applyTransactionsToDbState(key, dbState, transactionLog)
-
-  stateManager.setState(itemsInOrderOfInsertion, itemIdsToOrderOfInsertion, maxSequenceNo)
-}
-
-const getFilterFunctionThatUsesIterator = (arr) => {
-  return function (cb, thisArg) {
-    const result = []
-    let index = 0
-    cb.bind(thisArg)
-    for (const a of arr) {
-      if (cb(a, index, arr)) result.push(a)
-      index++
-    }
-    return result
-  }
-}
-
-const getMapFunctionThatUsesIterator = (arr) => {
-  return function (cb, thisArg) {
-    const result = []
-    let index = 0
-    cb.bind(thisArg)
-    for (const a of arr) {
-      result.push(cb(a, index, arr))
-      index++
-    }
-    return result
-  }
-}
-
-const getIteratorToSkipDeletedItems = (itemsInOrderOfInsertion) => {
-  return function () {
-    return {
-      current: 0,
-      last: itemsInOrderOfInsertion.length - 1,
-
-      next() {
-        let item = itemsInOrderOfInsertion[this.current]
-        let itemIsDeleted = !item
-
-        while (itemIsDeleted && this.current < this.last) {
-          this.current++
-          item = itemsInOrderOfInsertion[this.current]
-          itemIsDeleted = !item
-        }
-
-        if (this.current < this.last || (this.current === this.last && !itemIsDeleted)) {
-          this.current++
-          return { done: false, value: item }
-        } else {
-          return { done: true }
-        }
-      }
-    }
-  }
-}
-
-const setIteratorsToSkipDeletedItems = (itemsInOrderOfInsertion) => {
-  itemsInOrderOfInsertion[Symbol.iterator] = getIteratorToSkipDeletedItems(itemsInOrderOfInsertion)
-
-  // hacky solution to overwrite some native Array functions. All other native Array functions
-  // remain unaffected
-  itemsInOrderOfInsertion.map = getMapFunctionThatUsesIterator(itemsInOrderOfInsertion)
-  itemsInOrderOfInsertion.filter = getFilterFunctionThatUsesIterator(itemsInOrderOfInsertion)
-}
-
-/**
-
-    Returns the latest state of all items in the db in the order they
-    were originally inserted.
-
-    If an item has been updated, the most recent version of the item
-    is included in the state.
-
-    If an item has been deleted, it's possible that it will still
-    show up in the result as an undefined element.
-
-    For example, after the following sequence of actions:
-
-      const milk = await db.insert({ todo: 'remember the milk' })
-      const orangeJuice = await db.insert({ todo: 'buy orange juice' })
-      await db.insert({ todo: 'create the most useful app of all time' })
-      await db.delete(orangeJuice)
-      await db.update(milk, { todo: milk.record.todo, completed: true })
-
-    The response would look like this:
-
-      [
-        {
-          'item-id: '50bf2e6e-9776-441e-8215-08966581fcec',
-          record: {
-            todo: 'remember the milk',
-            completed: true
-          }
-        },
-        undefined, // the deleted orange juice
-        {
-          'item-id': 'b09cf9c2-86bd-499c-af06-709d5c11f64b',
-          record: {
-            todo: 'create the most useful app of all time'
-          }
-        }
-      ]
-
-  */
-const sync = async () => {
-  const startingSeqNo = stateManager.getMaxSequenceNo() + 1
-
-  // retrieving user's transaction log
-  let t0 = performance.now()
-  const { transactionLog, bundleSeqNo } = await wrapInAuthenticationErrorCatcher(
-    api.db.queryTransactionLog(startingSeqNo)
-  )
-  console.log(`Retrieved user's transaction log in ${getSecondsSinceT0(t0)}s`)
-
-  let encryptedDbState
-  // if server sets bundle-seq-no header, that means the transaction log starts
-  // with transactions with sequence number > bundle-seq-no. Thus the transactions
-  // in the log need to be applied to the db state bundled at bundle-seq-no
-  if (bundleSeqNo) {
-    // retrieving user's encrypted db state
-    t0 = performance.now()
-    encryptedDbState = await wrapInAuthenticationErrorCatcher(
-      api.db.queryEncryptedDbState(bundleSeqNo)
-    )
-    console.log(`Retrieved user's encrypted db state in ${getSecondsSinceT0(t0)}s`)
-  }
-
-  // starting to set up client state
-  t0 = performance.now()
-  await setupClientState(transactionLog, encryptedDbState)
-  console.log(`Set up client side state in ${getSecondsSinceT0(t0)}s`)
-}
-
-/**
-
-    Gets the items in order of insertion from memory. Make sure to call
-    sync() before calling this function to get the latest state.
-
- */
-const getItems = () => {
-  const itemsInOrderOfInsertion = stateManager.getItems()
-
-  setIteratorsToSkipDeletedItems(itemsInOrderOfInsertion)
-
-  return itemsInOrderOfInsertion
-}
-
 export default {
+  init,
   insert,
-  batchInsert,
   update,
-  batchUpdate,
-  'delete': deleteFunction,
-  batchDelete,
-  sync,
-  getItems
+  'delete': delete_
 }

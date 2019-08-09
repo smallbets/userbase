@@ -16,19 +16,6 @@ const insert = async (itemId, encryptedItem) => {
   return response.data.sequenceNo
 }
 
-const batchInsert = async (itemsMetadata, buffer) => {
-  const response = await axios({
-    method: 'POST',
-    url: '/api/db/batch-insert',
-    params: {
-      itemsMetadata
-    },
-    data: buffer,
-    timeout: TIMEOUT
-  })
-  return response.data.sequenceNos
-}
-
 const update = async (itemId, encryptedItem) => {
   const response = await axios({
     method: 'POST',
@@ -42,20 +29,7 @@ const update = async (itemId, encryptedItem) => {
   return response.data.sequenceNo
 }
 
-const batchUpdate = async (updatedItemsMetadata, buffer) => {
-  const response = await axios({
-    method: 'POST',
-    url: '/api/db/batch-update',
-    params: {
-      updatedItemsMetadata
-    },
-    data: buffer,
-    timeout: TIMEOUT
-  })
-  return response.data.sequenceNos
-}
-
-const deleteFunction = async (itemId) => {
+const delete_ = async (itemId) => {
   const response = await axios({
     method: 'POST',
     url: '/api/db/delete',
@@ -65,18 +39,6 @@ const deleteFunction = async (itemId) => {
     timeout: TIMEOUT
   })
   return response.data.sequenceNo
-}
-
-const batchDelete = async (itemIds) => {
-  const response = await axios({
-    method: 'POST',
-    url: '/api/db/batch-delete',
-    data: {
-      itemIds
-    },
-    timeout: TIMEOUT
-  })
-  return response.data.sequenceNos
 }
 
 const queryEncryptedDbState = async (bundleSeqNo) => {
@@ -139,14 +101,11 @@ const bundleTxLog = async (bundleSeqNo, lockId, encryptedDbState) => {
 
 export default {
   insert,
-  batchInsert,
   update,
-  batchUpdate,
-  delete: deleteFunction,
-  batchDelete,
+  delete: delete_,
   queryEncryptedDbState,
   queryTransactionLog,
   acquireLock,
   releaseLock,
-  bundleTxLog,
+  bundleTxLog
 }
