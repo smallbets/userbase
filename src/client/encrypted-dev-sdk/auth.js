@@ -161,15 +161,14 @@ const sendMasterKeyToRequesters = async (rawMasterKey) => {
 }
 
 const receiveRequestedMasterKey = async (username) => {
-  const localStorageKey = `${username}.temp-key-to-request-master-key`
+  const alreadySavedRequest = localStorage.getItem(`${username}.temp-request-for-master-key`)
 
-  const alreadySavedTempKeyString = localStorage.getItem(localStorageKey)
+  if (alreadySavedRequest) {
+    const requestForMasterKey = alreadySavedRequest.split('|')
 
-  if (alreadySavedTempKeyString) {
-    const tempKey = base64.decode(alreadySavedTempKeyString)
-
-    const requesterPublicKey = crypto.diffieHellman.getPublicKey(tempKey)
-    const senderPublicKey = await api.auth.requestMasterKey(requesterPublicKey)
+    const tempKey = base64.decode(requestForMasterKey[0])
+    const requesterPublicKey = base64.decode(requestForMasterKey[1])
+    const senderPublicKey = Buffer.from(base64.decode(requestForMasterKey[2]))
 
     const encryptedMasterKey = await checkIfMasterKeyReceived(requesterPublicKey)
 
@@ -219,40 +218,28 @@ const decryptAndSaveMasterKey = async (username, tempKeyToRequestMasterKey, send
   const masterKey = await crypto.aesGcm.importRawKey(masterRawKey)
 
   await saveKeyToLocalStorage(username, masterKey)
-  localStorage.removeItem(`${username}.temp-key-to-request-master-key`)
+  localStorage.removeItem(`${username}.temp-request-for-master-key`)
   return masterRawKey
-}
-
-const requestMasterKey = async (username, tempKeyToRequestMasterKey) => {
-  const requesterPublicKey = crypto.diffieHellman.getPublicKey(tempKeyToRequestMasterKey)
-  const senderPublicKey = await api.auth.requestMasterKey(requesterPublicKey)
-
-  const encryptedMasterKey = await pollToReceiveMasterKey(requesterPublicKey)
-
-  const masterRawKey = await decryptAndSaveMasterKey(username, tempKeyToRequestMasterKey, senderPublicKey, encryptedMasterKey)
-  return base64.encode(masterRawKey)
-}
-
-const getTempKeyToRequestMasterKey = async (username) => {
-  const localStorageKey = `${username}.temp-key-to-request-master-key`
-
-  // this could be random bytes -- it's not used to encrypt/decrypt anything, only to generate DH
-  const tempKey = await crypto.aesGcm.exportRawKey(await crypto.aesGcm.generateKey())
-
-  const tempKeyString = base64.encode(tempKey)
-  localStorage.setItem(localStorageKey, tempKeyString)
-
-  return tempKey
 }
 
 const registerDevice = async () => {
   const { username, signedIn } = getCurrentSession()
   if (!username || !signedIn) throw new Error('Sign in first!')
 
-  const tempKeyToRequestMasterKey = await getTempKeyToRequestMasterKey(username)
+  // this could be random bytes -- it's not used to encrypt/decrypt anything, only to generate DH
+  const tempKeyToRequestMasterKey = await crypto.aesGcm.exportRawKey(await crypto.aesGcm.generateKey())
+  const requesterPublicKey = crypto.diffieHellman.getPublicKey(tempKeyToRequestMasterKey)
+  const senderPublicKey = await api.auth.requestMasterKey(requesterPublicKey)
 
-  const masterRawKey = await requestMasterKey(username, tempKeyToRequestMasterKey)
-  return masterRawKey
+  const tempRequestForMasterKey = base64.encode(tempKeyToRequestMasterKey)
+    + '|' + base64.encode(requesterPublicKey)
+    + '|' + base64.encode(senderPublicKey)
+  localStorage.setItem(`${username}.temp-request-for-master-key`, tempRequestForMasterKey)
+
+  const encryptedMasterKey = await pollToReceiveMasterKey(requesterPublicKey)
+  const masterRawKey = await decryptAndSaveMasterKey(username, tempKeyToRequestMasterKey, senderPublicKey, encryptedMasterKey)
+
+  return base64.encode(masterRawKey)
 }
 
 export default {

@@ -54,7 +54,7 @@ const requestMasterKey = async (requesterPublicKey) => {
     method: 'POST',
     url: '/api/auth/request-master-key',
     data: {
-      requesterPublicKey
+      requesterPublicKey: Buffer.from(requesterPublicKey)
     },
     responseType: 'arraybuffer',
     timeout: TIMEOUT
@@ -86,7 +86,7 @@ const receiveMasterKey = async (requesterPublicKey) => {
     method: 'POST',
     url: '/api/auth/receive-master-key',
     data: {
-      requesterPublicKey
+      requesterPublicKey: Buffer.from(requesterPublicKey)
     },
     responseType: 'arraybuffer',
     timeout: TIMEOUT
