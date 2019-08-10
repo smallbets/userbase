@@ -1,11 +1,11 @@
+import base64 from 'base64-arraybuffer'
 import { arrayBufferToString, stringToArrayBuffer, appendBuffer } from './utils'
 
 const ALGORITHIM_NAME = 'AES-GCM'
 const BIT_SIZE = 256
 const KEY_IS_EXTRACTABLE = true
 const KEY_WILL_BE_USED_TO = ['encrypt', 'decrypt']
-const JSON_KEY_TYPE = 'jwk' // json web key
-const RAW_KEY_TYPE = 'raw' // raw key
+const RAW_KEY_TYPE = 'raw'
 
 /**
  * NIST recommendation:
@@ -45,26 +45,18 @@ const generateKey = async () => {
 }
 
 const getKeyStringFromKey = async (key) => {
-  const extractedJsonKey = await window.crypto.subtle.exportKey(JSON_KEY_TYPE, key)
-  const keyString = JSON.stringify(extractedJsonKey)
+  const rawKey = await window.crypto.subtle.exportKey(RAW_KEY_TYPE, key)
+  const keyString = base64.encode(rawKey)
   return keyString
 }
 
 const getKeyFromKeyString = async (keyString) => {
-  const jsonKey = JSON.parse(keyString)
-  const key = await windowOrSelfObject().crypto.subtle.importKey(
-    JSON_KEY_TYPE,
-    jsonKey,
-    {
-      name: ALGORITHIM_NAME
-    },
-    KEY_IS_EXTRACTABLE,
-    KEY_WILL_BE_USED_TO
-  )
+  const rawKey = base64.decode(keyString)
+  const key = await getKeyFromRawKey(rawKey)
   return key
 }
 
-const importRawKey = async (rawKey) => {
+const getKeyFromRawKey = async (rawKey) => {
   const key = await windowOrSelfObject().crypto.subtle.importKey(
     RAW_KEY_TYPE,
     rawKey,
@@ -77,7 +69,7 @@ const importRawKey = async (rawKey) => {
   return key
 }
 
-const exportRawKey = async (key) => {
+const getRawKeyFromKey = async (key) => {
   const rawKey = await windowOrSelfObject().crypto.subtle.exportKey(RAW_KEY_TYPE, key)
   return rawKey
 }
@@ -155,8 +147,8 @@ export default {
   generateKey,
   getKeyStringFromKey,
   getKeyFromKeyString,
-  importRawKey,
-  exportRawKey,
+  getRawKeyFromKey,
+  getKeyFromRawKey,
   encrypt,
   encryptJson,
   decrypt,

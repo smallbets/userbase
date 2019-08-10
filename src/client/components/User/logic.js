@@ -41,12 +41,12 @@ const getSession = () => {
 }
 
 const getKey = async () => {
-  const key = await encd.getKey()
+  const key = await encd.getKeyStringFromLocalStorage()
   return key
 }
 
 const saveKey = async (key) => {
-  await encd.saveKey(key)
+  await encd.saveKeyStringToLocalStorage(key)
 }
 
 const requestKey = async () => {

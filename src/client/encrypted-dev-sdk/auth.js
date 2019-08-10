@@ -1,7 +1,7 @@
 import uuidv4 from 'uuid/v4'
+import base64 from 'base64-arraybuffer'
 import api from './api'
 import crypto from './Crypto'
-import base64 from 'base64-arraybuffer'
 import stateManager from './stateManager'
 
 const _setCurrentSession = (username, signedIn) => {
@@ -17,12 +17,21 @@ const getCurrentSession = () => {
   return currentSession
 }
 
+const saveKeyStringToLocalStorage = async (keyString) => {
+  const currentSession = getCurrentSession()
+
+  const rawKey = base64.decode(keyString)
+  await crypto.aesGcm.getKeyFromRawKey(rawKey) // ensures key is valid, would throw if invalid
+
+  localStorage.setItem('key.' + currentSession.username, keyString)
+}
+
 const saveKeyToLocalStorage = async (username, key) => {
   const keyString = await crypto.aesGcm.getKeyStringFromKey(key)
   localStorage.setItem('key.' + username, keyString)
 }
 
-const getKeyFromLocalStorage = async () => {
+const getKeyStringFromLocalStorage = () => {
   const currentSession = getCurrentSession()
   if (!currentSession) {
     return undefined
@@ -30,6 +39,11 @@ const getKeyFromLocalStorage = async () => {
 
   const username = currentSession.username
   const keyString = localStorage.getItem('key.' + username)
+  return keyString
+}
+
+const getKeyFromLocalStorage = async () => {
+  const keyString = getKeyStringFromLocalStorage()
 
   if (!keyString) {
     return undefined
@@ -39,39 +53,13 @@ const getKeyFromLocalStorage = async () => {
   return key
 }
 
-const getRawKey = async () => {
-  const key = await getKeyFromLocalStorage()
-  if (!key) {
-    return undefined
-  }
-  const rawKey = await crypto.aesGcm.exportRawKey(key)
-  return rawKey
-}
-
 const getRawKeyByUsername = async (username) => {
   const keyString = localStorage.getItem('key.' + username)
   if (!keyString) {
     return undefined
   }
-  const key = await crypto.aesGcm.getKeyFromKeyString(keyString)
-  const rawKey = await crypto.aesGcm.exportRawKey(key)
+  const rawKey = base64.decode(keyString)
   return rawKey
-}
-
-const getKey = async () => {
-  const rawKey = await getRawKey()
-  if (!rawKey) {
-    return undefined
-  }
-  const base64Key = base64.encode(rawKey)
-  return base64Key
-}
-
-const saveKey = async (base64Key) => {
-  const rawKey = base64.decode(base64Key)
-  const key = await crypto.aesGcm.importRawKey(rawKey)
-  const currentSession = getCurrentSession()
-  saveKeyToLocalStorage(currentSession.username, key)
 }
 
 const signUp = async (username, password) => {
@@ -79,12 +67,12 @@ const signUp = async (username, password) => {
   const userId = uuidv4()
 
   const aesKey = await crypto.aesGcm.generateKey()
-  const rawAesKey = await crypto.aesGcm.exportRawKey(aesKey)
+  const rawAesKey = await crypto.aesGcm.getRawKeyFromKey(aesKey)
   const { publicKey, sharedSecret } = crypto.diffieHellman.getPublicKeyAndSharedSecretWithServer(rawAesKey)
 
   const [encryptedValidationMessage, sharedKey] = await Promise.all([
     api.auth.signUp(lowerCaseUsername, password, userId, publicKey),
-    crypto.aesGcm.importRawKey(await crypto.sha256.hash(sharedSecret))
+    crypto.aesGcm.getKeyFromRawKey(await crypto.sha256.hash(sharedSecret))
   ])
 
   const validationMessage = await crypto.aesGcm.decrypt(sharedKey, encryptedValidationMessage)
@@ -145,7 +133,7 @@ const sendMasterKeyToRequesters = async (rawMasterKey) => {
     })
     const sharedRawKeys = await Promise.all(sharedRawKeyPromises)
 
-    const sharedKeyPromises = sharedRawKeys.map(rawKey => crypto.aesGcm.importRawKey(rawKey))
+    const sharedKeyPromises = sharedRawKeys.map(rawKey => crypto.aesGcm.getKeyFromRawKey(rawKey))
     const sharedKeys = await Promise.all(sharedKeyPromises)
 
     const encryptedMasterKeyPromises = sharedKeys.map(sharedKey => crypto.aesGcm.encrypt(sharedKey, rawMasterKey))
@@ -195,8 +183,6 @@ const pollToReceiveMasterKey = (requesterPublicKey) => new Promise(res => {
 
   // polls every 5 seconds until received
   const receiveMasterKey = async () => {
-    if (counter === 1) alert('Sign in from a device that has the key to receive the master key!')
-
     console.log(`Check #${counter} to see if master key received yet...`)
 
     const encryptedMasterKey = await checkIfMasterKeyReceived(requesterPublicKey)
@@ -206,16 +192,17 @@ const pollToReceiveMasterKey = (requesterPublicKey) => new Promise(res => {
     setTimeout(receiveMasterKey, SECONDS_MS)
   }
 
+  alert('Sign in from a device that has the key to receive the master key!')
   receiveMasterKey()
 })
 
 const decryptAndSaveMasterKey = async (username, tempKeyToRequestMasterKey, senderPublicKey, encryptedMasterKey) => {
   const sharedSecret = crypto.diffieHellman.getSharedSecret(tempKeyToRequestMasterKey, senderPublicKey)
   const sharedRawKey = await crypto.sha256.hash(sharedSecret)
-  const sharedKey = await crypto.aesGcm.importRawKey(sharedRawKey)
+  const sharedKey = await crypto.aesGcm.getKeyFromRawKey(sharedRawKey)
 
   const masterRawKey = await crypto.aesGcm.decrypt(sharedKey, encryptedMasterKey)
-  const masterKey = await crypto.aesGcm.importRawKey(masterRawKey)
+  const masterKey = await crypto.aesGcm.getKeyFromRawKey(masterRawKey)
 
   await saveKeyToLocalStorage(username, masterKey)
   localStorage.removeItem(`${username}.temp-request-for-master-key`)
@@ -227,7 +214,7 @@ const registerDevice = async () => {
   if (!username || !signedIn) throw new Error('Sign in first!')
 
   // this could be random bytes -- it's not used to encrypt/decrypt anything, only to generate DH
-  const tempKeyToRequestMasterKey = await crypto.aesGcm.exportRawKey(await crypto.aesGcm.generateKey())
+  const tempKeyToRequestMasterKey = await crypto.aesGcm.getRawKeyFromKey(await crypto.aesGcm.generateKey())
   const requesterPublicKey = crypto.diffieHellman.getPublicKey(tempKeyToRequestMasterKey)
   const senderPublicKey = await api.auth.requestMasterKey(requesterPublicKey)
 
@@ -245,8 +232,8 @@ const registerDevice = async () => {
 export default {
   getCurrentSession,
   getKeyFromLocalStorage,
-  getKey,
-  saveKey,
+  getKeyStringFromLocalStorage,
+  saveKeyStringToLocalStorage,
   signUp,
   clearAuthenticatedDataFromBrowser,
   signOut,
