@@ -13,10 +13,10 @@ class Connection {
   push(forceEmpty) {
     const transactionLog = memcache.getTransactions(this.userId, this.lastSeqNo, false)
     if (!transactionLog || transactionLog.length == 0) {
-      forceEmpty && this.socket.send(JSON.stringify([]))
+      forceEmpty && this.socket.send(JSON.stringify({ transactionLog, route: 'transactionLog' }))
       return
     }
-    this.socket.send(JSON.stringify(transactionLog))
+    this.socket.send(JSON.stringify({ transactionLog, route: 'transactionLog' }))
     this.lastSeqNo = transactionLog[transactionLog.length - 1]['seqNo']
   }
 }

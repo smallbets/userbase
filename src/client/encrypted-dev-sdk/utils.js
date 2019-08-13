@@ -38,9 +38,7 @@ export const getSecondsSinceT0 = (t0) => {
 export const readArrayBufferAsString = (arrayBuffer) => {
   return new Promise(resolve => {
     let reader = new FileReader()
-    reader.onload = () => {
-      resolve(reader.result)
-    }
+    reader.onload = () => resolve(reader.result)
     reader.readAsText(new Blob([arrayBuffer]))
   })
 }

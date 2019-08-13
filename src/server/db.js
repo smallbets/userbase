@@ -16,6 +16,16 @@ const FOUR_HUNDRED_KB = 400 * ONE_KB
 
 const BATCH_SIZE_LIMIT = 10 * ONE_MB
 
+const _errorResponse = (status, data) => ({
+  status,
+  data
+})
+
+const _successResponse = (data) => ({
+  status: statusCodes['Success'],
+  data
+})
+
 /**
  * Attempts to rollback a transaction that has not persisted to DDB
  * yet. Does not return anything because the caller does not need to
@@ -95,47 +105,28 @@ const putTransaction = async function (transaction) {
   return transactionWithSequenceNo['sequence-no']
 }
 
-exports.insert = async function (req, res) {
-  const userId = res.locals.user['user-id']
-  const itemId = req.query.itemId
-
-  if (req.readableLength > FOUR_HUNDRED_KB) return res
-    .status(statusCodes['Bad Request'])
-    .send({ readableMessage: 'Encrypted blob is too large' })
-
-  if (!itemId) return res
-    .status(statusCodes['Bad Request'])
-    .send({ readableMessage: 'Missing item id' })
+exports.insert = async function (userId, itemId, item) {
+  if (!itemId) return _errorResponse(statusCodes['Bad Request'], 'Missing item id')
 
   try {
-    // Warning: if the server receives many large simultaneous requests, memory could fill up here.
-    const buffer = req.read()
-
     const command = 'Insert'
 
     const transaction = {
       'user-id': userId,
       'item-id': itemId,
       command,
-      record: buffer
+      record: item
     }
 
     const sequenceNo = await putTransaction(transaction)
-    return res.send({ sequenceNo })
+    return _successResponse({ sequenceNo })
   } catch (e) {
-    return res
-      .status(statusCodes['Internal Server Error'])
-      .send({ err: `Failed to insert with ${e}` })
+    return _errorResponse(statusCodes['Internal Server Error'], `Failed to insert with ${e}`)
   }
 }
 
-exports.delete = async function (req, res) {
-  const userId = res.locals.user['user-id']
-  const itemId = req.body.itemId
-
-  if (!itemId) return res
-    .status(statusCodes['Bad Request'])
-    .send({ readableMessage: `Missing item id` })
+exports.delete = async function (userId, itemId) {
+  if (!itemId) return _errorResponse(statusCodes['Bad Request'], 'Missing item id')
 
   try {
     const command = 'Delete'
@@ -147,46 +138,29 @@ exports.delete = async function (req, res) {
     }
 
     const sequenceNo = await putTransaction(transaction)
-    return res.send({ sequenceNo })
+    return _successResponse({ sequenceNo })
   } catch (e) {
-    return res
-      .status(statusCodes['Internal Server Error'])
-      .send({ err: `Failed to delete with ${e}` })
+    return _errorResponse(statusCodes['Internal Server Error'], `Failed to delete with ${e}`)
   }
 }
 
-exports.update = async function (req, res) {
-  const userId = res.locals.user['user-id']
-  const itemId = req.query.itemId
-
-  if (req.readableLength > FOUR_HUNDRED_KB) return res
-    .status(statusCodes['Bad Request'])
-    .send({ readableMessage: 'Encrypted blob is too large' })
-
-  if (!itemId) return res
-    .status(statusCodes['Bad Request'])
-    .send({ readableMessage: 'Missing item id' })
+exports.update = async function (userId, itemId, item) {
+  if (!itemId) return _errorResponse(statusCodes['Bad Request'], 'Missing item id')
 
   try {
-
-    // Warning: if the server receives many large simultaneous requests, memory could fill up here.
-    const buffer = req.read()
-
     const command = 'Update'
 
     const transaction = {
       'user-id': userId,
       'item-id': itemId,
       command,
-      record: buffer,
+      record: item
     }
 
     const sequenceNo = await putTransaction(transaction)
-    return res.send({ sequenceNo })
+    return _successResponse({ sequenceNo })
   } catch (e) {
-    return res
-      .status(statusCodes['Internal Server Error'])
-      .send({ err: `Failed to update with ${e}` })
+    return _errorResponse(statusCodes['Internal Server Error'], `Failed to update with ${e}`)
   }
 }
 

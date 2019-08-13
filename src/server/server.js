@@ -13,6 +13,11 @@ import auth from './auth'
 import db from './db'
 import connections from './ws'
 
+const ONE_KB = 1024
+
+// DynamoDB single item limit: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html#limits-items
+const FOUR_HUNDRED_KB = 400 * ONE_KB
+
 const app = express()
 const distDir = "./dist"
 const httpsKey = '../keys/key.pem'
@@ -58,6 +63,38 @@ if (process.env.NODE_ENV == 'development') {
 
       ws.on('pong', heartbeat)
       ws.on('close', () => connections.close(conn))
+
+      ws.on('message', async (msg) => {
+        if (msg.length > FOUR_HUNDRED_KB || msg.byteLength > FOUR_HUNDRED_KB) return ws.send('Message is too large')
+
+        const request = JSON.parse(msg)
+
+        const requestId = request.requestId
+        const action = request.action
+
+        let response
+        switch (action) {
+          case 'Insert': {
+            response = await db.insert(userId, request.params.itemId, request.params.encryptedItem)
+            break
+          }
+          case 'Update': {
+            response = await db.update(userId, request.params.itemId, request.params.encryptedItem)
+            break
+          }
+          case 'Delete': {
+            response = await db.delete(userId, request.params.itemId)
+            break
+          }
+        }
+
+        ws.send(JSON.stringify({
+          requestId,
+          response,
+          route: action
+        }))
+
+      })
     })
 
     setInterval(function ping() {
@@ -90,9 +127,6 @@ if (process.env.NODE_ENV == 'development') {
     app.post('/api/auth/send-master-key', auth.authenticateUser, auth.sendMasterKey)
     app.post('/api/auth/receive-master-key', auth.authenticateUser, auth.receiveMasterKey)
 
-    app.post('/api/db/insert', auth.authenticateUser, db.insert)
-    app.post('/api/db/update', auth.authenticateUser, db.update)
-    app.post('/api/db/delete', auth.authenticateUser, db.delete)
     app.get('/api/db/query/tx-log', auth.authenticateUser, db.queryTransactionLog)
     app.get('/api/db/query/db-state', auth.authenticateUser, db.queryDbState)
 

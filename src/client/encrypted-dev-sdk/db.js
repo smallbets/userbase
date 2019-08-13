@@ -1,5 +1,5 @@
 import uuidv4 from 'uuid/v4'
-import api from './api'
+import base64 from 'base64-arraybuffer'
 import Worker from './worker.js'
 import auth from './auth'
 import crypto from './Crypto'
@@ -10,6 +10,54 @@ const itemAlreadyExists = 'Item already exists'
 const itemAlreadyDeleted = 'Item already deleted'
 const dbNotOpen = 'Database not open'
 
+class RequestFailed extends Error {
+  constructor(response, message, ...params) {
+    super(...params)
+
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, RequestFailed)
+    }
+
+    this.name = 'RequestFailed'
+    this.message = message || 'Error'
+    this.response = response
+  }
+}
+
+class Request {
+  constructor(ws, action, params) {
+    this.ws = ws
+    this.action = action
+    this.params = params
+  }
+
+  async send() {
+    // generate a new requestId
+    const requestId = uuidv4()
+
+    // get a promise that is resolved when the WebSocket
+    // receives a response for this requestId — the promise
+    // would time out of x seconds
+    const responseWatcher = this.ws.watch(requestId)
+
+    // send the request on the WebSocket
+    this.ws.send(JSON.stringify({
+      requestId,
+      action: this.action,
+      params: this.params
+    }))
+
+    // wait for the response to arrive
+    try {
+      const response = await responseWatcher
+      return response
+    } catch (e) {
+
+      // process any errors and re-throw them
+      throw new RequestFailed(e)
+    }
+  }
+}
 
 class UnverifiedTransaction {
   constructor(startSeqNo) {
@@ -159,6 +207,8 @@ class Database {
 }
 
 const state = {}
+const requests = {}
+let ws
 
 const init = async (onDbChangeHandler, onFirstResponse) => {
   state.database = new Database()
@@ -171,21 +221,67 @@ const init = async (onDbChangeHandler, onFirstResponse) => {
   let isFirstMessage = true
 
   const connectWebSocket = () => {
-    const ws = new WebSocket(url)
+    ws = new WebSocket(url)
 
     ws.onmessage = async (e) => {
-      const newTransactions = JSON.parse(e.data)
-      await state.database.applyTransactions(newTransactions)
-      onDbChangeHandler(state.database.getItems())
+      const message = JSON.parse(e.data)
 
-      if (isFirstMessage) {
-        onFirstResponse()
-        isFirstMessage = false
+      const route = message.route
+      switch (route) {
+        case 'transactionLog': {
+          const newTransactions = message.transactionLog
+
+          await state.database.applyTransactions(newTransactions)
+          onDbChangeHandler(state.database.getItems())
+
+          if (isFirstMessage) {
+            onFirstResponse()
+            isFirstMessage = false
+          }
+
+          break
+        }
+        case 'Insert':
+        case 'Update':
+        case 'Delete': {
+          const requestId = message.requestId
+
+          if (!requestId) return console.warn('Missing request id')
+
+          const request = requests[requestId]
+          if (!request) return console.warn(`Request ${requestId} no longer exists!`)
+          else if (!request.promiseResolve || !request.promiseReject) return
+
+          const response = message.response
+
+          const successfulResponse = response && response.status === 200
+          if (!successfulResponse) return request.promiseReject(response)
+          else return request.promiseResolve(response)
+        }
+        default: {
+          console.log('Received message from backend:' + message)
+          break
+        }
       }
     }
 
     ws.onclose = () => setTimeout(() => { connectWebSocket() }, 1000)
     ws.onerror = () => ws.close()
+
+    ws.watch = async (requestId) => {
+      requests[requestId] = {}
+
+      const response = await new Promise((resolve, reject) => {
+        requests[requestId].promiseResolve = resolve
+        requests[requestId].promiseReject = reject
+
+        setTimeout(() => { reject(new Error('timeout')) }, 10000)
+      })
+
+      delete requests[requestId]
+
+      return response
+    }
   }
 
   connectWebSocket()
@@ -194,45 +290,50 @@ const init = async (onDbChangeHandler, onFirstResponse) => {
 const insert = async (item) => {
   if (!state.init) throw new Error(dbNotOpen)
 
-  const encryptedItem = await crypto.aesGcm.encryptJson(state.key, item)
+  const encryptedItem = base64.encode(await crypto.aesGcm.encryptJson(state.key, item))
   const itemId = uuidv4()
 
-  await postTransaction(api.db.insert(itemId, encryptedItem))
+  const action = 'Insert'
+  const params = { itemId, encryptedItem }
+  const request = new Request(ws, action, params)
 
-  return itemId
+  await postTransaction(request)
 }
 
 const update = async (oldItem, newItem) => {
   if (!state.init) throw new Error(dbNotOpen)
 
-  const encryptedItem = await crypto.aesGcm.encryptJson(state.key, newItem)
+  const encryptedItem = base64.encode(await crypto.aesGcm.encryptJson(state.key, newItem))
 
-  await postTransaction(api.db.update(oldItem.itemId, encryptedItem))
+  const action = 'Update'
+  const params = { itemId: oldItem.itemId, encryptedItem }
+  const request = new Request(ws, action, params)
+
+  await postTransaction(request)
 }
 
 const delete_ = async (item) => {
   if (!state.init) throw new Error(dbNotOpen)
 
-  await postTransaction(api.db.delete(item.itemId))
+  const action = 'Delete'
+  const params = { itemId: item.itemId }
+  const request = new Request(ws, action, params)
+
+  await postTransaction(request)
 }
 
-const postTransaction = async (promise) => {
-  try {
-    const pendingTx = state.database.registerUnverifiedTransaction()
-    const seqNo = await promise
+const postTransaction = async (request) => {
+  const pendingTx = state.database.registerUnverifiedTransaction()
+  const response = await request.send()
+  const seqNo = response.data.sequenceNo
 
-    await pendingTx.getResult(seqNo)
+  await pendingTx.getResult(seqNo)
 
-    state.database.unregisterUnverifiedTransaction(pendingTx)
+  state.database.unregisterUnverifiedTransaction(pendingTx)
 
-    initializeBundlingProcess(state.key)
+  initializeBundlingProcess(state.key)
 
-    return seqNo
-  } catch (e) {
-    const unauthorized = e.response && e.response.status === 401
-    if (unauthorized) auth.clearAuthenticatedDataFromBrowser()
-    throw e
-  }
+  return seqNo
 }
 
 const initializeBundlingProcess = async (key) => {
