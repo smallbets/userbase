@@ -84,6 +84,8 @@ const signUp = async (username, password) => {
 
   await api.auth.validateKey(validationMessage)
 
+  pollForKeyRequests(lowerCaseUsername)
+
   const signedIn = true
   const session = _setCurrentSession(lowerCaseUsername, signedIn)
   return session
@@ -110,13 +112,29 @@ const signIn = async (username, password) => {
 
   await api.auth.signIn(lowerCaseUsername, password)
 
-  const rawMasterKey = await getRawKeyByUsername(lowerCaseUsername)
-  if (rawMasterKey) await sendMasterKeyToRequesters(rawMasterKey)
-  else await receiveRequestedMasterKey(lowerCaseUsername)
+  pollForKeyRequests(lowerCaseUsername)
 
   const signedIn = true
   const session = _setCurrentSession(lowerCaseUsername, signedIn)
   return session
+}
+
+const pollForKeyRequests = async (lowerCaseUsername) => {
+  const POLL_INTERVAL = 2000
+
+  const poll = async () => {
+    const rawMasterKey = await getRawKeyByUsername(lowerCaseUsername)
+
+    if (rawMasterKey) {
+      await sendMasterKeyToRequesters(rawMasterKey)
+    } else {
+      await receiveRequestedMasterKey(lowerCaseUsername)
+    }
+
+    setTimeout(poll, POLL_INTERVAL)
+  }
+
+  poll()
 }
 
 const sendMasterKeyToRequesters = async (rawMasterKey) => {
@@ -178,21 +196,16 @@ const checkIfMasterKeyReceived = async (requesterPublicKey) => {
 }
 
 const pollToReceiveMasterKey = (requesterPublicKey) => new Promise(res => {
-  let counter = 1
-  const SECONDS_MS = 5000
+  const POLL_INTERVAL = 1000
 
-  // polls every 5 seconds until received
   const receiveMasterKey = async () => {
-    console.log(`Check #${counter} to see if master key received yet...`)
-
     const encryptedMasterKey = await checkIfMasterKeyReceived(requesterPublicKey)
+
     if (encryptedMasterKey) return res(encryptedMasterKey)
 
-    counter += 1
-    setTimeout(receiveMasterKey, SECONDS_MS)
+    setTimeout(receiveMasterKey, POLL_INTERVAL)
   }
 
-  alert('Sign in from a device that has the key to receive the master key!')
   receiveMasterKey()
 })
 
@@ -238,5 +251,5 @@ export default {
   clearAuthenticatedDataFromBrowser,
   signOut,
   signIn,
-  registerDevice,
+  registerDevice
 }
