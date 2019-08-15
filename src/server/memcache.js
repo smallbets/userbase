@@ -141,9 +141,10 @@ MemCache.prototype.getTransactions = function (userId, startingSeqNo, inclusive 
       if (inclusive || transaction['sequence-no'] > startingSeqNo) {
         const outputTransaction = {
           seqNo: transaction['sequence-no'],
-          op: transaction['command'],
+          command: transaction['command'],
           itemId: transaction['item-id'],
-          record: transaction['record'] ? transaction['record'].toString('base64') : undefined
+          record: transaction['record'] ? transaction['record'].toString('base64') : undefined,
+          operations: transaction['operations'] // from batch transaction
         }
 
         result.push(outputTransaction)

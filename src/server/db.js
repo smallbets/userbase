@@ -230,142 +230,46 @@ exports.queryDbState = async function (req, res) {
   }
 }
 
-exports.batchInsert = async function (req, res) {
-  const userId = res.locals.user['user-id']
-  const itemsMetadata = req.query.itemsMetadata
+exports.batch = async function (userId, operations) {
+  if (!operations || !operations.length) return _errorResponse(statusCodes['Bad Request'], 'Missing operations')
 
-  if (req.readableLength > BATCH_SIZE_LIMIT) return res
-    .status(statusCodes['Bad Request'])
-    .send({ readableMessage: `Batch of encrypted records cannot be larger than ${BATCH_SIZE_LIMIT} MB` })
+  const uniqueItemIds = {}
+  const ops = []
+  for (let i = 0; i < operations.length; i++) {
+    const operation = operations[i]
+    const itemId = operation.itemId
+    const command = operation.command
+    const encryptedItem = operation.encryptedItem
 
-  if (!itemsMetadata || itemsMetadata.length === 0) return res
-    .status(statusCodes['Bad Request'])
-    .send({ readableMessage: 'Missing items metadata' })
+    if (!itemId) return _errorResponse(statusCodes['Bad Request'], `Operation ${i} missing item id`)
+    if (!command) return _errorResponse(statusCodes['Bad Request'], `Operation ${i} missing command`)
 
-  try {
-    const insertPromises = itemsMetadata.map((itemMetadataStr, i) => {
-      const itemMetadata = JSON.parse(itemMetadataStr)
+    if (uniqueItemIds[itemId]) return _errorResponse(statusCodes['Bad Request'], 'Only allowed one operation per item')
+    uniqueItemIds[itemId] = true
 
-      const byteLength = itemMetadata.byteLength
-      const itemId = itemMetadata.itemId
+    const result = {
+      'item-id': itemId,
+      command
+    }
 
-      if (!byteLength) return res
-        .status(statusCodes['Bad Request'])
-        .send({ readableMessage: `Item ${i} missing buffer byte length` })
+    if (command === 'Insert' || command === 'Delete') result.record = encryptedItem
 
-      if (byteLength > FOUR_HUNDRED_KB) return res
-        .status(statusCodes['Bad Request'])
-        .send({ readableMessage: `Item ${i} encrypted blob is too large` })
-
-      if (!itemId) return res
-        .status(statusCodes['Bad Request'])
-        .send({ readableMessage: `Item ${i} missing item id` })
-
-      // Warning: if the server receives many large simultaneous requests, memory could fill up here
-      const buffer = req.read(byteLength)
-
-      const transaction = {
-        'user-id': userId,
-        'item-id': itemId,
-        command: 'Insert',
-        record: buffer
-      }
-
-      return putTransaction(transaction)
-    })
-
-    await Promise.all(insertPromises)
-    return res.end()
-  } catch (e) {
-    return res
-      .status(statusCodes['Internal Server Error'])
-      .send({ err: `Failed to batch insert with ${e}` })
+    ops.push(result)
   }
-}
-
-exports.batchUpdate = async function (req, res) {
-  const userId = res.locals.user['user-id']
-  const updatedItemsMetadata = req.query.updatedItemsMetadata
-
-  if (req.readableLength > BATCH_SIZE_LIMIT) return res
-    .status(statusCodes['Bad Request'])
-    .send({ readableMessage: `Batch of encrypted records cannot be larger than ${BATCH_SIZE_LIMIT} MB` })
-
-  if (!updatedItemsMetadata || updatedItemsMetadata.length === 0) return res
-    .status(statusCodes['Bad Request'])
-    .send({ readableMessage: 'Missing metadata for updated records' })
 
   try {
-    const updatePromises = updatedItemsMetadata.map((updatedItemsMetadataStr, i) => {
-      const updatedItemMetadata = JSON.parse(updatedItemsMetadataStr)
+    const command = 'Batch'
 
-      const byteLength = updatedItemMetadata.byteLength
-      const itemId = updatedItemMetadata['itemId']
+    const transaction = {
+      'user-id': userId,
+      command,
+      operations: ops
+    }
 
-      if (!byteLength) return res
-        .status(statusCodes['Bad Request'])
-        .send({ readableMessage: `Item ${i} missing buffer byte length` })
-
-      if (byteLength > FOUR_HUNDRED_KB) return res
-        .status(statusCodes['Bad Request'])
-        .send({ readableMessage: `Item ${i} encrypted blob is too large` })
-
-      if (!itemId) return res
-        .status(statusCodes['Bad Request'])
-        .send({ readableMessage: `Item ${i} missing item id` })
-
-      // Warning: if the server receives many large simultaneous requests, memory could fill up here
-      const buffer = req.read(byteLength)
-
-      const transaction = {
-        'user-id': userId,
-        'item-id': itemId,
-        command: 'Update',
-        record: buffer,
-      }
-
-      return putTransaction(transaction)
-    })
-
-    await Promise.all(updatePromises)
-    return res.end()
+    const sequenceNo = await putTransaction(transaction)
+    return _successResponse({ sequenceNo })
   } catch (e) {
-    return res
-      .status(statusCodes['Internal Server Error'])
-      .send({ err: `Failed to batch update with ${e}` })
-  }
-}
-
-exports.batchDelete = async function (req, res) {
-  const itemIds = req.body.itemIds
-  const userId = res.locals.user['user-id']
-
-  if (!itemIds || itemIds.length === 0) return res
-    .status(statusCodes['Bad Request'])
-    .send({ readableMessage: 'Missing item ids to delete' })
-
-  const MAX_DELETIONS = 100
-  if (itemIds.length > MAX_DELETIONS) return res
-    .status(statusCodes['Bad Request'])
-    .send({ readableMessage: `Cannot exceed ${MAX_DELETIONS} deletes` })
-
-  try {
-    const deletePromises = itemIds.map(itemId => {
-      const transaction = {
-        'user-id': userId,
-        'item-id': itemId,
-        command: 'Delete',
-      }
-
-      return putTransaction(transaction)
-    })
-
-    await Promise.all(deletePromises)
-    return res.end()
-  } catch (e) {
-    return res
-      .status(statusCodes['Internal Server Error'])
-      .send({ err: `Failed to batch delete with ${e}` })
+    return _errorResponse(statusCodes['Internal Server Error'], `Failed to batch with ${e}`)
   }
 }
 

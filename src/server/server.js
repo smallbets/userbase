@@ -65,34 +65,46 @@ if (process.env.NODE_ENV == 'development') {
       ws.on('close', () => connections.close(conn))
 
       ws.on('message', async (msg) => {
-        if (msg.length > FOUR_HUNDRED_KB || msg.byteLength > FOUR_HUNDRED_KB) return ws.send('Message is too large')
+        try {
+          if (msg.length > FOUR_HUNDRED_KB || msg.byteLength > FOUR_HUNDRED_KB) return ws.send('Message is too large')
 
-        const request = JSON.parse(msg)
+          const request = JSON.parse(msg)
 
-        const requestId = request.requestId
-        const action = request.action
+          const requestId = request.requestId
+          const action = request.action
 
-        let response
-        switch (action) {
-          case 'Insert': {
-            response = await db.insert(userId, request.params.itemId, request.params.encryptedItem)
-            break
+          let response
+          switch (action) {
+            case 'Insert': {
+              response = await db.insert(userId, request.params.itemId, request.params.encryptedItem)
+              break
+            }
+            case 'Update': {
+              response = await db.update(userId, request.params.itemId, request.params.encryptedItem)
+              break
+            }
+            case 'Delete': {
+              response = await db.delete(userId, request.params.itemId)
+              break
+            }
+            case 'Batch': {
+              response = await db.batch(userId, request.params.operations)
+              break
+            }
+            default: {
+              return ws.send(`Received unkown action ${action}`)
+            }
           }
-          case 'Update': {
-            response = await db.update(userId, request.params.itemId, request.params.encryptedItem)
-            break
-          }
-          case 'Delete': {
-            response = await db.delete(userId, request.params.itemId)
-            break
-          }
+
+          ws.send(JSON.stringify({
+            requestId,
+            response,
+            route: action
+          }))
+
+        } catch (e) {
+          logger.error(`Error ${e.name}: ${e.message} in Websocket handling the following message from user ${userId}: ${msg}`)
         }
-
-        ws.send(JSON.stringify({
-          requestId,
-          response,
-          route: action
-        }))
 
       })
     })
@@ -129,10 +141,6 @@ if (process.env.NODE_ENV == 'development') {
 
     app.get('/api/db/query/tx-log', auth.authenticateUser, db.queryTransactionLog)
     app.get('/api/db/query/db-state', auth.authenticateUser, db.queryDbState)
-
-    app.post('/api/db/batch-insert', auth.authenticateUser, db.batchInsert)
-    app.post('/api/db/batch-update', auth.authenticateUser, db.batchUpdate)
-    app.post('/api/db/batch-delete', auth.authenticateUser, db.batchDelete)
 
     app.post('/api/db/acq-bundle-tx-log-lock', auth.authenticateUser, db.acquireBundleTransactionLogLock)
     app.post('/api/db/rel-bundle-tx-log-lock', auth.authenticateUser, db.releaseBundleTransactionLogLock)

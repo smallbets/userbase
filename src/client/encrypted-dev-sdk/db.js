@@ -123,7 +123,18 @@ class UnverifiedTransaction {
 class Database {
   constructor() {
     this.items = {}
-    this.itemsIndex = SortedArray.comparing('seqNo', [])
+
+    const compareItems = (a, b) => {
+      if (a.seqNo < b.seqNo || (a.seqNo === b.seqNo && a.indexInBatch < b.indexInBatch)) {
+        return -1
+      }
+      if (a.seqNo > b.seqNo || (a.seqNo === b.seqNo && a.indexInBatch > b.indexInBatch)) {
+        return 1
+      }
+      return 0
+    }
+
+    this.itemsIndex = new SortedArray([], compareItems)
     this.unverifiedTransactions = []
     this.lastSeqNo = -1
   }
@@ -132,48 +143,10 @@ class Database {
     const key = await auth.getKeyFromLocalStorage()
 
     for (let i = 0; i < transactions.length; i++) {
-      const itemId = transactions[i].itemId
-      const seqNo = transactions[i].seqNo
-      const command = transactions[i].op
-      const record = transactions[i].record ?
-        await crypto.aesGcm.decryptJson(key, Uint8Array.from(atob(transactions[i].record), c => c.charCodeAt(0))) :
-        undefined
+      const transaction = transactions[i]
+      const seqNo = transaction.seqNo
 
-      this.lastSeqNo = seqNo
-
-      let transactionCode = null
-
-      switch (command) {
-        case 'Insert':
-          if (this.items[itemId]) {
-            transactionCode = itemAlreadyExists
-            break
-          }
-          this.items[itemId] = { seqNo, record }
-          this.itemsIndex.insert({ seqNo, itemId })
-          transactionCode = success
-          break
-
-        case 'Update':
-          if (!this.items[itemId]) {
-            transactionCode = itemAlreadyDeleted
-            break
-          }
-          this.items[itemId].record = record
-          transactionCode = success
-          break
-
-
-        case 'Delete':
-          if (!this.items[itemId]) {
-            transactionCode = itemAlreadyDeleted
-            break
-          }
-          this.itemsIndex.remove(this.items[itemId])
-          delete this.items[itemId]
-          transactionCode = success
-          break
-      }
+      const transactionCode = await this.applyTransaction(key, transaction)
 
       for (let j = 0; j < this.unverifiedTransactions.length; j++) {
         if (!this.unverifiedTransactions[j] || seqNo < this.unverifiedTransactions[j].getStartSeqNo()) {
@@ -182,6 +155,102 @@ class Database {
         this.unverifiedTransactions[j].addTransaction(transactions[i], transactionCode)
       }
     }
+  }
+
+  async applyTransaction(key, transaction) {
+    const itemId = transaction.itemId
+
+    const seqNo = transaction.seqNo
+    const command = transaction.command
+
+    this.lastSeqNo = seqNo
+
+    switch (command) {
+      case 'Insert': {
+        const transactionCode = await this.applyInsert(itemId, seqNo, key, transaction.record)
+        return transactionCode
+      }
+
+      case 'Update': {
+        const transactionCode = await this.applyUpdate(itemId, key, transaction.record)
+        return transactionCode
+      }
+
+      case 'Delete':
+        return this.applyDelete(itemId)
+
+      case 'Batch': {
+        const transactionCode = await this.applyBatch(key, seqNo, transaction.operations)
+        return transactionCode
+      }
+    }
+  }
+
+  async applyInsert(itemId, seqNo, key, record, indexInBatch) {
+    if (this.items[itemId]) {
+      return itemAlreadyExists
+    }
+    this.items[itemId] = {
+      seqNo,
+      indexInBatch,
+      record: await crypto.aesGcm.decryptJson(key, base64.decode(record))
+    }
+    this.itemsIndex.insert({ seqNo, indexInBatch, itemId })
+    return success
+  }
+
+  async applyUpdate(itemId, key, record) {
+    if (!this.items[itemId]) {
+      return itemAlreadyDeleted
+    }
+    this.items[itemId].record = await crypto.aesGcm.decryptJson(key, base64.decode(record))
+    return success
+  }
+
+  applyDelete(itemId) {
+    if (!this.items[itemId]) {
+      return itemAlreadyDeleted
+    }
+    this.itemsIndex.remove(this.items[itemId])
+    delete this.items[itemId]
+    return success
+  }
+
+  async applyBatch(key, seqNo, batch) {
+
+    // determine if batch safe to insert
+    for (let i = 0; i < batch.length; i++) {
+      const operation = batch[i]
+
+      const itemId = operation['item-id']
+      switch (operation.command) {
+        case 'Insert':
+          if (this.items[itemId]) return itemAlreadyExists
+          break
+
+        case 'Update':
+        case 'Delete':
+          if (!this.items[itemId]) return itemAlreadyDeleted
+          break
+      }
+    }
+
+    const insertBatchPromises = batch.map((operation, i) => {
+      const itemId = operation['item-id']
+      switch (operation.command) {
+        case 'Insert':
+          return this.applyInsert(itemId, seqNo, key, operation.record, i)
+
+        case 'Update':
+          return this.applyUpdate(itemId, key, operation.record)
+
+        case 'Delete':
+          return this.applyDelete(itemId)
+      }
+    })
+    await Promise.all(insertBatchPromises)
+
+    return success
   }
 
   registerUnverifiedTransaction() {
@@ -241,9 +310,11 @@ const init = async (onDbChangeHandler, onFirstResponse) => {
 
           break
         }
+
         case 'Insert':
         case 'Update':
-        case 'Delete': {
+        case 'Delete':
+        case 'Batch': {
           const requestId = message.requestId
 
           if (!requestId) return console.warn('Missing request id')
@@ -258,6 +329,7 @@ const init = async (onDbChangeHandler, onFirstResponse) => {
           if (!successfulResponse) return request.promiseReject(response)
           else return request.promiseResolve(response)
         }
+
         default: {
           console.log('Received message from backend:' + message)
           break
@@ -290,33 +362,111 @@ const init = async (onDbChangeHandler, onFirstResponse) => {
 const insert = async (item) => {
   if (!state.init) throw new Error(dbNotOpen)
 
-  const encryptedItem = base64.encode(await crypto.aesGcm.encryptJson(state.key, item))
-  const itemId = uuidv4()
-
   const action = 'Insert'
-  const params = { itemId, encryptedItem }
+  const params = await _buildInsertParams(item)
   const request = new Request(ws, action, params)
 
   await postTransaction(request)
 }
 
-const update = async (oldItem, newItem) => {
+const _buildInsertParams = async (item) => {
+  if (!item) throw new Error('Insert missing item')
+
+  const itemId = uuidv4()
+  const encryptedItem = base64.encode(await crypto.aesGcm.encryptJson(state.key, item))
+  return { itemId, encryptedItem }
+}
+
+const update = async (id, item) => {
   if (!state.init) throw new Error(dbNotOpen)
 
-  const encryptedItem = base64.encode(await crypto.aesGcm.encryptJson(state.key, newItem))
-
   const action = 'Update'
-  const params = { itemId: oldItem.itemId, encryptedItem }
+  const params = await _buildUpdateParams(id, item)
   const request = new Request(ws, action, params)
 
   await postTransaction(request)
 }
 
-const delete_ = async (item) => {
+const _buildUpdateParams = async (id, item) => {
+  if (!id) throw new Error('Update missing id')
+  if (!item) throw new Error('Update missing item')
+
+  const encryptedItem = base64.encode(await crypto.aesGcm.encryptJson(state.key, item))
+  return { itemId: id, encryptedItem }
+}
+
+const delete_ = async (id) => {
   if (!state.init) throw new Error(dbNotOpen)
 
   const action = 'Delete'
-  const params = { itemId: item.itemId }
+  const params = _buildDeleteParams(id)
+  const request = new Request(ws, action, params)
+
+  await postTransaction(request)
+}
+
+const _buildDeleteParams = (id) => {
+  if (!id) throw new Error('Delete missing id')
+  return { itemId: id }
+}
+
+const batch = async (operations) => {
+  if (!state.init) throw new Error(dbNotOpen)
+
+  const action = 'Batch'
+
+  const insertAndUpdatePromises = []
+  const params = {
+    operations: operations.map(operation => {
+      const command = operation.command
+
+      switch (command) {
+        case 'Insert': {
+          const item = operation.item
+
+          return {
+            command,
+            promiseIndex: insertAndUpdatePromises.push(_buildInsertParams(item)) - 1,
+          }
+        }
+
+        case 'Update': {
+          const id = operation.id
+          const item = operation.item
+
+          return {
+            command,
+            promiseIndex: insertAndUpdatePromises.push(_buildUpdateParams(id, item)) - 1,
+          }
+        }
+
+        case 'Delete': {
+          const id = operation.id
+
+          return {
+            command,
+            ..._buildDeleteParams(id)
+          }
+        }
+
+        default: throw new Error('Unknown command')
+      }
+    })
+  }
+
+  const insertsAndUpdates = await Promise.all(insertAndUpdatePromises)
+
+  params.operations = params.operations.map(operation => {
+    if (typeof operation.promiseIndex === 'number') {
+      return {
+        command: operation.command,
+        ...insertsAndUpdates[operation.promiseIndex]
+      }
+    } else {
+      return operation
+    }
+  })
+
   const request = new Request(ws, action, params)
 
   await postTransaction(request)
@@ -345,5 +495,6 @@ export default {
   init,
   insert,
   update,
-  'delete': delete_
+  'delete': delete_,
+  batch
 }
