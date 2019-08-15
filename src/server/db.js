@@ -252,7 +252,7 @@ exports.batch = async function (userId, operations) {
       command
     }
 
-    if (command === 'Insert' || command === 'Delete') result.record = encryptedItem
+    if (command === 'Insert' || command === 'Update') result.record = encryptedItem
 
     ops.push(result)
   }
