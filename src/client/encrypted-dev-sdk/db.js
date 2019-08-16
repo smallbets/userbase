@@ -8,6 +8,7 @@ import SortedArray from 'sorted-array'
 const success = 'Success'
 const itemAlreadyExists = 'Item already exists'
 const itemAlreadyDeleted = 'Item already deleted'
+const versionConflict = 'Version conflict'
 const dbNotOpen = 'Database not open'
 
 class RequestFailed extends Error {
@@ -198,7 +199,8 @@ class Database {
 
     this.items[itemId] = {
       ...item,
-      record: await crypto.aesGcm.decryptJson(key, base64.decode(record))
+      record: await crypto.aesGcm.decryptJson(key, base64.decode(record)),
+      __v: 0
     }
     this.itemsIndex.insert({ ...item, itemId })
     return success
@@ -208,7 +210,19 @@ class Database {
     if (!this.items[itemId]) {
       return itemAlreadyDeleted
     }
-    this.items[itemId].record = await crypto.aesGcm.decryptJson(key, base64.decode(record))
+
+    const decryptedRecord = await crypto.aesGcm.decryptJson(key, base64.decode(record))
+
+    const currentVersion = this.getItemVersionNumber(itemId)
+    if (decryptedRecord.__v !== currentVersion + 1) {
+      return versionConflict
+    }
+
+    const updatedRecord = { ...decryptedRecord }
+    delete updatedRecord.__v
+
+    this.items[itemId].record = updatedRecord
+    this.items[itemId].__v = currentVersion + 1
     return success
   }
 
@@ -278,6 +292,10 @@ class Database {
       result.push({ itemId, record })
     }
     return result
+  }
+
+  getItemVersionNumber(itemId) {
+    return this.items[itemId].__v
   }
 }
 
@@ -377,9 +395,10 @@ const insert = async (item, id) => {
 
 const _buildInsertParams = async (item, id) => {
   if (!item) throw new Error('Insert missing item')
+  if (item.hasOwnProperty('__v')) throw new Error(`Property '__v' is reserved for the version number`)
 
   const [itemId, encryptedItem] = await Promise.all([
-    await base64.encode(await crypto.aesGcm.encryptJson(state.key, id || uuidv4())),
+    base64.encode(await crypto.aesGcm.encryptJson(state.key, id || uuidv4())),
     base64.encode(await crypto.aesGcm.encryptJson(state.key, item))
   ])
 
@@ -399,10 +418,13 @@ const update = async (id, item) => {
 const _buildUpdateParams = async (id, item) => {
   if (!id) throw new Error('Update missing id')
   if (!item) throw new Error('Update missing item')
+  if (item.hasOwnProperty('__v')) throw new Error(`Property '__v' is reserved for the version number`)
+
+  const currentVersion = state.database.getItemVersionNumber(id)
 
   const [itemId, encryptedItem] = await Promise.all([
-    await base64.encode(await crypto.aesGcm.encryptJson(state.key, id)),
-    base64.encode(await crypto.aesGcm.encryptJson(state.key, item))
+    base64.encode(await crypto.aesGcm.encryptJson(state.key, id)),
+    base64.encode(await crypto.aesGcm.encryptJson(state.key, { ...item, __v: currentVersion + 1 }))
   ])
 
   return { itemId, encryptedItem }
@@ -421,7 +443,7 @@ const delete_ = async (id) => {
 const _buildDeleteParams = async (id) => {
   if (!id) throw new Error('Delete missing id')
 
-  const itemId = await base64.encode(await crypto.aesGcm.encryptJson(state.key, id))
+  const itemId = base64.encode(await crypto.aesGcm.encryptJson(state.key, id))
 
   return { itemId }
 }
