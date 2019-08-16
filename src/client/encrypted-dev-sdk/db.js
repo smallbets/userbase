@@ -192,12 +192,15 @@ class Database {
     if (this.items[itemId]) {
       return itemAlreadyExists
     }
+
+    const item = { seqNo }
+    if (typeof indexInBatch === 'number') item.indexInBatch = indexInBatch
+
     this.items[itemId] = {
-      seqNo,
-      indexInBatch,
+      ...item,
       record: await crypto.aesGcm.decryptJson(key, base64.decode(record))
     }
-    this.itemsIndex.insert({ seqNo, indexInBatch, itemId })
+    this.itemsIndex.insert({ ...item, itemId })
     return success
   }
 
