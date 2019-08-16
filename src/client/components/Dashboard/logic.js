@@ -13,7 +13,7 @@ const _errorHandler = (e, operation, handleRemoveUserAuthentication) => {
   const timeout = e.response && e.response.status === 504 || e.message.includes('timeout')
   if (timeout) throw new Error('Something went wrong, please try again!')
 
-  throw new Error((e.response && e.response.data.readableMessage) || e.message)
+  throw new Error((e.response && e.response.data) || e.message)
 }
 
 const insertTodo = async (todo, handleRemoveUserAuthentication) => {
@@ -26,7 +26,7 @@ const insertTodo = async (todo, handleRemoveUserAuthentication) => {
 
 const deleteTodo = async (todo, handleRemoveUserAuthentication) => {
   try {
-    await encd.db.delete(todo)
+    await encd.db.delete(todo.itemId)
   } catch (e) {
     _errorHandler(e, 'delete todos', handleRemoveUserAuthentication)
   }
@@ -35,7 +35,7 @@ const deleteTodo = async (todo, handleRemoveUserAuthentication) => {
 const toggleTodo = async (todo, handleRemoveUserAuthentication) => {
   try {
     const markingComplete = !todo.record.completed
-    await encd.db.update(todo, { todo: todo.record.todo, completed: markingComplete })
+    await encd.db.update(todo.itemId, { todo: todo.record.todo, completed: markingComplete })
   } catch (e) {
     _errorHandler(e, 'toggle todos', handleRemoveUserAuthentication)
   }
@@ -43,7 +43,7 @@ const toggleTodo = async (todo, handleRemoveUserAuthentication) => {
 
 const updateTodo = async (todo, newTodoInput, handleRemoveUserAuthentication) => {
   try {
-    await encd.db.update(todo, { todo: newTodoInput, completed: todo.record.completed })
+    await encd.db.update(todo.itemId, { todo: newTodoInput, completed: todo.record.completed })
   } catch (e) {
     _errorHandler(e, 'update todo', handleRemoveUserAuthentication)
   }

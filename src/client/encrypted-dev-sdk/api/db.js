@@ -1,46 +1,5 @@
 import axios from 'axios'
 
-const TEN_SECONDS_MS = 10 * 1000
-const TIMEOUT = TEN_SECONDS_MS
-
-const insert = async (itemId, encryptedItem) => {
-  const response = await axios({
-    method: 'POST',
-    url: '/api/db/insert',
-    params: {
-      itemId
-    },
-    data: encryptedItem,
-    timeout: TIMEOUT
-  })
-  return response.data.sequenceNo
-}
-
-const update = async (itemId, encryptedItem) => {
-  const response = await axios({
-    method: 'POST',
-    url: '/api/db/update',
-    params: {
-      itemId
-    },
-    data: encryptedItem,
-    timeout: TIMEOUT
-  })
-  return response.data.sequenceNo
-}
-
-const delete_ = async (itemId) => {
-  const response = await axios({
-    method: 'POST',
-    url: '/api/db/delete',
-    data: {
-      itemId
-    },
-    timeout: TIMEOUT
-  })
-  return response.data.sequenceNo
-}
-
 const queryEncryptedDbState = async (bundleSeqNo) => {
   const encryptedDbStateResponse = await axios({
     method: 'GET',
@@ -100,9 +59,6 @@ const bundleTxLog = async (bundleSeqNo, lockId, encryptedDbState) => {
 }
 
 export default {
-  insert,
-  update,
-  delete: delete_,
   queryEncryptedDbState,
   queryTransactionLog,
   acquireLock,
