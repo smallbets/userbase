@@ -12,7 +12,7 @@
     "stop": "node ./node_modules/forever/bin/forever stopall",
     "watch:client": "webpack-dev-server --mode development --config webpack.config.js",
     "watch:perftest": "webpack-dev-server --mode development --run perftest --config webpack.config.js",
-    "watch:server": "NODE_ENV=development nodemon --exec babel-node ./src/server/server.js -r ./src/server/config.js | pino-pretty",
+    "watch:server": "NODE_ENV=development nodemon --exec babel-node ./src/server/server.js | pino-pretty",
     "deploy:infra": "./deploy/deploy-infra.sh"
   },
   "repository": "https://github.com/dvassallo/encrypted.dev",

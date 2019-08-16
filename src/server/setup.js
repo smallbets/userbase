@@ -42,6 +42,7 @@ exports.init = async function () {
 
   await setupDdb()
   await setupS3()
+  await setupSM()
 
   logger.info('Eager loading in-memory transaction log cache')
   await memcache.eagerLoad()
@@ -155,4 +156,14 @@ async function createBucket(s3, params) {
   }
 
   await s3.waitFor('bucketExists', { Bucket: params.Bucket, $waiter: { delay: 2, maxAttempts: 60 } }).promise()
+}
+
+async function setupSM() {
+  const sm = new aws.SecretsManager()
+
+  const secret = await sm.getSecretValue({ SecretId: 'env' }).promise()
+
+  for (const [key, value] of Object.entries(JSON.parse(secret.SecretString))) {
+    process.env['sm.' + key] = value
+  }
 }

@@ -9,8 +9,8 @@ let server_dh
 const _getDiffieHellman = () => {
   if (server_dh) return server_dh
   server_dh = crypto.createDiffieHellman(PRIME, GENERATOR)
-  if (!process.env.SECRET_FOR_DIFFIE_HELLMAN) throw new Error('Missing secret for diffie hellman')
-  server_dh.setPrivateKey(process.env.SECRET_FOR_DIFFIE_HELLMAN)
+  if (!process.env['sm.SECRET_FOR_DIFFIE_HELLMAN']) throw new Error('Missing secret for diffie hellman')
+  server_dh.setPrivateKey(process.env['sm.SECRET_FOR_DIFFIE_HELLMAN'])
   server_dh.generateKeys()
   return server_dh
 }
