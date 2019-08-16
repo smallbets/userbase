@@ -8,14 +8,6 @@ import logger from './logger'
 
 const getS3DbStateKey = (userId, bundleSeqNo) => `${userId}/${bundleSeqNo}`
 
-const ONE_KB = 1024
-const ONE_MB = ONE_KB * 1024
-
-// DynamoDB single item limit: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html#limits-items
-const FOUR_HUNDRED_KB = 400 * ONE_KB
-
-const BATCH_SIZE_LIMIT = 10 * ONE_MB
-
 const _errorResponse = (status, data) => ({
   status,
   data
@@ -107,6 +99,7 @@ const putTransaction = async function (transaction) {
 
 exports.insert = async function (userId, itemId, item) {
   if (!itemId) return _errorResponse(statusCodes['Bad Request'], 'Missing item id')
+  if (!item) return _errorResponse(statusCodes['Bad Request'], 'Missing item')
 
   try {
     const command = 'Insert'
@@ -125,8 +118,9 @@ exports.insert = async function (userId, itemId, item) {
   }
 }
 
-exports.delete = async function (userId, itemId) {
+exports.delete = async function (userId, itemId, __v) {
   if (!itemId) return _errorResponse(statusCodes['Bad Request'], 'Missing item id')
+  if (!__v) return _errorResponse(statusCodes['Bad Request'], 'Missing version number')
 
   try {
     const command = 'Delete'
@@ -134,6 +128,7 @@ exports.delete = async function (userId, itemId) {
     const transaction = {
       'user-id': userId,
       'item-id': itemId,
+      __v,
       command
     }
 
@@ -144,8 +139,10 @@ exports.delete = async function (userId, itemId) {
   }
 }
 
-exports.update = async function (userId, itemId, item) {
+exports.update = async function (userId, itemId, item, __v) {
   if (!itemId) return _errorResponse(statusCodes['Bad Request'], 'Missing item id')
+  if (!item) return _errorResponse(statusCodes['Bad Request'], 'Missing item')
+  if (!__v) return _errorResponse(statusCodes['Bad Request'], 'Missing version number')
 
   try {
     const command = 'Update'
@@ -153,6 +150,7 @@ exports.update = async function (userId, itemId, item) {
     const transaction = {
       'user-id': userId,
       'item-id': itemId,
+      __v,
       command,
       record: item
     }
@@ -240,9 +238,16 @@ exports.batch = async function (userId, operations) {
     const itemId = operation.itemId
     const command = operation.command
     const encryptedItem = operation.encryptedItem
+    const __v = operation.__v
 
     if (!itemId) return _errorResponse(statusCodes['Bad Request'], `Operation ${i} missing item id`)
     if (!command) return _errorResponse(statusCodes['Bad Request'], `Operation ${i} missing command`)
+    if ((command === 'Insert' || command === 'Update') && !encryptedItem) {
+      return _errorResponse(statusCodes['Bad Request'], `Operation ${i} missing item`)
+    }
+    if ((command === 'Update' || command === 'Delete') && !__v) {
+      return _errorResponse(statusCodes['Bad Request'], `Operation ${i} missing version`)
+    }
 
     if (uniqueItemIds[itemId]) return _errorResponse(statusCodes['Bad Request'], 'Only allowed one operation per item')
     uniqueItemIds[itemId] = true
@@ -253,6 +258,7 @@ exports.batch = async function (userId, operations) {
     }
 
     if (command === 'Insert' || command === 'Update') result.record = encryptedItem
+    if (command === 'Update' || command === 'Delete') result.__v = __v
 
     ops.push(result)
   }

@@ -80,11 +80,11 @@ if (process.env.NODE_ENV == 'development') {
               break
             }
             case 'Update': {
-              response = await db.update(userId, request.params.itemId, request.params.encryptedItem)
+              response = await db.update(userId, request.params.itemId, request.params.encryptedItem, request.params.__v)
               break
             }
             case 'Delete': {
-              response = await db.delete(userId, request.params.itemId)
+              response = await db.delete(userId, request.params.itemId, request.params.__v)
               break
             }
             case 'Batch': {

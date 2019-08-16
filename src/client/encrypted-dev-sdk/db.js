@@ -89,7 +89,7 @@ class UnverifiedTransaction {
       this.promiseResolve = resolve
       this.promiseReject = reject
 
-      setTimeout(() => { reject('timeout') }, 5000)
+      setTimeout(() => { reject(new Error('timeout')) }, 5000)
     })
 
     this.verifyPromise()
@@ -166,109 +166,170 @@ class Database {
 
     switch (command) {
       case 'Insert': {
-        const itemId = await crypto.aesGcm.decryptJson(key, base64.decode(transaction.itemId))
-        const transactionCode = await this.applyInsert(itemId, seqNo, key, transaction.record)
-        return transactionCode
+        const [itemId, record] = await Promise.all([
+          crypto.aesGcm.decryptJson(key, base64.decode(transaction.itemId)),
+          crypto.aesGcm.decryptJson(key, base64.decode(transaction.record))
+        ])
+
+        try {
+          this.validateInsert(itemId)
+        } catch (transactionCode) {
+          return transactionCode
+        }
+
+        return this.applyInsert(itemId, seqNo, record)
       }
 
       case 'Update': {
-        const itemId = await crypto.aesGcm.decryptJson(key, base64.decode(transaction.itemId))
-        const transactionCode = await this.applyUpdate(itemId, key, transaction.record)
-        return transactionCode
+        const [itemId, record, __v] = await Promise.all([
+          crypto.aesGcm.decryptJson(key, base64.decode(transaction.itemId)),
+          crypto.aesGcm.decryptJson(key, base64.decode(transaction.record)),
+          crypto.aesGcm.decryptJson(key, base64.decode(transaction.__v)),
+        ])
+
+        try {
+          this.validateUpdateOrDelete(itemId, __v)
+        } catch (transactionCode) {
+          return transactionCode
+        }
+
+        return this.applyUpdate(itemId, record, __v)
       }
 
       case 'Delete': {
-        const itemId = await crypto.aesGcm.decryptJson(key, base64.decode(transaction.itemId))
+        const [itemId, __v] = await Promise.all([
+          crypto.aesGcm.decryptJson(key, base64.decode(transaction.itemId)),
+          crypto.aesGcm.decryptJson(key, base64.decode(transaction.__v))
+        ])
+
+        try {
+          this.validateUpdateOrDelete(itemId, __v)
+        } catch (transactionCode) {
+          return transactionCode
+        }
+
         return this.applyDelete(itemId)
       }
 
       case 'Batch': {
-        const transactionCode = await this.applyBatch(key, seqNo, transaction.operations)
-        return transactionCode
+        const batch = transaction.operations
+        const { itemIds, records, __vs } = await this.decryptBatch(key, batch)
+
+        try {
+          this.validateBatch(batch, itemIds, __vs)
+        } catch (transactionCode) {
+          return transactionCode
+        }
+
+        return this.applyBatch(seqNo, batch, itemIds, records, __vs)
       }
     }
   }
 
-  async applyInsert(itemId, seqNo, key, record, indexInBatch) {
+  validateInsert(itemId) {
     if (this.items[itemId]) {
-      return itemAlreadyExists
+      throw itemAlreadyExists
+    }
+  }
+
+  validateUpdateOrDelete(itemId, __v) {
+    if (!this.items[itemId]) {
+      throw itemAlreadyDeleted
     }
 
+    const currentVersion = this.getItemVersionNumber(itemId)
+    if (__v <= currentVersion) {
+      throw versionConflict
+    }
+  }
+
+  applyInsert(itemId, seqNo, record, indexInBatch) {
     const item = { seqNo }
     if (typeof indexInBatch === 'number') item.indexInBatch = indexInBatch
 
     this.items[itemId] = {
       ...item,
-      record: await crypto.aesGcm.decryptJson(key, base64.decode(record)),
+      record,
       __v: 0
     }
     this.itemsIndex.insert({ ...item, itemId })
     return success
   }
 
-  async applyUpdate(itemId, key, record) {
-    if (!this.items[itemId]) {
-      return itemAlreadyDeleted
-    }
-
-    const decryptedRecord = await crypto.aesGcm.decryptJson(key, base64.decode(record))
-
-    const currentVersion = this.getItemVersionNumber(itemId)
-    if (decryptedRecord.__v !== currentVersion + 1) {
-      return versionConflict
-    }
-
-    const updatedRecord = { ...decryptedRecord }
-    delete updatedRecord.__v
-
-    this.items[itemId].record = updatedRecord
-    this.items[itemId].__v = currentVersion + 1
+  applyUpdate(itemId, record, __v) {
+    this.items[itemId].record = record
+    this.items[itemId].__v = __v
     return success
   }
 
   applyDelete(itemId) {
-    if (!this.items[itemId]) {
-      return itemAlreadyDeleted
-    }
     this.itemsIndex.remove(this.items[itemId])
     delete this.items[itemId]
     return success
   }
 
-  async applyBatch(key, seqNo, batch) {
-    const itemIds = await Promise.all(batch.map(operation => crypto.aesGcm.decryptJson(key, base64.decode(operation['item-id']))))
+  async decryptBatch(key, batch) {
+    const itemIdPromises = []
+    const recordPromises = []
+    const __vPromises = []
 
-    // determine if batch safe to insert
+    for (const operation of batch) {
+      itemIdPromises.push(crypto.aesGcm.decryptJson(key, base64.decode(operation['item-id'])))
+      recordPromises.push(operation.record && crypto.aesGcm.decryptJson(key, base64.decode(operation.record)))
+      __vPromises.push(operation.__v && crypto.aesGcm.decryptJson(key, base64.decode(operation.__v)))
+    }
+
+    const [itemIds, records, __vs] = await Promise.all([
+      Promise.all(itemIdPromises),
+      Promise.all(recordPromises),
+      Promise.all(__vPromises)
+    ])
+
+    return { itemIds, records, __vs }
+  }
+
+  validateBatch(batch, itemIds, __vs) {
     for (let i = 0; i < batch.length; i++) {
       const operation = batch[i]
 
       const itemId = itemIds[i]
+      const __v = __vs[i]
+
       switch (operation.command) {
         case 'Insert':
-          if (this.items[itemId]) return itemAlreadyExists
+          this.validateInsert(itemId)
           break
 
         case 'Update':
         case 'Delete':
-          if (!this.items[itemId]) return itemAlreadyDeleted
+          this.validateUpdateOrDelete(itemId, __v)
           break
       }
     }
+  }
 
-    const insertBatchPromises = batch.map((operation, i) => {
+  applyBatch(seqNo, batch, itemIds, records, __vs) {
+    for (let i = 0; i < batch.length; i++) {
+      const operation = batch[i]
+
       const itemId = itemIds[i]
+      const record = records[i]
+      const __v = __vs[i]
+
       switch (operation.command) {
         case 'Insert':
-          return this.applyInsert(itemId, seqNo, key, operation.record, i)
+          this.applyInsert(itemId, seqNo, record, i)
+          break
 
         case 'Update':
-          return this.applyUpdate(itemId, key, operation.record)
+          this.applyUpdate(itemId, record, __v)
+          break
 
         case 'Delete':
-          return this.applyDelete(itemId)
+          this.applyDelete(itemId, __v)
+          break
       }
-    })
-    await Promise.all(insertBatchPromises)
+    }
 
     return success
   }
@@ -395,7 +456,6 @@ const insert = async (item, id) => {
 
 const _buildInsertParams = async (item, id) => {
   if (!item) throw new Error('Insert missing item')
-  if (item.hasOwnProperty('__v')) throw new Error(`Property '__v' is reserved for the version number`)
 
   const [itemId, encryptedItem] = await Promise.all([
     base64.encode(await crypto.aesGcm.encryptJson(state.key, id || uuidv4())),
@@ -418,16 +478,16 @@ const update = async (id, item) => {
 const _buildUpdateParams = async (id, item) => {
   if (!id) throw new Error('Update missing id')
   if (!item) throw new Error('Update missing item')
-  if (item.hasOwnProperty('__v')) throw new Error(`Property '__v' is reserved for the version number`)
 
   const currentVersion = state.database.getItemVersionNumber(id)
 
-  const [itemId, encryptedItem] = await Promise.all([
+  const [itemId, encryptedItem, __v] = await Promise.all([
     base64.encode(await crypto.aesGcm.encryptJson(state.key, id)),
-    base64.encode(await crypto.aesGcm.encryptJson(state.key, { ...item, __v: currentVersion + 1 }))
+    base64.encode(await crypto.aesGcm.encryptJson(state.key, item)),
+    base64.encode(await crypto.aesGcm.encryptJson(state.key, currentVersion + 1))
   ])
 
-  return { itemId, encryptedItem }
+  return { itemId, encryptedItem, __v }
 }
 
 const delete_ = async (id) => {
@@ -443,9 +503,14 @@ const delete_ = async (id) => {
 const _buildDeleteParams = async (id) => {
   if (!id) throw new Error('Delete missing id')
 
-  const itemId = base64.encode(await crypto.aesGcm.encryptJson(state.key, id))
+  const currentVersion = state.database.getItemVersionNumber(id)
 
-  return { itemId }
+  const [itemId, __v] = await Promise.all([
+    base64.encode(await crypto.aesGcm.encryptJson(state.key, id)),
+    base64.encode(await crypto.aesGcm.encryptJson(state.key, currentVersion + 1))
+  ])
+
+  return { itemId, __v }
 }
 
 const batch = async (operations) => {

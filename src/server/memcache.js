@@ -144,7 +144,8 @@ MemCache.prototype.getTransactions = function (userId, startingSeqNo, inclusive 
           command: transaction['command'],
           itemId: transaction['item-id'],
           record: transaction['record'] ? transaction['record'].toString('base64') : undefined,
-          operations: transaction['operations'] // from batch transaction
+          operations: transaction['operations'], // from batch transaction
+          __v: transaction['__v']
         }
 
         result.push(outputTransaction)
