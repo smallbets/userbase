@@ -158,8 +158,6 @@ class Database {
   }
 
   async applyTransaction(key, transaction) {
-    const itemId = transaction.itemId
-
     const seqNo = transaction.seqNo
     const command = transaction.command
 
@@ -167,17 +165,21 @@ class Database {
 
     switch (command) {
       case 'Insert': {
+        const itemId = await crypto.aesGcm.decryptJson(key, base64.decode(transaction.itemId))
         const transactionCode = await this.applyInsert(itemId, seqNo, key, transaction.record)
         return transactionCode
       }
 
       case 'Update': {
+        const itemId = await crypto.aesGcm.decryptJson(key, base64.decode(transaction.itemId))
         const transactionCode = await this.applyUpdate(itemId, key, transaction.record)
         return transactionCode
       }
 
-      case 'Delete':
+      case 'Delete': {
+        const itemId = await crypto.aesGcm.decryptJson(key, base64.decode(transaction.itemId))
         return this.applyDelete(itemId)
+      }
 
       case 'Batch': {
         const transactionCode = await this.applyBatch(key, seqNo, transaction.operations)
@@ -217,12 +219,13 @@ class Database {
   }
 
   async applyBatch(key, seqNo, batch) {
+    const itemIds = await Promise.all(batch.map(operation => crypto.aesGcm.decryptJson(key, base64.decode(operation['item-id']))))
 
     // determine if batch safe to insert
     for (let i = 0; i < batch.length; i++) {
       const operation = batch[i]
 
-      const itemId = operation['item-id']
+      const itemId = itemIds[i]
       switch (operation.command) {
         case 'Insert':
           if (this.items[itemId]) return itemAlreadyExists
@@ -236,7 +239,7 @@ class Database {
     }
 
     const insertBatchPromises = batch.map((operation, i) => {
-      const itemId = operation['item-id']
+      const itemId = itemIds[i]
       switch (operation.command) {
         case 'Insert':
           return this.applyInsert(itemId, seqNo, key, operation.record, i)
@@ -359,21 +362,24 @@ const init = async (onDbChangeHandler, onFirstResponse) => {
   connectWebSocket()
 }
 
-const insert = async (item) => {
+const insert = async (item, id) => {
   if (!state.init) throw new Error(dbNotOpen)
 
   const action = 'Insert'
-  const params = await _buildInsertParams(item)
+  const params = await _buildInsertParams(item, id)
   const request = new Request(ws, action, params)
 
   await postTransaction(request)
 }
 
-const _buildInsertParams = async (item) => {
+const _buildInsertParams = async (item, id) => {
   if (!item) throw new Error('Insert missing item')
 
-  const itemId = uuidv4()
-  const encryptedItem = base64.encode(await crypto.aesGcm.encryptJson(state.key, item))
+  const [itemId, encryptedItem] = await Promise.all([
+    await base64.encode(await crypto.aesGcm.encryptJson(state.key, id || uuidv4())),
+    base64.encode(await crypto.aesGcm.encryptJson(state.key, item))
+  ])
+
   return { itemId, encryptedItem }
 }
 
@@ -391,23 +397,30 @@ const _buildUpdateParams = async (id, item) => {
   if (!id) throw new Error('Update missing id')
   if (!item) throw new Error('Update missing item')
 
-  const encryptedItem = base64.encode(await crypto.aesGcm.encryptJson(state.key, item))
-  return { itemId: id, encryptedItem }
+  const [itemId, encryptedItem] = await Promise.all([
+    await base64.encode(await crypto.aesGcm.encryptJson(state.key, id)),
+    base64.encode(await crypto.aesGcm.encryptJson(state.key, item))
+  ])
+
+  return { itemId, encryptedItem }
 }
 
 const delete_ = async (id) => {
   if (!state.init) throw new Error(dbNotOpen)
 
   const action = 'Delete'
-  const params = _buildDeleteParams(id)
+  const params = await _buildDeleteParams(id)
   const request = new Request(ws, action, params)
 
   await postTransaction(request)
 }
 
-const _buildDeleteParams = (id) => {
+const _buildDeleteParams = async (id) => {
   if (!id) throw new Error('Delete missing id')
-  return { itemId: id }
+
+  const itemId = await base64.encode(await crypto.aesGcm.encryptJson(state.key, id))
+
+  return { itemId }
 }
 
 const batch = async (operations) => {
@@ -415,57 +428,43 @@ const batch = async (operations) => {
 
   const action = 'Batch'
 
-  const insertAndUpdatePromises = []
-  const params = {
-    operations: operations.map(operation => {
-      const command = operation.command
+  const operationParamsPromises = operations.map(operation => {
 
-      switch (command) {
-        case 'Insert': {
-          const item = operation.item
+    const command = operation.command
 
-          return {
-            command,
-            promiseIndex: insertAndUpdatePromises.push(_buildInsertParams(item)) - 1,
-          }
-        }
+    switch (command) {
+      case 'Insert': {
+        const id = operation.id
+        const item = operation.item
 
-        case 'Update': {
-          const id = operation.id
-          const item = operation.item
-
-          return {
-            command,
-            promiseIndex: insertAndUpdatePromises.push(_buildUpdateParams(id, item)) - 1,
-          }
-        }
-
-        case 'Delete': {
-          const id = operation.id
-
-          return {
-            command,
-            ..._buildDeleteParams(id)
-          }
-        }
-
-        default: throw new Error('Unknown command')
+        return _buildInsertParams(item, id)
       }
-    })
-  }
 
-  const insertsAndUpdates = await Promise.all(insertAndUpdatePromises)
+      case 'Update': {
+        const id = operation.id
+        const item = operation.item
 
-  params.operations = params.operations.map(operation => {
-    if (typeof operation.promiseIndex === 'number') {
-      return {
-        command: operation.command,
-        ...insertsAndUpdates[operation.promiseIndex]
+        return _buildUpdateParams(id, item)
       }
-    } else {
-      return operation
+
+      case 'Delete': {
+        const id = operation.id
+
+        return _buildDeleteParams(id)
+      }
+
+      default: throw new Error('Unknown command')
     }
   })
+
+  const operationParams = await Promise.all(operationParamsPromises)
+
+  const params = {
+    operations: operations.map((operation, i) => ({
+      command: operation.command,
+      ...operationParams[i]
+    }))
+  }
 
   const request = new Request(ws, action, params)
 
