@@ -1,5 +1,6 @@
 import React, { Component } from 'react'
 import userLogic from './components/User/logic'
+import dashboardLogic from './components/Dashboard/logic'
 import Dashboard from './components/Dashboard/Dashboard'
 import UserForm from './components/User/UserForm'
 import ShowKey from './components/User/ShowKey'
@@ -17,9 +18,12 @@ export default class App extends Component {
 
     this.state = {
       key: undefined,
-      mode: undefined
+      mode: undefined,
+      todos: [],
+      loading: true
     }
 
+    this.handleDbChange = this.handleDbChange.bind(this)
     this.handleGetKeyFromEncryptedDevSdk = this.handleGetKeyFromEncryptedDevSdk.bind(this)
     this.handleSetKeyInState = this.handleSetKeyInState.bind(this)
     this.handleSignOut = this.handleSignOut.bind(this)
@@ -40,12 +44,27 @@ export default class App extends Component {
     window.removeEventListener('hashchange', this.handleReadHash, false)
   }
 
+  handleDbChange(todos) {
+    this.setState({ todos })
+  }
+
   // this auto redirects to an appropriate view based on current state
-  handleAutoRedirects() {
-    const { key } = this.state
+  async handleAutoRedirects() {
+    const { key, loading } = this.state
     const session = userLogic.getSession()
-    const userMustLogInAgain = !session || !session.signedIn
-    const userHasActiveSession = session && session.signedIn
+
+    let userMustLogInAgain = !session || !session.signedIn
+    let userHasActiveSession = session && session.signedIn
+
+    if (loading && userHasActiveSession) {
+      try {
+        await dashboardLogic.init(this.handleDbChange, () => this.setState({ loading: false }))
+      } catch {
+        userLogic.clearSession()
+        userMustLogInAgain = true
+        userHasActiveSession = false
+      }
+    }
 
     if (!displaySignUpForm() && userMustLogInAgain) {
       // if the user is logged out, redirect to the sign-in form
@@ -69,6 +88,7 @@ export default class App extends Component {
 
   // this is called when the user signs out, or when the server says the session has expired
   handleRemoveUserAuthentication() {
+    this.setState({ loading: true })
     window.location.hash = 'sign-in'
   }
 
@@ -112,7 +132,7 @@ export default class App extends Component {
   }
 
   render() {
-    const { key, mode } = this.state
+    const { key, mode, todos, loading } = this.state
 
     // if mode is undefined, just render an empty div
     if (!mode) {
@@ -146,7 +166,10 @@ export default class App extends Component {
         {(() => {
           switch (mode) {
             case 'dashboard':
-              return <Dashboard handleRemoveUserAuthentication={this.handleRemoveUserAuthentication} />
+              return <Dashboard
+                handleRemoveUserAuthentication={this.handleRemoveUserAuthentication}
+                todos={todos}
+                loading={loading} />
             case 'show-key':
               return <ShowKey keyString={key} />
             case 'save-key':

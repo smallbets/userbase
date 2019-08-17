@@ -366,7 +366,14 @@ let ws
 
 const init = async (onDbChangeHandler, onFirstResponse) => {
   state.database = new Database()
-  state.key = await auth.getKeyFromLocalStorage()
+
+  try {
+    state.key = await auth.getKeyFromLocalStorage()
+  } catch {
+    auth.clearAuthenticatedDataFromBrowser()
+    throw new Error('Unable to get the key')
+  }
+
   state.init = true
 
   const url = ((window.location.protocol === 'https:') ?
@@ -423,7 +430,10 @@ const init = async (onDbChangeHandler, onFirstResponse) => {
     }
 
     ws.onclose = () => setTimeout(() => { connectWebSocket() }, 1000)
-    ws.onerror = () => ws.close()
+    ws.onerror = () => {
+      auth.clearAuthenticatedDataFromBrowser()
+      ws.close()
+    }
 
     ws.watch = async (requestId) => {
       requests[requestId] = {}

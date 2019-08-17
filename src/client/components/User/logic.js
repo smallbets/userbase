@@ -54,6 +54,10 @@ const requestKey = async () => {
   return keyString
 }
 
+const clearSession = () => {
+  encd.clearAuthenticatedDataFromBrowser()
+}
+
 export default {
   signUp,
   signOut,
@@ -62,4 +66,5 @@ export default {
   getKey,
   saveKey,
   requestKey,
+  clearSession
 }

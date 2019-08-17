@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import { func } from 'prop-types'
+import { func, array, bool } from 'prop-types'
 import dbLogic from './logic'
 import AddTodoForm from './AddTodoForm'
 import EditTodoForm from './EditTodoForm'
@@ -8,26 +8,12 @@ export default class Dashboard extends Component {
   constructor(props) {
     super(props)
     this.state = {
-      todoInput: '',
       error: '',
-      loading: true,
-      todos: [],
-      editingTodos: {},
-      addTodoFormOpen: false
+      editingTodos: {}
     }
 
-    this.handleDbChange = this.handleDbChange.bind(this)
     this.handleToggleTodo = this.handleToggleTodo.bind(this)
     this.handleToggleEditTodo = this.handleToggleEditTodo.bind(this)
-  }
-
-  async componentDidMount() {
-    dbLogic.init(this.handleDbChange, () => this.setState({ loading: false }))
-    this.setState({ loading: true })
-  }
-
-  handleDbChange(todos) {
-    this.setState({ todos, loading: false })
   }
 
   async handleToggleTodo(todo) {
@@ -46,12 +32,8 @@ export default class Dashboard extends Component {
   }
 
   render() {
-    const {
-      todos,
-      editingTodos,
-      loading,
-      error
-    } = this.state
+    const { editingTodos, error } = this.state
+    const { todos, loading } = this.props
 
     return (
       <div className='text-xs xs:text-base'>
@@ -113,5 +95,7 @@ export default class Dashboard extends Component {
 }
 
 Dashboard.propTypes = {
-  handleRemoveUserAuthentication: func
+  handleRemoveUserAuthentication: func,
+  todos: array,
+  loading: bool
 }
