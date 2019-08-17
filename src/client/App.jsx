@@ -57,10 +57,9 @@ export default class App extends Component {
     let userHasActiveSession = session && session.signedIn
 
     if (loading && userHasActiveSession) {
-      try {
-        await dashboardLogic.init(this.handleDbChange, () => this.setState({ loading: false }))
-      } catch {
-        userLogic.clearSession()
+      const connected = await dashboardLogic.init(this.handleDbChange, () => this.setState({ loading: false }))
+
+      if (!connected) {
         userMustLogInAgain = true
         userHasActiveSession = false
       }

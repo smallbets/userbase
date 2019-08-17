@@ -374,12 +374,15 @@ const init = async (onDbChangeHandler, onFirstResponse) => {
     throw new Error('Unable to get the key')
   }
 
-  state.init = true
-
   const url = ((window.location.protocol === 'https:') ?
     'wss://' : 'ws://') + window.location.host + '/api'
 
-  let isFirstMessage = true
+  const promise = new Promise((resolve, reject) => {
+    state.promiseResolve = resolve
+    state.promiseReject = reject
+
+    setTimeout(() => { reject(new Error('timeout')) }, 5000)
+  })
 
   const connectWebSocket = () => {
     ws = new WebSocket(url)
@@ -395,9 +398,10 @@ const init = async (onDbChangeHandler, onFirstResponse) => {
           await state.database.applyTransactions(newTransactions)
           onDbChangeHandler(state.database.getItems())
 
-          if (isFirstMessage) {
+          if (!state.init) {
             onFirstResponse()
-            isFirstMessage = false
+            state.init = true
+            state.promiseResolve()
           }
 
           break
@@ -429,9 +433,14 @@ const init = async (onDbChangeHandler, onFirstResponse) => {
       }
     }
 
-    ws.onclose = () => setTimeout(() => { connectWebSocket() }, 1000)
+    ws.onclose = () => {
+      if (state.init) {
+        setTimeout(() => { connectWebSocket() }, 1000)
+      }
+    }
     ws.onerror = () => {
       auth.clearAuthenticatedDataFromBrowser()
+      state.promiseReject()
       ws.close()
     }
 
@@ -452,6 +461,8 @@ const init = async (onDbChangeHandler, onFirstResponse) => {
   }
 
   connectWebSocket()
+
+  await promise
 }
 
 const insert = async (item, id) => {

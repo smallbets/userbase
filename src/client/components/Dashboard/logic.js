@@ -1,7 +1,13 @@
 import encd from '../../encrypted-dev-sdk'
 
-const init = (onDbChangeHandler, onWebSocketConnect) => {
-  encd.db.init(onDbChangeHandler, onWebSocketConnect)
+const init = async (onDbChangeHandler, onWebSocketConnect) => {
+  try {
+    await encd.db.init(onDbChangeHandler, onWebSocketConnect)
+    return true
+  } catch (e) {
+    encd.clearAuthenticatedDataFromBrowser()
+    return false
+  }
 }
 
 const _errorHandler = (e, operation, handleRemoveUserAuthentication) => {
