@@ -1,15 +1,20 @@
 import uuidv4 from 'uuid/v4'
 import base64 from 'base64-arraybuffer'
-import Worker from './worker.js'
 import auth from './auth'
 import crypto from './Crypto'
 import SortedArray from 'sorted-array'
+import LZString from 'lz-string'
+import { stringToArrayBuffer, arrayBufferToString } from './Crypto/utils'
 
 const success = 'Success'
 const itemAlreadyExists = 'Item already exists'
 const itemAlreadyDeleted = 'Item already deleted'
 const versionConflict = 'Version conflict'
 const dbNotOpen = 'Database not open'
+
+const state = {}
+const requests = {}
+let ws
 
 class RequestFailed extends Error {
   constructor(response, message, ...params) {
@@ -53,7 +58,6 @@ class Request {
       const response = await responseWatcher
       return response
     } catch (e) {
-
       // process any errors and re-throw them
       throw new RequestFailed(e)
     }
@@ -141,13 +145,11 @@ class Database {
   }
 
   async applyTransactions(transactions) {
-    const key = await auth.getKeyFromLocalStorage()
-
     for (let i = 0; i < transactions.length; i++) {
       const transaction = transactions[i]
       const seqNo = transaction.seqNo
 
-      const transactionCode = await this.applyTransaction(key, transaction)
+      const transactionCode = await this.applyTransaction(state.key, transaction)
 
       for (let j = 0; j < this.unverifiedTransactions.length; j++) {
         if (!this.unverifiedTransactions[j] || seqNo < this.unverifiedTransactions[j].getStartSeqNo()) {
@@ -156,6 +158,18 @@ class Database {
         this.unverifiedTransactions[j].addTransaction(transactions[i], transactionCode)
       }
     }
+  }
+
+  applyBundle(bundle, bundleSeqNo) {
+    for (let i = 0; i < bundle.itemsIndex.array.length; i++) {
+      const itemIndex = bundle.itemsIndex.array[i]
+      const itemId = bundle.itemsIndex.array[i].itemId
+      const item = bundle.items[itemId]
+      this.items[itemId] = item
+      this.itemsIndex.insert(itemIndex)
+    }
+
+    this.lastSeqNo = bundleSeqNo
   }
 
   async applyTransaction(key, transaction) {
@@ -360,10 +374,6 @@ class Database {
   }
 }
 
-const state = {}
-const requests = {}
-let ws
-
 const init = async (onDbChangeHandler, onFirstResponse) => {
   state.database = new Database()
 
@@ -392,7 +402,7 @@ const init = async (onDbChangeHandler, onFirstResponse) => {
 
       const route = message.route
       switch (route) {
-        case 'transactionLog': {
+        case 'ApplyTransactions': {
           const newTransactions = message.transactionLog
 
           await state.database.applyTransactions(newTransactions)
@@ -407,10 +417,46 @@ const init = async (onDbChangeHandler, onFirstResponse) => {
           break
         }
 
+        case 'ApplyBundle': {
+          const bundleSeqNo = message.seqNo
+          const base64Bundle = message.bundle
+          const encryptedBundle = base64.decode(base64Bundle)
+          const plaintextArrayBuffer = await crypto.aesGcm.decrypt(state.key, encryptedBundle)
+          const compressedString = arrayBufferToString(plaintextArrayBuffer)
+          const plaintextString = LZString.decompress(compressedString)
+          const bundle = JSON.parse(plaintextString)
+
+          state.database.applyBundle(bundle, bundleSeqNo)
+
+          break
+        }
+
+        case 'BuildBundle': {
+          const bundle = {
+            items: state.database.items,
+            itemsIndex: state.database.itemsIndex
+          }
+
+          const plaintextString = JSON.stringify(bundle)
+          const compressedString = LZString.compress(plaintextString)
+          const plaintextArrayBuffer = stringToArrayBuffer(compressedString)
+          const encryptedBundle = await crypto.aesGcm.encrypt(state.key, plaintextArrayBuffer)
+          const base64Bundle = base64.encode(encryptedBundle)
+
+          const action = 'Bundle'
+          const params = { seqNo: state.database.lastSeqNo, bundle: base64Bundle }
+          const request = new Request(ws, action, params)
+
+          request.send()
+
+          break
+        }
+
         case 'Insert':
         case 'Update':
         case 'Delete':
-        case 'Batch': {
+        case 'Batch':
+        case 'Bundle': {
           const requestId = message.requestId
 
           if (!requestId) return console.warn('Missing request id')
@@ -591,14 +637,7 @@ const postTransaction = async (request) => {
 
   state.database.unregisterUnverifiedTransaction(pendingTx)
 
-  initializeBundlingProcess(state.key)
-
   return seqNo
-}
-
-const initializeBundlingProcess = async (key) => {
-  const worker = new Worker()
-  worker.postMessage(key)
 }
 
 export default {

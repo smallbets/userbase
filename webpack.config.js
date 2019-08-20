@@ -58,10 +58,6 @@ module.exports = (env, argv) => {
         {
           test: /\.(woff|woff2|eot|ttf|otf|png|svg|jpg|gif)$/,
           use: [(argv.mode == 'development' ? 'file-loader' : { loader: 'url-loader' })]
-        },
-        {
-          test: /\worker\.js$/,
-          loader: 'worker-loader'
         }
       ]
     },

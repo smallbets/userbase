@@ -4,6 +4,37 @@ import db from './db'
 
 const SECONDS_BEFORE_ROLLBACK_TRIGGERED = 10
 
+// source: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/CapacityUnitCalculations.html
+const sizeOfDdbItem = (item) => {
+  let bytes = 0
+
+  for (let attribute in item) {
+    if (!item.hasOwnProperty(attribute)) continue
+
+    bytes += attribute.length
+
+    const value = item[attribute]
+
+    switch (typeof value) {
+      case 'string':
+        bytes += value.length // The size of a string is(length of attribute name) + (number of UTF - 8 - encoded bytes).
+        break
+      case 'number':
+        bytes += Math.ceil((value.toString().length / 2)) + 1 // Numbers are variable length, with up to 38 significant digits.Leading and trailing zeroes are trimmed.The size of a number is approximately(length of attribute name) + (1 byte per two significant digits) + (1 byte).
+        break
+      case 'boolean':
+        bytes += 1 // The size of a null attribute or a Boolean attribute is(length of attribute name) + (1 byte).
+        break
+      default:
+        if (value.type === 'Buffer') {
+          bytes += value.data.length // The size of a binary attribute is (length of attribute name) + (number of raw bytes).
+        }
+    }
+  }
+
+  return bytes
+}
+
 function MemCache() {
   this.transactionLogByUserId = {}
 }
@@ -117,10 +148,12 @@ MemCache.prototype.transactionRolledBack = function (transactionWithRollbackComm
 MemCache.prototype.getTransactions = function (userId, startingSeqNo, inclusive = true) {
   const transactionLog = this.transactionLogByUserId[userId].transactionArray
 
-  const result = []
+  const log = []
   let encounteredTransactionPersistingToDdb = false
+  let size = 0
   for (let i = startingSeqNo; i < transactionLog.length; i++) {
     const transaction = transactionLog[i]
+    size += sizeOfDdbItem(transaction)
 
     if (transaction && transaction.persistingToDdb) {
       encounteredTransactionPersistingToDdb = true
@@ -148,12 +181,12 @@ MemCache.prototype.getTransactions = function (userId, startingSeqNo, inclusive 
           __v: transaction['__v']
         }
 
-        result.push(outputTransaction)
+        log.push(outputTransaction)
       }
     }
   }
 
-  return result
+  return { log, size }
 }
 
 MemCache.prototype.setBundleSeqNo = function (userId, bundleSeqNo) {

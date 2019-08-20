@@ -59,7 +59,9 @@ if (process.env.NODE_ENV == 'development') {
       ws.isAlive = true
 
       const userId = res.locals.user['user-id']
-      const conn = connections.register(userId, ws)
+      const lastBundleSeqNo = res.locals.user['bundle-seq-no']
+      const username = res.locals.user['username']
+      const conn = connections.register(userId, lastBundleSeqNo, ws)
 
       ws.on('pong', heartbeat)
       ws.on('close', () => connections.close(conn))
@@ -89,6 +91,10 @@ if (process.env.NODE_ENV == 'development') {
             }
             case 'Batch': {
               response = await db.batch(userId, request.params.operations)
+              break
+            }
+            case 'Bundle': {
+              response = await db.bundleTransactionLog(userId, username, lastBundleSeqNo, request.params.seqNo, request.params.bundle)
               break
             }
             default: {
@@ -138,13 +144,6 @@ if (process.env.NODE_ENV == 'development') {
     app.get('/api/auth/get-master-key-requests', auth.authenticateUser, auth.queryMasterKeyRequests)
     app.post('/api/auth/send-master-key', auth.authenticateUser, auth.sendMasterKey)
     app.post('/api/auth/receive-master-key', auth.authenticateUser, auth.receiveMasterKey)
-
-    app.get('/api/db/query/tx-log', auth.authenticateUser, db.queryTransactionLog)
-    app.get('/api/db/query/db-state', auth.authenticateUser, db.queryDbState)
-
-    app.post('/api/db/acq-bundle-tx-log-lock', auth.authenticateUser, db.acquireBundleTransactionLogLock)
-    app.post('/api/db/rel-bundle-tx-log-lock', auth.authenticateUser, db.releaseBundleTransactionLogLock)
-    app.post('/api/db/bundle-tx-log', auth.authenticateUser, db.bundleTransactionLog)
   } catch (e) {
     logger.info(`Unhandled error while launching server: ${e}`)
   }

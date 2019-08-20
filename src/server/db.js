@@ -2,7 +2,6 @@ import connection from './connection'
 import setup from './setup'
 import statusCodes from './statusCodes'
 import memcache from './memcache'
-import lock from './lock'
 import connections from './ws'
 import logger from './logger'
 
@@ -162,72 +161,6 @@ exports.update = async function (userId, itemId, item, __v) {
   }
 }
 
-exports.queryTransactionLog = async function (req, res) {
-  const userId = res.locals.user['user-id']
-  let startingSeqNo = req.query.startingSeqNo || 0
-
-  try {
-    const bundleSeqNo = memcache.getBundleSeqNo(userId)
-
-    const userShouldAlsoQueryForBundle = startingSeqNo <= bundleSeqNo
-    if (userShouldAlsoQueryForBundle) {
-      res.set('bundle-seq-no', bundleSeqNo)
-      startingSeqNo = memcache.getStartingSeqNo(bundleSeqNo)
-    }
-
-    const transactionLog = memcache.getTransactions(userId, startingSeqNo)
-
-    return res.send(transactionLog)
-  } catch (e) {
-    return res
-      .status(statusCodes['Internal Server Error'])
-      .send({ err: `Failed to query db state with ${e}` })
-  }
-}
-
-exports.queryDbState = async function (req, res) {
-  const userId = res.locals.user['user-id']
-  const bundleSeqNo = req.query.bundleSeqNo
-
-  if (!bundleSeqNo && bundleSeqNo !== 0) return res
-    .status(statusCodes['Bad Request'])
-    .send({ readableMessage: 'Must include bundle sequence no' })
-
-  try {
-    const params = {
-      Bucket: setup.dbStatesBucketName,
-      Key: getS3DbStateKey(userId, bundleSeqNo)
-    }
-    const s3 = setup.s3()
-
-    s3.getObject(params)
-      .on('httpHeaders', function (statusCode, headers, response, error) {
-
-        if (statusCode < 300) {
-          res.set('Content-Length', headers['content-length'])
-          res.set('Content-Type', headers['content-type'])
-
-          const stream = this.response.httpResponse.createUnbufferedStream()
-
-          stream.pipe(res)
-        } else {
-          return statusCode === 404 && error === 'Not Found'
-            ? res
-              .status(statusCodes['Not Found'])
-              .send({ err: `Failed to query db state with ${error}` })
-            : res
-              .status(statusCode)
-              .send({ err: `Failed to query db state with ${error}` })
-        }
-      })
-      .send()
-  } catch (e) {
-    return res
-      .status(statusCodes['Internal Server Error'])
-      .send({ err: `Failed to query db state with ${e}` })
-  }
-}
-
 exports.batch = async function (userId, operations) {
   if (!operations || !operations.length) return _errorResponse(statusCodes['Bad Request'], 'Missing operations')
 
@@ -279,70 +212,22 @@ exports.batch = async function (userId, operations) {
   }
 }
 
-exports.acquireBundleTransactionLogLock = function (req, res) {
-  const userId = res.locals.user['user-id']
+exports.bundleTransactionLog = async function (userId, username, lastBundleSeqNo, seqNo, bundle) {
+  const bundleSeqNo = Number(seqNo)
 
-  const newLock = lock.acquireLock(userId)
-
-  if (!newLock) return res
-    .status(statusCodes['Unauthorized'])
-    .send({ readableMessage: 'Failed to acquire lock' })
-
-  return res.send(newLock.lockId)
-}
-
-exports.releaseBundleTransactionLogLock = function (req, res) {
-  const userId = res.locals.user['user-id']
-  const lockId = req.query.lockId
-
-  if (!lockId) return res
-    .status(statusCodes['Bad Request'])
-    .send({ readableMessage: 'Missing lock id' })
-
-  if (!lock.releaseLock(userId, lockId)) return res
-    .status(statusCodes['Unauthorized'])
-    .send({ readableMessage: 'Caller does not own this lock' })
-
-  return res.send('Success!')
-}
-
-exports.bundleTransactionLog = async function (req, res) {
-  const user = res.locals.user
-  const userId = user['user-id']
-  const bundleSeqNo = Number(req.query.bundleSeqNo)
-  const lockId = req.query.lockId
-
-  if (!bundleSeqNo) return res
-    .status(statusCodes['Bad Request'])
-    .send({ readableMessage: 'Missing bundle sequence number' })
-
-  if (!lockId) return res
-    .status(statusCodes['Bad Request'])
-    .send({ readableMessage: 'Missing lock id' })
+  if (!bundleSeqNo && bundleSeqNo !== 0) {
+    return _errorResponse(statusCodes['Bad Request'], `Missing bundle sequence number`)
+  }
 
   try {
-
-    // Warning: this isn't a perfect mutually exclusive lock that only allows this code
-    // to execute once at a time. If it takes >= SECONDS_ALLOWED_TO_KEEP_BUNDLE_LOCK
-    // for the code after this if statement to finish executing, it's possible the user
-    // can acquire a new lock, allowing the user to call the function again and get past
-    // this if statement -- even though this function would still continue executing.
-    //
-    // Note that THIS IS OK because a user can safely call this function twice. This
-    // lock is simply an optimization to try to prevent both the client
-    // and server from doing extra unnecessary work if possible.
-    if (!lock.callerOwnsLock(userId, lockId)) return res
-      .status(statusCodes['Unauthorized'])
-      .send({ readableMessage: 'Caller does not own this lock' })
-
-    if (user['bundle-seq-no'] >= bundleSeqNo) return res
-      .status(statusCodes['Bad Request'])
-      .send({ readableMessage: 'Bundle sequence no must be greater than current bundle' })
+    if (lastBundleSeqNo >= bundleSeqNo) {
+      return _errorResponse(statusCodes['Bad Request'], 'Bundle sequence no must be greater than current bundle')
+    }
 
     const dbStateParams = {
       Bucket: setup.dbStatesBucketName,
       Key: getS3DbStateKey(userId, bundleSeqNo),
-      Body: req
+      Body: bundle
     }
 
     logger.info(`Uploading user ${userId}'s db state to S3 at bundle seq no ${bundleSeqNo}...`)
@@ -350,7 +235,6 @@ exports.bundleTransactionLog = async function (req, res) {
     await s3.upload(dbStateParams).promise()
 
     logger.info('Setting bundle sequence number on user...')
-    const username = user.username
 
     const bundleParams = {
       TableName: setup.usersTableName,
@@ -371,16 +255,38 @@ exports.bundleTransactionLog = async function (req, res) {
 
     memcache.setBundleSeqNo(userId, bundleSeqNo)
 
-    lock.releaseLock(userId, lockId)
-    logger.info(`Released user ${userId}'s bundle lock ${lockId}...`)
-
-    return res.send('Success!')
+    return _successResponse({})
   } catch (e) {
 
-    lock.releaseLock(userId, lockId)
+    return _errorResponse(statusCodes['Internal Server Error'], `Failed to bundle with ${e}`)
+  }
+}
 
-    return res
-      .status(statusCodes['Internal Server Error'])
-      .send({ err: `Failed to flush db state with ${e}` })
+exports.getBundle = async function (userId, bundleSeqNo) {
+  if (!bundleSeqNo && bundleSeqNo !== 0) {
+    return _errorResponse(statusCodes['Bad Request'], `Missing bundle sequence number`)
+  }
+
+  try {
+    const params = {
+      Bucket: setup.dbStatesBucketName,
+      Key: getS3DbStateKey(userId, bundleSeqNo)
+    }
+    const s3 = setup.s3()
+
+    try {
+      const result = await s3.getObject(params).promise()
+      return result.Body.toString()
+    } catch (e) {
+      const statusCode = e.statusCode
+      const error = e.message
+
+      return statusCode === 404 && error === 'Not Found'
+        ? _errorResponse(statusCodes['Not Found'], `Failed to query db state with ${error}`)
+        : _errorResponse(statusCodes['Internal Server Error'], `Failed to query db state with ${error}`)
+    }
+
+  } catch (e) {
+    return _errorResponse(statusCodes['Internal Server Error'], `Failed to query db state with ${e}`)
   }
 }
