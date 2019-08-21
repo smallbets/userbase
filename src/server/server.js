@@ -59,9 +59,8 @@ if (process.env.NODE_ENV == 'development') {
       ws.isAlive = true
 
       const userId = res.locals.user['user-id']
-      const lastBundleSeqNo = res.locals.user['bundle-seq-no']
-      const username = res.locals.user['username']
-      const conn = connections.register(userId, lastBundleSeqNo, ws)
+      const conn = connections.register(userId, ws)
+      const connectionId = conn.id
 
       ws.on('pong', heartbeat)
       ws.on('close', () => connections.close(conn))
@@ -74,27 +73,59 @@ if (process.env.NODE_ENV == 'development') {
 
           const requestId = request.requestId
           const action = request.action
+          const params = request.params
 
           let response
           switch (action) {
+            case 'CreateDatabase': {
+              response = await db.createDatabase(
+                userId,
+                params.dbNameHash,
+                params.dbId,
+                params.encryptedDbName,
+                params.encryptedDbKey,
+                params.encryptedMetadata
+              )
+              break
+            }
+            case 'OpenDatabase': {
+              response = await db.openDatabase(userId, params.dbNameHash, connectionId)
+              break
+            }
+            case 'InitializeState': {
+              response = await db.initializeState(userId, params.dbId, connectionId)
+              break
+            }
             case 'Insert': {
-              response = await db.insert(userId, request.params.itemId, request.params.encryptedItem)
+              response = await db.insert(userId, params.dbId, params.itemId, params.encryptedItem)
               break
             }
             case 'Update': {
-              response = await db.update(userId, request.params.itemId, request.params.encryptedItem, request.params.__v)
+              response = await db.update(
+                userId,
+                params.dbId,
+                params.itemId,
+                params.encryptedItem,
+                params.__v
+              )
               break
             }
             case 'Delete': {
-              response = await db.delete(userId, request.params.itemId, request.params.__v)
+              response = await db.delete(userId, params.dbId, params.itemId, params.__v)
               break
             }
             case 'Batch': {
-              response = await db.batch(userId, request.params.operations)
+              response = await db.batch(userId, params.dbId, params.operations)
               break
             }
             case 'Bundle': {
-              response = await db.bundleTransactionLog(userId, username, lastBundleSeqNo, request.params.seqNo, request.params.bundle)
+              response = await db.bundleTransactionLog(
+                params.userId,
+                params.dbId,
+                params.dbNameHash,
+                params.seqNo,
+                params.bundle
+              )
               break
             }
             default: {

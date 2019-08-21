@@ -111,7 +111,7 @@ const encryptJson = async (key, plaintextJson) => {
   const plaintextString = JSON.stringify(plaintextJson)
   const plaintextArrayBuffer = stringToArrayBuffer(plaintextString)
   const encrypted = await encrypt(key, plaintextArrayBuffer)
-  return encrypted
+  return base64.encode(encrypted)
 }
 
 /**
@@ -137,7 +137,8 @@ const decrypt = async (key, encrypted) => {
   return plaintextArrayBuffer
 }
 
-const decryptJson = async (key, encryptedJson) => {
+const decryptJson = async (key, encryptedJsonString) => {
+  const encryptedJson = base64.decode(encryptedJsonString)
   const plaintextArrayBuffer = await decrypt(key, encryptedJson)
   const plaintextString = arrayBufferToString(plaintextArrayBuffer)
   return JSON.parse(plaintextString)

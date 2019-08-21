@@ -9,12 +9,14 @@ const usernamePrefix = (process.env.NODE_ENV == 'development') ? os.userInfo().u
 const usersTableName = usernamePrefix + 'users'
 const sessionsTableName = usernamePrefix + 'sessions'
 const databaseTableName = usernamePrefix + 'database'
+const transactionsTableName = usernamePrefix + 'transactions'
 const keyExchangeTableName = usernamePrefix + 'key-exchange'
 const dbStatesBucketName = usernamePrefix + 'db-states'
 
 exports.usersTableName = usersTableName
 exports.sessionsTableName = sessionsTableName
 exports.databaseTableName = databaseTableName
+exports.transactionsTableName = transactionsTableName
 exports.keyExchangeTableName = keyExchangeTableName
 
 let s3
@@ -84,18 +86,40 @@ async function setupDdb() {
     TableName: sessionsTableName
   }
 
-  // the database table holds a record per db transaction
+  // the database table holds a record per database
   const databaseTableParams = {
     AttributeDefinitions: [
       { AttributeName: 'user-id', AttributeType: 'S' },
-      { AttributeName: 'sequence-no', AttributeType: 'N' }
+      { AttributeName: 'database-name-hash', AttributeType: 'S' },
+      { AttributeName: 'database-id', AttributeType: 'S' }
     ],
     KeySchema: [
       { AttributeName: 'user-id', KeyType: 'HASH' },
+      { AttributeName: 'database-name-hash', KeyType: 'RANGE' }
+    ],
+    BillingMode: 'PAY_PER_REQUEST',
+    TableName: databaseTableName,
+    GlobalSecondaryIndexes: [{
+      IndexName: 'DatabaseIdIndex',
+      KeySchema: [
+        { AttributeName: 'database-id', KeyType: 'HASH' }
+      ],
+      Projection: { ProjectionType: 'ALL' }
+    }]
+  }
+
+  // the transactions table holds a record per database transaction
+  const transactionsTableParams = {
+    AttributeDefinitions: [
+      { AttributeName: 'database-id', AttributeType: 'S' },
+      { AttributeName: 'sequence-no', AttributeType: 'N' }
+    ],
+    KeySchema: [
+      { AttributeName: 'database-id', KeyType: 'HASH' },
       { AttributeName: 'sequence-no', KeyType: 'RANGE' }
     ],
     BillingMode: 'PAY_PER_REQUEST',
-    TableName: databaseTableName
+    TableName: transactionsTableName
   }
 
   // the key exchange table holds key data per user request
@@ -117,6 +141,7 @@ async function setupDdb() {
     createTable(ddb, usersTableParams),
     createTable(ddb, sessionsTableParams),
     createTable(ddb, databaseTableParams),
+    createTable(ddb, transactionsTableParams),
     createTable(ddb, keyExchangeTableParams)])
 }
 

@@ -1,6 +1,6 @@
 import uuidv4 from 'uuid/v4'
 import base64 from 'base64-arraybuffer'
-import auth from './auth'
+import localData from './localData'
 import crypto from './Crypto'
 import SortedArray from 'sorted-array'
 import LZString from 'lz-string'
@@ -10,9 +10,14 @@ const success = 'Success'
 const itemAlreadyExists = 'Item already exists'
 const itemAlreadyDeleted = 'Item already deleted'
 const versionConflict = 'Version conflict'
+const wsNotOpen = 'Web Socket not open'
 const dbNotOpen = 'Database not open'
 
-const state = {}
+const state = {
+  databases: {},
+  dbNameHashToDbId: {},
+  dbNameToDbHash: {}
+}
 const requests = {}
 let ws
 
@@ -126,7 +131,12 @@ class UnverifiedTransaction {
 }
 
 class Database {
-  constructor() {
+  constructor(dbKey, dbId, changeHandler, promiseResolve) {
+    this.dbKey = dbKey
+    this.dbId = dbId
+    this.onChange = changeHandler
+    this.promiseResolve = promiseResolve
+
     this.items = {}
 
     const compareItems = (a, b) => {
@@ -149,7 +159,7 @@ class Database {
       const transaction = transactions[i]
       const seqNo = transaction.seqNo
 
-      const transactionCode = await this.applyTransaction(state.key, transaction)
+      const transactionCode = await this.applyTransaction(this.dbKey, transaction)
 
       for (let j = 0; j < this.unverifiedTransactions.length; j++) {
         if (!this.unverifiedTransactions[j] || seqNo < this.unverifiedTransactions[j].getStartSeqNo()) {
@@ -181,8 +191,8 @@ class Database {
     switch (command) {
       case 'Insert': {
         const [itemId, record] = await Promise.all([
-          crypto.aesGcm.decryptJson(key, base64.decode(transaction.itemId)),
-          crypto.aesGcm.decryptJson(key, base64.decode(transaction.record))
+          crypto.aesGcm.decryptJson(key, transaction.itemId),
+          crypto.aesGcm.decryptJson(key, transaction.record)
         ])
 
         try {
@@ -196,9 +206,9 @@ class Database {
 
       case 'Update': {
         const [itemId, record, __v] = await Promise.all([
-          crypto.aesGcm.decryptJson(key, base64.decode(transaction.itemId)),
-          crypto.aesGcm.decryptJson(key, base64.decode(transaction.record)),
-          crypto.aesGcm.decryptJson(key, base64.decode(transaction.__v)),
+          crypto.aesGcm.decryptJson(key, transaction.itemId),
+          crypto.aesGcm.decryptJson(key, transaction.record),
+          crypto.aesGcm.decryptJson(key, transaction.__v),
         ])
 
         try {
@@ -212,8 +222,8 @@ class Database {
 
       case 'Delete': {
         const [itemId, __v] = await Promise.all([
-          crypto.aesGcm.decryptJson(key, base64.decode(transaction.itemId)),
-          crypto.aesGcm.decryptJson(key, base64.decode(transaction.__v))
+          crypto.aesGcm.decryptJson(key, transaction.itemId),
+          crypto.aesGcm.decryptJson(key, transaction.__v)
         ])
 
         try {
@@ -288,9 +298,9 @@ class Database {
     const __vPromises = []
 
     for (const operation of batch) {
-      itemIdPromises.push(crypto.aesGcm.decryptJson(key, base64.decode(operation['item-id'])))
-      recordPromises.push(operation.record && crypto.aesGcm.decryptJson(key, base64.decode(operation.record)))
-      __vPromises.push(operation.__v && crypto.aesGcm.decryptJson(key, base64.decode(operation.__v)))
+      itemIdPromises.push(crypto.aesGcm.decryptJson(key, operation['item-id']))
+      recordPromises.push(operation.record && crypto.aesGcm.decryptJson(key, operation.record))
+      __vPromises.push(operation.__v && crypto.aesGcm.decryptJson(key, operation.__v))
     }
 
     const [itemIds, records, __vs] = await Promise.all([
@@ -374,214 +384,295 @@ class Database {
   }
 }
 
-const init = async (onDbChangeHandler, onFirstResponse) => {
-  state.database = new Database()
-
-  try {
-    state.key = await auth.getKeyFromLocalStorage()
-  } catch {
-    auth.clearAuthenticatedDataFromBrowser()
-    throw new Error('Unable to get the key')
-  }
+const connectWebSocket = () => new Promise((resolve, reject) => {
+  setTimeout(() => { reject(new Error('timeout')) }, 5000)
 
   const url = ((window.location.protocol === 'https:') ?
     'wss://' : 'ws://') + window.location.host + '/api'
 
-  const promise = new Promise((resolve, reject) => {
-    state.promiseResolve = resolve
-    state.promiseReject = reject
+  ws = new WebSocket(url)
 
-    setTimeout(() => { reject(new Error('timeout')) }, 5000)
-  })
+  ws.onopen = async (e) => {
+    state.init = true
+    resolve(e)
+  }
 
-  const connectWebSocket = () => {
-    ws = new WebSocket(url)
+  ws.onmessage = async (e) => {
+    const message = JSON.parse(e.data)
 
-    ws.onmessage = async (e) => {
-      const message = JSON.parse(e.data)
+    const route = message.route
+    switch (route) {
+      case 'ApplyTransactions': {
+        const dbId = message.dbId
+        const database = state.databases[dbId]
 
-      const route = message.route
-      switch (route) {
-        case 'ApplyTransactions': {
-          const newTransactions = message.transactionLog
+        const newTransactions = message.transactionLog
 
-          await state.database.applyTransactions(newTransactions)
-          onDbChangeHandler(state.database.getItems())
+        if (!database) return
 
-          if (!state.init) {
-            onFirstResponse()
-            state.init = true
-            state.promiseResolve()
-          }
+        await database.applyTransactions(newTransactions)
+        database.onChange(database.getItems())
 
-          break
+        if (!database.init) {
+          database.init = true
+          database.promiseResolve()
         }
 
-        case 'ApplyBundle': {
-          const bundleSeqNo = message.seqNo
-          const base64Bundle = message.bundle
-          const encryptedBundle = base64.decode(base64Bundle)
-          const plaintextArrayBuffer = await crypto.aesGcm.decrypt(state.key, encryptedBundle)
-          const compressedString = arrayBufferToString(plaintextArrayBuffer)
-          const plaintextString = LZString.decompress(compressedString)
-          const bundle = JSON.parse(plaintextString)
-
-          state.database.applyBundle(bundle, bundleSeqNo)
-
-          break
-        }
-
-        case 'BuildBundle': {
-          const bundle = {
-            items: state.database.items,
-            itemsIndex: state.database.itemsIndex
-          }
-
-          const plaintextString = JSON.stringify(bundle)
-          const compressedString = LZString.compress(plaintextString)
-          const plaintextArrayBuffer = stringToArrayBuffer(compressedString)
-          const encryptedBundle = await crypto.aesGcm.encrypt(state.key, plaintextArrayBuffer)
-          const base64Bundle = base64.encode(encryptedBundle)
-
-          const action = 'Bundle'
-          const params = { seqNo: state.database.lastSeqNo, bundle: base64Bundle }
-          const request = new Request(ws, action, params)
-
-          request.send()
-
-          break
-        }
-
-        case 'Insert':
-        case 'Update':
-        case 'Delete':
-        case 'Batch':
-        case 'Bundle': {
-          const requestId = message.requestId
-
-          if (!requestId) return console.warn('Missing request id')
-
-          const request = requests[requestId]
-          if (!request) return console.warn(`Request ${requestId} no longer exists!`)
-          else if (!request.promiseResolve || !request.promiseReject) return
-
-          const response = message.response
-
-          const successfulResponse = response && response.status === 200
-          if (!successfulResponse) return request.promiseReject(response)
-          else return request.promiseResolve(response)
-        }
-
-        default: {
-          console.log('Received message from backend:' + message)
-          break
-        }
+        break
       }
-    }
 
-    ws.onclose = () => {
-      if (state.init) {
-        setTimeout(() => { connectWebSocket() }, 1000)
+      case 'ApplyBundle': {
+        const dbId = message.dbId
+        const database = state.databases[dbId]
+
+        const bundleSeqNo = message.seqNo
+        const base64Bundle = message.bundle
+        const encryptedBundle = base64.decode(base64Bundle)
+        const plaintextArrayBuffer = await crypto.aesGcm.decrypt(database.dbKey, encryptedBundle)
+        const compressedString = arrayBufferToString(plaintextArrayBuffer)
+        const plaintextString = LZString.decompress(compressedString)
+        const bundle = JSON.parse(plaintextString)
+
+        database.applyBundle(bundle, bundleSeqNo)
+
+        break
       }
-    }
-    ws.onerror = () => {
-      auth.clearAuthenticatedDataFromBrowser()
-      state.promiseReject()
-      ws.close()
-    }
 
-    ws.watch = async (requestId) => {
-      requests[requestId] = {}
+      case 'BuildBundle': {
+        const dbId = message.dbId
+        const database = state.databases[dbId]
 
-      const response = await new Promise((resolve, reject) => {
-        requests[requestId].promiseResolve = resolve
-        requests[requestId].promiseReject = reject
+        const bundle = {
+          items: database.items,
+          itemsIndex: database.itemsIndex
+        }
 
-        setTimeout(() => { reject(new Error('timeout')) }, 10000)
-      })
+        const plaintextString = JSON.stringify(bundle)
+        const compressedString = LZString.compress(plaintextString)
+        const plaintextArrayBuffer = stringToArrayBuffer(compressedString)
+        const encryptedBundle = await crypto.aesGcm.encrypt(database.dbKey, plaintextArrayBuffer)
+        const base64Bundle = base64.encode(encryptedBundle)
 
-      delete requests[requestId]
+        const action = 'Bundle'
+        const params = { seqNo: database.lastSeqNo, bundle: base64Bundle }
+        const request = new Request(ws, action, params)
 
-      return response
+        request.send()
+
+        break
+      }
+
+      case 'CreateDatabase':
+      case 'OpenDatabase':
+      case 'InitializeState':
+      case 'Insert':
+      case 'Update':
+      case 'Delete':
+      case 'Batch':
+      case 'Bundle': {
+        const requestId = message.requestId
+
+        if (!requestId) return console.warn('Missing request id')
+
+        const request = requests[requestId]
+        if (!request) return console.warn(`Request ${requestId} no longer exists!`)
+        else if (!request.promiseResolve || !request.promiseReject) return
+
+        const response = message.response
+
+        const successfulResponse = response && response.status === 200
+
+        if (!successfulResponse) return request.promiseReject(response)
+        else return request.promiseResolve(response)
+      }
+
+      default: {
+        console.log('Received unknown message from backend:' + message)
+        break
+      }
     }
   }
 
-  connectWebSocket()
+  ws.onclose = () => {
+    if (state.init) {
+      setTimeout(() => { connectWebSocket() }, 1000)
+    }
+  }
 
-  await promise
-}
+  ws.onerror = () => {
+    localData.clearAuthenticatedDataFromBrowser()
+    if (!state.init) reject()
+    ws.close()
+  }
 
-const insert = async (item, id) => {
-  if (!state.init) throw new Error(dbNotOpen)
+  ws.watch = async (requestId) => {
+    requests[requestId] = {}
 
-  const action = 'Insert'
-  const params = await _buildInsertParams(item, id)
+    const response = await new Promise((resolve, reject) => {
+      requests[requestId].promiseResolve = resolve
+      requests[requestId].promiseReject = reject
+
+      setTimeout(() => { reject(new Error('timeout')) }, 10000)
+    })
+
+    delete requests[requestId]
+
+    return response
+  }
+})
+
+const createDatabase = async (dbName, metadata) => {
+  if (!state.init) throw new Error(wsNotOpen)
+
+  const dbId = uuidv4()
+
+  const [dbKey, masterKey] = await Promise.all([
+    crypto.aesGcm.generateKey(),
+    localData.getKeyFromLocalStorage()
+  ])
+
+  const [dbKeyString, masterKeyString] = await Promise.all([
+    crypto.aesGcm.getKeyStringFromKey(dbKey),
+    crypto.aesGcm.getKeyStringFromKey(masterKey)
+  ])
+  const dbNameHash = await crypto.sha256.hashStringsWithSalt(dbName, masterKeyString)
+
+  const [encryptedDbKey, encryptedDbName, encryptedMetadata] = await Promise.all([
+    crypto.aesGcm.encryptJson(masterKey, dbKeyString),
+    crypto.aesGcm.encryptJson(dbKey, dbName),
+    metadata && crypto.aesGcm.encryptJson(dbKey, metadata)
+  ])
+
+  const action = 'CreateDatabase'
+  const params = {
+    dbNameHash,
+    dbId,
+    encryptedDbKey,
+    encryptedDbName,
+    encryptedMetadata,
+  }
   const request = new Request(ws, action, params)
 
-  await postTransaction(request)
+  await request.send()
 }
 
-const _buildInsertParams = async (item, id) => {
+const openDatabase = async (dbName, changeHandler) => {
+  if (!state.init) throw new Error(wsNotOpen)
+
+  const masterKeyString = localData.getKeyStringFromLocalStorage()
+  const dbNameHash = await crypto.sha256.hashStringsWithSalt(dbName, masterKeyString)
+
+  const request = new Request(ws, 'OpenDatabase', { dbNameHash })
+  const [response, masterKey] = await Promise.all([
+    request.send(),
+    crypto.aesGcm.getKeyFromKeyString(masterKeyString)
+  ])
+
+  const dbKeyString = await crypto.aesGcm.decryptJson(masterKey, response.data.dbKey)
+  const dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
+
+  const dbId = response.data.dbId
+
+  const initStatePromise = new Promise(resolve => {
+    state.databases[dbId] = new Database(dbKey, dbId, changeHandler, resolve)
+    state.dbNameHashToDbId[dbNameHash] = dbId
+    state.dbNameToDbHash[dbName] = dbNameHash
+  })
+
+  const initializeState = new Request(ws, 'InitializeState', { dbId })
+  initializeState.send()
+
+  await initStatePromise
+}
+
+const getOpenDb = (dbName) => {
+  const dbNameHash = state.dbNameToDbHash[dbName]
+  const dbId = state.dbNameHashToDbId[dbNameHash]
+  const database = state.databases[dbId]
+  if (!dbNameHash || !dbId || !database || !database.init) throw new Error(dbNotOpen)
+  return database
+}
+
+const insert = async (dbName, item, id) => {
+  const database = getOpenDb(dbName)
+
+  const action = 'Insert'
+  const params = await _buildInsertParams(database, item, id)
+  const request = new Request(ws, action, params)
+
+  await postTransaction(database, request)
+}
+
+const _buildInsertParams = async (database, item, id) => {
+  const dbId = database.dbId
+
+  if (!dbId) throw new Error('Insert missing db id')
   if (!item) throw new Error('Insert missing item')
 
   const [itemId, encryptedItem] = await Promise.all([
-    base64.encode(await crypto.aesGcm.encryptJson(state.key, id || uuidv4())),
-    base64.encode(await crypto.aesGcm.encryptJson(state.key, item))
+    crypto.aesGcm.encryptJson(database.dbKey, id || uuidv4()),
+    crypto.aesGcm.encryptJson(database.dbKey, item)
   ])
 
-  return { itemId, encryptedItem }
+  return { dbId, itemId, encryptedItem }
 }
 
-const update = async (id, item) => {
-  if (!state.init) throw new Error(dbNotOpen)
+const update = async (dbName, id, item) => {
+  const database = getOpenDb(dbName)
 
   const action = 'Update'
-  const params = await _buildUpdateParams(id, item)
+  const params = await _buildUpdateParams(database, id, item)
   const request = new Request(ws, action, params)
 
-  await postTransaction(request)
+  await postTransaction(database, request)
 }
 
-const _buildUpdateParams = async (id, item) => {
+const _buildUpdateParams = async (database, id, item) => {
+  const dbId = database.dbId
+
+  if (!dbId) throw new Error('Update missing db id')
   if (!id) throw new Error('Update missing id')
   if (!item) throw new Error('Update missing item')
 
-  const currentVersion = state.database.getItemVersionNumber(id)
+  const currentVersion = database.getItemVersionNumber(id)
 
   const [itemId, encryptedItem, __v] = await Promise.all([
-    base64.encode(await crypto.aesGcm.encryptJson(state.key, id)),
-    base64.encode(await crypto.aesGcm.encryptJson(state.key, item)),
-    base64.encode(await crypto.aesGcm.encryptJson(state.key, currentVersion + 1))
+    crypto.aesGcm.encryptJson(database.dbKey, id),
+    crypto.aesGcm.encryptJson(database.dbKey, item),
+    crypto.aesGcm.encryptJson(database.dbKey, currentVersion + 1)
   ])
 
-  return { itemId, encryptedItem, __v }
+  return { dbId, itemId, encryptedItem, __v }
 }
 
-const delete_ = async (id) => {
-  if (!state.init) throw new Error(dbNotOpen)
+const delete_ = async (dbName, id) => {
+  const database = getOpenDb(dbName)
 
   const action = 'Delete'
-  const params = await _buildDeleteParams(id)
+  const params = await _buildDeleteParams(database, id)
   const request = new Request(ws, action, params)
 
-  await postTransaction(request)
+  await postTransaction(database, request)
 }
 
-const _buildDeleteParams = async (id) => {
+const _buildDeleteParams = async (database, id) => {
+  const dbId = database.dbId
+
+  if (!dbId) throw new Error('Delete missing db id')
   if (!id) throw new Error('Delete missing id')
 
-  const currentVersion = state.database.getItemVersionNumber(id)
+  const currentVersion = database.getItemVersionNumber(id)
 
   const [itemId, __v] = await Promise.all([
-    base64.encode(await crypto.aesGcm.encryptJson(state.key, id)),
-    base64.encode(await crypto.aesGcm.encryptJson(state.key, currentVersion + 1))
+    crypto.aesGcm.encryptJson(database.dbKey, id),
+    crypto.aesGcm.encryptJson(database.dbKey, currentVersion + 1)
   ])
 
-  return { itemId, __v }
+  return { dbId, itemId, __v }
 }
 
-const batch = async (operations) => {
-  if (!state.init) throw new Error(dbNotOpen)
+const batch = async (dbName, operations) => {
+  const database = getOpenDb(dbName)
 
   const action = 'Batch'
 
@@ -594,20 +685,20 @@ const batch = async (operations) => {
         const id = operation.id
         const item = operation.item
 
-        return _buildInsertParams(item, id)
+        return _buildInsertParams(database, item, id)
       }
 
       case 'Update': {
         const id = operation.id
         const item = operation.item
 
-        return _buildUpdateParams(id, item)
+        return _buildUpdateParams(database, id, item)
       }
 
       case 'Delete': {
         const id = operation.id
 
-        return _buildDeleteParams(id)
+        return _buildDeleteParams(database, id)
       }
 
       default: throw new Error('Unknown command')
@@ -625,23 +716,25 @@ const batch = async (operations) => {
 
   const request = new Request(ws, action, params)
 
-  await postTransaction(request)
+  await postTransaction(database, request)
 }
 
-const postTransaction = async (request) => {
-  const pendingTx = state.database.registerUnverifiedTransaction()
+const postTransaction = async (database, request) => {
+  const pendingTx = database.registerUnverifiedTransaction()
   const response = await request.send()
   const seqNo = response.data.sequenceNo
 
   await pendingTx.getResult(seqNo)
 
-  state.database.unregisterUnverifiedTransaction(pendingTx)
+  database.unregisterUnverifiedTransaction(pendingTx)
 
   return seqNo
 }
 
 export default {
-  init,
+  connectWebSocket,
+  openDatabase,
+  createDatabase,
   insert,
   update,
   'delete': delete_,

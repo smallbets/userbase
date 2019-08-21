@@ -2,64 +2,8 @@ import uuidv4 from 'uuid/v4'
 import base64 from 'base64-arraybuffer'
 import api from './api'
 import crypto from './Crypto'
-
-const _setCurrentSession = (username, signedIn) => {
-  const session = { username, signedIn }
-  const sessionString = JSON.stringify(session)
-  localStorage.setItem('currentSession', sessionString)
-  return session
-}
-
-const getCurrentSession = () => {
-  const currentSessionString = localStorage.getItem('currentSession')
-  const currentSession = JSON.parse(currentSessionString)
-  return currentSession
-}
-
-const saveKeyStringToLocalStorage = async (keyString) => {
-  const currentSession = getCurrentSession()
-
-  const rawKey = base64.decode(keyString)
-  await crypto.aesGcm.getKeyFromRawKey(rawKey) // ensures key is valid, would throw if invalid
-
-  localStorage.setItem('key.' + currentSession.username, keyString)
-}
-
-const saveKeyToLocalStorage = async (username, key) => {
-  const keyString = await crypto.aesGcm.getKeyStringFromKey(key)
-  localStorage.setItem('key.' + username, keyString)
-}
-
-const getKeyStringFromLocalStorage = () => {
-  const currentSession = getCurrentSession()
-  if (!currentSession) {
-    return undefined
-  }
-
-  const username = currentSession.username
-  const keyString = localStorage.getItem('key.' + username)
-  return keyString
-}
-
-const getKeyFromLocalStorage = async () => {
-  const keyString = getKeyStringFromLocalStorage()
-
-  if (!keyString) {
-    return undefined
-  }
-
-  const key = await crypto.aesGcm.getKeyFromKeyString(keyString)
-  return key
-}
-
-const getRawKeyByUsername = async (username) => {
-  const keyString = localStorage.getItem('key.' + username)
-  if (!keyString) {
-    return undefined
-  }
-  const rawKey = base64.decode(keyString)
-  return rawKey
-}
+import localData from './localData'
+import db from './db'
 
 const signUp = async (username, password) => {
   const lowerCaseUsername = username.toLowerCase()
@@ -79,25 +23,21 @@ const signUp = async (username, password) => {
   // Saves to local storage before validation to ensure user has it.
   // Warning: if user hits the sign up button twice,
   // it's possible the key will be overwritten here and will be lost
-  await saveKeyToLocalStorage(lowerCaseUsername, aesKey)
+  await localData.saveKeyToLocalStorage(lowerCaseUsername, aesKey)
 
   await api.auth.validateKey(validationMessage)
+
+  await db.connectWebSocket()
 
   pollForKeyRequests(lowerCaseUsername)
 
   const signedIn = true
-  const session = _setCurrentSession(lowerCaseUsername, signedIn)
+  const session = localData.setCurrentSession(lowerCaseUsername, signedIn)
   return session
 }
 
-const clearAuthenticatedDataFromBrowser = () => {
-  const currentSession = getCurrentSession()
-  const signedIn = false
-  return _setCurrentSession(currentSession.username, signedIn)
-}
-
 const signOut = async () => {
-  const session = clearAuthenticatedDataFromBrowser()
+  const session = localData.clearAuthenticatedDataFromBrowser()
 
   await api.auth.signOut()
 
@@ -109,10 +49,12 @@ const signIn = async (username, password) => {
 
   await api.auth.signIn(lowerCaseUsername, password)
 
-  pollForKeyRequests(lowerCaseUsername)
+  await db.connectWebSocket()
+
+  // pollForKeyRequests(lowerCaseUsername)
 
   const signedIn = true
-  const session = _setCurrentSession(lowerCaseUsername, signedIn)
+  const session = localData.setCurrentSession(lowerCaseUsername, signedIn)
   return session
 }
 
@@ -120,7 +62,7 @@ const pollForKeyRequests = async (lowerCaseUsername) => {
   const POLL_INTERVAL = 2000
 
   const poll = async () => {
-    const rawMasterKey = await getRawKeyByUsername(lowerCaseUsername)
+    const rawMasterKey = await localData.getRawKeyByUsername(lowerCaseUsername)
 
     if (rawMasterKey) {
       await sendMasterKeyToRequesters(rawMasterKey)
@@ -214,13 +156,13 @@ const decryptAndSaveMasterKey = async (username, tempKeyToRequestMasterKey, send
   const masterRawKey = await crypto.aesGcm.decrypt(sharedKey, encryptedMasterKey)
   const masterKey = await crypto.aesGcm.getKeyFromRawKey(masterRawKey)
 
-  await saveKeyToLocalStorage(username, masterKey)
+  await localData.saveKeyToLocalStorage(username, masterKey)
   localStorage.removeItem(`${username}.temp-request-for-master-key`)
   return masterRawKey
 }
 
 const registerDevice = async () => {
-  const { username, signedIn } = getCurrentSession()
+  const { username, signedIn } = localData.getCurrentSession()
   if (!username || !signedIn) throw new Error('Sign in first!')
 
   // this could be random bytes -- it's not used to encrypt/decrypt anything, only to generate DH
@@ -240,12 +182,7 @@ const registerDevice = async () => {
 }
 
 export default {
-  getCurrentSession,
-  getKeyFromLocalStorage,
-  getKeyStringFromLocalStorage,
-  saveKeyStringToLocalStorage,
   signUp,
-  clearAuthenticatedDataFromBrowser,
   signOut,
   signIn,
   registerDevice

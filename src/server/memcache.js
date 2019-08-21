@@ -36,30 +36,30 @@ const sizeOfDdbItem = (item) => {
 }
 
 function MemCache() {
-  this.transactionLogByUserId = {}
+  this.transactionLogByDatabaseId = {}
 }
 
 MemCache.prototype.setTransactionsInTransactionLog = function (transactions) {
   for (const transaction of transactions) {
-    const userId = transaction['user-id']
+    const databaseId = transaction['database-id']
     const sequenceNo = transaction['sequence-no']
-    if (!this.transactionLogByUserId[userId]) this.initUser(userId)
-    this.transactionLogByUserId[userId].transactionArray[sequenceNo] = transaction
+    if (!this.transactionLogByDatabaseId[databaseId]) this.initDatabase(databaseId)
+    this.transactionLogByDatabaseId[databaseId].transactionArray[sequenceNo] = transaction
   }
 }
 
-MemCache.prototype.setBundleSeqNosInTransactionLog = function (users) {
-  for (const user of users) {
-    const userId = user['user-id']
-    const bundleSeqNo = user['bundle-seq-no']
-    if (!this.transactionLogByUserId[userId]) this.initUser(userId)
-    this.setBundleSeqNo(userId, bundleSeqNo)
+MemCache.prototype.setBundleSeqNosInTransactionLog = function (databases) {
+  for (const database of databases) {
+    const databaseId = database['database-id']
+    const bundleSeqNo = database['bundle-seq-no']
+    if (!this.transactionLogByDatabaseId[databaseId]) this.initDatabase(databaseId)
+    this.setBundleSeqNo(databaseId, bundleSeqNo)
   }
 }
 
 MemCache.prototype.eagerLoadTransactionLog = async function () {
   const params = {
-    TableName: setup.databaseTableName,
+    TableName: setup.transactionsTableName,
   }
 
   const ddbClient = connection.ddbClient()
@@ -83,23 +83,23 @@ MemCache.prototype.eagerLoadTransactionLog = async function () {
 
 MemCache.prototype.eagerLoadBundleSeqNos = async function () {
   const params = {
-    TableName: setup.usersTableName,
+    TableName: setup.databaseTableName,
   }
 
   const ddbClient = connection.ddbClient()
-  let usersResponse = await ddbClient.scan(params).promise()
-  let users = usersResponse.Items
+  let databasesResponse = await ddbClient.scan(params).promise()
+  let databases = databasesResponse.Items
 
   // Optimization note: this can be sped up by parallel scanning the table
-  while (usersResponse.LastEvaluatedKey) {
-    params.ExclusiveStartKey = usersResponse.LastEvaluatedKey
-    const usersPromise = ddbClient.scan(params).promise()
-    this.setBundleSeqNosInTransactionLog(users)
-    usersResponse = await usersPromise
-    users = usersResponse.Items
+  while (databasesResponse.LastEvaluatedKey) {
+    params.ExclusiveStartKey = databasesResponse.LastEvaluatedKey
+    const databasesPromise = ddbClient.scan(params).promise()
+    this.setBundleSeqNosInTransactionLog(databases)
+    databasesResponse = await databasesPromise
+    databases = databasesResponse.Items
   }
 
-  this.setBundleSeqNosInTransactionLog(users)
+  this.setBundleSeqNosInTransactionLog(databases)
 }
 
 MemCache.prototype.eagerLoad = async function () {
@@ -109,23 +109,23 @@ MemCache.prototype.eagerLoad = async function () {
   ])
 }
 
-MemCache.prototype.initUser = function (userId) {
-  this.transactionLogByUserId[userId] = {
+MemCache.prototype.initDatabase = function (databaseId) {
+  this.transactionLogByDatabaseId[databaseId] = {
     transactionArray: [],
     bundleSeqNo: null
   }
 }
 
 MemCache.prototype.pushTransaction = function (transaction) {
-  const userId = transaction['user-id']
+  const databaseId = transaction['database-id']
 
   const transactionToPush = {
     ...transaction,
     persistingToDdb: process.hrtime(),
   }
-  const sequenceNo = this.transactionLogByUserId[userId].transactionArray.push(transactionToPush) - 1
+  const sequenceNo = this.transactionLogByDatabaseId[databaseId].transactionArray.push(transactionToPush) - 1
 
-  this.transactionLogByUserId[userId].transactionArray[sequenceNo]['sequence-no'] = sequenceNo
+  this.transactionLogByDatabaseId[databaseId].transactionArray[sequenceNo]['sequence-no'] = sequenceNo
 
   return {
     ...transaction,
@@ -134,19 +134,19 @@ MemCache.prototype.pushTransaction = function (transaction) {
 }
 
 MemCache.prototype.transactionPersistedToDdb = function (transactionWithSequenceNo) {
-  const userId = transactionWithSequenceNo['user-id']
+  const databaseId = transactionWithSequenceNo['database-id']
   const sequenceNo = transactionWithSequenceNo['sequence-no']
-  delete this.transactionLogByUserId[userId].transactionArray[sequenceNo].persistingToDdb
+  delete this.transactionLogByDatabaseId[databaseId].transactionArray[sequenceNo].persistingToDdb
 }
 
 MemCache.prototype.transactionRolledBack = function (transactionWithRollbackCommand) {
-  const userId = transactionWithRollbackCommand['user-id']
+  const databaseId = transactionWithRollbackCommand['database-id']
   const sequenceNo = transactionWithRollbackCommand['sequence-no']
-  this.transactionLogByUserId[userId].transactionArray[sequenceNo] = transactionWithRollbackCommand
+  this.transactionLogByDatabaseId[databaseId].transactionArray[sequenceNo] = transactionWithRollbackCommand
 }
 
-MemCache.prototype.getTransactions = function (userId, startingSeqNo, inclusive = true) {
-  const transactionLog = this.transactionLogByUserId[userId].transactionArray
+MemCache.prototype.getTransactions = function (databaseId, startingSeqNo, inclusive = true) {
+  const transactionLog = this.transactionLogByDatabaseId[databaseId].transactionArray
 
   const log = []
   let encounteredTransactionPersistingToDdb = false
@@ -189,12 +189,12 @@ MemCache.prototype.getTransactions = function (userId, startingSeqNo, inclusive 
   return { log, size }
 }
 
-MemCache.prototype.setBundleSeqNo = function (userId, bundleSeqNo) {
-  this.transactionLogByUserId[userId].bundleSeqNo = Number(bundleSeqNo)
+MemCache.prototype.setBundleSeqNo = function (databaseId, bundleSeqNo) {
+  this.transactionLogByDatabaseId[databaseId].bundleSeqNo = Number(bundleSeqNo)
 }
 
-MemCache.prototype.getBundleSeqNo = function (userId) {
-  return this.transactionLogByUserId[userId].bundleSeqNo
+MemCache.prototype.getBundleSeqNo = function (databaseId) {
+  return this.transactionLogByDatabaseId[databaseId].bundleSeqNo
 }
 
 MemCache.prototype.getStartingSeqNo = function (bundleSeqNo) {

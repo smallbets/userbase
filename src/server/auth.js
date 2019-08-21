@@ -142,8 +142,6 @@ exports.validateKey = async function (req, res) {
     const ddbClient = connection.ddbClient()
     await ddbClient.update(updateUserParams).promise()
 
-    memcache.initUser(user['user-id'])
-
     return res.end()
   } catch (e) {
     if (e.name === 'ConditionalCheckFailedException') {
