@@ -1,9 +1,9 @@
 import uuidv4 from 'uuid/v4'
 import base64 from 'base64-arraybuffer'
 import api from './api'
+import db from './db'
 import crypto from './Crypto'
 import localData from './localData'
-import db from './db'
 
 const signUp = async (username, password) => {
   const lowerCaseUsername = username.toLowerCase()
@@ -39,6 +39,8 @@ const signUp = async (username, password) => {
 const signOut = async () => {
   const session = localData.clearAuthenticatedDataFromBrowser()
 
+  db.close()
+
   await api.auth.signOut()
 
   return session
@@ -51,7 +53,7 @@ const signIn = async (username, password) => {
 
   await db.connectWebSocket()
 
-  // pollForKeyRequests(lowerCaseUsername)
+  pollForKeyRequests(lowerCaseUsername)
 
   const signedIn = true
   const session = localData.setCurrentSession(lowerCaseUsername, signedIn)
@@ -62,12 +64,16 @@ const pollForKeyRequests = async (lowerCaseUsername) => {
   const POLL_INTERVAL = 2000
 
   const poll = async () => {
-    const rawMasterKey = await localData.getRawKeyByUsername(lowerCaseUsername)
+    try {
+      const rawMasterKey = await localData.getRawKeyByUsername(lowerCaseUsername)
 
-    if (rawMasterKey) {
-      await sendMasterKeyToRequesters(rawMasterKey)
-    } else {
-      await receiveRequestedMasterKey(lowerCaseUsername)
+      if (rawMasterKey) {
+        await sendMasterKeyToRequesters(rawMasterKey)
+      } else {
+        await receiveRequestedMasterKey(lowerCaseUsername)
+      }
+    } catch {
+      // swallow error
     }
 
     setTimeout(poll, POLL_INTERVAL)

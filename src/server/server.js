@@ -96,22 +96,10 @@ if (process.env.NODE_ENV == 'development') {
               response = await db.openDatabase(userId, connectionId, params.dbId, params.bundleSeqNo)
               break
             }
-            case 'Insert': {
-              response = await db.insert(userId, params.dbId, params.itemId, params.encryptedItem)
-              break
-            }
-            case 'Update': {
-              response = await db.update(
-                userId,
-                params.dbId,
-                params.itemId,
-                params.encryptedItem,
-                params.__v
-              )
-              break
-            }
+            case 'Insert':
+            case 'Update':
             case 'Delete': {
-              response = await db.delete(userId, params.dbId, params.itemId, params.__v)
+              response = await db.doCommand(action, userId, params.dbId, params.itemKey, params.encryptedItem)
               break
             }
             case 'Batch': {

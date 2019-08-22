@@ -4,6 +4,7 @@ import localData from './localData'
 import crypto from './Crypto'
 import SortedArray from 'sorted-array'
 import LZString from 'lz-string'
+import shajs from 'sha.js'
 import { stringToArrayBuffer, arrayBufferToString } from './Crypto/utils'
 
 const success = 'Success'
@@ -161,6 +162,7 @@ class Database {
       const seqNo = transaction.seqNo
 
       const transactionCode = await this.applyTransaction(this.dbKey, transaction)
+      this.lastSeqNo = seqNo
 
       for (let j = 0; j < this.unverifiedTransactions.length; j++) {
         if (!this.unverifiedTransactions[j] || seqNo < this.unverifiedTransactions[j].getStartSeqNo()) {
@@ -172,10 +174,11 @@ class Database {
   }
 
   applyBundle(bundle, bundleSeqNo) {
-    for (let i = 0; i < bundle.itemsIndex.array.length; i++) {
-      const itemIndex = bundle.itemsIndex.array[i]
-      const itemId = bundle.itemsIndex.array[i].itemId
+    for (let i = 0; i < bundle.itemsIndex.length; i++) {
+      const itemIndex = bundle.itemsIndex[i]
+      const itemId = bundle.itemsIndex[i].itemId
       const item = bundle.items[itemId]
+
       this.items[itemId] = item
       this.itemsIndex.insert(itemIndex)
     }
@@ -187,14 +190,11 @@ class Database {
     const seqNo = transaction.seqNo
     const command = transaction.command
 
-    this.lastSeqNo = seqNo
-
     switch (command) {
       case 'Insert': {
-        const [itemId, record] = await Promise.all([
-          crypto.aesGcm.decryptJson(key, transaction.itemId),
-          crypto.aesGcm.decryptJson(key, transaction.record)
-        ])
+        const record = await crypto.aesGcm.decryptJson(key, transaction.record)
+        const itemId = record.id
+        const item = record.item
 
         try {
           this.validateInsert(itemId)
@@ -202,15 +202,14 @@ class Database {
           return transactionCode
         }
 
-        return this.applyInsert(itemId, seqNo, record)
+        return this.applyInsert(itemId, seqNo, item)
       }
 
       case 'Update': {
-        const [itemId, record, __v] = await Promise.all([
-          crypto.aesGcm.decryptJson(key, transaction.itemId),
-          crypto.aesGcm.decryptJson(key, transaction.record),
-          crypto.aesGcm.decryptJson(key, transaction.__v),
-        ])
+        const record = await crypto.aesGcm.decryptJson(key, transaction.record)
+        const itemId = record.id
+        const item = record.item
+        const __v = record.__v
 
         try {
           this.validateUpdateOrDelete(itemId, __v)
@@ -218,14 +217,13 @@ class Database {
           return transactionCode
         }
 
-        return this.applyUpdate(itemId, record, __v)
+        return this.applyUpdate(itemId, item, __v)
       }
 
       case 'Delete': {
-        const [itemId, __v] = await Promise.all([
-          crypto.aesGcm.decryptJson(key, transaction.itemId),
-          crypto.aesGcm.decryptJson(key, transaction.__v)
-        ])
+        const record = await crypto.aesGcm.decryptJson(key, transaction.record)
+        const itemId = record.id
+        const __v = record.__v
 
         try {
           this.validateUpdateOrDelete(itemId, __v)
@@ -238,15 +236,20 @@ class Database {
 
       case 'Batch': {
         const batch = transaction.operations
-        const { itemIds, records, __vs } = await this.decryptBatch(key, batch)
+        const recordPromises = []
+
+        for (const operation of batch) {
+          recordPromises.push(operation.record && crypto.aesGcm.decryptJson(key, operation.record))
+        }
+        const records = await Promise.all(recordPromises)
 
         try {
-          this.validateBatch(batch, itemIds, __vs)
+          this.validateBatch(batch, records)
         } catch (transactionCode) {
           return transactionCode
         }
 
-        return this.applyBatch(seqNo, batch, itemIds, records, __vs)
+        return this.applyBatch(seqNo, batch, records)
       }
     }
   }
@@ -293,32 +296,17 @@ class Database {
     return success
   }
 
-  async decryptBatch(key, batch) {
-    const itemIdPromises = []
-    const recordPromises = []
-    const __vPromises = []
+  validateBatch(batch, records) {
+    const uniqueItemIds = {}
 
-    for (const operation of batch) {
-      itemIdPromises.push(crypto.aesGcm.decryptJson(key, operation['item-id']))
-      recordPromises.push(operation.record && crypto.aesGcm.decryptJson(key, operation.record))
-      __vPromises.push(operation.__v && crypto.aesGcm.decryptJson(key, operation.__v))
-    }
-
-    const [itemIds, records, __vs] = await Promise.all([
-      Promise.all(itemIdPromises),
-      Promise.all(recordPromises),
-      Promise.all(__vPromises)
-    ])
-
-    return { itemIds, records, __vs }
-  }
-
-  validateBatch(batch, itemIds, __vs) {
     for (let i = 0; i < batch.length; i++) {
       const operation = batch[i]
 
-      const itemId = itemIds[i]
-      const __v = __vs[i]
+      const itemId = records[i].id
+      const __v = records[i].__v
+
+      if (uniqueItemIds[itemId]) throw new Error('Only allowed one operation per item')
+      uniqueItemIds[itemId] = true
 
       switch (operation.command) {
         case 'Insert':
@@ -333,21 +321,21 @@ class Database {
     }
   }
 
-  applyBatch(seqNo, batch, itemIds, records, __vs) {
+  applyBatch(seqNo, batch, records) {
     for (let i = 0; i < batch.length; i++) {
       const operation = batch[i]
 
-      const itemId = itemIds[i]
-      const record = records[i]
-      const __v = __vs[i]
+      const itemId = records[i].id
+      const item = records[i].item
+      const __v = records[i].__v
 
       switch (operation.command) {
         case 'Insert':
-          this.applyInsert(itemId, seqNo, record, i)
+          this.applyInsert(itemId, seqNo, item, i)
           break
 
         case 'Update':
-          this.applyUpdate(itemId, record, __v)
+          this.applyUpdate(itemId, item, __v)
           break
 
         case 'Delete':
@@ -389,7 +377,8 @@ const connectWebSocket = () => new Promise(async (resolve, reject) => {
   setTimeout(() => { reject(new Error('timeout')) }, 5000)
 
   try {
-    state.masterKey = await localData.getKeyFromLocalStorage()
+    state.keyString = await localData.getKeyStringFromLocalStorage()
+    state.key = await crypto.aesGcm.getKeyFromKeyString(state.keyString)
   } catch {
     localData.clearAuthenticatedDataFromBrowser()
     throw new Error('Unable to get the key')
@@ -406,106 +395,7 @@ const connectWebSocket = () => new Promise(async (resolve, reject) => {
   }
 
   ws.onmessage = async (e) => {
-    const message = JSON.parse(e.data)
-
-    const route = message.route
-    switch (route) {
-      case 'ApplyTransactions': {
-        const dbId = message.dbId
-        const dbNameHash = state.dbIdToHash[dbId]
-        const database = state.databases[dbNameHash]
-
-        if (!database) return
-
-        const newTransactions = message.transactionLog
-        await database.applyTransactions(newTransactions)
-        database.onChange(database.getItems())
-
-        if (!database.init) {
-          database.init = true
-        }
-
-        break
-      }
-
-      case 'ApplyBundle': {
-        const dbId = message.dbId
-        const dbNameHash = state.dbIdToHash[dbId]
-        const database = state.databases[dbNameHash]
-
-        const bundleSeqNo = message.seqNo
-        const base64Bundle = message.bundle
-        const encryptedBundle = base64.decode(base64Bundle)
-        const plaintextArrayBuffer = await crypto.aesGcm.decrypt(database.dbKey, encryptedBundle)
-        const compressedString = arrayBufferToString(plaintextArrayBuffer)
-        const plaintextString = LZString.decompress(compressedString)
-        const bundle = JSON.parse(plaintextString)
-
-        database.applyBundle(bundle, bundleSeqNo)
-
-        break
-      }
-
-      case 'BuildBundle': {
-        const dbId = message.dbId
-        const dbNameHash = state.dbIdToHash[dbId]
-        const database = state.databases[dbNameHash]
-
-        const bundle = {
-          items: database.items,
-          itemsIndex: database.itemsIndex
-        }
-
-        const plaintextString = JSON.stringify(bundle)
-        const compressedString = LZString.compress(plaintextString)
-        const plaintextArrayBuffer = stringToArrayBuffer(compressedString)
-        const encryptedBundle = await crypto.aesGcm.encrypt(database.dbKey, plaintextArrayBuffer)
-        const base64Bundle = base64.encode(encryptedBundle)
-
-        const action = 'Bundle'
-        const params = { seqNo: database.lastSeqNo, bundle: base64Bundle }
-        const request = new Request(ws, action, params)
-
-        request.send()
-
-        break
-      }
-
-      case 'CreateDatabase':
-      case 'GetDatabase':
-      case 'OpenDatabase':
-      case 'Insert':
-      case 'Update':
-      case 'Delete':
-      case 'Batch':
-      case 'Bundle': {
-        const requestId = message.requestId
-
-        if (!requestId) return console.warn('Missing request id')
-
-        const request = requests[requestId]
-        if (!request) return console.warn(`Request ${requestId} no longer exists!`)
-        else if (!request.promiseResolve || !request.promiseReject) return
-
-        const response = message.response
-
-        const successfulResponse = response && response.status === 200
-
-        if (!successfulResponse) return request.promiseReject(response)
-        else return request.promiseResolve(response)
-      }
-
-      default: {
-        console.log('Received unknown message from backend:' + JSON.stringify(message))
-        break
-      }
-    }
-  }
-
-  ws.onclose = () => {
-    if (state.init) {
-      setTimeout(() => { connectWebSocket() }, 1000)
-    }
+    await handleMessage(JSON.parse(e.data))
   }
 
   ws.onerror = () => {
@@ -529,6 +419,108 @@ const connectWebSocket = () => new Promise(async (resolve, reject) => {
     return response
   }
 })
+
+const close = () => {
+  state.init = false
+  ws.close()
+}
+
+const handleMessage = async (message) => {
+  const route = message.route
+  switch (route) {
+    case 'ApplyTransactions': {
+      const dbId = message.dbId
+      const dbNameHash = state.dbIdToHash[dbId]
+      const database = state.databases[dbNameHash]
+
+      if (!database) return
+
+      if (message.bundle) {
+        const bundleSeqNo = message.bundleSeqNo
+        const base64Bundle = message.bundle
+        const encryptedBundle = base64.decode(base64Bundle)
+        const plaintextArrayBuffer = await crypto.aesGcm.decrypt(database.dbKey, encryptedBundle)
+        const compressedString = arrayBufferToString(plaintextArrayBuffer)
+        const plaintextString = LZString.decompress(compressedString)
+        const bundle = JSON.parse(plaintextString)
+
+        database.applyBundle(bundle, bundleSeqNo)
+      }
+
+      const newTransactions = message.transactionLog
+      await database.applyTransactions(newTransactions)
+      database.onChange(database.getItems())
+
+      if (!database.init) {
+        database.init = true
+      }
+
+      break
+    }
+
+    case 'BuildBundle': {
+      const dbId = message.dbId
+      const dbNameHash = state.dbIdToHash[dbId]
+      const database = state.databases[dbNameHash]
+
+      const bundle = {
+        items: database.items,
+        itemsIndex: database.itemsIndex.array
+      }
+
+      const itemKeys = []
+
+      for (let i = 0; i < bundle.itemsIndex.length; i++) {
+        const itemId = bundle.itemsIndex[i].itemId
+        const itemKey = shaItemId(itemId)
+        itemKeys.push(itemKey)
+      }
+
+      const plaintextString = JSON.stringify(bundle)
+      const compressedString = LZString.compress(plaintextString)
+      const plaintextArrayBuffer = stringToArrayBuffer(compressedString)
+      const encryptedBundle = await crypto.aesGcm.encrypt(database.dbKey, plaintextArrayBuffer)
+      const base64Bundle = base64.encode(encryptedBundle)
+
+      const action = 'Bundle'
+      const params = { seqNo: database.lastSeqNo, bundle: base64Bundle, keys: itemKeys }
+      const request = new Request(ws, action, params)
+
+      request.send()
+
+      break
+    }
+
+    case 'CreateDatabase':
+    case 'GetDatabase':
+    case 'OpenDatabase':
+    case 'Insert':
+    case 'Update':
+    case 'Delete':
+    case 'Batch':
+    case 'Bundle': {
+      const requestId = message.requestId
+
+      if (!requestId) return console.warn('Missing request id')
+
+      const request = requests[requestId]
+      if (!request) return console.warn(`Request ${requestId} no longer exists!`)
+      else if (!request.promiseResolve || !request.promiseReject) return
+
+      const response = message.response
+
+      const successfulResponse = response && response.status === 200
+
+      if (!successfulResponse) return request.promiseReject(response)
+      else return request.promiseResolve(response)
+    }
+
+    default: {
+      console.log('Received unknown message from backend:' + JSON.stringify(message))
+      break
+    }
+  }
+}
 
 const createDatabase = async (dbName, metadata) => {
   if (!state.init) throw new Error(wsNotOpen)
@@ -568,8 +560,7 @@ const createDatabase = async (dbName, metadata) => {
 const openDatabase = async (dbName, changeHandler) => {
   if (!state.init) throw new Error(wsNotOpen)
 
-  const masterKeyString = await crypto.aesGcm.getKeyStringFromKey(state.masterKey)
-  const dbNameHash = await crypto.sha256.hashStringsWithSalt(dbName, masterKeyString)
+  const dbNameHash = await crypto.sha256.hashStringsWithSalt(dbName, state.keyString)
 
   if (state.databases[dbNameHash] && state.databases[dbNameHash].init) throw new Error(dbAlreadyOpen)
 
@@ -579,7 +570,7 @@ const openDatabase = async (dbName, changeHandler) => {
   const dbId = response.data.dbId
   const bundleSeqNo = response.data.bundleSeqNo
 
-  const dbKeyString = await crypto.aesGcm.decryptJson(state.masterKey, response.data.dbKey)
+  const dbKeyString = await crypto.aesGcm.decryptJson(state.key, response.data.dbKey)
   const dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
 
   state.databases[dbNameHash] = new Database(dbId, dbKey, changeHandler)
@@ -613,12 +604,13 @@ const _buildInsertParams = async (database, item, id) => {
   if (!dbId) throw new Error('Insert missing db id')
   if (!item) throw new Error('Insert missing item')
 
-  const [itemId, encryptedItem] = await Promise.all([
-    crypto.aesGcm.encryptJson(database.dbKey, id || uuidv4()),
-    crypto.aesGcm.encryptJson(database.dbKey, item)
-  ])
+  const itemId = id || uuidv4()
 
-  return { dbId, itemId, encryptedItem }
+  const itemKey = shaItemId(itemId)
+  const itemRecord = { id: itemId, item }
+  const encryptedItem = await crypto.aesGcm.encryptJson(database.dbKey, itemRecord)
+
+  return { dbId, itemKey, encryptedItem }
 }
 
 const update = async (dbName, id, item) => {
@@ -638,15 +630,12 @@ const _buildUpdateParams = async (database, id, item) => {
   if (!id) throw new Error('Update missing id')
   if (!item) throw new Error('Update missing item')
 
+  const itemKey = shaItemId(id)
   const currentVersion = database.getItemVersionNumber(id)
+  const itemRecord = { id, item, __v: currentVersion + 1 }
+  const encryptedItem = await crypto.aesGcm.encryptJson(database.dbKey, itemRecord)
 
-  const [itemId, encryptedItem, __v] = await Promise.all([
-    crypto.aesGcm.encryptJson(database.dbKey, id),
-    crypto.aesGcm.encryptJson(database.dbKey, item),
-    crypto.aesGcm.encryptJson(database.dbKey, currentVersion + 1)
-  ])
-
-  return { dbId, itemId, encryptedItem, __v }
+  return { dbId, itemKey, encryptedItem }
 }
 
 const delete_ = async (dbName, id) => {
@@ -665,14 +654,12 @@ const _buildDeleteParams = async (database, id) => {
   if (!dbId) throw new Error('Delete missing db id')
   if (!id) throw new Error('Delete missing id')
 
+  const itemKey = shaItemId(id)
   const currentVersion = database.getItemVersionNumber(id)
+  const itemRecord = { id, __v: currentVersion + 1 }
+  const encryptedItem = await crypto.aesGcm.encryptJson(database.dbKey, itemRecord)
 
-  const [itemId, __v] = await Promise.all([
-    crypto.aesGcm.encryptJson(database.dbKey, id),
-    crypto.aesGcm.encryptJson(database.dbKey, currentVersion + 1)
-  ])
-
-  return { dbId, itemId, __v }
+  return { dbId, itemKey, encryptedItem }
 }
 
 const batch = async (dbName, operations) => {
@@ -735,10 +722,16 @@ const postTransaction = async (database, request) => {
   return seqNo
 }
 
+const shaItemId = (itemId) => {
+  const stringToHash = state.keyString + itemId
+  return shajs('sha256').update(stringToHash).digest('hex')
+}
+
 export default {
   connectWebSocket,
   openDatabase,
   createDatabase,
+  close,
   insert,
   update,
   'delete': delete_,

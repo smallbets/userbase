@@ -25,9 +25,16 @@ class Connection {
     const database = this.databases[databaseId]
     if (!database) return
 
+    const payload = {
+      route: 'ApplyTransactions',
+      transactionLog: [],
+      dbId: databaseId
+    }
+
     if (database.bundleSeqNo >= 0 && database.lastSeqNo < 0) {
       const bundle = await db.getBundle(this.userId, databaseId, database.bundleSeqNo)
-      this.socket.send(JSON.stringify({ bundle, dbId: databaseId, seqNo: database.bundleSeqNo, route: 'ApplyBundle' }))
+      payload.bundeSeqNo = this.bundleSeqNo
+      payload.bundle = bundle
       database.lastSeqNo = database.bundleSeqNo
     }
 
@@ -35,11 +42,13 @@ class Connection {
     const transactionLog = transactions.log
 
     if (!transactionLog || transactionLog.length == 0) {
-      forceEmpty && this.socket.send(JSON.stringify({ transactionLog, dbId: databaseId, route: 'ApplyTransactions' }))
+      forceEmpty && this.socket.send(JSON.stringify(payload))
       return
     }
 
-    this.socket.send(JSON.stringify({ transactionLog, dbId: databaseId, route: 'ApplyTransactions' }))
+    payload.transactionLog = transactionLog
+
+    this.socket.send(JSON.stringify(payload))
 
     database.lastSeqNo = transactionLog[transactionLog.length - 1]['seqNo']
     database.transactionLogSize += transactions.size

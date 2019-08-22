@@ -175,102 +175,43 @@ const putTransaction = async function (transaction, userId) {
   return transactionWithSequenceNo['sequence-no']
 }
 
-exports.insert = async function (userId, databaseId, itemId, item) {
-  if (!itemId) return _errorResponse(statusCodes['Bad Request'], 'Missing item id')
-  if (!item) return _errorResponse(statusCodes['Bad Request'], 'Missing item')
+exports.doCommand = async function (command, userId, databaseId, key, record) {
+  if (!databaseId) return _errorResponse(statusCodes['Bad Request'], 'Missing database id')
+  if (!key) return _errorResponse(statusCodes['Bad Request'], 'Missing item key')
+  if (!record) return _errorResponse(statusCodes['Bad Request'], 'Missing record')
 
-  try {
-    const command = 'Insert'
-
-    const transaction = {
-      'database-id': databaseId,
-      'item-id': itemId,
-      command,
-      record: item
-    }
-
-    const sequenceNo = await putTransaction(transaction, userId)
-    return _successResponse({ sequenceNo })
-  } catch (e) {
-    return _errorResponse(statusCodes['Internal Server Error'], `Failed to insert with ${e}`)
+  const transaction = {
+    'database-id': databaseId,
+    key,
+    command,
+    record
   }
-}
-
-exports.delete = async function (userId, databaseId, itemId, __v) {
-  if (!itemId) return _errorResponse(statusCodes['Bad Request'], 'Missing item id')
-  if (!__v) return _errorResponse(statusCodes['Bad Request'], 'Missing version number')
 
   try {
-    const command = 'Delete'
-
-    const transaction = {
-      'database-id': databaseId,
-      'item-id': itemId,
-      __v,
-      command
-    }
-
     const sequenceNo = await putTransaction(transaction, userId)
     return _successResponse({ sequenceNo })
   } catch (e) {
-    return _errorResponse(statusCodes['Internal Server Error'], `Failed to delete with ${e}`)
-  }
-}
-
-exports.update = async function (userId, databaseId, itemId, item, __v) {
-  if (!itemId) return _errorResponse(statusCodes['Bad Request'], 'Missing item id')
-  if (!item) return _errorResponse(statusCodes['Bad Request'], 'Missing item')
-  if (!__v) return _errorResponse(statusCodes['Bad Request'], 'Missing version number')
-
-  try {
-    const command = 'Update'
-
-    const transaction = {
-      'database-id': databaseId,
-      'item-id': itemId,
-      __v,
-      command,
-      record: item
-    }
-
-    const sequenceNo = await putTransaction(transaction, userId)
-    return _successResponse({ sequenceNo })
-  } catch (e) {
-    return _errorResponse(statusCodes['Internal Server Error'], `Failed to update with ${e}`)
+    return _errorResponse(statusCodes['Internal Server Error'], `Failed to ${command} with ${e}`)
   }
 }
 
 exports.batch = async function (userId, databaseId, operations) {
+  if (!databaseId) return _errorResponse(statusCodes['Bad Request'], 'Missing database id')
   if (!operations || !operations.length) return _errorResponse(statusCodes['Bad Request'], 'Missing operations')
 
-  const uniqueItemIds = {}
   const ops = []
   for (let i = 0; i < operations.length; i++) {
     const operation = operations[i]
-    const itemId = operation.itemId
+    const key = operation.itemKey
     const command = operation.command
-    const encryptedItem = operation.encryptedItem
-    const __v = operation.__v
 
-    if (!itemId) return _errorResponse(statusCodes['Bad Request'], `Operation ${i} missing item id`)
+    if (!key) return _errorResponse(statusCodes['Bad Request'], `Operation ${i} missing item key`)
     if (!command) return _errorResponse(statusCodes['Bad Request'], `Operation ${i} missing command`)
-    if ((command === 'Insert' || command === 'Update') && !encryptedItem) {
-      return _errorResponse(statusCodes['Bad Request'], `Operation ${i} missing item`)
-    }
-    if ((command === 'Update' || command === 'Delete') && !__v) {
-      return _errorResponse(statusCodes['Bad Request'], `Operation ${i} missing version`)
-    }
-
-    if (uniqueItemIds[itemId]) return _errorResponse(statusCodes['Bad Request'], 'Only allowed one operation per item')
-    uniqueItemIds[itemId] = true
 
     const result = {
-      'item-id': itemId,
+      key,
       command
     }
-
-    if (command === 'Insert' || command === 'Update') result.record = encryptedItem
-    if (command === 'Update' || command === 'Delete') result.__v = __v
 
     ops.push(result)
   }
