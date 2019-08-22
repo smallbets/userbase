@@ -96,18 +96,18 @@ const putTransaction = async function (transaction) {
   return transactionWithSequenceNo['sequence-no']
 }
 
-exports.insert = async function (userId, itemId, item) {
-  if (!itemId) return _errorResponse(statusCodes['Bad Request'], 'Missing item id')
-  if (!item) return _errorResponse(statusCodes['Bad Request'], 'Missing item')
+exports.insert = async function (userId, key, record) {
+  if (!key) return _errorResponse(statusCodes['Bad Request'], 'Missing item key')
+  if (!record) return _errorResponse(statusCodes['Bad Request'], 'Missing record')
 
   try {
     const command = 'Insert'
 
     const transaction = {
       'user-id': userId,
-      'item-id': itemId,
+      key,
       command,
-      record: item
+      record
     }
 
     const sequenceNo = await putTransaction(transaction)
@@ -117,8 +117,8 @@ exports.insert = async function (userId, itemId, item) {
   }
 }
 
-exports.delete = async function (userId, itemId, __v) {
-  if (!itemId) return _errorResponse(statusCodes['Bad Request'], 'Missing item id')
+exports.delete = async function (userId, key, __v) {
+  if (!key) return _errorResponse(statusCodes['Bad Request'], 'Missing item key')
   if (!__v) return _errorResponse(statusCodes['Bad Request'], 'Missing version number')
 
   try {
@@ -126,8 +126,7 @@ exports.delete = async function (userId, itemId, __v) {
 
     const transaction = {
       'user-id': userId,
-      'item-id': itemId,
-      __v,
+      key,
       command
     }
 
@@ -138,20 +137,18 @@ exports.delete = async function (userId, itemId, __v) {
   }
 }
 
-exports.update = async function (userId, itemId, item, __v) {
-  if (!itemId) return _errorResponse(statusCodes['Bad Request'], 'Missing item id')
-  if (!item) return _errorResponse(statusCodes['Bad Request'], 'Missing item')
-  if (!__v) return _errorResponse(statusCodes['Bad Request'], 'Missing version number')
+exports.update = async function (userId, key, record) {
+  if (!key) return _errorResponse(statusCodes['Bad Request'], 'Missing item key')
+  if (!record) return _errorResponse(statusCodes['Bad Request'], 'Missing record')
 
   try {
     const command = 'Update'
 
     const transaction = {
       'user-id': userId,
-      'item-id': itemId,
-      __v,
+      key,
       command,
-      record: item
+      record
     }
 
     const sequenceNo = await putTransaction(transaction)

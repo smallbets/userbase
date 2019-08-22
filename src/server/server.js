@@ -78,15 +78,15 @@ if (process.env.NODE_ENV == 'development') {
           let response
           switch (action) {
             case 'Insert': {
-              response = await db.insert(userId, request.params.itemId, request.params.encryptedItem)
+              response = await db.insert(userId, request.params.itemKey, request.params.encryptedItem)
               break
             }
             case 'Update': {
-              response = await db.update(userId, request.params.itemId, request.params.encryptedItem, request.params.__v)
+              response = await db.update(userId, request.params.itemKey, request.params.encryptedItem)
               break
             }
             case 'Delete': {
-              response = await db.delete(userId, request.params.itemId, request.params.__v)
+              response = await db.delete(userId, request.params.itemKey)
               break
             }
             case 'Batch': {
