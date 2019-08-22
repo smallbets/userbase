@@ -1,6 +1,7 @@
 import uuidv4 from 'uuid/v4'
 import base64 from 'base64-arraybuffer'
 import api from './api'
+import db from './db'
 import crypto from './Crypto'
 
 const _setCurrentSession = (username, signedIn) => {
@@ -99,6 +100,8 @@ const clearAuthenticatedDataFromBrowser = () => {
 const signOut = async () => {
   const session = clearAuthenticatedDataFromBrowser()
 
+  db.close()
+
   await api.auth.signOut()
 
   return session
@@ -120,12 +123,16 @@ const pollForKeyRequests = async (lowerCaseUsername) => {
   const POLL_INTERVAL = 2000
 
   const poll = async () => {
-    const rawMasterKey = await getRawKeyByUsername(lowerCaseUsername)
+    try {
+      const rawMasterKey = await getRawKeyByUsername(lowerCaseUsername)
 
-    if (rawMasterKey) {
-      await sendMasterKeyToRequesters(rawMasterKey)
-    } else {
-      await receiveRequestedMasterKey(lowerCaseUsername)
+      if (rawMasterKey) {
+        await sendMasterKeyToRequesters(rawMasterKey)
+      } else {
+        await receiveRequestedMasterKey(lowerCaseUsername)
+      }
+    } catch {
+      // swallow error
     }
 
     setTimeout(poll, POLL_INTERVAL)

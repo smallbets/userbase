@@ -386,11 +386,6 @@ const init = async (onDbChangeHandler, onFirstResponse) => {
       await handleMessage(JSON.parse(e.data), onDbChangeHandler, onFirstResponse)
     }
 
-    ws.onclose = () => {
-      if (state.init) {
-        setTimeout(() => { connectWebSocket() }, 1000)
-      }
-    }
     ws.onerror = () => {
       state.promiseReject()
       ws.close()
@@ -415,6 +410,11 @@ const init = async (onDbChangeHandler, onFirstResponse) => {
   connectWebSocket()
 
   await promise
+}
+
+const close = () => {
+  state.init = false
+  ws.close()
 }
 
 const handleMessage = async (message, onDbChangeHandler, onFirstResponse) => {
@@ -636,6 +636,7 @@ const shaItemId = (itemId) => {
 
 export default {
   init,
+  close,
   insert,
   update,
   'delete': delete_,
