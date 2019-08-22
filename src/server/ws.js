@@ -21,7 +21,7 @@ class Connection {
     }
   }
 
-  async initTransactions(databaseId) {
+  async push(databaseId, forceEmpty) {
     const database = this.databases[databaseId]
     if (!database) return
 
@@ -35,29 +35,14 @@ class Connection {
     const transactionLog = transactions.log
 
     if (!transactionLog || transactionLog.length == 0) {
-      return this.socket.send(JSON.stringify({ transactionLog, dbId: databaseId, route: 'ApplyTransactions' }))
+      forceEmpty && this.socket.send(JSON.stringify({ transactionLog, dbId: databaseId, route: 'ApplyTransactions' }))
+      return
     }
 
-    this.finishPushingTransactions(database, transactionLog, transactions.size, databaseId)
-  }
-
-  push(databaseId) {
-    const database = this.databases[databaseId]
-    if (!database) return
-
-    const transactions = memcache.getTransactions(databaseId, database.lastSeqNo, false)
-    const transactionLog = transactions.log
-
-    if (!transactionLog || transactionLog.length == 0) return
-
-    this.finishPushingTransactions(database, transactionLog, transactions.size, databaseId)
-  }
-
-  finishPushingTransactions(database, transactionLog, size, databaseId) {
     this.socket.send(JSON.stringify({ transactionLog, dbId: databaseId, route: 'ApplyTransactions' }))
 
     database.lastSeqNo = transactionLog[transactionLog.length - 1]['seqNo']
-    database.transactionLogSize += size
+    database.transactionLogSize += transactions.size
 
     if (database.transactionLogSize >= TRANSACTION_SIZE_BUNDLE_TRIGGER) {
       this.socket.send(JSON.stringify({ dbId: databaseId, route: 'BuildBundle' }))
@@ -80,25 +65,21 @@ export default class Connections {
   }
 
   static openDatabase(userId, connectionId, databaseId, bundleSeqNo) {
-    console.log(userId, connectionId, databaseId, bundleSeqNo)
-
     if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId][connectionId]) return
 
     Connections.sockets[userId][connectionId].openDatabase(databaseId, bundleSeqNo)
     logger.info(`Database ${databaseId} opened by user ${userId}`)
+
+    const forceEmpty = true
+    this.push(databaseId, userId, forceEmpty)
+    return true
   }
 
-  static initTransactions(userId, connectionId, databaseId) {
-    if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId][connectionId]) return
-
-    Connections.sockets[userId][connectionId].initTransactions(databaseId)
-  }
-
-  static push(databaseId, userId) {
+  static push(databaseId, userId, forceEmpty = false) {
     if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId]) return
 
     for (const conn of Object.values(Connections.sockets[userId])) {
-      conn.push(databaseId)
+      conn.push(databaseId, forceEmpty)
     }
   }
 

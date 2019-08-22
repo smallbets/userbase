@@ -12,11 +12,12 @@ const itemAlreadyDeleted = 'Item already deleted'
 const versionConflict = 'Version conflict'
 const wsNotOpen = 'Web Socket not open'
 const dbNotOpen = 'Database not open'
+const dbAlreadyOpen = 'Database already open'
 
 const state = {
   databases: {},
-  dbNameHashToDbId: {},
-  dbNameToDbHash: {}
+  dbIdToHash: {},
+  dbNameToHash: {}
 }
 const requests = {}
 let ws
@@ -131,11 +132,10 @@ class UnverifiedTransaction {
 }
 
 class Database {
-  constructor(dbKey, dbId, changeHandler, promiseResolve) {
-    this.dbKey = dbKey
+  constructor(dbId, dbKey, changeHandler) {
     this.dbId = dbId
+    this.dbKey = dbKey
     this.onChange = changeHandler
-    this.promiseResolve = promiseResolve
 
     this.items = {}
 
@@ -152,6 +152,7 @@ class Database {
     this.itemsIndex = new SortedArray([], compareItems)
     this.unverifiedTransactions = []
     this.lastSeqNo = -1
+    this.init = false
   }
 
   async applyTransactions(transactions) {
@@ -384,8 +385,15 @@ class Database {
   }
 }
 
-const connectWebSocket = () => new Promise((resolve, reject) => {
+const connectWebSocket = () => new Promise(async (resolve, reject) => {
   setTimeout(() => { reject(new Error('timeout')) }, 5000)
+
+  try {
+    state.masterKey = await localData.getKeyFromLocalStorage()
+  } catch {
+    localData.clearAuthenticatedDataFromBrowser()
+    throw new Error('Unable to get the key')
+  }
 
   const url = ((window.location.protocol === 'https:') ?
     'wss://' : 'ws://') + window.location.host + '/api'
@@ -404,18 +412,17 @@ const connectWebSocket = () => new Promise((resolve, reject) => {
     switch (route) {
       case 'ApplyTransactions': {
         const dbId = message.dbId
-        const database = state.databases[dbId]
-
-        const newTransactions = message.transactionLog
+        const dbNameHash = state.dbIdToHash[dbId]
+        const database = state.databases[dbNameHash]
 
         if (!database) return
 
+        const newTransactions = message.transactionLog
         await database.applyTransactions(newTransactions)
         database.onChange(database.getItems())
 
         if (!database.init) {
           database.init = true
-          database.promiseResolve()
         }
 
         break
@@ -423,7 +430,8 @@ const connectWebSocket = () => new Promise((resolve, reject) => {
 
       case 'ApplyBundle': {
         const dbId = message.dbId
-        const database = state.databases[dbId]
+        const dbNameHash = state.dbIdToHash[dbId]
+        const database = state.databases[dbNameHash]
 
         const bundleSeqNo = message.seqNo
         const base64Bundle = message.bundle
@@ -440,7 +448,8 @@ const connectWebSocket = () => new Promise((resolve, reject) => {
 
       case 'BuildBundle': {
         const dbId = message.dbId
-        const database = state.databases[dbId]
+        const dbNameHash = state.dbIdToHash[dbId]
+        const database = state.databases[dbNameHash]
 
         const bundle = {
           items: database.items,
@@ -463,8 +472,8 @@ const connectWebSocket = () => new Promise((resolve, reject) => {
       }
 
       case 'CreateDatabase':
+      case 'GetDatabase':
       case 'OpenDatabase':
-      case 'InitializeState':
       case 'Insert':
       case 'Update':
       case 'Delete':
@@ -487,7 +496,7 @@ const connectWebSocket = () => new Promise((resolve, reject) => {
       }
 
       default: {
-        console.log('Received unknown message from backend:' + message)
+        console.log('Received unknown message from backend:' + JSON.stringify(message))
         break
       }
     }
@@ -535,9 +544,9 @@ const createDatabase = async (dbName, metadata) => {
     crypto.aesGcm.getKeyStringFromKey(dbKey),
     crypto.aesGcm.getKeyStringFromKey(masterKey)
   ])
-  const dbNameHash = await crypto.sha256.hashStringsWithSalt(dbName, masterKeyString)
 
-  const [encryptedDbKey, encryptedDbName, encryptedMetadata] = await Promise.all([
+  const [dbNameHash, encryptedDbKey, encryptedDbName, encryptedMetadata] = await Promise.all([
+    crypto.sha256.hashStringsWithSalt(dbName, masterKeyString),
     crypto.aesGcm.encryptJson(masterKey, dbKeyString),
     crypto.aesGcm.encryptJson(dbKey, dbName),
     metadata && crypto.aesGcm.encryptJson(dbKey, metadata)
@@ -551,45 +560,40 @@ const createDatabase = async (dbName, metadata) => {
     encryptedDbName,
     encryptedMetadata,
   }
-  const request = new Request(ws, action, params)
 
+  const request = new Request(ws, action, params)
   await request.send()
 }
 
 const openDatabase = async (dbName, changeHandler) => {
   if (!state.init) throw new Error(wsNotOpen)
 
-  const masterKeyString = localData.getKeyStringFromLocalStorage()
+  const masterKeyString = await crypto.aesGcm.getKeyStringFromKey(state.masterKey)
   const dbNameHash = await crypto.sha256.hashStringsWithSalt(dbName, masterKeyString)
 
-  const request = new Request(ws, 'OpenDatabase', { dbNameHash })
-  const [response, masterKey] = await Promise.all([
-    request.send(),
-    crypto.aesGcm.getKeyFromKeyString(masterKeyString)
-  ])
+  if (state.databases[dbNameHash] && state.databases[dbNameHash].init) throw new Error(dbAlreadyOpen)
 
-  const dbKeyString = await crypto.aesGcm.decryptJson(masterKey, response.data.dbKey)
-  const dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
+  let request = new Request(ws, 'GetDatabase', { dbNameHash })
+  const response = await request.send()
 
   const dbId = response.data.dbId
+  const bundleSeqNo = response.data.bundleSeqNo
 
-  const initStatePromise = new Promise(resolve => {
-    state.databases[dbId] = new Database(dbKey, dbId, changeHandler, resolve)
-    state.dbNameHashToDbId[dbNameHash] = dbId
-    state.dbNameToDbHash[dbName] = dbNameHash
-  })
+  const dbKeyString = await crypto.aesGcm.decryptJson(state.masterKey, response.data.dbKey)
+  const dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
 
-  const initializeState = new Request(ws, 'InitializeState', { dbId })
-  initializeState.send()
+  state.databases[dbNameHash] = new Database(dbId, dbKey, changeHandler)
+  state.dbIdToHash[dbId] = dbNameHash
+  state.dbNameToHash[dbName] = dbNameHash
 
-  await initStatePromise
+  request = new Request(ws, 'OpenDatabase', { dbId, bundleSeqNo })
+  await request.send()
 }
 
 const getOpenDb = (dbName) => {
-  const dbNameHash = state.dbNameToDbHash[dbName]
-  const dbId = state.dbNameHashToDbId[dbNameHash]
-  const database = state.databases[dbId]
-  if (!dbNameHash || !dbId || !database || !database.init) throw new Error(dbNotOpen)
+  const dbNameHash = state.dbNameToHash[dbName]
+  const database = state.databases[dbNameHash]
+  if (!dbNameHash || !database || !database.init) throw new Error(dbNotOpen)
   return database
 }
 
