@@ -1,5 +1,5 @@
 import base64 from 'base64-arraybuffer'
-import { stringToArrayBuffer, appendBuffer } from './utils'
+import { stringToArrayBuffer } from './utils'
 
 const ALGORITHM_NAME = 'SHA-256'
 
@@ -20,17 +20,13 @@ const hash = async (data) => {
 /**
  *
  * @param {String} data
- * @param {String} salt
  */
-const hashStringsWithSalt = async (data, salt) => {
-  const result = await hash(appendBuffer(
-    stringToArrayBuffer(data),
-    stringToArrayBuffer(salt)
-  ))
+const hashString = async (data) => {
+  const result = await hash(stringToArrayBuffer(data))
   return base64.encode(result)
 }
 
 export default {
   hash,
-  hashStringsWithSalt
+  hashString
 }

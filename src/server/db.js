@@ -203,13 +203,16 @@ exports.batch = async function (userId, databaseId, operations) {
   for (let i = 0; i < operations.length; i++) {
     const operation = operations[i]
     const key = operation.itemKey
+    const record = operation.encryptedItem
     const command = operation.command
 
     if (!key) return _errorResponse(statusCodes['Bad Request'], `Operation ${i} missing item key`)
+    if (!record) return _errorResponse(statusCodes['Bad Request'], `Operation ${i} missing record`)
     if (!command) return _errorResponse(statusCodes['Bad Request'], `Operation ${i} missing command`)
 
     const result = {
       key,
+      record,
       command
     }
 
@@ -258,7 +261,7 @@ const findDatabaseByDatabaseId = async function (databaseId) {
   return databaseResponse.Items[0]
 }
 
-exports.bundleTransactionLog = async function (userId, databaseId, dbNameHash, seqNo, bundle) {
+exports.bundleTransactionLog = async function (userId, databaseId, seqNo, bundle) {
   const bundleSeqNo = Number(seqNo)
 
   if (!bundleSeqNo && bundleSeqNo !== 0) {
@@ -267,6 +270,7 @@ exports.bundleTransactionLog = async function (userId, databaseId, dbNameHash, s
 
   try {
     const database = await findDatabaseByDatabaseId(databaseId)
+    const dbNameHash = database['database-name-hash']
     const lastBundleSeqNo = database['bundle-seq-no']
     if (lastBundleSeqNo >= bundleSeqNo) {
       return _errorResponse(statusCodes['Bad Request'], 'Bundle sequence no must be greater than current bundle')
@@ -291,7 +295,7 @@ exports.bundleTransactionLog = async function (userId, databaseId, dbNameHash, s
         'database-name-hash': dbNameHash
       },
       UpdateExpression: 'set #bundleSeqNo = :bundleSeqNo',
-      ConditionExpression: '#bundleSeqNo < :bundleSeqNo and #dbId = :dbId',
+      ConditionExpression: '(attribute_not_exists(#bundleSeqNo) or #bundleSeqNo < :bundleSeqNo) and #dbId = :dbId',
       ExpressionAttributeNames: {
         '#bundleSeqNo': 'bundle-seq-no',
         '#dbId': 'database-id'

@@ -15,7 +15,7 @@ class Connection {
 
   openDatabase(databaseId, bundleSeqNo) {
     this.databases[databaseId] = {
-      bundleSeqNo: bundleSeqNo ? bundleSeqNo : -1,
+      bundleSeqNo: bundleSeqNo >= 0 ? bundleSeqNo : -1,
       lastSeqNo: -1,
       transactionLogSize: 0
     }
@@ -31,11 +31,12 @@ class Connection {
       dbId: databaseId
     }
 
-    if (database.bundleSeqNo >= 0 && database.lastSeqNo < 0) {
-      const bundle = await db.getBundle(this.userId, databaseId, database.bundleSeqNo)
-      payload.bundeSeqNo = this.bundleSeqNo
+    const bundleSeqNo = database.bundleSeqNo
+    if (bundleSeqNo >= 0 && database.lastSeqNo < 0) {
+      const bundle = await db.getBundle(databaseId, bundleSeqNo)
+      payload.bundeSeqNo = bundleSeqNo
       payload.bundle = bundle
-      database.lastSeqNo = database.bundleSeqNo
+      database.lastSeqNo = bundleSeqNo
     }
 
     const transactions = memcache.getTransactions(databaseId, database.lastSeqNo, false)

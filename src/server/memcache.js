@@ -175,10 +175,12 @@ MemCache.prototype.getTransactions = function (databaseId, startingSeqNo, inclus
         const outputTransaction = {
           seqNo: transaction['sequence-no'],
           command: transaction['command'],
-          itemId: transaction['item-id'],
-          record: transaction['record'] ? transaction['record'].toString('base64') : undefined,
-          operations: transaction['operations'], // from batch transaction
-          __v: transaction['__v']
+          key: transaction['key'],
+          record: transaction['record'],
+
+          // from batch transaction
+          operations: transaction['operations'],
+          dbId: transaction['database-id']
         }
 
         log.push(outputTransaction)

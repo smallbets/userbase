@@ -1,17 +1,14 @@
 import uuidv4 from 'uuid/v4'
-import base64 from 'base64-arraybuffer'
 import localData from './localData'
 import crypto from './Crypto'
 import SortedArray from 'sorted-array'
 import LZString from 'lz-string'
 import shajs from 'sha.js'
-import { stringToArrayBuffer, arrayBufferToString } from './Crypto/utils'
 
 const success = 'Success'
 const itemAlreadyExists = 'Item already exists'
 const itemAlreadyDeleted = 'Item already deleted'
 const versionConflict = 'Version conflict'
-const wsNotOpen = 'Web Socket not open'
 const dbNotOpen = 'Database not open'
 const dbAlreadyOpen = 'Database already open'
 
@@ -389,7 +386,7 @@ const connectWebSocket = () => new Promise(async (resolve, reject) => {
 
   ws = new WebSocket(url)
 
-  ws.onopen = async (e) => {
+  ws.onopen = (e) => {
     state.init = true
     resolve(e)
   }
@@ -438,9 +435,7 @@ const handleMessage = async (message) => {
       if (message.bundle) {
         const bundleSeqNo = message.bundleSeqNo
         const base64Bundle = message.bundle
-        const encryptedBundle = base64.decode(base64Bundle)
-        const plaintextArrayBuffer = await crypto.aesGcm.decrypt(database.dbKey, encryptedBundle)
-        const compressedString = arrayBufferToString(plaintextArrayBuffer)
+        const compressedString = await crypto.aesGcm.decryptString(database.dbKey, base64Bundle)
         const plaintextString = LZString.decompress(compressedString)
         const bundle = JSON.parse(plaintextString)
 
@@ -478,12 +473,10 @@ const handleMessage = async (message) => {
 
       const plaintextString = JSON.stringify(bundle)
       const compressedString = LZString.compress(plaintextString)
-      const plaintextArrayBuffer = stringToArrayBuffer(compressedString)
-      const encryptedBundle = await crypto.aesGcm.encrypt(database.dbKey, plaintextArrayBuffer)
-      const base64Bundle = base64.encode(encryptedBundle)
+      const base64Bundle = await crypto.aesGcm.encryptString(database.dbKey, compressedString)
 
       const action = 'Bundle'
-      const params = { seqNo: database.lastSeqNo, bundle: base64Bundle, keys: itemKeys }
+      const params = { dbId, seqNo: database.lastSeqNo, bundle: base64Bundle, keys: itemKeys }
       const request = new Request(ws, action, params)
 
       request.send()
@@ -523,24 +516,17 @@ const handleMessage = async (message) => {
 }
 
 const createDatabase = async (dbName, metadata) => {
-  if (!state.init) throw new Error(wsNotOpen)
+  if (!state.init) await connectWebSocket()
 
   const dbId = uuidv4()
 
-  const [dbKey, masterKey] = await Promise.all([
-    crypto.aesGcm.generateKey(),
-    localData.getKeyFromLocalStorage()
-  ])
-
-  const [dbKeyString, masterKeyString] = await Promise.all([
-    crypto.aesGcm.getKeyStringFromKey(dbKey),
-    crypto.aesGcm.getKeyStringFromKey(masterKey)
-  ])
+  const dbKey = await crypto.aesGcm.generateKey()
+  const dbKeyString = await crypto.aesGcm.getKeyStringFromKey(dbKey)
 
   const [dbNameHash, encryptedDbKey, encryptedDbName, encryptedMetadata] = await Promise.all([
-    crypto.sha256.hashStringsWithSalt(dbName, masterKeyString),
-    crypto.aesGcm.encryptJson(masterKey, dbKeyString),
-    crypto.aesGcm.encryptJson(dbKey, dbName),
+    crypto.sha256.hashString(dbName + state.keyString),
+    crypto.aesGcm.encryptString(state.key, dbKeyString),
+    crypto.aesGcm.encryptString(dbKey, dbName),
     metadata && crypto.aesGcm.encryptJson(dbKey, metadata)
   ])
 
@@ -558,9 +544,9 @@ const createDatabase = async (dbName, metadata) => {
 }
 
 const openDatabase = async (dbName, changeHandler) => {
-  if (!state.init) throw new Error(wsNotOpen)
+  if (!state.init) await connectWebSocket()
 
-  const dbNameHash = await crypto.sha256.hashStringsWithSalt(dbName, state.keyString)
+  const dbNameHash = await crypto.sha256.hashString(dbName + state.keyString)
 
   if (state.databases[dbNameHash] && state.databases[dbNameHash].init) throw new Error(dbAlreadyOpen)
 
@@ -570,7 +556,7 @@ const openDatabase = async (dbName, changeHandler) => {
   const dbId = response.data.dbId
   const bundleSeqNo = response.data.bundleSeqNo
 
-  const dbKeyString = await crypto.aesGcm.decryptJson(state.key, response.data.dbKey)
+  const dbKeyString = await crypto.aesGcm.decryptString(state.key, response.data.dbKey)
   const dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
 
   state.databases[dbNameHash] = new Database(dbId, dbKey, changeHandler)
@@ -598,10 +584,10 @@ const insert = async (dbName, item, id) => {
   await postTransaction(database, request)
 }
 
-const _buildInsertParams = async (database, item, id) => {
+const _buildInsertParams = async (database, item, id, includeDbId = true) => {
   const dbId = database.dbId
 
-  if (!dbId) throw new Error('Insert missing db id')
+  if (!dbId && includeDbId) throw new Error('Insert missing db id')
   if (!item) throw new Error('Insert missing item')
 
   const itemId = id || uuidv4()
@@ -623,10 +609,10 @@ const update = async (dbName, id, item) => {
   await postTransaction(database, request)
 }
 
-const _buildUpdateParams = async (database, id, item) => {
+const _buildUpdateParams = async (database, id, item, includeDbId = true) => {
   const dbId = database.dbId
 
-  if (!dbId) throw new Error('Update missing db id')
+  if (!dbId && includeDbId) throw new Error('Update missing db id')
   if (!id) throw new Error('Update missing id')
   if (!item) throw new Error('Update missing item')
 
@@ -648,10 +634,10 @@ const delete_ = async (dbName, id) => {
   await postTransaction(database, request)
 }
 
-const _buildDeleteParams = async (database, id) => {
+const _buildDeleteParams = async (database, id, includeDbId = true) => {
   const dbId = database.dbId
 
-  if (!dbId) throw new Error('Delete missing db id')
+  if (!dbId && includeDbId) throw new Error('Delete missing db id')
   if (!id) throw new Error('Delete missing id')
 
   const itemKey = shaItemId(id)
@@ -670,26 +656,27 @@ const batch = async (dbName, operations) => {
   const operationParamsPromises = operations.map(operation => {
 
     const command = operation.command
+    const includeDbId = false
 
     switch (command) {
       case 'Insert': {
         const id = operation.id
         const item = operation.item
 
-        return _buildInsertParams(database, item, id)
+        return _buildInsertParams(database, item, id, includeDbId)
       }
 
       case 'Update': {
         const id = operation.id
         const item = operation.item
 
-        return _buildUpdateParams(database, id, item)
+        return _buildUpdateParams(database, id, item, includeDbId)
       }
 
       case 'Delete': {
         const id = operation.id
 
-        return _buildDeleteParams(database, id)
+        return _buildDeleteParams(database, id, includeDbId)
       }
 
       default: throw new Error('Unknown command')
@@ -702,7 +689,8 @@ const batch = async (dbName, operations) => {
     operations: operations.map((operation, i) => ({
       command: operation.command,
       ...operationParams[i]
-    }))
+    })),
+    dbId: database.dbId
   }
 
   const request = new Request(ws, action, params)

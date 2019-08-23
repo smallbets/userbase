@@ -27,12 +27,13 @@ const signUp = async (username, password) => {
 
   await api.auth.validateKey(validationMessage)
 
-  await db.connectWebSocket()
-
   pollForKeyRequests(lowerCaseUsername)
 
   const signedIn = true
   const session = localData.setCurrentSession(lowerCaseUsername, signedIn)
+
+  await db.connectWebSocket()
+
   return session
 }
 
