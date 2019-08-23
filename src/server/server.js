@@ -88,12 +88,8 @@ if (process.env.NODE_ENV == 'development') {
               )
               break
             }
-            case 'GetDatabase': {
-              response = await db.getDatabase(userId, params.dbNameHash)
-              break
-            }
             case 'OpenDatabase': {
-              response = await db.openDatabase(userId, connectionId, params.dbId, params.bundleSeqNo)
+              response = await db.openDatabase(userId, connectionId, params.dbNameHash)
               break
             }
             case 'Insert':

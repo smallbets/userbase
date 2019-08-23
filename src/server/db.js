@@ -45,7 +45,7 @@ exports.createDatabase = async function (userId, dbNameHash, dbId, encryptedDbNa
     const ddbClient = connection.ddbClient()
     await ddbClient.put(params).promise()
 
-    memcache.initDatabase(dbId)
+    memcache.initTransactionLog(dbId)
 
     return _successResponse('Success!')
   } catch (e) {
@@ -56,9 +56,7 @@ exports.createDatabase = async function (userId, dbNameHash, dbId, encryptedDbNa
   }
 }
 
-exports.getDatabase = async function (userId, dbNameHash) {
-  if (!dbNameHash) return _errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
-
+const getDatabase = async function (userId, dbNameHash) {
   const params = {
     TableName: setup.databaseTableName,
     Key: {
@@ -67,29 +65,28 @@ exports.getDatabase = async function (userId, dbNameHash) {
     }
   }
 
-  try {
-    const ddbClient = connection.ddbClient()
-    const dbResponse = await ddbClient.get(params).promise()
+  const ddbClient = connection.ddbClient()
+  const dbResponse = await ddbClient.get(params).promise()
 
-    const database = dbResponse && dbResponse.Item
-    if (!database) return _errorResponse(statusCodes['Not Found'], 'Database not found')
-
-    return _successResponse({
-      dbId: database['database-id'],
-      dbKey: database['database-key'],
-      bundleSeqNo: database['bundle-seq-no']
-    })
-  } catch (e) {
-    return _errorResponse(statusCodes['Internal Server Error'], `Failed to create database with ${e}`)
-  }
+  const database = dbResponse && dbResponse.Item
+  return database
 }
 
-exports.openDatabase = async function (userId, connectionId, dbId, bundleSeqNo) {
+exports.openDatabase = async function (userId, connectionId, dbNameHash) {
+  if (!dbNameHash) return _errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
+
   try {
-    if (connections.openDatabase(userId, connectionId, dbId, bundleSeqNo)) {
+    const database = await getDatabase(userId, dbNameHash)
+    if (!database) return _errorResponse(statusCodes['Not Found'], 'Database not found')
+
+    const dbId = database['database-id']
+    const bundleSeqNo = database['bundle-seq-no']
+    const dbKey = database['database-key']
+
+    if (connections.openDatabase(userId, connectionId, dbId, bundleSeqNo, dbNameHash, dbKey)) {
       return _successResponse('Success!')
     } else {
-      throw new Error(`Unable to open database ${dbId} for user ${userId}`)
+      throw new Error(`Unable to open database`)
     }
   } catch (e) {
     return _errorResponse(statusCodes['Internal Server Error'], `Failed to create database with ${e}`)

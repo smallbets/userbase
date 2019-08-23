@@ -130,9 +130,7 @@ class UnverifiedTransaction {
 }
 
 class Database {
-  constructor(dbId, dbKey, changeHandler) {
-    this.dbId = dbId
-    this.dbKey = dbKey
+  constructor(changeHandler) {
     this.onChange = changeHandler
 
     this.items = {}
@@ -427,10 +425,18 @@ const handleMessage = async (message) => {
   switch (route) {
     case 'ApplyTransactions': {
       const dbId = message.dbId
-      const dbNameHash = state.dbIdToHash[dbId]
+      const dbNameHash = message.dbNameHash || state.dbIdToHash[dbId]
       const database = state.databases[dbNameHash]
 
       if (!database) return
+
+      const openingDatabase = message.dbNameHash && message.dbKey
+      if (openingDatabase) {
+        const dbKeyString = await crypto.aesGcm.decryptString(state.key, message.dbKey)
+        database.dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
+      }
+
+      if (!database.dbKey) return
 
       if (message.bundle) {
         const bundleSeqNo = message.bundleSeqNo
@@ -447,6 +453,8 @@ const handleMessage = async (message) => {
       database.onChange(database.getItems())
 
       if (!database.init) {
+        state.dbIdToHash[dbId] = dbNameHash
+        database.dbId = dbId
         database.init = true
       }
 
@@ -457,6 +465,8 @@ const handleMessage = async (message) => {
       const dbId = message.dbId
       const dbNameHash = state.dbIdToHash[dbId]
       const database = state.databases[dbNameHash]
+
+      if (!database) return
 
       const bundle = {
         items: database.items,
@@ -546,24 +556,17 @@ const createDatabase = async (dbName, metadata) => {
 const openDatabase = async (dbName, changeHandler) => {
   if (!state.init) await connectWebSocket()
 
-  const dbNameHash = await crypto.sha256.hashString(dbName + state.keyString)
+  const dbNameHash = state.dbNameToHash[dbName] || await crypto.sha256.hashString(dbName + state.keyString)
+  state.dbNameToHash[dbName] = dbNameHash
 
   if (state.databases[dbNameHash] && state.databases[dbNameHash].init) throw new Error(dbAlreadyOpen)
 
-  let request = new Request(ws, 'GetDatabase', { dbNameHash })
-  const response = await request.send()
+  state.databases[dbNameHash] = new Database(changeHandler)
 
-  const dbId = response.data.dbId
-  const bundleSeqNo = response.data.bundleSeqNo
+  const action = 'OpenDatabase'
+  const params = { dbNameHash }
 
-  const dbKeyString = await crypto.aesGcm.decryptString(state.key, response.data.dbKey)
-  const dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
-
-  state.databases[dbNameHash] = new Database(dbId, dbKey, changeHandler)
-  state.dbIdToHash[dbId] = dbNameHash
-  state.dbNameToHash[dbName] = dbNameHash
-
-  request = new Request(ws, 'OpenDatabase', { dbId, bundleSeqNo })
+  const request = new Request(ws, action, params)
   await request.send()
 }
 

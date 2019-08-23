@@ -21,7 +21,7 @@ class Connection {
     }
   }
 
-  async push(databaseId, forceEmpty) {
+  async push(databaseId, dbNameHash, dbKey) {
     const database = this.databases[databaseId]
     if (!database) return
 
@@ -29,6 +29,12 @@ class Connection {
       route: 'ApplyTransactions',
       transactionLog: [],
       dbId: databaseId
+    }
+
+    const openingDatabase = dbNameHash && dbKey
+    if (openingDatabase) {
+      payload.dbNameHash = dbNameHash
+      payload.dbKey = dbKey
     }
 
     const bundleSeqNo = database.bundleSeqNo
@@ -43,7 +49,7 @@ class Connection {
     const transactionLog = transactions.log
 
     if (!transactionLog || transactionLog.length == 0) {
-      forceEmpty && this.socket.send(JSON.stringify(payload))
+      openingDatabase && this.socket.send(JSON.stringify(payload))
       return
     }
 
@@ -74,22 +80,22 @@ export default class Connections {
     return connection
   }
 
-  static openDatabase(userId, connectionId, databaseId, bundleSeqNo) {
+  static openDatabase(userId, connectionId, databaseId, bundleSeqNo, dbNameHash, dbKey) {
     if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId][connectionId]) return
 
-    Connections.sockets[userId][connectionId].openDatabase(databaseId, bundleSeqNo)
+    const conn = Connections.sockets[userId][connectionId]
+    conn.openDatabase(databaseId, bundleSeqNo)
     logger.info(`Database ${databaseId} opened by user ${userId}`)
 
-    const forceEmpty = true
-    this.push(databaseId, userId, forceEmpty)
+    conn.push(databaseId, dbNameHash, dbKey)
     return true
   }
 
-  static push(databaseId, userId, forceEmpty = false) {
+  static push(databaseId, userId) {
     if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId]) return
 
     for (const conn of Object.values(Connections.sockets[userId])) {
-      conn.push(databaseId, forceEmpty)
+      conn.push(databaseId)
     }
   }
 

@@ -43,7 +43,7 @@ MemCache.prototype.setTransactionsInTransactionLog = function (transactions) {
   for (const transaction of transactions) {
     const databaseId = transaction['database-id']
     const sequenceNo = transaction['sequence-no']
-    if (!this.transactionLogByDatabaseId[databaseId]) this.initDatabase(databaseId)
+    if (!this.transactionLogByDatabaseId[databaseId]) this.initTransactionLog(databaseId)
     this.transactionLogByDatabaseId[databaseId].transactionArray[sequenceNo] = transaction
   }
 }
@@ -52,7 +52,7 @@ MemCache.prototype.setBundleSeqNosInTransactionLog = function (databases) {
   for (const database of databases) {
     const databaseId = database['database-id']
     const bundleSeqNo = database['bundle-seq-no']
-    if (!this.transactionLogByDatabaseId[databaseId]) this.initDatabase(databaseId)
+    if (!this.transactionLogByDatabaseId[databaseId]) this.initTransactionLog(databaseId)
     this.setBundleSeqNo(databaseId, bundleSeqNo)
   }
 }
@@ -109,7 +109,7 @@ MemCache.prototype.eagerLoad = async function () {
   ])
 }
 
-MemCache.prototype.initDatabase = function (databaseId) {
+MemCache.prototype.initTransactionLog = function (databaseId) {
   this.transactionLogByDatabaseId[databaseId] = {
     transactionArray: [],
     bundleSeqNo: null
