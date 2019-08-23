@@ -393,9 +393,12 @@ const connectWebSocket = () => new Promise(async (resolve, reject) => {
     await handleMessage(JSON.parse(e.data))
   }
 
-  ws.onerror = () => {
-    localData.clearAuthenticatedDataFromBrowser()
-    if (!state.init) reject()
+  ws.onerror = (e) => {
+    if (!state.init) {
+      reject(e)
+    } else {
+      localData.clearAuthenticatedDataFromBrowser()
+    }
     ws.close()
   }
 
