@@ -3,7 +3,6 @@ import localData from './localData'
 import crypto from './Crypto'
 import SortedArray from 'sorted-array'
 import LZString from 'lz-string'
-import shajs from 'sha.js'
 
 const success = 'Success'
 const itemAlreadyExists = 'Item already exists'
@@ -374,6 +373,9 @@ const connectWebSocket = () => new Promise(async (resolve, reject) => {
   try {
     state.keyString = await localData.getKeyStringFromLocalStorage()
     state.key = await crypto.aesGcm.getKeyFromKeyString(state.keyString)
+
+    const rawKey = await crypto.aesGcm.getRawKeyFromKey(state.key)
+    state.hmacKey = await crypto.hmac.importKey(rawKey)
   } catch {
     localData.clearAuthenticatedDataFromBrowser()
     throw new Error('Unable to get the key')
@@ -477,7 +479,7 @@ const handleMessage = async (message) => {
 
       for (let i = 0; i < bundle.itemsIndex.length; i++) {
         const itemId = bundle.itemsIndex[i].itemId
-        const itemKey = shaItemId(itemId)
+        const itemKey = await crypto.hmac.signString(state.hmacKey, itemId)
         itemKeys.push(itemKey)
       }
 
@@ -534,7 +536,7 @@ const createDatabase = async (dbName, metadata) => {
   const dbKeyString = await crypto.aesGcm.getKeyStringFromKey(dbKey)
 
   const [dbNameHash, encryptedDbKey, encryptedDbName, encryptedMetadata] = await Promise.all([
-    crypto.sha256.hashString(dbName + state.keyString),
+    crypto.hmac.signString(state.hmacKey, dbName),
     crypto.aesGcm.encryptString(state.key, dbKeyString),
     crypto.aesGcm.encryptString(dbKey, dbName),
     metadata && crypto.aesGcm.encryptJson(dbKey, metadata)
@@ -556,7 +558,7 @@ const createDatabase = async (dbName, metadata) => {
 const openDatabase = async (dbName, changeHandler) => {
   if (!state.init) await connectWebSocket()
 
-  const dbNameHash = state.dbNameToHash[dbName] || await crypto.sha256.hashString(dbName + state.keyString)
+  const dbNameHash = state.dbNameToHash[dbName] || await crypto.hmac.signString(state.hmacKey, dbName)
   state.dbNameToHash[dbName] = dbNameHash
 
   if (state.databases[dbNameHash] && state.databases[dbNameHash].init) throw new Error(dbAlreadyOpen)
@@ -595,7 +597,7 @@ const _buildInsertParams = async (database, item, id, includeDbId = true) => {
 
   const itemId = id || uuidv4()
 
-  const itemKey = shaItemId(itemId)
+  const itemKey = await crypto.hmac.signString(state.hmacKey, itemId)
   const itemRecord = { id: itemId, item }
   const encryptedItem = await crypto.aesGcm.encryptJson(database.dbKey, itemRecord)
 
@@ -612,16 +614,16 @@ const update = async (dbName, id, item) => {
   await postTransaction(database, request)
 }
 
-const _buildUpdateParams = async (database, id, item, includeDbId = true) => {
+const _buildUpdateParams = async (database, itemId, item, includeDbId = true) => {
   const dbId = database.dbId
 
   if (!dbId && includeDbId) throw new Error('Update missing db id')
-  if (!id) throw new Error('Update missing id')
+  if (!itemId) throw new Error('Update missing item id')
   if (!item) throw new Error('Update missing item')
 
-  const itemKey = shaItemId(id)
-  const currentVersion = database.getItemVersionNumber(id)
-  const itemRecord = { id, item, __v: currentVersion + 1 }
+  const itemKey = await crypto.hmac.signString(state.hmacKey, itemId)
+  const currentVersion = database.getItemVersionNumber(itemId)
+  const itemRecord = { id: itemId, item, __v: currentVersion + 1 }
   const encryptedItem = await crypto.aesGcm.encryptJson(database.dbKey, itemRecord)
 
   return { dbId, itemKey, encryptedItem }
@@ -637,15 +639,15 @@ const delete_ = async (dbName, id) => {
   await postTransaction(database, request)
 }
 
-const _buildDeleteParams = async (database, id, includeDbId = true) => {
+const _buildDeleteParams = async (database, itemId, includeDbId = true) => {
   const dbId = database.dbId
 
   if (!dbId && includeDbId) throw new Error('Delete missing db id')
-  if (!id) throw new Error('Delete missing id')
+  if (!itemId) throw new Error('Delete missing item id')
 
-  const itemKey = shaItemId(id)
-  const currentVersion = database.getItemVersionNumber(id)
-  const itemRecord = { id, __v: currentVersion + 1 }
+  const itemKey = await crypto.hmac.signString(state.hmacKey, itemId)
+  const currentVersion = database.getItemVersionNumber(itemId)
+  const itemRecord = { id: itemId, __v: currentVersion + 1 }
   const encryptedItem = await crypto.aesGcm.encryptJson(database.dbKey, itemRecord)
 
   return { dbId, itemKey, encryptedItem }
@@ -711,11 +713,6 @@ const postTransaction = async (database, request) => {
   database.unregisterUnverifiedTransaction(pendingTx)
 
   return seqNo
-}
-
-const shaItemId = (itemId) => {
-  const stringToHash = state.keyString + itemId
-  return shajs('sha256').update(stringToHash).digest('hex')
 }
 
 export default {
