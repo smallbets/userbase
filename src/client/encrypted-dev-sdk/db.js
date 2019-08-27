@@ -1,71 +1,15 @@
 import uuidv4 from 'uuid/v4'
-import localData from './localData'
 import crypto from './Crypto'
 import SortedArray from 'sorted-array'
-import LZString from 'lz-string'
+import ws from './ws'
 
 const success = 'Success'
 const itemAlreadyExists = 'Item already exists'
 const itemAlreadyDeleted = 'Item already deleted'
 const versionConflict = 'Version conflict'
+const wsNotOpen = 'Web Socket not open'
 const dbNotOpen = 'Database not open'
 const dbAlreadyOpen = 'Database already open'
-
-const state = {
-  databases: {},
-  dbIdToHash: {},
-  dbNameToHash: {}
-}
-const requests = {}
-let ws
-
-class RequestFailed extends Error {
-  constructor(response, message, ...params) {
-    super(...params)
-
-    if (Error.captureStackTrace) {
-      Error.captureStackTrace(this, RequestFailed)
-    }
-
-    this.name = 'RequestFailed'
-    this.message = message || 'Error'
-    this.response = response
-  }
-}
-
-class Request {
-  constructor(ws, action, params) {
-    this.ws = ws
-    this.action = action
-    this.params = params
-  }
-
-  async send() {
-    // generate a new requestId
-    const requestId = uuidv4()
-
-    // get a promise that is resolved when the WebSocket
-    // receives a response for this requestId — the promise
-    // would time out of x seconds
-    const responseWatcher = this.ws.watch(requestId)
-
-    // send the request on the WebSocket
-    this.ws.send(JSON.stringify({
-      requestId,
-      action: this.action,
-      params: this.params
-    }))
-
-    // wait for the response to arrive
-    try {
-      const response = await responseWatcher
-      return response
-    } catch (e) {
-      // process any errors and re-throw them
-      throw new RequestFailed(e)
-    }
-  }
-}
 
 class UnverifiedTransaction {
   constructor(startSeqNo) {
@@ -367,168 +311,8 @@ class Database {
   }
 }
 
-const connectWebSocket = () => new Promise(async (resolve, reject) => {
-  setTimeout(() => { reject(new Error('timeout')) }, 5000)
-
-  try {
-    state.keyString = await localData.getKeyStringFromLocalStorage()
-    state.key = await crypto.aesGcm.getKeyFromKeyString(state.keyString)
-
-    const rawKey = await crypto.aesGcm.getRawKeyFromKey(state.key)
-    state.hmacKey = await crypto.hmac.importKey(rawKey)
-  } catch {
-    localData.clearAuthenticatedDataFromBrowser()
-    throw new Error('Unable to get the key')
-  }
-
-  const url = ((window.location.protocol === 'https:') ?
-    'wss://' : 'ws://') + window.location.host + '/api'
-
-  ws = new WebSocket(url)
-
-  ws.onopen = (e) => {
-    state.init = true
-    resolve(e)
-  }
-
-  ws.onmessage = async (e) => {
-    await handleMessage(JSON.parse(e.data))
-  }
-
-  ws.onerror = () => {
-    localData.clearAuthenticatedDataFromBrowser()
-    if (!state.init) reject()
-    ws.close()
-  }
-
-  ws.watch = async (requestId) => {
-    requests[requestId] = {}
-
-    const response = await new Promise((resolve, reject) => {
-      requests[requestId].promiseResolve = resolve
-      requests[requestId].promiseReject = reject
-
-      setTimeout(() => { reject(new Error('timeout')) }, 10000)
-    })
-
-    delete requests[requestId]
-
-    return response
-  }
-})
-
-const close = () => {
-  state.init = false
-  ws.close()
-}
-
-const handleMessage = async (message) => {
-  const route = message.route
-  switch (route) {
-    case 'ApplyTransactions': {
-      const dbId = message.dbId
-      const dbNameHash = message.dbNameHash || state.dbIdToHash[dbId]
-      const database = state.databases[dbNameHash]
-
-      if (!database) return
-
-      const openingDatabase = message.dbNameHash && message.dbKey
-      if (openingDatabase) {
-        const dbKeyString = await crypto.aesGcm.decryptString(state.key, message.dbKey)
-        database.dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
-      }
-
-      if (!database.dbKey) return
-
-      if (message.bundle) {
-        const bundleSeqNo = message.bundleSeqNo
-        const base64Bundle = message.bundle
-        const compressedString = await crypto.aesGcm.decryptString(database.dbKey, base64Bundle)
-        const plaintextString = LZString.decompress(compressedString)
-        const bundle = JSON.parse(plaintextString)
-
-        database.applyBundle(bundle, bundleSeqNo)
-      }
-
-      const newTransactions = message.transactionLog
-      await database.applyTransactions(newTransactions)
-      database.onChange(database.getItems())
-
-      if (!database.init) {
-        state.dbIdToHash[dbId] = dbNameHash
-        database.dbId = dbId
-        database.init = true
-      }
-
-      break
-    }
-
-    case 'BuildBundle': {
-      const dbId = message.dbId
-      const dbNameHash = state.dbIdToHash[dbId]
-      const database = state.databases[dbNameHash]
-
-      if (!database) return
-
-      const bundle = {
-        items: database.items,
-        itemsIndex: database.itemsIndex.array
-      }
-
-      const itemKeys = []
-
-      for (let i = 0; i < bundle.itemsIndex.length; i++) {
-        const itemId = bundle.itemsIndex[i].itemId
-        const itemKey = await crypto.hmac.signString(state.hmacKey, itemId)
-        itemKeys.push(itemKey)
-      }
-
-      const plaintextString = JSON.stringify(bundle)
-      const compressedString = LZString.compress(plaintextString)
-      const base64Bundle = await crypto.aesGcm.encryptString(database.dbKey, compressedString)
-
-      const action = 'Bundle'
-      const params = { dbId, seqNo: database.lastSeqNo, bundle: base64Bundle, keys: itemKeys }
-      const request = new Request(ws, action, params)
-
-      request.send()
-
-      break
-    }
-
-    case 'CreateDatabase':
-    case 'GetDatabase':
-    case 'OpenDatabase':
-    case 'Insert':
-    case 'Update':
-    case 'Delete':
-    case 'Batch':
-    case 'Bundle': {
-      const requestId = message.requestId
-
-      if (!requestId) return console.warn('Missing request id')
-
-      const request = requests[requestId]
-      if (!request) return console.warn(`Request ${requestId} no longer exists!`)
-      else if (!request.promiseResolve || !request.promiseReject) return
-
-      const response = message.response
-
-      const successfulResponse = response && response.status === 200
-
-      if (!successfulResponse) return request.promiseReject(response)
-      else return request.promiseResolve(response)
-    }
-
-    default: {
-      console.log('Received unknown message from backend:' + JSON.stringify(message))
-      break
-    }
-  }
-}
-
 const createDatabase = async (dbName, metadata) => {
-  if (!state.init) await connectWebSocket()
+  if (!ws.init) throw new Error(wsNotOpen)
 
   const dbId = uuidv4()
 
@@ -536,8 +320,8 @@ const createDatabase = async (dbName, metadata) => {
   const dbKeyString = await crypto.aesGcm.getKeyStringFromKey(dbKey)
 
   const [dbNameHash, encryptedDbKey, encryptedDbName, encryptedMetadata] = await Promise.all([
-    crypto.hmac.signString(state.hmacKey, dbName),
-    crypto.aesGcm.encryptString(state.key, dbKeyString),
+    crypto.hmac.signString(ws.keys.hmacKey, dbName),
+    crypto.aesGcm.encryptString(ws.keys.masterKey, dbKeyString),
     crypto.aesGcm.encryptString(dbKey, dbName),
     metadata && crypto.aesGcm.encryptJson(dbKey, metadata)
   ])
@@ -550,31 +334,27 @@ const createDatabase = async (dbName, metadata) => {
     encryptedDbName,
     encryptedMetadata,
   }
-
-  const request = new Request(ws, action, params)
-  await request.send()
+  await ws.request(action, params)
 }
 
 const openDatabase = async (dbName, changeHandler) => {
-  if (!state.init) await connectWebSocket()
+  if (!ws.init) throw new Error(wsNotOpen)
 
-  const dbNameHash = state.dbNameToHash[dbName] || await crypto.hmac.signString(state.hmacKey, dbName)
-  state.dbNameToHash[dbName] = dbNameHash
+  const dbNameHash = ws.state.dbNameToHash[dbName] || await crypto.hmac.signString(ws.keys.hmacKey, dbName)
+  ws.state.dbNameToHash[dbName] = dbNameHash
 
-  if (state.databases[dbNameHash] && state.databases[dbNameHash].init) throw new Error(dbAlreadyOpen)
+  if (ws.state.databases[dbNameHash] && ws.state.databases[dbNameHash].init) throw new Error(dbAlreadyOpen)
 
-  state.databases[dbNameHash] = new Database(changeHandler)
+  ws.state.databases[dbNameHash] = new Database(changeHandler)
 
   const action = 'OpenDatabase'
   const params = { dbNameHash }
-
-  const request = new Request(ws, action, params)
-  await request.send()
+  await ws.request(action, params)
 }
 
 const getOpenDb = (dbName) => {
-  const dbNameHash = state.dbNameToHash[dbName]
-  const database = state.databases[dbNameHash]
+  const dbNameHash = ws.state.dbNameToHash[dbName]
+  const database = ws.state.databases[dbNameHash]
   if (!dbNameHash || !database || !database.init) throw new Error(dbNotOpen)
   return database
 }
@@ -584,9 +364,8 @@ const insert = async (dbName, item, id) => {
 
   const action = 'Insert'
   const params = await _buildInsertParams(database, item, id)
-  const request = new Request(ws, action, params)
 
-  await postTransaction(database, request)
+  await postTransaction(database, action, params)
 }
 
 const _buildInsertParams = async (database, item, id, includeDbId = true) => {
@@ -597,7 +376,7 @@ const _buildInsertParams = async (database, item, id, includeDbId = true) => {
 
   const itemId = id || uuidv4()
 
-  const itemKey = await crypto.hmac.signString(state.hmacKey, itemId)
+  const itemKey = await crypto.hmac.signString(ws.keys.hmacKey, itemId)
   const itemRecord = { id: itemId, item }
   const encryptedItem = await crypto.aesGcm.encryptJson(database.dbKey, itemRecord)
 
@@ -609,9 +388,8 @@ const update = async (dbName, id, item) => {
 
   const action = 'Update'
   const params = await _buildUpdateParams(database, id, item)
-  const request = new Request(ws, action, params)
 
-  await postTransaction(database, request)
+  await postTransaction(database, action, params)
 }
 
 const _buildUpdateParams = async (database, itemId, item, includeDbId = true) => {
@@ -621,7 +399,7 @@ const _buildUpdateParams = async (database, itemId, item, includeDbId = true) =>
   if (!itemId) throw new Error('Update missing item id')
   if (!item) throw new Error('Update missing item')
 
-  const itemKey = await crypto.hmac.signString(state.hmacKey, itemId)
+  const itemKey = await crypto.hmac.signString(ws.keys.hmacKey, itemId)
   const currentVersion = database.getItemVersionNumber(itemId)
   const itemRecord = { id: itemId, item, __v: currentVersion + 1 }
   const encryptedItem = await crypto.aesGcm.encryptJson(database.dbKey, itemRecord)
@@ -634,9 +412,8 @@ const delete_ = async (dbName, id) => {
 
   const action = 'Delete'
   const params = await _buildDeleteParams(database, id)
-  const request = new Request(ws, action, params)
 
-  await postTransaction(database, request)
+  await postTransaction(database, action, params)
 }
 
 const _buildDeleteParams = async (database, itemId, includeDbId = true) => {
@@ -645,7 +422,7 @@ const _buildDeleteParams = async (database, itemId, includeDbId = true) => {
   if (!dbId && includeDbId) throw new Error('Delete missing db id')
   if (!itemId) throw new Error('Delete missing item id')
 
-  const itemKey = await crypto.hmac.signString(state.hmacKey, itemId)
+  const itemKey = await crypto.hmac.signString(ws.keys.hmacKey, itemId)
   const currentVersion = database.getItemVersionNumber(itemId)
   const itemRecord = { id: itemId, __v: currentVersion + 1 }
   const encryptedItem = await crypto.aesGcm.encryptJson(database.dbKey, itemRecord)
@@ -698,14 +475,12 @@ const batch = async (dbName, operations) => {
     dbId: database.dbId
   }
 
-  const request = new Request(ws, action, params)
-
-  await postTransaction(database, request)
+  await postTransaction(database, action, params)
 }
 
-const postTransaction = async (database, request) => {
+const postTransaction = async (database, action, params) => {
   const pendingTx = database.registerUnverifiedTransaction()
-  const response = await request.send()
+  const response = await ws.request(action, params)
   const seqNo = response.data.sequenceNo
 
   await pendingTx.getResult(seqNo)
@@ -716,7 +491,6 @@ const postTransaction = async (database, request) => {
 }
 
 export default {
-  connectWebSocket,
   openDatabase,
   createDatabase,
   close,

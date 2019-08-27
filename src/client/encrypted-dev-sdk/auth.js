@@ -1,7 +1,7 @@
 import uuidv4 from 'uuid/v4'
 import base64 from 'base64-arraybuffer'
 import api from './api'
-import db from './db'
+import ws from './ws'
 import crypto from './Crypto'
 import localData from './localData'
 
@@ -32,7 +32,7 @@ const signUp = async (username, password) => {
   const signedIn = true
   const session = localData.setCurrentSession(lowerCaseUsername, signedIn)
 
-  await db.connectWebSocket()
+  await ws.connect(lowerCaseUsername)
 
   return session
 }
@@ -40,7 +40,7 @@ const signUp = async (username, password) => {
 const signOut = async () => {
   const session = localData.clearAuthenticatedDataFromBrowser()
 
-  db.close()
+  ws.close()
 
   await api.auth.signOut()
 
@@ -52,7 +52,7 @@ const signIn = async (username, password) => {
 
   await api.auth.signIn(lowerCaseUsername, password)
 
-  await db.connectWebSocket()
+  await ws.connect(lowerCaseUsername)
 
   pollForKeyRequests(lowerCaseUsername)
 
