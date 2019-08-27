@@ -44,19 +44,18 @@ export default class UserForm extends Component {
   }
 
   async handleSubmit(event) {
-    const { formType, handleGetKeyFromEncryptedDevSdk } = this.props
+    const { formType, handleUpdateSession } = this.props
     const { username, password } = this.state
     event.preventDefault()
 
     await this.setState({ loading: true })
 
-    let result
-    if (formType === 'Sign Up') result = await userLogic.signUp(username, password)
-    else if (formType === 'Sign In') result = await userLogic.signIn(username, password)
+    let session
+    if (formType === 'Sign Up') session = await userLogic.signUp(username, password, handleUpdateSession)
+    else if (formType === 'Sign In') session = await userLogic.signIn(username, password, handleUpdateSession)
     else return console.error('Unknown form type')
 
-    if (result.error) this.setState({ error: result.error, loading: false })
-    else handleGetKeyFromEncryptedDevSdk(formType === 'Sign Up') // re-routes to different component
+    if (session.error) this.setState({ error: session.error, loading: false })
   }
 
   render() {
@@ -134,7 +133,7 @@ export default class UserForm extends Component {
 }
 
 UserForm.propTypes = {
-  handleGetKeyFromEncryptedDevSdk: func,
+  handleUpdateSession: func,
   formType: string,
   placeholderUsername: string
 }

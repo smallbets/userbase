@@ -312,7 +312,7 @@ class Database {
 }
 
 const createDatabase = async (dbName, metadata) => {
-  if (!ws.init) throw new Error(wsNotOpen)
+  if (!ws.connected) throw new Error(wsNotOpen)
 
   const dbId = uuidv4()
 
@@ -338,12 +338,14 @@ const createDatabase = async (dbName, metadata) => {
 }
 
 const openDatabase = async (dbName, changeHandler) => {
-  if (!ws.init) throw new Error(wsNotOpen)
+  if (!ws.connected) throw new Error(wsNotOpen)
 
   const dbNameHash = ws.state.dbNameToHash[dbName] || await crypto.hmac.signString(ws.keys.hmacKey, dbName)
   ws.state.dbNameToHash[dbName] = dbNameHash
 
-  if (ws.state.databases[dbNameHash] && ws.state.databases[dbNameHash].init) throw new Error(dbAlreadyOpen)
+  if (ws.state.databases[dbNameHash] && ws.state.databases[dbNameHash].init) {
+    throw new Error(dbAlreadyOpen)
+  }
 
   ws.state.databases[dbNameHash] = new Database(changeHandler)
 

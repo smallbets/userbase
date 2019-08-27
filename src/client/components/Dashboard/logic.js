@@ -19,7 +19,6 @@ const openDatabase = async (onDbChangeHandler, onWebSocketConnect) => {
       }
     }
 
-    encd.clearAuthenticatedDataFromBrowser()
     return false
   }
 }

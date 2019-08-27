@@ -6,7 +6,6 @@ import UserForm from './components/User/UserForm'
 import ShowKey from './components/User/ShowKey'
 import SaveKey from './components/User/SaveKey'
 
-const displayHome = () => window.location.hash.substring(1) === ''
 const displaySignInForm = () => window.location.hash.substring(1) === 'sign-in'
 const displaySignUpForm = () => window.location.hash.substring(1) === 'sign-up'
 const displayShowKeyForm = () => window.location.hash.substring(1) === 'show-key'
@@ -17,14 +16,19 @@ export default class App extends Component {
     super(props)
 
     this.state = {
-      key: undefined,
+      session: {
+        key: undefined,
+        username: undefined,
+        signedIn: undefined
+      },
       mode: undefined,
       todos: [],
       loading: true
     }
 
     this.handleDbChange = this.handleDbChange.bind(this)
-    this.handleGetKeyFromEncryptedDevSdk = this.handleGetKeyFromEncryptedDevSdk.bind(this)
+    this.handleUpdateSession = this.handleUpdateSession.bind(this)
+    this.handleUpdateSessionOnSignup = this.handleUpdateSessionOnSignup.bind(this)
     this.handleSetKeyInState = this.handleSetKeyInState.bind(this)
     this.handleSignOut = this.handleSignOut.bind(this)
     this.handleRemoveUserAuthentication = this.handleRemoveUserAuthentication.bind(this)
@@ -33,9 +37,7 @@ export default class App extends Component {
   }
 
   async componentDidMount() {
-    const key = await userLogic.getKey()
-    this.setState({ key, mode: this.getViewMode() })
-    this.handleAutoRedirects()
+    await userLogic.initSession(this.handleUpdateSession)
 
     window.addEventListener('hashchange', this.handleReadHash, false)
   }
@@ -48,10 +50,9 @@ export default class App extends Component {
     this.setState({ todos })
   }
 
-  // this auto redirects to an appropriate view based on current state
-  async handleAutoRedirects() {
-    const { key, loading } = this.state
-    const session = userLogic.getSession()
+  // this auto redirects to an appropriate view based on session
+  async handleAutoRedirects(session) {
+    const { loading } = this.state
 
     let userMustLogInAgain = !session || !session.signedIn
     let userHasActiveSession = session && session.signedIn
@@ -65,23 +66,31 @@ export default class App extends Component {
       }
     }
 
+    console.log(userHasActiveSession, session.key, session)
+
     if (!displaySignUpForm() && userMustLogInAgain) {
       // if the user is logged out, redirect to the sign-in form
       window.location.hash = 'sign-in'
-    } else if (userHasActiveSession && !key) {
+    } else if (userHasActiveSession && !session.key) {
       // if the user is logged in, but the browser doesn't have a key for the user, redirect to the save-key form
       window.location.hash = 'save-key'
     }
   }
 
-  async handleGetKeyFromEncryptedDevSdk(isNewAccount) {
-    const key = await userLogic.getKey()
-    this.setState({ key })
-    window.location.hash = isNewAccount ? '#show-key' : ''
+  handleUpdateSession(session) {
+    window.location.hash = ''
+    this.setState({ session, mode: this.getViewMode(session) })
+    this.handleAutoRedirects(session)
+  }
+
+  handleUpdateSessionOnSignup(session) {
+    window.location.hash = '#show-key'
+    this.setState({ session, mode: this.getViewMode(session) })
+    this.handleAutoRedirects(session)
   }
 
   handleSetKeyInState(key) {
-    this.setState({ key })
+    this.setState({ session: { ...this.state.session, key } })
     window.location.hash = ''
   }
 
@@ -97,16 +106,11 @@ export default class App extends Component {
   }
 
   handleReadHash() {
-    if (displayHome()) {
-      // if the hash is empty, see if the user should be redirected to an appropriate view
-      this.handleAutoRedirects()
-    }
-    this.setState({ mode: this.getViewMode() })
+    this.setState({ mode: this.getViewMode(this.state.session) })
   }
 
   // this is a primitive router based on the hash and component state
-  getViewMode() {
-    const session = userLogic.getSession()
+  getViewMode(session) {
     const userHasActiveSession = session && session.signedIn
 
     if (userHasActiveSession && displayShowKeyForm()) {
@@ -131,14 +135,13 @@ export default class App extends Component {
   }
 
   render() {
-    const { key, mode, todos, loading } = this.state
+    const { session, mode, todos, loading } = this.state
 
     // if mode is undefined, just render an empty div
     if (!mode) {
       return <div />
     }
 
-    const session = userLogic.getSession()
     const userHasActiveSession = session && session.signedIn
 
     return (
@@ -170,18 +173,18 @@ export default class App extends Component {
                 todos={todos}
                 loading={loading} />
             case 'show-key':
-              return <ShowKey keyString={key} />
+              return <ShowKey keyString={session.key} />
             case 'save-key':
               return <SaveKey handleSetKeyInState={this.handleSetKeyInState} />
             case 'sign-in':
               return <UserForm
-                handleGetKeyFromEncryptedDevSdk={this.handleGetKeyFromEncryptedDevSdk}
+                handleUpdateSession={this.handleUpdateSession}
                 formType='Sign In'
                 key='sign-in'
                 placeholderUsername={session && session.username}
               />
             case 'sign-up':
-              return <UserForm handleGetKeyFromEncryptedDevSdk={this.handleGetKeyFromEncryptedDevSdk}
+              return <UserForm handleUpdateSession={this.handleUpdateSessionOnSignup}
                 formType='Sign Up'
                 key='sign-up'
                 placeholderUsername='' />

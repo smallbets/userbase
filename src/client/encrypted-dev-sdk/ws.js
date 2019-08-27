@@ -1,3 +1,4 @@
+import base64 from 'base64-arraybuffer'
 import uuidv4 from 'uuid/v4'
 import LZString from 'lz-string'
 import localData from './localData'
@@ -19,6 +20,14 @@ class RequestFailed extends Error {
 
 class Connection {
   constructor() {
+    this.init()
+  }
+
+  init() {
+    for (const property of Object.keys(this)) {
+      delete this[property]
+    }
+
     this.ws = {}
 
     this.state = {
@@ -35,21 +44,35 @@ class Connection {
 
     this.requests = {}
 
-    this.init = false
+    this.connected = false
+    this.timeout = false
   }
 
-  connect(username) {
+  connect(session, onSessionChange) {
+    if (!session) throw new Error('Missing session')
+    if (!session.username) throw new Error('Session missing username')
+    if (!session.signedIn) throw new Error('Not signed in to session')
+    if (!session.key) throw new Error('Session missing key')
+
     return new Promise(async (resolve, reject) => {
-      setTimeout(() => { reject(new Error('timeout')) }, 5000)
+      setTimeout(
+        () => {
+          if (!this.connected) {
+            this.timeout = true
+            reject(new Error('timeout'))
+          }
+        },
+        5000
+      )
 
       try {
-        const rawKey = await localData.getRawKeyByUsername(username)
-
+        this.init()
+        const rawKey = base64.decode(session.key)
         this.keys.masterKey = await crypto.aesGcm.getKeyFromRawKey(rawKey)
         this.keys.masterKeyString = await crypto.aesGcm.getKeyStringFromKey(this.keys.masterKey)
         this.keys.hmacKey = await crypto.hmac.importKey(rawKey)
       } catch {
-        localData.clearAuthenticatedDataFromBrowser()
+        this.close()
         throw new Error('Unable to get the key')
       }
 
@@ -58,9 +81,15 @@ class Connection {
 
       this.ws = new WebSocket(url)
 
-      this.ws.onopen = (e) => {
-        this.init = true
-        resolve(e)
+      this.ws.onopen = () => {
+        if (this.timeout) {
+          this.close()
+          return
+        }
+        this.connected = true
+        const signedIn = true
+        localData.setCurrentSession(session.username, signedIn)
+        resolve(onSessionChange({ ...session, signedIn: true }))
       }
 
       this.ws.onmessage = async (e) => {
@@ -68,9 +97,12 @@ class Connection {
       }
 
       this.ws.onerror = () => {
-        localData.clearAuthenticatedDataFromBrowser()
-        if (!this.init) reject()
-        ws.close()
+        if (!this.connected) {
+          this.close()
+          reject()
+        } else {
+          this.close()
+        }
       }
 
       this.ws.watch = async (requestId) => {
@@ -89,8 +121,9 @@ class Connection {
       }
 
       this.ws.onclose = () => {
-        ws = new Connection()
-        localData.clearAuthenticatedDataFromBrowser()
+        this.init()
+        localData.signOutCurrentSession()
+        onSessionChange({ username: session.username, signedIn: false })
       }
     })
   }
@@ -242,5 +275,4 @@ class Connection {
   }
 }
 
-let ws = new Connection()
-export default ws
+export default new Connection()

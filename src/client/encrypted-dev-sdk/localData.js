@@ -5,13 +5,20 @@ const setCurrentSession = (username, signedIn) => {
   const session = { username, signedIn }
   const sessionString = JSON.stringify(session)
   localStorage.setItem('currentSession', sessionString)
-  return session
+
+  const keyString = localStorage.getItem('key.' + session.username)
+  return { ...session, key: keyString }
 }
 
 const getCurrentSession = () => {
   const currentSessionString = localStorage.getItem('currentSession')
   const currentSession = JSON.parse(currentSessionString)
-  return currentSession
+
+  if (!currentSession) return undefined
+
+  const keyString = localStorage.getItem('key.' + currentSession.username)
+
+  return { ...currentSession, key: keyString }
 }
 
 const saveKeyStringToLocalStorage = async (keyString) => {
@@ -28,28 +35,6 @@ const saveKeyToLocalStorage = async (username, key) => {
   localStorage.setItem('key.' + username, keyString)
 }
 
-const getKeyStringFromLocalStorage = () => {
-  const currentSession = getCurrentSession()
-  if (!currentSession) {
-    return undefined
-  }
-
-  const username = currentSession.username
-  const keyString = localStorage.getItem('key.' + username)
-  return keyString
-}
-
-const getKeyFromLocalStorage = async () => {
-  const keyString = getKeyStringFromLocalStorage()
-
-  if (!keyString) {
-    return undefined
-  }
-
-  const key = await crypto.aesGcm.getKeyFromKeyString(keyString)
-  return key
-}
-
 const getRawKeyByUsername = async (username) => {
   const keyString = localStorage.getItem('key.' + username)
   if (!keyString) {
@@ -59,7 +44,7 @@ const getRawKeyByUsername = async (username) => {
   return rawKey
 }
 
-const clearAuthenticatedDataFromBrowser = () => {
+const signOutCurrentSession = () => {
   const currentSession = getCurrentSession()
   const signedIn = false
   return setCurrentSession(currentSession.username, signedIn)
@@ -68,10 +53,8 @@ const clearAuthenticatedDataFromBrowser = () => {
 export default {
   setCurrentSession,
   getCurrentSession,
-  getKeyFromLocalStorage,
-  getKeyStringFromLocalStorage,
   getRawKeyByUsername,
   saveKeyStringToLocalStorage,
   saveKeyToLocalStorage,
-  clearAuthenticatedDataFromBrowser,
+  signOutCurrentSession,
 }

@@ -5,7 +5,7 @@ import ws from './ws'
 import crypto from './Crypto'
 import localData from './localData'
 
-const signUp = async (username, password) => {
+const signUp = async (username, password, onSessionChange) => {
   const lowerCaseUsername = username.toLowerCase()
   const userId = uuidv4()
 
@@ -27,18 +27,17 @@ const signUp = async (username, password) => {
 
   await api.auth.validateKey(validationMessage)
 
-  pollForKeyRequests(lowerCaseUsername)
-
   const signedIn = true
   const session = localData.setCurrentSession(lowerCaseUsername, signedIn)
 
-  await ws.connect(lowerCaseUsername)
+  await ws.connect(session, onSessionChange)
+  pollForKeyRequests(lowerCaseUsername)
 
   return session
 }
 
 const signOut = async () => {
-  const session = localData.clearAuthenticatedDataFromBrowser()
+  const session = localData.signOutCurrentSession()
 
   ws.close()
 
@@ -47,17 +46,17 @@ const signOut = async () => {
   return session
 }
 
-const signIn = async (username, password) => {
+const signIn = async (username, password, onSessionChange) => {
   const lowerCaseUsername = username.toLowerCase()
 
   await api.auth.signIn(lowerCaseUsername, password)
 
-  await ws.connect(lowerCaseUsername)
-
-  pollForKeyRequests(lowerCaseUsername)
-
   const signedIn = true
   const session = localData.setCurrentSession(lowerCaseUsername, signedIn)
+
+  await ws.connect(session, onSessionChange)
+  pollForKeyRequests(lowerCaseUsername)
+
   return session
 }
 
@@ -188,9 +187,25 @@ const registerDevice = async () => {
   return base64.encode(masterRawKey)
 }
 
+const initSession = async (onSessionChange) => {
+  const session = localData.getCurrentSession()
+  if (!session) return onSessionChange({ username: undefined, signedIn: false, key: undefined })
+  const { username, signedIn, key } = session
+  if (!username || !signedIn || !key) return onSessionChange(session)
+
+  try {
+    const connected = await ws.connect(session, onSessionChange)
+    pollForKeyRequests(username)
+    return connected
+  } catch (e) {
+    return onSessionChange({ ...session, signedIn: false })
+  }
+}
+
 export default {
   signUp,
   signOut,
   signIn,
-  registerDevice
+  registerDevice,
+  initSession
 }

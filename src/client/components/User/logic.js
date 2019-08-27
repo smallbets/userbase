@@ -10,9 +10,9 @@ const _errorHandler = (e, operation) => {
   return { error: errorMsg }
 }
 
-const signUp = async (username, password) => {
+const signUp = async (username, password, onSessionChange) => {
   try {
-    const session = await encd.signUp(username, password)
+    const session = await encd.signUp(username, password, onSessionChange)
     return session
   } catch (e) {
     return _errorHandler(e, 'sign up')
@@ -27,22 +27,13 @@ const signOut = async () => {
   }
 }
 
-const signIn = async (username, password) => {
+const signIn = async (username, password, onSessionChange) => {
   try {
-    const session = await encd.signIn(username, password)
+    const session = await encd.signIn(username, password, onSessionChange)
     return session
   } catch (e) {
     return _errorHandler(e, 'sign in')
   }
-}
-
-const getSession = () => {
-  return encd.getCurrentSession()
-}
-
-const getKey = async () => {
-  const key = await encd.getKeyStringFromLocalStorage()
-  return key
 }
 
 const saveKey = async (key) => {
@@ -54,12 +45,16 @@ const requestKey = async () => {
   return keyString
 }
 
+const initSession = async (onSessionChange) => {
+  const session = await encd.initSession(onSessionChange)
+  return session
+}
+
 export default {
   signUp,
   signOut,
   signIn,
-  getSession,
-  getKey,
   saveKey,
-  requestKey
+  requestKey,
+  initSession
 }
