@@ -5,15 +5,15 @@ import localData from './localData'
 import crypto from './Crypto'
 
 class RequestFailed extends Error {
-  constructor(response, message, ...params) {
+  constructor(action, response, message, ...params) {
     super(...params)
 
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, RequestFailed)
     }
 
-    this.name = 'RequestFailed'
-    this.message = message || 'Error'
+    this.name = `RequestFailed: ${action} (${response && response.status})`
+    this.message = message || (response && response.data) || 'Error'
     this.response = response
   }
 }
@@ -23,81 +23,92 @@ class Connection {
     this.init()
   }
 
-  init() {
+  init(ws, session, onSessionChange) {
     for (const property of Object.keys(this)) {
       delete this[property]
     }
 
-    this.ws = {}
+    this.ws = ws
+    this.connected = false
+
+    this.session = session
+    this.onSessionChange = onSessionChange
+
+    this.requests = {}
+
+    this.keys = {
+      init: false,
+      masterKey: {},
+      masterKeyString: '',
+      hmacKey: {}
+    }
+
+    this.processingKeyRequest = {}
+    this.sentMasterKeyTo = {}
 
     this.state = {
       databases: {},
       dbIdToHash: {},
       dbNameToHash: {}
     }
-
-    this.keys = {
-      masterKey: {},
-      masterKeyString: '',
-      hmacKey: {}
-    }
-
-    this.requests = {}
-
-    this.connected = false
-    this.timeout = false
   }
 
   connect(session, onSessionChange) {
     if (!session) throw new Error('Missing session')
     if (!session.username) throw new Error('Session missing username')
     if (!session.signedIn) throw new Error('Not signed in to session')
-    if (!session.key) throw new Error('Session missing key')
 
     return new Promise(async (resolve, reject) => {
+      let connected = false
+      let timeout = false
       setTimeout(
         () => {
-          if (!this.connected) {
-            this.timeout = true
+          if (!connected) {
+            timeout = true
+            this.close()
             reject(new Error('timeout'))
           }
         },
         5000
       )
 
-      try {
-        this.init()
-        const rawKey = base64.decode(session.key)
-        this.keys.masterKey = await crypto.aesGcm.getKeyFromRawKey(rawKey)
-        this.keys.masterKeyString = await crypto.aesGcm.getKeyStringFromKey(this.keys.masterKey)
-        this.keys.hmacKey = await crypto.hmac.importKey(rawKey)
-      } catch {
-        this.close()
-        throw new Error('Unable to get the key')
-      }
-
       const url = ((window.location.protocol === 'https:') ?
         'wss://' : 'ws://') + window.location.host + '/api'
 
-      this.ws = new WebSocket(url)
+      const ws = new WebSocket(url)
 
-      this.ws.onopen = () => {
-        if (this.timeout) {
+      ws.onopen = async () => {
+        if (timeout) {
           this.close()
           return
+        } else {
+          this.init(ws, session, onSessionChange)
+          this.connected = connected = true
+
+          try {
+            await this.setKeys(session.key)
+          } catch {
+
+            // re-request key if already requested
+            const alreadySavedRequest = localData.getTempRequestForMasterKey(session.username)
+            if (alreadySavedRequest) {
+              const { requesterPublicKey, tempKeyToRequestMasterKey } = alreadySavedRequest
+
+              const masterKey = await this.requestMasterKey(requesterPublicKey, tempKeyToRequestMasterKey)
+              if (masterKey) return resolve() // already updated session inside receiveMasterKey()
+            }
+          }
+
+          resolve(onSessionChange(this.session))
         }
-        this.connected = true
-        const signedIn = true
-        localData.setCurrentSession(session.username, signedIn)
-        resolve(onSessionChange({ ...session, signedIn: true }))
       }
 
-      this.ws.onmessage = async (e) => {
+      ws.onmessage = async (e) => {
         await this.handleMessage(JSON.parse(e.data))
       }
 
-      this.ws.onerror = () => {
-        if (!this.connected) {
+      ws.onerror = () => {
+        if (!connected) {
           this.close()
           reject()
         } else {
@@ -105,7 +116,7 @@ class Connection {
         }
       }
 
-      this.ws.watch = async (requestId) => {
+      ws.watch = async (requestId) => {
         this.requests[requestId] = {}
 
         const response = await new Promise((resolve, reject) => {
@@ -120,10 +131,10 @@ class Connection {
         return response
       }
 
-      this.ws.onclose = () => {
-        this.init()
-        localData.signOutCurrentSession()
-        onSessionChange({ username: session.username, signedIn: false })
+      ws.onclose = () => {
+        const updatedSession = localData.signOutSession(session)
+        this.init(null, updatedSession, onSessionChange)
+        onSessionChange(updatedSession)
       }
     })
   }
@@ -200,6 +211,24 @@ class Connection {
         break
       }
 
+      case 'ReceiveRequestForMasterKey': {
+        if (!this.keys.init) return
+
+        const requesterPublicKey = message.requesterPublicKey
+        this.sendMasterKey(requesterPublicKey)
+
+        break
+      }
+
+      case 'ReceiveMasterKey': {
+        const { encryptedMasterKey, senderPublicKey } = message
+        const { tempKeyToRequestMasterKey, requesterPublicKey } = localData.getTempRequestForMasterKey(this.session.username)
+
+        await this.receiveMasterKey(encryptedMasterKey, senderPublicKey, requesterPublicKey, tempKeyToRequestMasterKey)
+
+        break
+      }
+
       case 'CreateDatabase':
       case 'GetDatabase':
       case 'OpenDatabase':
@@ -207,7 +236,11 @@ class Connection {
       case 'Update':
       case 'Delete':
       case 'Batch':
-      case 'Bundle': {
+      case 'Bundle':
+      case 'ClientHasKey':
+      case 'RequestMasterKey':
+      case 'GetRequestsForMasterKey':
+      case 'SendMasterKey': {
         const requestId = message.requestId
 
         if (!requestId) return console.warn('Missing request id')
@@ -232,7 +265,24 @@ class Connection {
   }
 
   close() {
-    this.ws.close()
+    this.ws
+      ? this.ws.close()
+      : this.init()
+  }
+
+  async setKeys(masterKeyString, requesterPublicKey) {
+    if (!this.session.key) this.session.key = masterKeyString
+
+    this.keys.rawMasterKey = base64.decode(masterKeyString)
+    this.keys.masterKey = await crypto.aesGcm.getKeyFromRawKey(this.keys.rawMasterKey)
+    this.keys.masterKeyString = masterKeyString
+    this.keys.hmacKey = await crypto.hmac.importKey(this.keys.rawMasterKey)
+
+    const action = 'ClientHasKey'
+    const params = { requesterPublicKey } // only provided if first time validating since receving master key
+    await this.request(action, params)
+
+    this.keys.init = true
   }
 
   async request(action, params) {
@@ -258,7 +308,7 @@ class Connection {
       return response
     } catch (e) {
       // process any errors and re-throw them
-      throw new RequestFailed(e)
+      throw new RequestFailed(action, e)
     }
   }
 
@@ -272,6 +322,68 @@ class Connection {
 
     delete this.requests[requestId]
     return response
+  }
+
+  async requestMasterKey(requesterPublicKey, tempKeyToRequestMasterKey) {
+    const action = 'RequestMasterKey'
+    const params = { requesterPublicKey }
+    const requestMasterKeyResponse = await this.request(action, params)
+
+    const { encryptedMasterKey, senderPublicKey } = requestMasterKeyResponse.data
+    if (encryptedMasterKey && senderPublicKey) {
+      const masterKey = await this.receiveMasterKey(encryptedMasterKey, senderPublicKey, requesterPublicKey, tempKeyToRequestMasterKey)
+      return masterKey
+    }
+    return null
+  }
+
+  async sendMasterKey(requesterPublicKey) {
+    if (this.sentMasterKeyTo[requesterPublicKey] || this.processingKeyRequest[requesterPublicKey]) return
+    this.processingKeyRequest[requesterPublicKey] = true
+
+    if (window.confirm(`Send the master key to device: \n\n${requesterPublicKey}\n`)) {
+      try {
+        const sharedSecret = crypto.diffieHellman.getSharedSecret(
+          this.keys.rawMasterKey,
+          new Uint8Array(base64.decode(requesterPublicKey))
+        )
+
+        const sharedRawKey = await crypto.sha256.hash(sharedSecret)
+        const sharedKey = await crypto.aesGcm.getKeyFromRawKey(sharedRawKey)
+
+        const encryptedMasterKey = await crypto.aesGcm.encryptString(sharedKey, this.keys.masterKeyString)
+
+        const action = 'SendMasterKey'
+        const params = { requesterPublicKey, encryptedMasterKey }
+
+        await this.request(action, params)
+        this.sentMasterKeyTo[requesterPublicKey] = true
+      } catch (e) {
+        console.warn(e)
+      }
+    }
+    delete this.processingKeyRequest[requesterPublicKey]
+  }
+
+  async receiveMasterKey(encryptedMasterKey, senderPublicKey, requesterPublicKey, tempKeyToRequestMasterKey) {
+    const sharedSecret = crypto.diffieHellman.getSharedSecret(
+      tempKeyToRequestMasterKey,
+      new Uint8Array(base64.decode(senderPublicKey))
+    )
+
+    const sharedRawKey = await crypto.sha256.hash(sharedSecret)
+    const sharedKey = await crypto.aesGcm.getKeyFromRawKey(sharedRawKey)
+
+    const masterKeyString = await crypto.aesGcm.decryptString(sharedKey, encryptedMasterKey)
+
+    await localData.saveKeyStringToLocalStorage(this.session.username, masterKeyString)
+
+    await this.setKeys(masterKeyString, requesterPublicKey)
+
+    localData.removeRequestForMasterKey(this.session.username)
+
+    this.onSessionChange(this.session)
+    return masterKeyString
   }
 }
 

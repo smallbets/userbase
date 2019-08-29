@@ -11,6 +11,8 @@ class Connection {
     this.socket = socket
     this.id = uuidv4()
     this.databases = {}
+    this.clientHasKey = false
+    this.requesterPublicKey = undefined
   }
 
   openDatabase(databaseId, bundleSeqNo) {
@@ -65,6 +67,37 @@ class Connection {
       database.transactionLogSize = 0
     }
   }
+
+  openKeyRequest(requesterPublicKey) {
+    this.requesterPublicKey = requesterPublicKey
+  }
+
+  sendKeyRequest(requesterPublicKey) {
+    if (!this.clientHasKey) return
+
+    const payload = {
+      route: 'ReceiveRequestForMasterKey',
+      requesterPublicKey
+    }
+
+    this.socket.send(JSON.stringify(payload))
+  }
+
+  sendMasterKey(senderPublicKey, requesterPublicKey, encryptedMasterKey) {
+    if (this.requesterPublicKey !== requesterPublicKey) return
+
+    const payload = {
+      route: 'ReceiveMasterKey',
+      encryptedMasterKey,
+      senderPublicKey
+    }
+
+    this.socket.send(JSON.stringify(payload))
+  }
+
+  deleteKeyRequest(requesterPublicKey) {
+    if (this.requesterPublicKey === requesterPublicKey) delete this.requesterPublicKey
+  }
 }
 
 export default class Connections {
@@ -85,17 +118,44 @@ export default class Connections {
 
     const conn = Connections.sockets[userId][connectionId]
     conn.openDatabase(databaseId, bundleSeqNo)
-    logger.info(`Database ${databaseId} opened by user ${userId}`)
+    logger.info(`Database ${databaseId} opened on connection ${connectionId}`)
 
     conn.push(databaseId, dbNameHash, dbKey)
     return true
   }
 
   static push(databaseId, userId) {
-    if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId]) return
+    if (!Connections.sockets || !Connections.sockets[userId]) return
 
     for (const conn of Object.values(Connections.sockets[userId])) {
       conn.push(databaseId)
+    }
+  }
+
+  static sendKeyRequest(userId, connectionId, requesterPublicKey) {
+    if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId][connectionId]) return
+
+    const conn = Connections.sockets[userId][connectionId]
+    conn.openKeyRequest(requesterPublicKey)
+
+    for (const connection of Object.values(Connections.sockets[userId])) {
+      connection.sendKeyRequest(requesterPublicKey)
+    }
+  }
+
+  static sendMasterKey(userId, senderPublicKey, requesterPublicKey, encryptedMasterKey) {
+    if (!Connections.sockets || !Connections.sockets[userId]) return
+
+    for (const conn of Object.values(Connections.sockets[userId])) {
+      conn.sendMasterKey(senderPublicKey, requesterPublicKey, encryptedMasterKey)
+    }
+  }
+
+  static deleteKeyRequest(userId, requesterPublicKey) {
+    if (!Connections.sockets || !Connections.sockets[userId]) return
+
+    for (const conn of Object.values(Connections.sockets[userId])) {
+      conn.deleteKeyRequest(requesterPublicKey)
     }
   }
 

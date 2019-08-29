@@ -12,6 +12,8 @@ import setup from './setup'
 import auth from './auth'
 import db from './db'
 import connections from './ws'
+import statusCodes from './statusCodes'
+import responseBuilder from './responseBuilder'
 
 const ONE_KB = 1024
 
@@ -76,38 +78,80 @@ if (process.env.NODE_ENV == 'development') {
           const params = request.params
 
           let response
+
           switch (action) {
-            case 'CreateDatabase': {
-              response = await db.createDatabase(
+            case 'ClientHasKey': {
+              if (params.requesterPublicKey) await auth.deleteMasterKeyRequest(userId, params.requesterPublicKey)
+
+              // TO-DO: validate user actually possesses the key
+              conn.clientHasKey = true
+
+              response = responseBuilder.successResponse('Success!')
+              break
+            }
+            case 'RequestMasterKey': {
+              response = await auth.requestMasterKey(
                 userId,
-                params.dbNameHash,
-                params.dbId,
-                params.encryptedDbName,
-                params.encryptedDbKey,
-                params.encryptedMetadata
+                res.locals.user['public-key'],
+                connectionId,
+                params.requesterPublicKey
               )
               break
             }
-            case 'OpenDatabase': {
-              response = await db.openDatabase(userId, connectionId, params.dbNameHash)
-              break
-            }
-            case 'Insert':
-            case 'Update':
-            case 'Delete': {
-              response = await db.doCommand(action, userId, params.dbId, params.itemKey, params.encryptedItem)
-              break
-            }
-            case 'Batch': {
-              response = await db.batch(userId, params.dbId, params.operations)
-              break
-            }
-            case 'Bundle': {
-              response = await db.bundleTransactionLog(userId, params.dbId, params.seqNo, params.bundle)
-              break
-            }
             default: {
-              return ws.send(`Received unkown action ${action}`)
+              if (!conn.clientHasKey) {
+                response = responseBuilder.errorResponse(statusCodes['Unauthorized'], 'Key not validated')
+              }
+            }
+          }
+
+          if (!response) {
+            switch (action) {
+              case 'CreateDatabase': {
+                response = await db.createDatabase(
+                  userId,
+                  params.dbNameHash,
+                  params.dbId,
+                  params.encryptedDbName,
+                  params.encryptedDbKey,
+                  params.encryptedMetadata
+                )
+                break
+              }
+              case 'OpenDatabase': {
+                response = await db.openDatabase(userId, connectionId, params.dbNameHash)
+                break
+              }
+              case 'Insert':
+              case 'Update':
+              case 'Delete': {
+                response = await db.doCommand(action, userId, params.dbId, params.itemKey, params.encryptedItem)
+                break
+              }
+              case 'Batch': {
+                response = await db.batch(userId, params.dbId, params.operations)
+                break
+              }
+              case 'Bundle': {
+                response = await db.bundleTransactionLog(userId, params.dbId, params.seqNo, params.bundle)
+                break
+              }
+              case 'GetRequestsForMasterKey': {
+                response = await auth.queryMasterKeyRequests(userId)
+                break
+              }
+              case 'SendMasterKey': {
+                response = await auth.sendMasterKey(
+                  userId,
+                  res.locals.user['public-key'],
+                  params.requesterPublicKey,
+                  params.encryptedMasterKey
+                )
+                break
+              }
+              default: {
+                return ws.send(`Received unkown action ${action}`)
+              }
             }
           }
 
@@ -149,10 +193,6 @@ if (process.env.NODE_ENV == 'development') {
     app.post('/api/auth/sign-in', auth.signIn)
     app.post('/api/auth/sign-out', auth.authenticateUser, auth.signOut)
 
-    app.post('/api/auth/request-master-key', auth.authenticateUser, auth.requestMasterKey)
-    app.get('/api/auth/get-master-key-requests', auth.authenticateUser, auth.queryMasterKeyRequests)
-    app.post('/api/auth/send-master-key', auth.authenticateUser, auth.sendMasterKey)
-    app.post('/api/auth/receive-master-key', auth.authenticateUser, auth.receiveMasterKey)
   } catch (e) {
     logger.info(`Unhandled error while launching server: ${e}`)
   }

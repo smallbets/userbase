@@ -1,27 +1,18 @@
 import connection from './connection'
 import setup from './setup'
 import statusCodes from './statusCodes'
+import responseBuilder from './responseBuilder'
 import memcache from './memcache'
 import connections from './ws'
 import logger from './logger'
 
 const getS3DbStateKey = (databaseId, bundleSeqNo) => `${databaseId}/${bundleSeqNo}`
 
-const _errorResponse = (status, data) => ({
-  status,
-  data
-})
-
-const _successResponse = (data) => ({
-  status: statusCodes['Success'],
-  data
-})
-
 exports.createDatabase = async function (userId, dbNameHash, dbId, encryptedDbName, encryptedDbKey, encryptedMetadata) {
-  if (!dbNameHash) return _errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
-  if (!dbId) return _errorResponse(statusCodes['Bad Request'], 'Missing database id')
-  if (!encryptedDbName) return _errorResponse(statusCodes['Bad Request'], 'Missing database name')
-  if (!encryptedDbKey) return _errorResponse(statusCodes['Bad Request'], 'Missing database key')
+  if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
+  if (!dbId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
+  if (!encryptedDbName) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name')
+  if (!encryptedDbKey) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database key')
 
   const database = {
     'user-id': userId,
@@ -47,12 +38,12 @@ exports.createDatabase = async function (userId, dbNameHash, dbId, encryptedDbNa
 
     memcache.initTransactionLog(dbId)
 
-    return _successResponse('Success!')
+    return responseBuilder.successResponse('Success!')
   } catch (e) {
     if (e.name === 'ConditionalCheckFailedException') {
-      return _errorResponse(statusCodes['Conflict'], 'Database already exists')
+      return responseBuilder.errorResponse(statusCodes['Conflict'], 'Database already exists')
     }
-    return _errorResponse(statusCodes['Internal Server Error'], `Failed to create database with ${e}`)
+    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to create database with ${e}`)
   }
 }
 
@@ -73,23 +64,23 @@ const getDatabase = async function (userId, dbNameHash) {
 }
 
 exports.openDatabase = async function (userId, connectionId, dbNameHash) {
-  if (!dbNameHash) return _errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
+  if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
 
   try {
     const database = await getDatabase(userId, dbNameHash)
-    if (!database) return _errorResponse(statusCodes['Not Found'], 'Database not found')
+    if (!database) return responseBuilder.errorResponse(statusCodes['Not Found'], 'Database not found')
 
     const dbId = database['database-id']
     const bundleSeqNo = database['bundle-seq-no']
     const dbKey = database['database-key']
 
     if (connections.openDatabase(userId, connectionId, dbId, bundleSeqNo, dbNameHash, dbKey)) {
-      return _successResponse('Success!')
+      return responseBuilder.successResponse('Success!')
     } else {
       throw new Error(`Unable to open database`)
     }
   } catch (e) {
-    return _errorResponse(statusCodes['Internal Server Error'], `Failed to create database with ${e}`)
+    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to create database with ${e}`)
   }
 }
 
@@ -173,9 +164,9 @@ const putTransaction = async function (transaction, userId) {
 }
 
 exports.doCommand = async function (command, userId, databaseId, key, record) {
-  if (!databaseId) return _errorResponse(statusCodes['Bad Request'], 'Missing database id')
-  if (!key) return _errorResponse(statusCodes['Bad Request'], 'Missing item key')
-  if (!record) return _errorResponse(statusCodes['Bad Request'], 'Missing record')
+  if (!databaseId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
+  if (!key) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing item key')
+  if (!record) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing record')
 
   const transaction = {
     'database-id': databaseId,
@@ -186,15 +177,15 @@ exports.doCommand = async function (command, userId, databaseId, key, record) {
 
   try {
     const sequenceNo = await putTransaction(transaction, userId)
-    return _successResponse({ sequenceNo })
+    return responseBuilder.successResponse({ sequenceNo })
   } catch (e) {
-    return _errorResponse(statusCodes['Internal Server Error'], `Failed to ${command} with ${e}`)
+    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to ${command} with ${e}`)
   }
 }
 
 exports.batch = async function (userId, databaseId, operations) {
-  if (!databaseId) return _errorResponse(statusCodes['Bad Request'], 'Missing database id')
-  if (!operations || !operations.length) return _errorResponse(statusCodes['Bad Request'], 'Missing operations')
+  if (!databaseId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
+  if (!operations || !operations.length) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing operations')
 
   const ops = []
   for (let i = 0; i < operations.length; i++) {
@@ -203,9 +194,9 @@ exports.batch = async function (userId, databaseId, operations) {
     const record = operation.encryptedItem
     const command = operation.command
 
-    if (!key) return _errorResponse(statusCodes['Bad Request'], `Operation ${i} missing item key`)
-    if (!record) return _errorResponse(statusCodes['Bad Request'], `Operation ${i} missing record`)
-    if (!command) return _errorResponse(statusCodes['Bad Request'], `Operation ${i} missing command`)
+    if (!key) return responseBuilder.errorResponse(statusCodes['Bad Request'], `Operation ${i} missing item key`)
+    if (!record) return responseBuilder.errorResponse(statusCodes['Bad Request'], `Operation ${i} missing record`)
+    if (!command) return responseBuilder.errorResponse(statusCodes['Bad Request'], `Operation ${i} missing command`)
 
     const result = {
       key,
@@ -226,9 +217,9 @@ exports.batch = async function (userId, databaseId, operations) {
     }
 
     const sequenceNo = await putTransaction(transaction, userId)
-    return _successResponse({ sequenceNo })
+    return responseBuilder.successResponse({ sequenceNo })
   } catch (e) {
-    return _errorResponse(statusCodes['Internal Server Error'], `Failed to batch with ${e}`)
+    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to batch with ${e}`)
   }
 }
 
@@ -262,7 +253,7 @@ exports.bundleTransactionLog = async function (userId, databaseId, seqNo, bundle
   const bundleSeqNo = Number(seqNo)
 
   if (!bundleSeqNo && bundleSeqNo !== 0) {
-    return _errorResponse(statusCodes['Bad Request'], `Missing bundle sequence number`)
+    return responseBuilder.errorResponse(statusCodes['Bad Request'], `Missing bundle sequence number`)
   }
 
   try {
@@ -270,7 +261,7 @@ exports.bundleTransactionLog = async function (userId, databaseId, seqNo, bundle
     const dbNameHash = database['database-name-hash']
     const lastBundleSeqNo = database['bundle-seq-no']
     if (lastBundleSeqNo >= bundleSeqNo) {
-      return _errorResponse(statusCodes['Bad Request'], 'Bundle sequence no must be greater than current bundle')
+      return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Bundle sequence no must be greater than current bundle')
     }
 
     const dbStateParams = {
@@ -308,16 +299,16 @@ exports.bundleTransactionLog = async function (userId, databaseId, seqNo, bundle
 
     memcache.setBundleSeqNo(databaseId, bundleSeqNo)
 
-    return _successResponse({})
+    return responseBuilder.successResponse({})
   } catch (e) {
 
-    return _errorResponse(statusCodes['Internal Server Error'], `Failed to bundle with ${e}`)
+    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to bundle with ${e}`)
   }
 }
 
 exports.getBundle = async function (databaseId, bundleSeqNo) {
   if (!bundleSeqNo && bundleSeqNo !== 0) {
-    return _errorResponse(statusCodes['Bad Request'], `Missing bundle sequence number`)
+    return responseBuilder.errorResponse(statusCodes['Bad Request'], `Missing bundle sequence number`)
   }
 
   try {
@@ -335,11 +326,11 @@ exports.getBundle = async function (databaseId, bundleSeqNo) {
       const error = e.message
 
       return statusCode === 404 && error === 'Not Found'
-        ? _errorResponse(statusCodes['Not Found'], `Failed to query db state with ${error}`)
-        : _errorResponse(statusCodes['Internal Server Error'], `Failed to query db state with ${error}`)
+        ? responseBuilder.errorResponse(statusCodes['Not Found'], `Failed to query db state with ${error}`)
+        : responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to query db state with ${error}`)
     }
 
   } catch (e) {
-    return _errorResponse(statusCodes['Internal Server Error'], `Failed to query db state with ${e}`)
+    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to query db state with ${e}`)
   }
 }

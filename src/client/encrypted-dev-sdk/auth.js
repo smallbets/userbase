@@ -5,6 +5,9 @@ import ws from './ws'
 import crypto from './Crypto'
 import localData from './localData'
 
+const wsNotOpen = 'Web Socket not open'
+const deviceAlreadyRegistered = 'Device already registered'
+
 const signUp = async (username, password, onSessionChange) => {
   const lowerCaseUsername = username.toLowerCase()
   const userId = uuidv4()
@@ -13,8 +16,10 @@ const signUp = async (username, password, onSessionChange) => {
   const rawAesKey = await crypto.aesGcm.getRawKeyFromKey(aesKey)
   const { publicKey, sharedSecret } = crypto.diffieHellman.getPublicKeyAndSharedSecretWithServer(rawAesKey)
 
+  const base64PublicKey = base64.encode(publicKey)
+
   const [encryptedValidationMessage, sharedKey] = await Promise.all([
-    api.auth.signUp(lowerCaseUsername, password, userId, publicKey),
+    api.auth.signUp(lowerCaseUsername, password, userId, base64PublicKey),
     crypto.aesGcm.getKeyFromRawKey(await crypto.sha256.hash(sharedSecret))
   ])
 
@@ -31,19 +36,13 @@ const signUp = async (username, password, onSessionChange) => {
   const session = localData.setCurrentSession(lowerCaseUsername, signedIn)
 
   await ws.connect(session, onSessionChange)
-  pollForKeyRequests(lowerCaseUsername)
 
   return session
 }
 
 const signOut = async () => {
-  const session = localData.signOutCurrentSession()
-
   ws.close()
-
   await api.auth.signOut()
-
-  return session
 }
 
 const signIn = async (username, password, onSessionChange) => {
@@ -55,150 +54,79 @@ const signIn = async (username, password, onSessionChange) => {
   const session = localData.setCurrentSession(lowerCaseUsername, signedIn)
 
   await ws.connect(session, onSessionChange)
-  pollForKeyRequests(lowerCaseUsername)
+
+  getRequestsForMasterKey()
 
   return session
-}
-
-const pollForKeyRequests = async (lowerCaseUsername) => {
-  const POLL_INTERVAL = 2000
-
-  const poll = async () => {
-    try {
-      const rawMasterKey = await localData.getRawKeyByUsername(lowerCaseUsername)
-
-      if (rawMasterKey) {
-        await sendMasterKeyToRequesters(rawMasterKey)
-      } else {
-        await receiveRequestedMasterKey(lowerCaseUsername)
-      }
-    } catch {
-      // swallow error
-    }
-
-    setTimeout(poll, POLL_INTERVAL)
-  }
-
-  poll()
-}
-
-const sendMasterKeyToRequesters = async (rawMasterKey) => {
-  const masterKeyRequests = await api.auth.getMasterKeyRequests()
-
-  if (masterKeyRequests.length) {
-
-    const sharedRawKeyPromises = masterKeyRequests.map(masterKeyRequest => {
-      const requesterPublicKey = new Uint8Array(masterKeyRequest['requester-public-key'].data)
-
-      const sharedSecret = crypto.diffieHellman.getSharedSecret(rawMasterKey, requesterPublicKey)
-
-      return crypto.sha256.hash(sharedSecret)
-    })
-    const sharedRawKeys = await Promise.all(sharedRawKeyPromises)
-
-    const sharedKeyPromises = sharedRawKeys.map(rawKey => crypto.aesGcm.getKeyFromRawKey(rawKey))
-    const sharedKeys = await Promise.all(sharedKeyPromises)
-
-    const encryptedMasterKeyPromises = sharedKeys.map(sharedKey => crypto.aesGcm.encrypt(sharedKey, rawMasterKey))
-    const encryptedMasterKeys = await Promise.all(encryptedMasterKeyPromises)
-
-    const sendMasterKeyPromises = encryptedMasterKeys.map((encryptedMasterKey, i) => {
-      const requesterPublicKey = masterKeyRequests[i]['requester-public-key'].data
-
-      return api.auth.sendMasterKey(requesterPublicKey, encryptedMasterKey)
-    })
-    await Promise.all(sendMasterKeyPromises)
-  }
-}
-
-const receiveRequestedMasterKey = async (username) => {
-  const alreadySavedRequest = localStorage.getItem(`${username}.temp-request-for-master-key`)
-
-  if (alreadySavedRequest) {
-    const requestForMasterKey = alreadySavedRequest.split('|')
-
-    const tempKey = base64.decode(requestForMasterKey[0])
-    const requesterPublicKey = base64.decode(requestForMasterKey[1])
-    const senderPublicKey = Buffer.from(base64.decode(requestForMasterKey[2]))
-
-    const encryptedMasterKey = await checkIfMasterKeyReceived(requesterPublicKey)
-
-    if (encryptedMasterKey) {
-      await decryptAndSaveMasterKey(username, tempKey, senderPublicKey, encryptedMasterKey)
-    }
-  }
-}
-
-const checkIfMasterKeyReceived = async (requesterPublicKey) => {
-  try {
-    const encryptedMasterKey = await api.auth.receiveMasterKey(requesterPublicKey)
-    return encryptedMasterKey
-  } catch (e) {
-    const notFound = e.response && e.response.status === 404
-    if (notFound) return null
-    else throw e
-  }
-}
-
-const pollToReceiveMasterKey = (requesterPublicKey) => new Promise(res => {
-  const POLL_INTERVAL = 1000
-
-  const receiveMasterKey = async () => {
-    const encryptedMasterKey = await checkIfMasterKeyReceived(requesterPublicKey)
-
-    if (encryptedMasterKey) return res(encryptedMasterKey)
-
-    setTimeout(receiveMasterKey, POLL_INTERVAL)
-  }
-
-  receiveMasterKey()
-})
-
-const decryptAndSaveMasterKey = async (username, tempKeyToRequestMasterKey, senderPublicKey, encryptedMasterKey) => {
-  const sharedSecret = crypto.diffieHellman.getSharedSecret(tempKeyToRequestMasterKey, senderPublicKey)
-  const sharedRawKey = await crypto.sha256.hash(sharedSecret)
-  const sharedKey = await crypto.aesGcm.getKeyFromRawKey(sharedRawKey)
-
-  const masterRawKey = await crypto.aesGcm.decrypt(sharedKey, encryptedMasterKey)
-  const masterKey = await crypto.aesGcm.getKeyFromRawKey(masterRawKey)
-
-  await localData.saveKeyToLocalStorage(username, masterKey)
-  localStorage.removeItem(`${username}.temp-request-for-master-key`)
-  return masterRawKey
-}
-
-const registerDevice = async () => {
-  const { username, signedIn } = localData.getCurrentSession()
-  if (!username || !signedIn) throw new Error('Sign in first!')
-
-  // this could be random bytes -- it's not used to encrypt/decrypt anything, only to generate DH
-  const tempKeyToRequestMasterKey = await crypto.aesGcm.getRawKeyFromKey(await crypto.aesGcm.generateKey())
-  const requesterPublicKey = crypto.diffieHellman.getPublicKey(tempKeyToRequestMasterKey)
-  const senderPublicKey = await api.auth.requestMasterKey(requesterPublicKey)
-
-  const tempRequestForMasterKey = base64.encode(tempKeyToRequestMasterKey)
-    + '|' + base64.encode(requesterPublicKey)
-    + '|' + base64.encode(senderPublicKey)
-  localStorage.setItem(`${username}.temp-request-for-master-key`, tempRequestForMasterKey)
-
-  const encryptedMasterKey = await pollToReceiveMasterKey(requesterPublicKey)
-  const masterRawKey = await decryptAndSaveMasterKey(username, tempKeyToRequestMasterKey, senderPublicKey, encryptedMasterKey)
-
-  return base64.encode(masterRawKey)
 }
 
 const initSession = async (onSessionChange) => {
   const session = localData.getCurrentSession()
   if (!session) return onSessionChange({ username: undefined, signedIn: false, key: undefined })
-  const { username, signedIn, key } = session
-  if (!username || !signedIn || !key) return onSessionChange(session)
+  if (!session.username || !session.signedIn) return onSessionChange(session)
 
   try {
     const connected = await ws.connect(session, onSessionChange)
-    pollForKeyRequests(username)
+
+    getRequestsForMasterKey()
+
     return connected
   } catch (e) {
-    return onSessionChange({ ...session, signedIn: false })
+    const signedIn = false
+    localData.setCurrentSession(session.username, signedIn)
+    return onSessionChange({ ...session, signedIn })
+  }
+}
+
+const registerDevice = async () => {
+  if (!ws.connected) throw new Error(wsNotOpen)
+  if (ws.keys.init) throw new Error(deviceAlreadyRegistered)
+
+  const alreadySavedRequest = localData.getTempRequestForMasterKey(ws.session.username)
+
+  let requesterPublicKey
+  let tempKeyToRequestMasterKey
+  if (!alreadySavedRequest) {
+    // this could be random bytes -- it's not used to encrypt/decrypt anything, only to generate DH
+    tempKeyToRequestMasterKey = await crypto.aesGcm.getKeyStringFromKey(await crypto.aesGcm.generateKey())
+    const publicKey = crypto.diffieHellman.getPublicKey(tempKeyToRequestMasterKey)
+    requesterPublicKey = base64.encode(publicKey)
+
+    localData.setTempRequestForMasterKey(ws.session.username, requesterPublicKey, tempKeyToRequestMasterKey)
+  } else {
+    requesterPublicKey = alreadySavedRequest.requesterPublicKey
+    tempKeyToRequestMasterKey = alreadySavedRequest.tempKeyToRequestMasterKey
+  }
+
+  await ws.requestMasterKey(requesterPublicKey, tempKeyToRequestMasterKey)
+
+  return {
+    devicePublicKey: requesterPublicKey,
+    firstTimeRegistering: !alreadySavedRequest
+  }
+}
+
+// TO-DO: validate the key is user's key
+const importKey = async (keyString) => {
+  if (!ws.connected) throw new Error(wsNotOpen)
+  if (ws.keys.init) throw new Error(deviceAlreadyRegistered)
+
+  localData.saveKeyStringToLocalStorage(ws.session.username, keyString)
+  await ws.setKeys(keyString)
+  ws.onSessionChange(ws.session)
+}
+
+const getRequestsForMasterKey = async () => {
+  if (!ws.keys.init) return
+
+  const response = await ws.request('GetRequestsForMasterKey')
+
+  const masterKeyRequests = response.data.masterKeyRequests
+
+  for (const masterKeyRequest of masterKeyRequests) {
+    const requesterPublicKey = masterKeyRequest['requester-public-key']
+
+    ws.sendMasterKey(requesterPublicKey)
   }
 }
 
@@ -206,6 +134,7 @@ export default {
   signUp,
   signOut,
   signIn,
+  initSession,
   registerDevice,
-  initSession
+  importKey,
 }

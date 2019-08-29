@@ -37,12 +37,12 @@ const signIn = async (username, password, onSessionChange) => {
 }
 
 const saveKey = async (key) => {
-  await encd.saveKeyStringToLocalStorage(key)
+  await encd.importKey(key)
 }
 
-const requestKey = async () => {
-  const keyString = await encd.registerDevice()
-  return keyString
+const registerDevice = async () => {
+  const { devicePublicKey, firstTimeRegistering } = await encd.registerDevice()
+  return { devicePublicKey, firstTimeRegistering }
 }
 
 const initSession = async (onSessionChange) => {
@@ -55,6 +55,6 @@ export default {
   signOut,
   signIn,
   saveKey,
-  requestKey,
+  registerDevice,
   initSession
 }

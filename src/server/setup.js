@@ -126,7 +126,7 @@ async function setupDdb() {
   const keyExchangeTableParams = {
     AttributeDefinitions: [
       { AttributeName: 'user-id', AttributeType: 'S' },
-      { AttributeName: 'requester-public-key', AttributeType: 'B' }
+      { AttributeName: 'requester-public-key', AttributeType: 'S' }
     ],
     KeySchema: [
       { AttributeName: 'user-id', KeyType: 'HASH' },

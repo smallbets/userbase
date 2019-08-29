@@ -1,5 +1,5 @@
 import React, { PureComponent } from 'react'
-import { string, func } from 'prop-types'
+import { string } from 'prop-types'
 import userLogic from './logic'
 
 export default class SaveKey extends PureComponent {
@@ -10,7 +10,8 @@ export default class SaveKey extends PureComponent {
     this.state = {
       manualPrompt: false,
       keyString: '',
-      error: ''
+      error: '',
+      devicePublicKey: undefined
     }
 
     this.handleInputChange = this.handleInputChange.bind(this)
@@ -24,7 +25,6 @@ export default class SaveKey extends PureComponent {
   }
 
   async handleSaveKey(event) {
-    const { handleSetKeyInState } = this.props
     const { keyString } = this.state
 
     event.preventDefault()
@@ -32,19 +32,23 @@ export default class SaveKey extends PureComponent {
     if (keyString == '') return
 
     await userLogic.saveKey(keyString)
-    handleSetKeyInState(keyString)
   }
 
   async componentDidMount() {
-    // if the key is not received automatically after 6 sec, prompt the user to enter it manually
-    setTimeout(() => this.setState({ manualPrompt: true }), 6 * 1000)
+    const { devicePublicKey, firstTimeRegistering } = await userLogic.registerDevice()
 
-    const keyString = await userLogic.requestKey()
-    this.props.handleSetKeyInState(keyString)
+    if (firstTimeRegistering) {
+      this.setState({ devicePublicKey, manualPrompt: true })
+    } else {
+      // if the key is not received automatically after 6 sec, prompt the user to enter it manually
+      setTimeout(() => this.setState({ manualPrompt: true }), 6 * 1000)
+
+      this.setState({ devicePublicKey })
+    }
   }
 
   render() {
-    const { keyString, error, manualPrompt } = this.state
+    const { keyString, error, manualPrompt, devicePublicKey } = this.state
 
     return (
       <form>
@@ -57,7 +61,14 @@ export default class SaveKey extends PureComponent {
               </div>
               : <div>
                 <div className="font-normal mb-4">
-                  This device will automatically receive the secret key when you sign in from a device you used before.
+                  Sign in from a device you used before to send the secret key to this device.
+                </div>
+
+                <div className="font-normal mb-4">
+                  Before sending, please verify the Device ID matches:
+                </div>
+                <div className='font-light text-xs xs:text-sm break-all p-0 select-all font-mono text-red-600'>
+                  {devicePublicKey}
                 </div>
 
                 <div className='text-center mt-8 mb-6'>
@@ -107,6 +118,5 @@ export default class SaveKey extends PureComponent {
 }
 
 SaveKey.propTypes = {
-  handleSetKeyInState: func,
   keyString: string
 }

@@ -21,13 +21,11 @@ const getCurrentSession = () => {
   return { ...currentSession, key: keyString }
 }
 
-const saveKeyStringToLocalStorage = async (keyString) => {
-  const currentSession = getCurrentSession()
-
+const saveKeyStringToLocalStorage = async (username, keyString) => {
   const rawKey = base64.decode(keyString)
   await crypto.aesGcm.getKeyFromRawKey(rawKey) // ensures key is valid, would throw if invalid
 
-  localStorage.setItem('key.' + currentSession.username, keyString)
+  localStorage.setItem('key.' + username, keyString)
 }
 
 const saveKeyToLocalStorage = async (username, key) => {
@@ -44,10 +42,30 @@ const getRawKeyByUsername = async (username) => {
   return rawKey
 }
 
-const signOutCurrentSession = () => {
-  const currentSession = getCurrentSession()
+const signOutSession = (session) => {
   const signedIn = false
-  return setCurrentSession(currentSession.username, signedIn)
+  setCurrentSession(session.username, signedIn)
+  return { username: session.username, signedIn }
+}
+
+const setTempRequestForMasterKey = (username, requesterPublicKey, tempKeyToRequestMasterKey) => {
+  const request = requesterPublicKey + '|' + tempKeyToRequestMasterKey
+  localStorage.setItem(`${username}.temp-request-for-master-key`, request)
+}
+
+const getTempRequestForMasterKey = (username) => {
+  const request = localStorage.getItem(`${username}.temp-request-for-master-key`)
+  if (!request) return request
+
+  const requestForMasterKey = request.split('|')
+  const requesterPublicKey = requestForMasterKey[0]
+  const tempKeyToRequestMasterKey = requestForMasterKey[1]
+
+  return { requesterPublicKey, tempKeyToRequestMasterKey }
+}
+
+const removeRequestForMasterKey = (username) => {
+  return localStorage.removeItem(`${username}.temp-request-for-master-key`)
 }
 
 export default {
@@ -56,5 +74,8 @@ export default {
   getRawKeyByUsername,
   saveKeyStringToLocalStorage,
   saveKeyToLocalStorage,
-  signOutCurrentSession,
+  signOutSession,
+  setTempRequestForMasterKey,
+  getTempRequestForMasterKey,
+  removeRequestForMasterKey,
 }

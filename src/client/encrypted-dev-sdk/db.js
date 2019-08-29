@@ -10,6 +10,7 @@ const versionConflict = 'Version conflict'
 const wsNotOpen = 'Web Socket not open'
 const dbNotOpen = 'Database not open'
 const dbAlreadyOpen = 'Database already open'
+const keyNotFound = 'Key not found'
 
 class UnverifiedTransaction {
   constructor(startSeqNo) {
@@ -313,6 +314,7 @@ class Database {
 
 const createDatabase = async (dbName, metadata) => {
   if (!ws.connected) throw new Error(wsNotOpen)
+  if (!ws.keys.init) throw new Error(keyNotFound)
 
   const dbId = uuidv4()
 
@@ -339,6 +341,7 @@ const createDatabase = async (dbName, metadata) => {
 
 const openDatabase = async (dbName, changeHandler) => {
   if (!ws.connected) throw new Error(wsNotOpen)
+  if (!ws.keys.init) throw new Error(keyNotFound)
 
   const dbNameHash = ws.state.dbNameToHash[dbName] || await crypto.hmac.signString(ws.keys.hmacKey, dbName)
   ws.state.dbNameToHash[dbName] = dbNameHash

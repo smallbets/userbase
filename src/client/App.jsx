@@ -58,15 +58,8 @@ export default class App extends Component {
     let userHasActiveSession = session && session.signedIn
 
     if (loading && userHasActiveSession) {
-      const connected = await dashboardLogic.openDatabase(this.handleDbChange, () => this.setState({ loading: false }))
-
-      if (!connected) {
-        userMustLogInAgain = true
-        userHasActiveSession = false
-      }
+      await dashboardLogic.openDatabase(this.handleDbChange, () => this.setState({ loading: false }))
     }
-
-    console.log(userHasActiveSession, session.key, session)
 
     if (!displaySignUpForm() && userMustLogInAgain) {
       // if the user is logged out, redirect to the sign-in form

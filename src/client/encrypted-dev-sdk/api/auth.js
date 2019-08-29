@@ -59,59 +59,9 @@ const signIn = async (username, password) => {
   })
 }
 
-const requestMasterKey = async (requesterPublicKey) => {
-  const senderPublicKeyResponse = await axios({
-    method: 'POST',
-    url: '/api/auth/request-master-key',
-    data: {
-      requesterPublicKey: Buffer.from(requesterPublicKey)
-    },
-    responseType: 'arraybuffer',
-    timeout: TIMEOUT
-  })
-  const senderPublicKey = new Uint8Array(senderPublicKeyResponse.data)
-  return senderPublicKey
-}
-
-const getMasterKeyRequests = async () => {
-  const response = await axios.get('/api/auth/get-master-key-requests')
-  const masterKeyRequests = response.data
-  return masterKeyRequests
-}
-
-const sendMasterKey = async (requesterPublicKey, encryptedMasterKey) => {
-  await axios({
-    method: 'POST',
-    url: '/api/auth/send-master-key',
-    data: {
-      requesterPublicKey: Buffer.from(requesterPublicKey),
-      encryptedMasterKey: Buffer.from(encryptedMasterKey)
-    },
-    timeout: TIMEOUT
-  })
-}
-
-const receiveMasterKey = async (requesterPublicKey) => {
-  const encryptedMasterKeyResponse = await axios({
-    method: 'POST',
-    url: '/api/auth/receive-master-key',
-    data: {
-      requesterPublicKey: Buffer.from(requesterPublicKey)
-    },
-    responseType: 'arraybuffer',
-    timeout: TIMEOUT
-  })
-  const encryptedMasterKey = encryptedMasterKeyResponse.data
-  return encryptedMasterKey
-}
-
 export default {
   signUp,
   validateKey,
   signOut,
   signIn,
-  requestMasterKey,
-  getMasterKeyRequests,
-  sendMasterKey,
-  receiveMasterKey
 }
