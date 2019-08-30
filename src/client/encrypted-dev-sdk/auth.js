@@ -32,8 +32,7 @@ const signUp = async (username, password, onSessionChange) => {
 
   await api.auth.validateKey(validationMessage)
 
-  const signedIn = true
-  const session = localData.setCurrentSession(lowerCaseUsername, signedIn)
+  const session = localData.signInSession(lowerCaseUsername)
 
   await ws.connect(session, onSessionChange)
 
@@ -50,8 +49,7 @@ const signIn = async (username, password, onSessionChange) => {
 
   await api.auth.signIn(lowerCaseUsername, password)
 
-  const signedIn = true
-  const session = localData.setCurrentSession(lowerCaseUsername, signedIn)
+  const session = localData.signInSession(lowerCaseUsername)
 
   await ws.connect(session, onSessionChange)
 
@@ -66,15 +64,13 @@ const initSession = async (onSessionChange) => {
   if (!session.username || !session.signedIn) return onSessionChange(session)
 
   try {
-    const connected = await ws.connect(session, onSessionChange)
+    await ws.connect(session, onSessionChange)
 
     getRequestsForMasterKey()
-
-    return connected
   } catch (e) {
-    const signedIn = false
-    localData.setCurrentSession(session.username, signedIn)
-    return onSessionChange({ ...session, signedIn })
+    ws.close()
+    onSessionChange(ws.session)
+    throw e
   }
 }
 

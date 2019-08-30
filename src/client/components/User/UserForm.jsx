@@ -50,12 +50,12 @@ export default class UserForm extends Component {
 
     await this.setState({ loading: true })
 
-    let session
-    if (formType === 'Sign Up') session = await userLogic.signUp(username, password, handleUpdateSession)
-    else if (formType === 'Sign In') session = await userLogic.signIn(username, password, handleUpdateSession)
+    let result
+    if (formType === 'Sign Up') result = await userLogic.signUp(username, password, handleUpdateSession)
+    else if (formType === 'Sign In') result = await userLogic.signIn(username, password, handleUpdateSession)
     else return console.error('Unknown form type')
 
-    if (session.error) this.setState({ error: session.error, loading: false })
+    if (result && result.error) this.setState({ error: result.error, loading: false })
   }
 
   render() {

@@ -12,8 +12,7 @@ const _errorHandler = (e, operation) => {
 
 const signUp = async (username, password, onSessionChange) => {
   try {
-    const session = await encd.signUp(username, password, onSessionChange)
-    return session
+    await encd.signUp(username, password, onSessionChange)
   } catch (e) {
     return _errorHandler(e, 'sign up')
   }
@@ -29,8 +28,7 @@ const signOut = async () => {
 
 const signIn = async (username, password, onSessionChange) => {
   try {
-    const session = await encd.signIn(username, password, onSessionChange)
-    return session
+    await encd.signIn(username, password, onSessionChange)
   } catch (e) {
     return _errorHandler(e, 'sign in')
   }
@@ -46,8 +44,11 @@ const registerDevice = async () => {
 }
 
 const initSession = async (onSessionChange) => {
-  const session = await encd.initSession(onSessionChange)
-  return session
+  try {
+    await encd.initSession(onSessionChange)
+  } catch (e) {
+    return _errorHandler(e, 'init session')
+  }
 }
 
 export default {

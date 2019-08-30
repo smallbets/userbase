@@ -42,6 +42,11 @@ const getRawKeyByUsername = async (username) => {
   return rawKey
 }
 
+const signInSession = (username) => {
+  const signedIn = true
+  return setCurrentSession(username, signedIn)
+}
+
 const signOutSession = (username) => {
   const signedIn = false
   setCurrentSession(username, signedIn)
@@ -69,12 +74,12 @@ const removeRequestForMasterKey = (username) => {
 }
 
 export default {
-  setCurrentSession,
+  signInSession,
+  signOutSession,
   getCurrentSession,
   getRawKeyByUsername,
   saveKeyStringToLocalStorage,
   saveKeyToLocalStorage,
-  signOutSession,
   setTempRequestForMasterKey,
   getTempRequestForMasterKey,
   removeRequestForMasterKey,
