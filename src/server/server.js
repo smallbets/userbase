@@ -133,7 +133,7 @@ if (process.env.NODE_ENV == 'development') {
                 break
               }
               case 'Bundle': {
-                response = await db.bundleTransactionLog(userId, params.dbId, params.seqNo, params.bundle)
+                response = await db.bundleTransactionLog(params.dbId, params.seqNo, params.bundle)
                 break
               }
               case 'GetRequestsForMasterKey': {
