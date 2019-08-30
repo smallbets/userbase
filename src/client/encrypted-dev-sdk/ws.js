@@ -4,6 +4,8 @@ import LZString from 'lz-string'
 import localData from './localData'
 import crypto from './Crypto'
 
+const DEV_MODE = window.location.hostname === 'localhost'
+
 class RequestFailed extends Error {
   constructor(action, response, message, ...params) {
     super(...params)
@@ -111,8 +113,8 @@ class Connection {
 
       ws.onerror = () => {
         if (!connected) {
-          this.signOut()
-          reject()
+          if (!DEV_MODE) this.signOut()
+          reject(new Error('WebSocket error'))
         } else {
           this.close()
         }
