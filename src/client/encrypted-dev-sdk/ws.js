@@ -23,12 +23,12 @@ class Connection {
     this.init()
   }
 
-  init(ws, session, onSessionChange) {
+  init(session, onSessionChange) {
     for (const property of Object.keys(this)) {
       delete this[property]
     }
 
-    this.ws = ws
+    this.ws = null
     this.connected = false
 
     this.session = session
@@ -82,8 +82,10 @@ class Connection {
           this.close()
           return
         } else {
-          this.init(ws, session, onSessionChange)
-          this.connected = connected = true
+          connected = true
+          this.init(session, onSessionChange)
+          this.ws = ws
+          this.connected = connected
 
           try {
             await this.setKeys(session.key)
@@ -109,7 +111,7 @@ class Connection {
 
       ws.onerror = () => {
         if (!connected) {
-          this.close()
+          this.signOut()
           reject()
         } else {
           this.close()
@@ -132,9 +134,8 @@ class Connection {
       }
 
       ws.onclose = () => {
-        const updatedSession = localData.signOutSession(session)
-        this.init(null, updatedSession, onSessionChange)
-        onSessionChange(updatedSession)
+        this.init(this.session, onSessionChange)
+        onSessionChange(this.session)
       }
     })
   }
@@ -267,10 +268,21 @@ class Connection {
   close() {
     this.ws
       ? this.ws.close()
-      : this.init()
+      : this.init(this.session, this.onSessionChange)
+  }
+
+  signOut() {
+    if (!this.session || !this.session.username) return
+    localData.signOutSession(this.session.username)
+
+    this.session.signedIn = false
+
+    this.close()
+    this.onSessionChange(this.session)
   }
 
   async setKeys(masterKeyString, requesterPublicKey) {
+    if (!masterKeyString) throw new Error('Missing master key')
     if (!this.session.key) this.session.key = masterKeyString
 
     this.keys.rawMasterKey = base64.decode(masterKeyString)

@@ -42,10 +42,10 @@ const getRawKeyByUsername = async (username) => {
   return rawKey
 }
 
-const signOutSession = (session) => {
+const signOutSession = (username) => {
   const signedIn = false
-  setCurrentSession(session.username, signedIn)
-  return { username: session.username, signedIn }
+  setCurrentSession(username, signedIn)
+  return { username, signedIn }
 }
 
 const setTempRequestForMasterKey = (username, requesterPublicKey, tempKeyToRequestMasterKey) => {

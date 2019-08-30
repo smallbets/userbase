@@ -41,7 +41,7 @@ const signUp = async (username, password, onSessionChange) => {
 }
 
 const signOut = async () => {
-  ws.close()
+  ws.signOut()
   await api.auth.signOut()
 }
 
