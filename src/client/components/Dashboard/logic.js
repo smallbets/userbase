@@ -1,17 +1,20 @@
 import encd from '../../encrypted-dev-sdk'
 
-const DB_NAME = 'Todos'
+const getDbName = (username) => {
+  if (!username) throw new Error('Empty username')
+  return username + '-todos'
+}
 
-const openDatabase = async (onDbChangeHandler, onWebSocketConnect) => {
+const openDatabase = async (username, onDbChangeHandler, onWebSocketConnect) => {
   try {
-    await encd.openDatabase(DB_NAME, onDbChangeHandler)
+    await encd.openDatabase(getDbName(username), onDbChangeHandler)
     onWebSocketConnect()
     return true
   } catch (e) {
     if (e.response && e.response.data === 'Database not found') {
       try {
-        await encd.createDatabase(DB_NAME)
-        await encd.openDatabase(DB_NAME, onDbChangeHandler)
+        await encd.createDatabase(getDbName(username))
+        await encd.openDatabase(getDbName(username), onDbChangeHandler)
         onWebSocketConnect()
         return true
       } catch (err) {
@@ -35,36 +38,44 @@ const _errorHandler = (e, operation, handleRemoveUserAuthentication) => {
   throw new Error((e.response && e.response.data) || e.message)
 }
 
-const insertTodo = async (todo, handleRemoveUserAuthentication) => {
+const insertTodo = async (username, todo, handleRemoveUserAuthentication) => {
   try {
-    await encd.insert(DB_NAME, { todo })
+    await encd.insert(getDbName(username), { todo })
   } catch (e) {
     _errorHandler(e, 'insert todo', handleRemoveUserAuthentication)
   }
 }
 
-const deleteTodo = async (todo, handleRemoveUserAuthentication) => {
+const deleteTodo = async (username, todo, handleRemoveUserAuthentication) => {
   try {
-    await encd.delete(DB_NAME, todo.itemId)
+    await encd.delete(getDbName(username), todo.itemId)
   } catch (e) {
     _errorHandler(e, 'delete todos', handleRemoveUserAuthentication)
   }
 }
 
-const toggleTodo = async (todo, handleRemoveUserAuthentication) => {
+const toggleTodo = async (username, todo, handleRemoveUserAuthentication) => {
   try {
     const markingComplete = !todo.record.completed
-    await encd.update(DB_NAME, todo.itemId, { todo: todo.record.todo, completed: markingComplete })
+    await encd.update(getDbName(username), todo.itemId, { todo: todo.record.todo, completed: markingComplete })
   } catch (e) {
     _errorHandler(e, 'toggle todos', handleRemoveUserAuthentication)
   }
 }
 
-const updateTodo = async (todo, newTodoInput, handleRemoveUserAuthentication) => {
+const updateTodo = async (username, todo, newTodoInput, handleRemoveUserAuthentication) => {
   try {
-    await encd.update(DB_NAME, todo.itemId, { todo: newTodoInput, completed: todo.record.completed })
+    await encd.update(getDbName(username), todo.itemId, { todo: newTodoInput, completed: todo.record.completed })
   } catch (e) {
     _errorHandler(e, 'update todo', handleRemoveUserAuthentication)
+  }
+}
+
+const grantDatabaseAccess = async (grantorUsername, granteeUsername, readOnly) => {
+  try {
+    await encd.grantDatabaseAccess(getDbName(grantorUsername), granteeUsername, readOnly)
+  } catch (e) {
+    _errorHandler(e, 'grant db access')
   }
 }
 
@@ -74,4 +85,5 @@ export default {
   deleteTodo,
   toggleTodo,
   updateTodo,
+  grantDatabaseAccess,
 }

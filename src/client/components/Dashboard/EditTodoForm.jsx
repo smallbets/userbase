@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import { func, object } from 'prop-types'
+import { func, object, string } from 'prop-types'
 import dbLogic from './logic'
 
 export default class EditTodoForm extends Component {
@@ -39,7 +39,7 @@ export default class EditTodoForm extends Component {
     await this.setState({ error: undefined })
 
     try {
-      await dbLogic.deleteTodo(todo, this.props.handleRemoveUserAuthentication)
+      await dbLogic.deleteTodo(this.props.username, todo, this.props.handleRemoveUserAuthentication)
     } catch (error) {
       this.setState({ error })
     }
@@ -62,7 +62,7 @@ export default class EditTodoForm extends Component {
     await this.setState({ loading: true, error: undefined })
 
     try {
-      await dbLogic.updateTodo(todo, todoInput, handleRemoveUserAuthentication)
+      await dbLogic.updateTodo(this.props.username, todo, todoInput, handleRemoveUserAuthentication)
       this.setState({ loading: false })
       handleToggleEditTodo(null, todo)
     } catch (error) {
@@ -119,6 +119,7 @@ export default class EditTodoForm extends Component {
 
 EditTodoForm.propTypes = {
   handleRemoveUserAuthentication: func,
+  username: string,
   handleToggleEditTodo: func,
   todo: object
 }

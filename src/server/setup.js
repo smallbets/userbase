@@ -12,6 +12,7 @@ const databaseTableName = usernamePrefix + 'database'
 const userDatabaseTableName = usernamePrefix + 'user-database'
 const transactionsTableName = usernamePrefix + 'transactions'
 const keyExchangeTableName = usernamePrefix + 'key-exchange'
+const databaseAccessGrantsTableName = usernamePrefix + 'database-access-grants'
 const dbStatesBucketName = usernamePrefix + 'db-states'
 
 exports.usersTableName = usersTableName
@@ -20,6 +21,7 @@ exports.databaseTableName = databaseTableName
 exports.userDatabaseTableName = userDatabaseTableName
 exports.transactionsTableName = transactionsTableName
 exports.keyExchangeTableName = keyExchangeTableName
+exports.databaseAccessGrantsTableName = databaseAccessGrantsTableName
 
 let s3
 const getS3Connection = () => s3
@@ -142,6 +144,20 @@ async function setupDdb() {
     TableName: keyExchangeTableName
   }
 
+  // holds key data per db access grant
+  const databaseAccessGrantsTableParams = {
+    AttributeDefinitions: [
+      { AttributeName: 'grantee-id', AttributeType: 'S' },
+      { AttributeName: 'database-id', AttributeType: 'S' }
+    ],
+    KeySchema: [
+      { AttributeName: 'grantee-id', KeyType: 'HASH' },
+      { AttributeName: 'database-id', KeyType: 'RANGE' }
+    ],
+    BillingMode: 'PAY_PER_REQUEST',
+    TableName: databaseAccessGrantsTableName
+  }
+
   logger.info('Creating DynamoDB tables if necessary')
   await Promise.all([
     createTable(ddb, usersTableParams),
@@ -149,7 +165,9 @@ async function setupDdb() {
     createTable(ddb, databaseTableParams),
     createTable(ddb, userDatabaseTableParams),
     createTable(ddb, transactionsTableParams),
-    createTable(ddb, keyExchangeTableParams)])
+    createTable(ddb, keyExchangeTableParams),
+    createTable(ddb, databaseAccessGrantsTableParams)
+  ])
 }
 
 async function setupS3() {

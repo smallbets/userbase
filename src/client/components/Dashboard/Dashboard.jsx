@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import { func, array, bool } from 'prop-types'
+import { func, array, bool, string } from 'prop-types'
 import dbLogic from './logic'
 import AddTodoForm from './AddTodoForm'
 import EditTodoForm from './EditTodoForm'
@@ -18,7 +18,7 @@ export default class Dashboard extends Component {
 
   async handleToggleTodo(todo) {
     try {
-      await dbLogic.toggleTodo(todo, this.props.handleRemoveUserAuthentication)
+      await dbLogic.toggleTodo(this.props.username, todo, this.props.handleRemoveUserAuthentication)
     } catch (error) {
       this.setState({ error })
     }
@@ -55,6 +55,7 @@ export default class Dashboard extends Component {
                       ? <EditTodoForm
                         handleToggleEditTodo={this.handleToggleEditTodo}
                         handleRemoveUserAuthentication={this.props.handleRemoveUserAuthentication}
+                        username={this.props.username}
                         todo={todo}
                       />
 
@@ -84,7 +85,10 @@ export default class Dashboard extends Component {
 
                 <div>
                   <hr className='border border-t-0 border-gray-400 mt-4 mb-4' />
-                  <AddTodoForm handleRemoveUserAuthentication={this.props.handleRemoveUserAuthentication} />
+                  <AddTodoForm
+                    handleRemoveUserAuthentication={this.props.handleRemoveUserAuthentication}
+                    username={this.props.username}
+                  />
                 </div>
               </div>
             </div>
@@ -96,6 +100,7 @@ export default class Dashboard extends Component {
 
 Dashboard.propTypes = {
   handleRemoveUserAuthentication: func,
+  username: string,
   todos: array,
   loading: bool
 }

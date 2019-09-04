@@ -2,6 +2,7 @@ import uuidv4 from 'uuid/v4'
 import base64 from 'base64-arraybuffer'
 import api from './api'
 import ws from './ws'
+import db from './db'
 import crypto from './Crypto'
 import localData from './localData'
 
@@ -34,7 +35,8 @@ const signUp = async (username, password, onSessionChange) => {
 
   const session = localData.signInSession(lowerCaseUsername)
 
-  await ws.connect(session, onSessionChange)
+  const signingUp = true
+  await ws.connect(session, onSessionChange, signingUp)
 
   return session
 }
@@ -51,9 +53,8 @@ const signIn = async (username, password, onSessionChange) => {
 
   const session = localData.signInSession(lowerCaseUsername)
 
-  await ws.connect(session, onSessionChange)
-
-  getRequestsForMasterKey()
+  const signingUp = false
+  await ws.connect(session, onSessionChange, signingUp)
 
   return session
 }
@@ -64,9 +65,8 @@ const initSession = async (onSessionChange) => {
   if (!session.username || !session.signedIn) return onSessionChange(session)
 
   try {
-    await ws.connect(session, onSessionChange)
-
-    getRequestsForMasterKey()
+    const signingUp = false
+    await ws.connect(session, onSessionChange, signingUp)
   } catch (e) {
     ws.close()
     onSessionChange(ws.session)
@@ -112,18 +112,19 @@ const importKey = async (keyString) => {
   ws.onSessionChange(ws.session)
 }
 
-const getRequestsForMasterKey = async () => {
+const grantDatabaseAccess = async (dbName, username, readOnly) => {
   if (!ws.keys.init) return
 
-  const response = await ws.request('GetRequestsForMasterKey')
+  const database = db.getOpenDb(dbName)
 
-  const masterKeyRequests = response.data.masterKeyRequests
+  const lowerCaseUsername = username.toLowerCase()
 
-  for (const masterKeyRequest of masterKeyRequests) {
-    const requesterPublicKey = masterKeyRequest['requester-public-key']
+  let action = 'GetPublicKey'
+  let params = { username: lowerCaseUsername }
+  const granteePublicKeyResponse = await ws.request(action, params)
+  const granteePublicKey = granteePublicKeyResponse.data
 
-    ws.sendMasterKey(requesterPublicKey)
-  }
+  await ws.grantDatabaseAccess(database, username, granteePublicKey, readOnly)
 }
 
 export default {
@@ -133,4 +134,5 @@ export default {
   initSession,
   registerDevice,
   importKey,
+  grantDatabaseAccess,
 }

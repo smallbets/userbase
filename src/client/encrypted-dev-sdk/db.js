@@ -93,6 +93,7 @@ class Database {
     this.unverifiedTransactions = []
     this.lastSeqNo = -1
     this.init = false
+    this.dbKey = null
   }
 
   async applyTransactions(transactions) {
@@ -502,5 +503,8 @@ export default {
   insert,
   update,
   'delete': delete_,
-  batch
+  batch,
+
+  // used internally
+  getOpenDb
 }
