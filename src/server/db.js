@@ -15,41 +15,75 @@ exports.createDatabase = async function (userId, dbNameHash, dbId, encryptedDbNa
   if (!encryptedDbKey) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database key')
 
   const database = {
-    'user-id': userId,
-    'database-name-hash': dbNameHash,
     'database-id': dbId,
+    'owner-id': userId,
     'database-name': encryptedDbName,
-    'database-key': encryptedDbKey,
     metadata: encryptedMetadata
   }
 
+  const userDatabase = {
+    'user-id': userId,
+    'database-name-hash': dbNameHash,
+    'database-id': dbId,
+    'encrypted-db-key': encryptedDbKey,
+  }
+
   const params = {
-    TableName: setup.databaseTableName,
-    Item: database,
-    ConditionExpression: 'attribute_not_exists(#userId)',
-    ExpressionAttributeNames: {
-      '#userId': 'user-id',
-    }
+    TransactItems: [{
+      Put: {
+        TableName: setup.databaseTableName,
+        Item: database,
+        ConditionExpression: 'attribute_not_exists(#dbId)',
+        ExpressionAttributeNames: {
+          '#dbId': 'database-id',
+        }
+      }
+    }, {
+      Put: {
+        TableName: setup.userDatabaseTableName,
+        Item: userDatabase,
+        ConditionExpression: 'attribute_not_exists(#userId)',
+        ExpressionAttributeNames: {
+          '#userId': 'user-id',
+        }
+      }
+    }]
   }
 
   try {
     const ddbClient = connection.ddbClient()
-    await ddbClient.put(params).promise()
+    await ddbClient.transactWrite(params).promise()
 
     memcache.initTransactionLog(dbId)
 
     return responseBuilder.successResponse('Success!')
   } catch (e) {
-    if (e.name === 'ConditionalCheckFailedException') {
+    if (e.message && e.message.includes('ConditionalCheckFailed')) {
       return responseBuilder.errorResponse(statusCodes['Conflict'], 'Database already exists')
     }
     return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to create database with ${e}`)
   }
 }
 
-const getDatabase = async function (userId, dbNameHash) {
-  const params = {
+const findDatabaseByDatabaseId = async function (dbId) {
+  const databaseParams = {
     TableName: setup.databaseTableName,
+    Key: {
+      'database-id': dbId
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+  const dbResponse = await ddbClient.get(databaseParams).promise()
+
+  if (!dbResponse || !dbResponse.Item) return null
+  return dbResponse.Item
+}
+exports.findDatabaseByDatabaseId = findDatabaseByDatabaseId
+
+const getDatabase = async function (userId, dbNameHash) {
+  const userDatabaseParams = {
+    TableName: setup.userDatabaseTableName,
     Key: {
       'user-id': userId,
       'database-name-hash': dbNameHash
@@ -57,10 +91,16 @@ const getDatabase = async function (userId, dbNameHash) {
   }
 
   const ddbClient = connection.ddbClient()
-  const dbResponse = await ddbClient.get(params).promise()
+  const userDbResponse = await ddbClient.get(userDatabaseParams).promise()
+  if (!userDbResponse || !userDbResponse.Item) return null
 
-  const database = dbResponse && dbResponse.Item
-  return database
+  const userDb = userDbResponse.Item
+  const dbId = userDb['database-id']
+
+  const database = await findDatabaseByDatabaseId(dbId)
+  if (!database) return null
+
+  return { ...userDb, ...database }
 }
 
 exports.openDatabase = async function (userId, connectionId, dbNameHash) {
@@ -72,7 +112,7 @@ exports.openDatabase = async function (userId, connectionId, dbNameHash) {
 
     const dbId = database['database-id']
     const bundleSeqNo = database['bundle-seq-no']
-    const dbKey = database['database-key']
+    const dbKey = database['encrypted-db-key']
 
     if (connections.openDatabase(userId, connectionId, dbId, bundleSeqNo, dbNameHash, dbKey)) {
       return responseBuilder.successResponse('Success!')
@@ -223,33 +263,7 @@ exports.batch = async function (userId, databaseId, operations) {
   }
 }
 
-const findDatabaseByDatabaseId = async function (databaseId) {
-  const params = {
-    TableName: setup.databaseTableName,
-    IndexName: 'DatabaseIdIndex',
-    KeyConditionExpression: '#dbId = :dbId',
-    ExpressionAttributeNames: {
-      '#dbId': 'database-id'
-    },
-    ExpressionAttributeValues: {
-      ':dbId': databaseId
-    },
-    Select: 'ALL_ATTRIBUTES'
-  }
-
-  const ddbClient = connection.ddbClient()
-  const databaseResponse = await ddbClient.query(params).promise()
-
-  if (!databaseResponse || databaseResponse.Items.length === 0) return null
-
-  if (databaseResponse.Items.length > 1) {
-    console.warn(`Too many databases found with id ${databaseId}`)
-  }
-
-  return databaseResponse.Items[0]
-}
-
-exports.bundleTransactionLog = async function (userId, databaseId, seqNo, bundle) {
+exports.bundleTransactionLog = async function (databaseId, seqNo, bundle) {
   const bundleSeqNo = Number(seqNo)
 
   if (!bundleSeqNo && bundleSeqNo !== 0) {
@@ -258,7 +272,8 @@ exports.bundleTransactionLog = async function (userId, databaseId, seqNo, bundle
 
   try {
     const database = await findDatabaseByDatabaseId(databaseId)
-    const dbNameHash = database['database-name-hash']
+    if (!database) return responseBuilder.errorResponse(statusCodes['Not Found'], 'Database not found')
+
     const lastBundleSeqNo = database['bundle-seq-no']
     if (lastBundleSeqNo >= bundleSeqNo) {
       return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Bundle sequence no must be greater than current bundle')
@@ -279,18 +294,15 @@ exports.bundleTransactionLog = async function (userId, databaseId, seqNo, bundle
     const bundleParams = {
       TableName: setup.databaseTableName,
       Key: {
-        'user-id': userId,
-        'database-name-hash': dbNameHash
+        'database-id': databaseId
       },
       UpdateExpression: 'set #bundleSeqNo = :bundleSeqNo',
-      ConditionExpression: '(attribute_not_exists(#bundleSeqNo) or #bundleSeqNo < :bundleSeqNo) and #dbId = :dbId',
+      ConditionExpression: '(attribute_not_exists(#bundleSeqNo) or #bundleSeqNo < :bundleSeqNo)',
       ExpressionAttributeNames: {
         '#bundleSeqNo': 'bundle-seq-no',
-        '#dbId': 'database-id'
       },
       ExpressionAttributeValues: {
         ':bundleSeqNo': bundleSeqNo,
-        ':dbId': databaseId
       }
     }
 

@@ -9,15 +9,19 @@ const usernamePrefix = (process.env.NODE_ENV == 'development') ? os.userInfo().u
 const usersTableName = usernamePrefix + 'users'
 const sessionsTableName = usernamePrefix + 'sessions'
 const databaseTableName = usernamePrefix + 'database'
+const userDatabaseTableName = usernamePrefix + 'user-database'
 const transactionsTableName = usernamePrefix + 'transactions'
 const keyExchangeTableName = usernamePrefix + 'key-exchange'
+const databaseAccessGrantsTableName = usernamePrefix + 'database-access-grants'
 const dbStatesBucketName = usernamePrefix + 'db-states'
 
 exports.usersTableName = usersTableName
 exports.sessionsTableName = sessionsTableName
 exports.databaseTableName = databaseTableName
+exports.userDatabaseTableName = userDatabaseTableName
 exports.transactionsTableName = transactionsTableName
 exports.keyExchangeTableName = keyExchangeTableName
+exports.databaseAccessGrantsTableName = databaseAccessGrantsTableName
 
 let s3
 const getS3Connection = () => s3
@@ -89,23 +93,27 @@ async function setupDdb() {
   // the database table holds a record per database
   const databaseTableParams = {
     AttributeDefinitions: [
-      { AttributeName: 'user-id', AttributeType: 'S' },
-      { AttributeName: 'database-name-hash', AttributeType: 'S' },
       { AttributeName: 'database-id', AttributeType: 'S' }
+    ],
+    KeySchema: [
+      { AttributeName: 'database-id', KeyType: 'HASH' },
+    ],
+    BillingMode: 'PAY_PER_REQUEST',
+    TableName: databaseTableName,
+  }
+
+  // the user database table holds a record for each user database relationship
+  const userDatabaseTableParams = {
+    AttributeDefinitions: [
+      { AttributeName: 'user-id', AttributeType: 'S' },
+      { AttributeName: 'database-name-hash', AttributeType: 'S' }
     ],
     KeySchema: [
       { AttributeName: 'user-id', KeyType: 'HASH' },
       { AttributeName: 'database-name-hash', KeyType: 'RANGE' }
     ],
     BillingMode: 'PAY_PER_REQUEST',
-    TableName: databaseTableName,
-    GlobalSecondaryIndexes: [{
-      IndexName: 'DatabaseIdIndex',
-      KeySchema: [
-        { AttributeName: 'database-id', KeyType: 'HASH' }
-      ],
-      Projection: { ProjectionType: 'ALL' }
-    }]
+    TableName: userDatabaseTableName,
   }
 
   // the transactions table holds a record per database transaction
@@ -136,13 +144,30 @@ async function setupDdb() {
     TableName: keyExchangeTableName
   }
 
+  // holds key data per db access grant
+  const databaseAccessGrantsTableParams = {
+    AttributeDefinitions: [
+      { AttributeName: 'grantee-id', AttributeType: 'S' },
+      { AttributeName: 'database-id', AttributeType: 'S' }
+    ],
+    KeySchema: [
+      { AttributeName: 'grantee-id', KeyType: 'HASH' },
+      { AttributeName: 'database-id', KeyType: 'RANGE' }
+    ],
+    BillingMode: 'PAY_PER_REQUEST',
+    TableName: databaseAccessGrantsTableName
+  }
+
   logger.info('Creating DynamoDB tables if necessary')
   await Promise.all([
     createTable(ddb, usersTableParams),
     createTable(ddb, sessionsTableParams),
     createTable(ddb, databaseTableParams),
+    createTable(ddb, userDatabaseTableParams),
     createTable(ddb, transactionsTableParams),
-    createTable(ddb, keyExchangeTableParams)])
+    createTable(ddb, keyExchangeTableParams),
+    createTable(ddb, databaseAccessGrantsTableParams)
+  ])
 }
 
 async function setupS3() {

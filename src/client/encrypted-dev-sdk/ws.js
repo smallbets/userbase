@@ -25,7 +25,7 @@ class Connection {
     this.init()
   }
 
-  init(session, onSessionChange) {
+  init(session, onSessionChange, signingUp) {
     for (const property of Object.keys(this)) {
       delete this[property]
     }
@@ -35,6 +35,8 @@ class Connection {
 
     this.session = session
     this.onSessionChange = onSessionChange
+
+    this.signingUp = signingUp
 
     this.requests = {}
 
@@ -55,7 +57,7 @@ class Connection {
     }
   }
 
-  connect(session, onSessionChange) {
+  connect(session, onSessionChange, signingUp) {
     if (!session) throw new Error('Missing session')
     if (!session.username) throw new Error('Session missing username')
     if (!session.signedIn) throw new Error('Not signed in to session')
@@ -85,7 +87,7 @@ class Connection {
           return
         } else {
           connected = true
-          this.init(session, onSessionChange)
+          this.init(session, onSessionChange, signingUp)
           this.ws = ws
           this.connected = connected
 
@@ -155,6 +157,7 @@ class Connection {
         const openingDatabase = message.dbNameHash && message.dbKey
         if (openingDatabase) {
           const dbKeyString = await crypto.aesGcm.decryptString(this.keys.masterKey, message.dbKey)
+          database.dbKeyString = dbKeyString
           database.dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
         }
 
@@ -243,7 +246,11 @@ class Connection {
       case 'ClientHasKey':
       case 'RequestMasterKey':
       case 'GetRequestsForMasterKey':
-      case 'SendMasterKey': {
+      case 'SendMasterKey':
+      case 'GetPublicKey':
+      case 'GrantDatabaseAccess':
+      case 'GetDatabaseAccessGrants':
+      case 'AcceptDatabaseAccess': {
         const requestId = message.requestId
 
         if (!requestId) return console.warn('Missing request id')
@@ -297,6 +304,11 @@ class Connection {
     await this.request(action, params)
 
     this.keys.init = true
+
+    if (!this.signingUp) {
+      this.getRequestsForMasterKey()
+      this.getDatabaseAccessGrants()
+    }
   }
 
   async request(action, params) {
@@ -349,6 +361,85 @@ class Connection {
       return masterKey
     }
     return null
+  }
+
+  async getRequestsForMasterKey() {
+    if (!this.keys.init) return
+
+    const response = await this.request('GetRequestsForMasterKey')
+
+    const masterKeyRequests = response.data.masterKeyRequests
+
+    for (const masterKeyRequest of masterKeyRequests) {
+      const requesterPublicKey = masterKeyRequest['requester-public-key']
+
+      this.sendMasterKey(requesterPublicKey)
+    }
+  }
+
+  async grantDatabaseAccess(database, username, granteePublicKey, readOnly) {
+    if (window.confirm(`Grant access to user ${username} with public key:\n\n${granteePublicKey}\n`)) {
+      const sharedSecret = crypto.diffieHellman.getSharedSecret(
+        this.keys.rawMasterKey,
+        new Uint8Array(base64.decode(granteePublicKey))
+      )
+
+      const sharedRawKey = await crypto.sha256.hash(sharedSecret)
+      const sharedKey = await crypto.aesGcm.getKeyFromRawKey(sharedRawKey)
+
+      const encryptedAccessKey = await crypto.aesGcm.encryptString(sharedKey, database.dbKeyString)
+
+      const action = 'GrantDatabaseAccess'
+      const params = { username, dbId: database.dbId, encryptedAccessKey, readOnly }
+      await this.request(action, params)
+    }
+  }
+
+  async getDatabaseAccessGrants() {
+    if (!this.keys.init) return
+
+    const response = await this.request('GetDatabaseAccessGrants')
+
+    const databaseAccessGrants = response.data
+
+    for (const grant of databaseAccessGrants) {
+      const { dbId, ownerPublicKey, encryptedAccessKey, encryptedDbName, owner } = grant
+
+      try {
+        const sharedSecret = crypto.diffieHellman.getSharedSecret(
+          this.keys.rawMasterKey,
+          new Uint8Array(base64.decode(ownerPublicKey))
+        )
+
+        const sharedRawKey = await crypto.sha256.hash(sharedSecret)
+        const sharedKey = await crypto.aesGcm.getKeyFromRawKey(sharedRawKey)
+
+        const dbKeyString = await crypto.aesGcm.decryptString(sharedKey, encryptedAccessKey)
+        const dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
+
+        const dbName = await crypto.aesGcm.decryptString(dbKey, encryptedDbName)
+
+        if (window.confirm(`Accept access to database ${dbName} from ${owner} with public key: \n\n${ownerPublicKey}\n`)) {
+          await this.acceptDatabaseAccessGrant(dbId, dbKeyString, dbName, encryptedDbName)
+        }
+
+      } catch (e) {
+        // continue
+        console.log(`Error processing database access grants`, e)
+      }
+    }
+  }
+
+  async acceptDatabaseAccessGrant(dbId, dbKeyString, dbName, encryptedDbName) {
+    if (!this.keys.init) return
+
+    const dbNameHash = await crypto.hmac.signString(this.keys.hmacKey, dbName)
+    const encryptedDbKey = await crypto.aesGcm.encryptString(this.keys.masterKey, dbKeyString)
+
+    const action = 'AcceptDatabaseAccess'
+    const params = { dbId, encryptedDbKey, dbNameHash, encryptedDbName }
+
+    await this.request(action, params)
   }
 
   async sendMasterKey(requesterPublicKey) {

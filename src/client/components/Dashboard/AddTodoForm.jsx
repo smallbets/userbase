@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import { func } from 'prop-types'
+import { func, string } from 'prop-types'
 import dbLogic from './logic'
 
 export default class AddTodoForm extends Component {
@@ -48,7 +48,7 @@ export default class AddTodoForm extends Component {
     await this.setState({ loading: true, error: undefined })
 
     try {
-      await dbLogic.insertTodo(todoInput, this.props.handleRemoveUserAuthentication)
+      await dbLogic.insertTodo(this.props.username, todoInput, this.props.handleRemoveUserAuthentication)
       this.setState({ loading: false, todoInput: '' })
     } catch (error) {
       this.setState({ error, loading: false })
@@ -95,5 +95,6 @@ export default class AddTodoForm extends Component {
 }
 
 AddTodoForm.propTypes = {
-  handleRemoveUserAuthentication: func
+  handleRemoveUserAuthentication: func,
+  username: string
 }

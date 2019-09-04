@@ -7,6 +7,7 @@ import crypto from './crypto'
 import userController from './user'
 import connections from './ws'
 import logger from './logger'
+import db from './db'
 
 const SALT_ROUNDS = 10
 
@@ -425,5 +426,224 @@ exports.deleteMasterKeyRequest = async function (userId, requesterPublicKey) {
     } else {
       logger.warn(`Failed to delete key request for user ${userId} and public key ${requesterPublicKey}`)
     }
+  }
+}
+
+const getUser = async function (username) {
+  const userParams = {
+    TableName: setup.usersTableName,
+    Key: {
+      username
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+  const userResponse = await ddbClient.get(userParams).promise()
+
+  return userResponse && userResponse.Item
+}
+
+exports.getPublicKey = async function (username) {
+  if (!username) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing username')
+
+  try {
+    const user = await getUser(username)
+
+    if (!user) return responseBuilder.errorResponse(statusCodes['Not Found'], 'User not found')
+
+    const publicKey = user['public-key']
+    return responseBuilder.successResponse(publicKey)
+  } catch (e) {
+    return responseBuilder.errorResponse(
+      statusCodes['Internal Server Error'],
+      `Failed to get public key with ${e}`
+    )
+  }
+}
+
+exports.grantDatabaseAccess = async function (grantorId, granteeUsername, dbId, encryptedAccessKey, readOnly) {
+  if (!granteeUsername) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing username')
+  if (!dbId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
+
+  try {
+    const [grantee, database] = await Promise.all([
+      getUser(granteeUsername),
+      db.findDatabaseByDatabaseId(dbId)
+    ])
+
+    if (!grantee) return responseBuilder.errorResponse(statusCodes['Not Found'], 'User not found')
+    if (!database) return responseBuilder.errorResponse(statusCodes['Not Found'], 'Database not found')
+    if (database['owner-id'] !== grantorId) return responseBuilder.errorResponse(
+      statusCodes['Unauthorized'],
+      'You do not have grant privileges over this database'
+    )
+
+    const granteeId = grantee['user-id']
+
+    const databaseAccess = {
+      'grantee-id': granteeId,
+      'database-id': dbId,
+      'encrypted-access-key': encryptedAccessKey,
+      'read-only': readOnly
+    }
+
+    const params = {
+      TableName: setup.databaseAccessGrantsTableName,
+      Item: databaseAccess,
+      ConditionExpression: 'attribute_not_exists(#granteeId)',
+      ExpressionAttributeNames: {
+        '#granteeId': 'grantee-id'
+      },
+    }
+
+    const ddbClient = connection.ddbClient()
+    await ddbClient.put(params).promise()
+
+    // TO-DO: notify grantee clients via WebSocket
+
+    return responseBuilder.successResponse('Success!')
+  } catch (e) {
+    return responseBuilder.errorResponse(
+      statusCodes['Internal Server Error'],
+      `Failed to grant db access key with ${e}`
+    )
+  }
+}
+
+exports.queryDatabaseAccessGrants = async function (granteeId) {
+  const params = {
+    TableName: setup.databaseAccessGrantsTableName,
+    KeyName: '#granteeId',
+    KeyConditionExpression: '#granteeId = :granteeId',
+    ExpressionAttributeNames: {
+      '#granteeId': 'grantee-id',
+    },
+    ExpressionAttributeValues: {
+      ':granteeId': granteeId
+    },
+  }
+
+  try {
+    const ddbClient = connection.ddbClient()
+    const databaseAccessGrants = await ddbClient.query(params).promise()
+
+    if (!databaseAccessGrants || !databaseAccessGrants.Items || !databaseAccessGrants.Items.length) {
+      return responseBuilder.successResponse([])
+    }
+
+    const databases = await Promise.all(databaseAccessGrants.Items.map(grant => {
+      const dbId = grant['database-id']
+      return db.findDatabaseByDatabaseId(dbId)
+    }))
+
+    const userPromises = []
+    const ownerIds = {}
+    for (let i = 0; i < databases.length; i++) {
+      const database = databases[i]
+      if (!database) continue
+
+      const ownerId = database['owner-id']
+
+      if (!ownerId) continue
+
+      if (typeof ownerIds[ownerId] === 'number') continue
+      ownerIds[ownerId] = userPromises.push(userController.findUserByUserId(ownerId)) - 1
+    }
+    const users = await Promise.all(userPromises)
+
+    const response = []
+    for (let i = 0; i < databases.length; i++) {
+      const database = databases[i]
+      if (!database) {
+        logger.warn(`Unable to find database with id ${databaseAccessGrants.Items[i]['database-id']}`)
+        continue
+      }
+
+      const ownerId = database['owner-id']
+      const owner = users[ownerIds[ownerId]]
+      if (!owner) {
+        logger.warn(`Unable to find user with id ${databaseAccessGrants.Items[i]['owner-id']}`)
+        continue
+      }
+
+      const grant = databaseAccessGrants.Items[i]
+
+      response.push({
+        owner: owner['username'],
+        ownerPublicKey: owner['public-key'],
+        dbId: database['database-id'],
+        encryptedDbName: database['database-name'],
+        encryptedAccessKey: grant['encrypted-access-key'],
+      })
+    }
+
+    return responseBuilder.successResponse(response)
+  } catch (e) {
+    return responseBuilder.errorResponse(
+      statusCodes['Internal Server Error'],
+      `Failed to get database access grants with ${e}`
+    )
+  }
+}
+
+exports.acceptDatabaseAccess = async function (granteeId, dbId, dbNameHash, encryptedDbKey, encryptedDbName) {
+  if (!dbId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
+  if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
+  if (!encryptedDbKey) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing encrypted db key')
+
+  const databaseAccessGrant = {
+    'grantee-id': granteeId,
+    'database-id': dbId,
+  }
+
+  const userDatabase = {
+    'user-id': granteeId,
+    'database-name-hash': dbNameHash,
+    'database-id': dbId,
+    'encrypted-db-key': encryptedDbKey,
+  }
+
+  const params = {
+    TransactItems: [{
+      Delete: {
+        TableName: setup.databaseAccessGrantsTableName,
+        Key: databaseAccessGrant
+      }
+    }, {
+      Put: {
+        TableName: setup.userDatabaseTableName,
+        Item: userDatabase,
+        ConditionExpression: 'attribute_not_exists(#userId)',
+        ExpressionAttributeNames: {
+          '#userId': 'user-id',
+        }
+      }
+    }, {
+      ConditionCheck: {
+        TableName: setup.databaseTableName,
+        Key: {
+          'database-id': dbId
+        },
+        ConditionExpression: '#encryptedDbName = :encryptedDbName',
+        ExpressionAttributeNames: {
+          '#encryptedDbName': 'database-name',
+        },
+        ExpressionAttributeValues: {
+          ':encryptedDbName': encryptedDbName,
+        }
+      }
+    }]
+  }
+
+  try {
+    const ddbClient = connection.ddbClient()
+    await ddbClient.transactWrite(params).promise()
+
+    return responseBuilder.successResponse('Success!')
+  } catch (e) {
+    return responseBuilder.errorResponse(
+      statusCodes['Internal Server Error'],
+      `Failed to accept access to db with ${e}`
+    )
   }
 }

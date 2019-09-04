@@ -133,7 +133,7 @@ if (process.env.NODE_ENV == 'development') {
                 break
               }
               case 'Bundle': {
-                response = await db.bundleTransactionLog(userId, params.dbId, params.seqNo, params.bundle)
+                response = await db.bundleTransactionLog(params.dbId, params.seqNo, params.bundle)
                 break
               }
               case 'GetRequestsForMasterKey': {
@@ -146,6 +146,34 @@ if (process.env.NODE_ENV == 'development') {
                   res.locals.user['public-key'],
                   params.requesterPublicKey,
                   params.encryptedMasterKey
+                )
+                break
+              }
+              case 'GetPublicKey': {
+                response = await auth.getPublicKey(params.username)
+                break
+              }
+              case 'GrantDatabaseAccess': {
+                response = await auth.grantDatabaseAccess(
+                  userId,
+                  params.username,
+                  params.dbId,
+                  params.encryptedAccessKey,
+                  params.readOnly
+                )
+                break
+              }
+              case 'GetDatabaseAccessGrants': {
+                response = await auth.queryDatabaseAccessGrants(userId)
+                break
+              }
+              case 'AcceptDatabaseAccess': {
+                response = await auth.acceptDatabaseAccess(
+                  userId,
+                  params.dbId,
+                  params.dbNameHash,
+                  params.encryptedDbKey,
+                  params.encryptedDbName
                 )
                 break
               }
