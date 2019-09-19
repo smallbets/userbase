@@ -379,7 +379,7 @@ class Connection {
   }
 
   async grantDatabaseAccess(database, username, granteePublicKey, readOnly) {
-    if (window.confirm(`Grant access to user ${username} with public key:\n\n${granteePublicKey}\n`)) {
+    if (window.confirm(`Grant access to user '${username}' with public key:\n\n${granteePublicKey}\n`)) {
       const sharedSecret = crypto.diffieHellman.getSharedSecret(
         this.keys.rawMasterKey,
         new Uint8Array(base64.decode(granteePublicKey))

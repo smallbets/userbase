@@ -290,27 +290,58 @@ const rollbackTransaction = async function (transaction) {
 
 exports.rollbackTransaction = rollbackTransaction
 
-const putTransaction = async function (transaction, userId) {
+const failedTxConditionCheckMsg = 'Make sure user has write permission to this db and the db id and hash are correct'
+const putTransaction = async function (transaction, userId, dbNameHash, databaseId) {
   const transactionWithSequenceNo = memcache.pushTransaction(transaction)
 
   const params = {
-    TableName: setup.transactionsTableName,
-    Item: transactionWithSequenceNo,
-    ConditionExpression: 'attribute_not_exists(#databaseId)',
-    ExpressionAttributeNames: {
-      '#databaseId': 'database-id'
-    },
+    TransactItems: [{
+      ConditionCheck: {
+        TableName: setup.userDatabaseTableName,
+        Key: {
+          'user-id': userId,
+          'database-name-hash': dbNameHash
+        },
+        ConditionExpression: '#readOnly <> :readOnly and #dbId = :dbId',
+        ExpressionAttributeNames: {
+          '#readOnly': 'read-only',
+          '#dbId': 'database-id',
+        },
+        ExpressionAttributeValues: {
+          ':readOnly': true,
+          ':dbId': databaseId,
+        },
+      }
+    }, {
+      Put: {
+        TableName: setup.transactionsTableName,
+        Item: transactionWithSequenceNo,
+        ConditionExpression: 'attribute_not_exists(#databaseId)',
+        ExpressionAttributeNames: {
+          '#databaseId': 'database-id'
+        },
+      }
+    }]
   }
 
   try {
     const ddbClient = connection.ddbClient()
-    await ddbClient.put(params).promise()
+    await ddbClient.transactWrite(params).promise()
 
     memcache.transactionPersistedToDdb(transactionWithSequenceNo)
   } catch (e) {
-    logger.warn(`Transaction ${transactionWithSequenceNo['sequence-no']} failed with ${e}! Rolling back...`)
+    if (e.name === 'TransactionCanceledException') {
+      memcache.transactionCancelled(transactionWithSequenceNo)
 
-    rollbackTransaction(transactionWithSequenceNo)
+      // impossible to determine which condition in the expression failed
+      if (e.message.includes('[ConditionalCheckFailed')) {
+        throw new Error(failedTxConditionCheckMsg)
+      }
+
+    } else {
+      logger.warn(`Transaction ${transactionWithSequenceNo['sequence-no']} failed for user ${userId} on db ${databaseId} with ${e}! Rolling back...`)
+      rollbackTransaction(transactionWithSequenceNo)
+    }
 
     throw new Error(`Failed with ${e}.`)
   }
@@ -320,7 +351,8 @@ const putTransaction = async function (transaction, userId) {
   return transactionWithSequenceNo['sequence-no']
 }
 
-exports.doCommand = async function (command, userId, databaseId, key, record) {
+exports.doCommand = async function (command, userId, dbNameHash, databaseId, key, record) {
+  if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
   if (!databaseId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
   if (!key) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing item key')
   if (!record) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing record')
@@ -333,14 +365,16 @@ exports.doCommand = async function (command, userId, databaseId, key, record) {
   }
 
   try {
-    const sequenceNo = await putTransaction(transaction, userId)
+    const sequenceNo = await putTransaction(transaction, userId, dbNameHash, databaseId)
     return responseBuilder.successResponse({ sequenceNo })
   } catch (e) {
+    if (e.message === failedTxConditionCheckMsg) return responseBuilder.errorResponse(statusCodes['Bad Request'], failedTxConditionCheckMsg)
     return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to ${command} with ${e}`)
   }
 }
 
-exports.batch = async function (userId, databaseId, operations) {
+exports.batch = async function (userId, dbNameHash, databaseId, operations) {
+  if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
   if (!databaseId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
   if (!operations || !operations.length) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing operations')
 
@@ -355,13 +389,11 @@ exports.batch = async function (userId, databaseId, operations) {
     if (!record) return responseBuilder.errorResponse(statusCodes['Bad Request'], `Operation ${i} missing record`)
     if (!command) return responseBuilder.errorResponse(statusCodes['Bad Request'], `Operation ${i} missing command`)
 
-    const result = {
+    ops.push({
       key,
       record,
       command
-    }
-
-    ops.push(result)
+    })
   }
 
   try {
@@ -373,9 +405,10 @@ exports.batch = async function (userId, databaseId, operations) {
       operations: ops
     }
 
-    const sequenceNo = await putTransaction(transaction, userId)
+    const sequenceNo = await putTransaction(transaction, userId, dbNameHash, databaseId)
     return responseBuilder.successResponse({ sequenceNo })
   } catch (e) {
+    if (e.message === failedTxConditionCheckMsg) return responseBuilder.errorResponse(statusCodes['Bad Request'], failedTxConditionCheckMsg)
     return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to batch with ${e}`)
   }
 }

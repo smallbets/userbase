@@ -130,11 +130,18 @@ if (process.env.NODE_ENV == 'development') {
               case 'Insert':
               case 'Update':
               case 'Delete': {
-                response = await db.doCommand(action, userId, params.dbId, params.itemKey, params.encryptedItem)
+                response = await db.doCommand(
+                  action,
+                  userId,
+                  params.dbNameHash,
+                  params.dbId,
+                  params.itemKey,
+                  params.encryptedItem
+                )
                 break
               }
               case 'Batch': {
-                response = await db.batch(userId, params.dbId, params.operations)
+                response = await db.batch(userId, params.dbNameHash, params.dbId, params.operations)
                 break
               }
               case 'Bundle': {

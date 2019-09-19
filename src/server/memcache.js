@@ -145,6 +145,12 @@ MemCache.prototype.transactionRolledBack = function (transactionWithRollbackComm
   this.transactionLogByDatabaseId[databaseId].transactionArray[sequenceNo] = transactionWithRollbackCommand
 }
 
+MemCache.prototype.transactionCancelled = function (cancelledTransaction) {
+  const databaseId = cancelledTransaction['database-id']
+  const sequenceNo = cancelledTransaction['sequence-no']
+  this.transactionLogByDatabaseId[databaseId].transactionArray[sequenceNo] = undefined
+}
+
 MemCache.prototype.getTransactions = function (databaseId, startingSeqNo, inclusive = true) {
   const transactionLog = this.transactionLogByDatabaseId[databaseId].transactionArray
 

@@ -462,7 +462,7 @@ exports.getPublicKey = async function (username) {
 }
 
 exports.grantDatabaseAccess = async function (grantorId, granteeUsername, dbId, encryptedAccessKey, readOnly) {
-  if (!granteeUsername) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing username')
+  if (!granteeUsername) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing grantee username')
   if (!dbId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
 
   try {
@@ -510,6 +510,53 @@ exports.grantDatabaseAccess = async function (grantorId, granteeUsername, dbId, 
   }
 }
 
+const getDbOwners = async function (databases) {
+  const ownerIndex = {}
+  const ownerPromises = []
+  for (let i = 0; i < databases.length; i++) {
+    const database = databases[i]
+    if (!database) continue
+
+    const ownerId = database['owner-id']
+
+    if (!ownerId) continue
+
+    if (typeof ownerIndex[ownerId] === 'number') continue
+    ownerIndex[ownerId] = ownerPromises.push(userController.findUserByUserId(ownerId)) - 1
+  }
+  const owners = await Promise.all(ownerPromises)
+  return { ownerIndex, owners }
+}
+
+const buildDatabaseAccessGrantsResponse = (databases, databaseAccessGrants, owners, ownerIndex) => {
+  const response = []
+  for (let i = 0; i < databases.length; i++) {
+    const database = databases[i]
+    if (!database) {
+      logger.warn(`Unable to find database with id ${databaseAccessGrants.Items[i]['database-id']}`)
+      continue
+    }
+
+    const ownerId = database['owner-id']
+    const owner = owners[ownerIndex[ownerId]]
+    if (!owner) {
+      logger.warn(`Unable to find user with id ${databaseAccessGrants.Items[i]['owner-id']}`)
+      continue
+    }
+
+    const grant = databaseAccessGrants.Items[i]
+
+    response.push({
+      owner: owner['username'],
+      ownerPublicKey: owner['public-key'],
+      dbId: database['database-id'],
+      encryptedDbName: database['database-name'],
+      encryptedAccessKey: grant['encrypted-access-key'],
+    })
+  }
+  return response
+}
+
 exports.queryDatabaseAccessGrants = async function (granteeId) {
   const params = {
     TableName: setup.databaseAccessGrantsTableName,
@@ -536,46 +583,9 @@ exports.queryDatabaseAccessGrants = async function (granteeId) {
       return db.findDatabaseByDatabaseId(dbId)
     }))
 
-    const userPromises = []
-    const ownerIds = {}
-    for (let i = 0; i < databases.length; i++) {
-      const database = databases[i]
-      if (!database) continue
+    const { ownerIndex, owners } = await getDbOwners(databases)
 
-      const ownerId = database['owner-id']
-
-      if (!ownerId) continue
-
-      if (typeof ownerIds[ownerId] === 'number') continue
-      ownerIds[ownerId] = userPromises.push(userController.findUserByUserId(ownerId)) - 1
-    }
-    const users = await Promise.all(userPromises)
-
-    const response = []
-    for (let i = 0; i < databases.length; i++) {
-      const database = databases[i]
-      if (!database) {
-        logger.warn(`Unable to find database with id ${databaseAccessGrants.Items[i]['database-id']}`)
-        continue
-      }
-
-      const ownerId = database['owner-id']
-      const owner = users[ownerIds[ownerId]]
-      if (!owner) {
-        logger.warn(`Unable to find user with id ${databaseAccessGrants.Items[i]['owner-id']}`)
-        continue
-      }
-
-      const grant = databaseAccessGrants.Items[i]
-
-      response.push({
-        owner: owner['username'],
-        ownerPublicKey: owner['public-key'],
-        dbId: database['database-id'],
-        encryptedDbName: database['database-name'],
-        encryptedAccessKey: grant['encrypted-access-key'],
-      })
-    }
+    const response = buildDatabaseAccessGrantsResponse(databases, databaseAccessGrants, owners, ownerIndex)
 
     return responseBuilder.successResponse(response)
   } catch (e) {
@@ -591,52 +601,63 @@ exports.acceptDatabaseAccess = async function (granteeId, dbId, dbNameHash, encr
   if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
   if (!encryptedDbKey) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing encrypted db key')
 
-  const databaseAccessGrant = {
+  const databaseAccessGrantKey = {
     'grantee-id': granteeId,
     'database-id': dbId,
   }
 
-  const userDatabase = {
-    'user-id': granteeId,
-    'database-name-hash': dbNameHash,
-    'database-id': dbId,
-    'encrypted-db-key': encryptedDbKey,
-  }
-
-  const params = {
-    TransactItems: [{
-      Delete: {
-        TableName: setup.databaseAccessGrantsTableName,
-        Key: databaseAccessGrant
-      }
-    }, {
-      Put: {
-        TableName: setup.userDatabaseTableName,
-        Item: userDatabase,
-        ConditionExpression: 'attribute_not_exists(#userId)',
-        ExpressionAttributeNames: {
-          '#userId': 'user-id',
-        }
-      }
-    }, {
-      ConditionCheck: {
-        TableName: setup.databaseTableName,
-        Key: {
-          'database-id': dbId
-        },
-        ConditionExpression: '#encryptedDbName = :encryptedDbName',
-        ExpressionAttributeNames: {
-          '#encryptedDbName': 'database-name',
-        },
-        ExpressionAttributeValues: {
-          ':encryptedDbName': encryptedDbName,
-        }
-      }
-    }]
+  const databaseAccessGrantParams = {
+    TableName: setup.databaseAccessGrantsTableName,
+    Key: databaseAccessGrantKey,
   }
 
   try {
     const ddbClient = connection.ddbClient()
+    const databaseAccessGrantResponse = await ddbClient.get(databaseAccessGrantParams).promise()
+
+    const databaseAccessGrant = databaseAccessGrantResponse.Item
+    if (!databaseAccessGrant) return responseBuilder(statusCodes['Not Found'], 'Access grant not found')
+
+    const userDatabase = {
+      'user-id': granteeId,
+      'database-name-hash': dbNameHash,
+      'database-id': dbId,
+      'encrypted-db-key': encryptedDbKey,
+      'read-only': databaseAccessGrant['read-only']
+    }
+
+    const params = {
+      TransactItems: [{
+        Delete: {
+          TableName: setup.databaseAccessGrantsTableName,
+          Key: databaseAccessGrantKey
+        }
+      }, {
+        Put: {
+          TableName: setup.userDatabaseTableName,
+          Item: userDatabase,
+          ConditionExpression: 'attribute_not_exists(#userId)',
+          ExpressionAttributeNames: {
+            '#userId': 'user-id',
+          }
+        }
+      }, {
+        ConditionCheck: {
+          TableName: setup.databaseTableName,
+          Key: {
+            'database-id': dbId
+          },
+          ConditionExpression: '#encryptedDbName = :encryptedDbName',
+          ExpressionAttributeNames: {
+            '#encryptedDbName': 'database-name',
+          },
+          ExpressionAttributeValues: {
+            ':encryptedDbName': encryptedDbName,
+          }
+        }
+      }]
+    }
+
     await ddbClient.transactWrite(params).promise()
 
     return responseBuilder.successResponse('Success!')

@@ -374,10 +374,7 @@ const insert = async (dbName, item, id) => {
   await postTransaction(database, action, params)
 }
 
-const _buildInsertParams = async (database, item, id, includeDbId = true) => {
-  const dbId = database.dbId
-
-  if (!dbId && includeDbId) throw new Error('Insert missing db id')
+const _buildInsertParams = async (database, item, id) => {
   if (!item) throw new Error('Insert missing item')
 
   const itemId = id || uuidv4()
@@ -386,7 +383,7 @@ const _buildInsertParams = async (database, item, id, includeDbId = true) => {
   const itemRecord = { id: itemId, item }
   const encryptedItem = await crypto.aesGcm.encryptJson(database.dbKey, itemRecord)
 
-  return { dbId, itemKey, encryptedItem }
+  return { itemKey, encryptedItem }
 }
 
 const update = async (dbName, id, item) => {
@@ -398,10 +395,7 @@ const update = async (dbName, id, item) => {
   await postTransaction(database, action, params)
 }
 
-const _buildUpdateParams = async (database, itemId, item, includeDbId = true) => {
-  const dbId = database.dbId
-
-  if (!dbId && includeDbId) throw new Error('Update missing db id')
+const _buildUpdateParams = async (database, itemId, item) => {
   if (!itemId) throw new Error('Update missing item id')
   if (!item) throw new Error('Update missing item')
 
@@ -410,7 +404,7 @@ const _buildUpdateParams = async (database, itemId, item, includeDbId = true) =>
   const itemRecord = { id: itemId, item, __v: currentVersion + 1 }
   const encryptedItem = await crypto.aesGcm.encryptJson(database.dbKey, itemRecord)
 
-  return { dbId, itemKey, encryptedItem }
+  return { itemKey, encryptedItem }
 }
 
 const delete_ = async (dbName, id) => {
@@ -422,10 +416,7 @@ const delete_ = async (dbName, id) => {
   await postTransaction(database, action, params)
 }
 
-const _buildDeleteParams = async (database, itemId, includeDbId = true) => {
-  const dbId = database.dbId
-
-  if (!dbId && includeDbId) throw new Error('Delete missing db id')
+const _buildDeleteParams = async (database, itemId) => {
   if (!itemId) throw new Error('Delete missing item id')
 
   const itemKey = await crypto.hmac.signString(ws.keys.hmacKey, itemId)
@@ -433,7 +424,7 @@ const _buildDeleteParams = async (database, itemId, includeDbId = true) => {
   const itemRecord = { id: itemId, __v: currentVersion + 1 }
   const encryptedItem = await crypto.aesGcm.encryptJson(database.dbKey, itemRecord)
 
-  return { dbId, itemKey, encryptedItem }
+  return { itemKey, encryptedItem }
 }
 
 const batch = async (dbName, operations) => {
@@ -444,27 +435,26 @@ const batch = async (dbName, operations) => {
   const operationParamsPromises = operations.map(operation => {
 
     const command = operation.command
-    const includeDbId = false
 
     switch (command) {
       case 'Insert': {
         const id = operation.id
         const item = operation.item
 
-        return _buildInsertParams(database, item, id, includeDbId)
+        return _buildInsertParams(database, item, id)
       }
 
       case 'Update': {
         const id = operation.id
         const item = operation.item
 
-        return _buildUpdateParams(database, id, item, includeDbId)
+        return _buildUpdateParams(database, id, item)
       }
 
       case 'Delete': {
         const id = operation.id
 
-        return _buildDeleteParams(database, id, includeDbId)
+        return _buildDeleteParams(database, id)
       }
 
       default: throw new Error('Unknown command')
@@ -477,8 +467,7 @@ const batch = async (dbName, operations) => {
     operations: operations.map((operation, i) => ({
       command: operation.command,
       ...operationParams[i]
-    })),
-    dbId: database.dbId
+    }))
   }
 
   await postTransaction(database, action, params)
@@ -486,7 +475,14 @@ const batch = async (dbName, operations) => {
 
 const postTransaction = async (database, action, params) => {
   const pendingTx = database.registerUnverifiedTransaction()
-  const response = await ws.request(action, params)
+
+  const paramsWithDbData = {
+    ...params,
+    dbId: database.dbId,
+    dbNameHash: ws.state.dbIdToHash[database.dbId]
+  }
+
+  const response = await ws.request(action, paramsWithDbData)
   const seqNo = response.data.sequenceNo
 
   await pendingTx.getResult(seqNo)
