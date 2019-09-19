@@ -61,6 +61,7 @@ if (process.env.NODE_ENV == 'development') {
       ws.isAlive = true
 
       const userId = res.locals.user['user-id']
+      const username = res.locals.user['username']
       const conn = connections.register(userId, ws)
       const connectionId = conn.id
 
@@ -120,6 +121,10 @@ if (process.env.NODE_ENV == 'development') {
               }
               case 'OpenDatabase': {
                 response = await db.openDatabase(userId, connectionId, params.dbNameHash)
+                break
+              }
+              case 'FindDatabases': {
+                response = await db.findDatabases(userId, username)
                 break
               }
               case 'Insert':

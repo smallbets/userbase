@@ -496,9 +496,35 @@ const postTransaction = async (database, action, params) => {
   return seqNo
 }
 
+const findDatabases = async () => {
+  if (!ws.connected) throw new Error(wsNotOpen)
+  if (!ws.keys.init) throw new Error(keyNotFound)
+
+  const action = 'FindDatabases'
+  const databasesResponse = await ws.request(action)
+
+  const result = []
+  for (const db of databasesResponse.data) {
+    const dbKeyString = await crypto.aesGcm.decryptString(ws.keys.masterKey, db.encryptedDbKey)
+    const dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
+
+    const dbName = await crypto.aesGcm.decryptString(dbKey, db.dbName)
+    const metadata = db.metadata && await crypto.aesGcm.decryptJson(dbKey, db.metadata)
+
+    result.push({
+      dbName,
+      metadata,
+      owner: db.owner,
+      access: db.access
+    })
+  }
+  return result
+}
+
 export default {
   openDatabase,
   createDatabase,
+  findDatabases,
   close,
   insert,
   update,

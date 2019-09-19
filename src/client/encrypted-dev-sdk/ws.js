@@ -238,6 +238,7 @@ class Connection {
       case 'CreateDatabase':
       case 'GetDatabase':
       case 'OpenDatabase':
+      case 'FindDatabases':
       case 'Insert':
       case 'Update':
       case 'Delete':

@@ -15,6 +15,8 @@ const keyExchangeTableName = usernamePrefix + 'key-exchange'
 const databaseAccessGrantsTableName = usernamePrefix + 'database-access-grants'
 const dbStatesBucketName = usernamePrefix + 'db-states'
 
+const userDatabaseIdIndex = 'UserDatabaseIdIndex'
+
 exports.usersTableName = usersTableName
 exports.sessionsTableName = sessionsTableName
 exports.databaseTableName = databaseTableName
@@ -22,6 +24,8 @@ exports.userDatabaseTableName = userDatabaseTableName
 exports.transactionsTableName = transactionsTableName
 exports.keyExchangeTableName = keyExchangeTableName
 exports.databaseAccessGrantsTableName = databaseAccessGrantsTableName
+
+exports.userDatabaseIdIndex = userDatabaseIdIndex
 
 let s3
 const getS3Connection = () => s3
@@ -106,7 +110,8 @@ async function setupDdb() {
   const userDatabaseTableParams = {
     AttributeDefinitions: [
       { AttributeName: 'user-id', AttributeType: 'S' },
-      { AttributeName: 'database-name-hash', AttributeType: 'S' }
+      { AttributeName: 'database-name-hash', AttributeType: 'S' },
+      { AttributeName: 'database-id', AttributeType: 'S' }
     ],
     KeySchema: [
       { AttributeName: 'user-id', KeyType: 'HASH' },
@@ -114,6 +119,19 @@ async function setupDdb() {
     ],
     BillingMode: 'PAY_PER_REQUEST',
     TableName: userDatabaseTableName,
+    GlobalSecondaryIndexes: [{
+      IndexName: userDatabaseIdIndex,
+      KeySchema: [
+        { AttributeName: 'database-id', KeyType: 'HASH' },
+        { AttributeName: 'user-id', KeyType: 'RANGE' },
+      ],
+      Projection: {
+        NonKeyAttributes: [
+          'database-id'
+        ],
+        ProjectionType: 'INCLUDE'
+      }
+    }]
   }
 
   // the transactions table holds a record per database transaction
