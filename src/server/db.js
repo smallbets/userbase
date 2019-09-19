@@ -66,6 +66,31 @@ exports.createDatabase = async function (userId, dbNameHash, dbId, encryptedDbNa
   }
 }
 
+exports.findUserDatabaseByDatabaseId = async function (dbId, userId) {
+  const userDatabaseParams = {
+    TableName: setup.userDatabaseTableName,
+    IndexName: setup.userDatabaseIdIndex,
+    KeyConditionExpression: '#dbId = :dbId and #userId = :userId',
+    ExpressionAttributeNames: {
+      '#dbId': 'database-id',
+      '#userId': 'user-id'
+    },
+    ExpressionAttributeValues: {
+      ':dbId': dbId,
+      ':userId': userId
+    },
+  }
+
+  const ddbClient = connection.ddbClient()
+  const userDbResponse = await ddbClient.query(userDatabaseParams).promise()
+
+  if (userDbResponse.Items.length > 1) {
+    logger.warn(`Found too many user databases with db id ${dbId} and user id ${userId}`)
+  }
+
+  return userDbResponse.Items[0]
+}
+
 const findDatabaseByDatabaseId = async function (dbId) {
   const databaseParams = {
     TableName: setup.databaseTableName,

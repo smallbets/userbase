@@ -464,6 +464,7 @@ exports.getPublicKey = async function (username) {
 exports.grantDatabaseAccess = async function (grantorId, granteeUsername, dbId, encryptedAccessKey, readOnly) {
   if (!granteeUsername) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing grantee username')
   if (!dbId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
+  if (!encryptedAccessKey) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing access key')
 
   try {
     const [grantee, database] = await Promise.all([
@@ -533,18 +534,18 @@ const buildDatabaseAccessGrantsResponse = (databases, databaseAccessGrants, owne
   for (let i = 0; i < databases.length; i++) {
     const database = databases[i]
     if (!database) {
-      logger.warn(`Unable to find database with id ${databaseAccessGrants.Items[i]['database-id']}`)
+      logger.warn(`Unable to find database with id ${databaseAccessGrants[i]['database-id']}`)
       continue
     }
 
     const ownerId = database['owner-id']
     const owner = owners[ownerIndex[ownerId]]
     if (!owner) {
-      logger.warn(`Unable to find user with id ${databaseAccessGrants.Items[i]['owner-id']}`)
+      logger.warn(`Unable to find user with id ${databaseAccessGrants[i]['owner-id']}`)
       continue
     }
 
-    const grant = databaseAccessGrants.Items[i]
+    const grant = databaseAccessGrants[i]
 
     response.push({
       owner: owner['username'],
@@ -555,6 +556,41 @@ const buildDatabaseAccessGrantsResponse = (databases, databaseAccessGrants, owne
     })
   }
   return response
+}
+
+const deleteGrantsAlreadyAccepted = async function (databaseAccessGrants) {
+  const existingUserDatabases = await Promise.all(databaseAccessGrants.map(grant => {
+    const granteeId = grant['grantee-id']
+    const dbId = grant['database-id']
+    return db.findUserDatabaseByDatabaseId(dbId, granteeId)
+  }))
+
+  const grantsPendingAcceptance = []
+  const ddbClient = connection.ddbClient()
+  for (let i = 0; i < databaseAccessGrants.length; i++) {
+    const grant = databaseAccessGrants[i]
+    const granteeId = grant['grantee-id']
+    const dbId = grant['database-id']
+
+    const existingUserDb = existingUserDatabases[i]
+
+    if (!existingUserDb) {
+      grantsPendingAcceptance.push(grant)
+    } else {
+      const deleteGrantParams = {
+        TableName: setup.databaseAccessGrantsTableName,
+        Key: {
+          'grantee-id': granteeId,
+          'database-id': dbId
+        }
+      }
+
+      // don't need to wait for successful delete
+      ddbClient.delete(deleteGrantParams).promise()
+    }
+
+  }
+  return grantsPendingAcceptance
 }
 
 exports.queryDatabaseAccessGrants = async function (granteeId) {
@@ -572,20 +608,24 @@ exports.queryDatabaseAccessGrants = async function (granteeId) {
 
   try {
     const ddbClient = connection.ddbClient()
-    const databaseAccessGrants = await ddbClient.query(params).promise()
+    const databaseAccessGrantsResponse = await ddbClient.query(params).promise()
+    const databaseAccessGrants = databaseAccessGrantsResponse.Items
 
-    if (!databaseAccessGrants || !databaseAccessGrants.Items || !databaseAccessGrants.Items.length) {
+    if (!databaseAccessGrants || !databaseAccessGrants.length) {
       return responseBuilder.successResponse([])
     }
 
-    const databases = await Promise.all(databaseAccessGrants.Items.map(grant => {
+    // more efficient to clean up this way as opposed to enforcing when inserting grant
+    const grantsPendingAcceptance = await deleteGrantsAlreadyAccepted(databaseAccessGrants)
+
+    const databases = await Promise.all(grantsPendingAcceptance.map(grant => {
       const dbId = grant['database-id']
       return db.findDatabaseByDatabaseId(dbId)
     }))
 
     const { ownerIndex, owners } = await getDbOwners(databases)
 
-    const response = buildDatabaseAccessGrantsResponse(databases, databaseAccessGrants, owners, ownerIndex)
+    const response = buildDatabaseAccessGrantsResponse(databases, grantsPendingAcceptance, owners, ownerIndex)
 
     return responseBuilder.successResponse(response)
   } catch (e) {
@@ -662,6 +702,11 @@ exports.acceptDatabaseAccess = async function (granteeId, dbId, dbNameHash, encr
 
     return responseBuilder.successResponse('Success!')
   } catch (e) {
+
+    if (e.name === 'TransactionCanceledException' && e.message.includes(', ConditionalCheckFailed, ')) {
+      return responseBuilder.errorResponse(statusCodes['Conflict'], `Database with name ${dbNameHash} already exists`)
+    }
+
     return responseBuilder.errorResponse(
       statusCodes['Internal Server Error'],
       `Failed to accept access to db with ${e}`
