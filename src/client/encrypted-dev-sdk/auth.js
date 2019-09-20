@@ -13,14 +13,26 @@ const signUp = async (username, password, onSessionChange) => {
   const lowerCaseUsername = username.toLowerCase()
   const userId = uuidv4()
 
-  const aesKey = await crypto.aesGcm.generateKey()
-  const rawAesKey = await crypto.aesGcm.getRawKeyFromKey(aesKey)
-  const { publicKey, sharedSecret } = crypto.diffieHellman.getPublicKeyAndSharedSecretWithServer(rawAesKey)
+  const seed = await crypto.generateSeed()
+  const masterKey = await crypto.hkdf.importMasterKey(seed)
 
-  const base64PublicKey = base64.encode(publicKey)
+  const encryptionKeySalt = crypto.hkdf.generateSalt()
+  const dhKeySalt = crypto.hkdf.generateSalt()
+  const hmacKeySalt = crypto.hkdf.generateSalt()
+
+  const dhPrivateKey = await crypto.diffieHellman.importKeyFromMaster(masterKey, dhKeySalt)
+  const { publicKey, sharedSecret } = crypto.diffieHellman.getPublicKeyAndSharedSecretWithServer(dhPrivateKey)
 
   const [encryptedValidationMessage, sharedKey] = await Promise.all([
-    api.auth.signUp(lowerCaseUsername, password, userId, base64PublicKey),
+    api.auth.signUp(
+      lowerCaseUsername,
+      password,
+      userId,
+      base64.encode(publicKey),
+      base64.encode(encryptionKeySalt),
+      base64.encode(dhKeySalt),
+      base64.encode(hmacKeySalt)
+    ),
     crypto.aesGcm.getKeyFromRawKey(await crypto.sha256.hash(sharedSecret))
   ])
 
@@ -29,7 +41,7 @@ const signUp = async (username, password, onSessionChange) => {
   // Saves to local storage before validation to ensure user has it.
   // Warning: if user hits the sign up button twice,
   // it's possible the key will be overwritten here and will be lost
-  await localData.saveKeyToLocalStorage(lowerCaseUsername, aesKey)
+  await localData.saveSeedToLocalStorage(lowerCaseUsername, seed)
 
   await api.auth.validateKey(validationMessage)
 
@@ -61,7 +73,7 @@ const signIn = async (username, password, onSessionChange) => {
 
 const initSession = async (onSessionChange) => {
   const session = localData.getCurrentSession()
-  if (!session) return onSessionChange({ username: undefined, signedIn: false, key: undefined })
+  if (!session) return onSessionChange({ username: undefined, signedIn: false, seed: undefined })
   if (!session.username || !session.signedIn) return onSessionChange(session)
 
   try {
@@ -78,23 +90,23 @@ const registerDevice = async () => {
   if (!ws.connected) throw new Error(wsNotOpen)
   if (ws.keys.init) throw new Error(deviceAlreadyRegistered)
 
-  const alreadySavedRequest = localData.getTempRequestForMasterKey(ws.session.username)
+  const alreadySavedRequest = localData.getTempRequestForSeed(ws.session.username)
 
   let requesterPublicKey
-  let tempKeyToRequestMasterKey
+  let tempKeyToRequestSeed
   if (!alreadySavedRequest) {
     // this could be random bytes -- it's not used to encrypt/decrypt anything, only to generate DH
-    tempKeyToRequestMasterKey = await crypto.aesGcm.getKeyStringFromKey(await crypto.aesGcm.generateKey())
-    const publicKey = crypto.diffieHellman.getPublicKey(tempKeyToRequestMasterKey)
+    tempKeyToRequestSeed = await crypto.aesGcm.getKeyStringFromKey(await crypto.aesGcm.generateKey())
+    const publicKey = crypto.diffieHellman.getPublicKey(tempKeyToRequestSeed)
     requesterPublicKey = base64.encode(publicKey)
 
-    localData.setTempRequestForMasterKey(ws.session.username, requesterPublicKey, tempKeyToRequestMasterKey)
+    localData.setTempRequestForSeed(ws.session.username, requesterPublicKey, tempKeyToRequestSeed)
   } else {
     requesterPublicKey = alreadySavedRequest.requesterPublicKey
-    tempKeyToRequestMasterKey = alreadySavedRequest.tempKeyToRequestMasterKey
+    tempKeyToRequestSeed = alreadySavedRequest.tempKeyToRequestSeed
   }
 
-  await ws.requestMasterKey(requesterPublicKey, tempKeyToRequestMasterKey)
+  await ws.requestSeed(requesterPublicKey, tempKeyToRequestSeed)
 
   return {
     devicePublicKey: requesterPublicKey,
@@ -103,12 +115,12 @@ const registerDevice = async () => {
 }
 
 // TO-DO: validate the key is user's key
-const importKey = async (keyString) => {
+const importKey = async (seedString) => {
   if (!ws.connected) throw new Error(wsNotOpen)
   if (ws.keys.init) throw new Error(deviceAlreadyRegistered)
 
-  localData.saveKeyStringToLocalStorage(ws.session.username, keyString)
-  await ws.setKeys(keyString)
+  localData.saveSeedStringToLocalStorage(ws.session.username, seedString)
+  await ws.setKeys(seedString)
   ws.onSessionChange(ws.session)
 }
 

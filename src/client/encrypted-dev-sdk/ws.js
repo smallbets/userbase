@@ -42,13 +42,11 @@ class Connection {
 
     this.keys = {
       init: false,
-      masterKey: {},
-      masterKeyString: '',
-      hmacKey: {}
+      salts: {}
     }
 
-    this.processingKeyRequest = {}
-    this.sentMasterKeyTo = {}
+    this.processingSeedRequest = {}
+    this.sentSeedTo = {}
 
     this.state = {
       databases: {},
@@ -91,26 +89,21 @@ class Connection {
           this.ws = ws
           this.connected = connected
 
-          try {
-            await this.setKeys(session.key)
-          } catch {
-
-            // re-request key if already requested
-            const alreadySavedRequest = localData.getTempRequestForMasterKey(session.username)
+          if (!session.seed) {
+            // re-request seed if already requested
+            const alreadySavedRequest = localData.getTempRequestForSeed(session.username)
             if (alreadySavedRequest) {
-              const { requesterPublicKey, tempKeyToRequestMasterKey } = alreadySavedRequest
+              const { requesterPublicKey, tempKeyToRequestSeed } = alreadySavedRequest
 
-              const masterKey = await this.requestMasterKey(requesterPublicKey, tempKeyToRequestMasterKey)
-              if (masterKey) return resolve() // already updated session inside receiveMasterKey()
+              const seed = await this.requestSeed(requesterPublicKey, tempKeyToRequestSeed)
+              if (seed) return resolve() // already updated session inside receiveSeed()
             }
           }
-
-          resolve(onSessionChange(this.session))
         }
       }
 
       ws.onmessage = async (e) => {
-        await this.handleMessage(JSON.parse(e.data))
+        await this.handleMessage(JSON.parse(e.data), resolve)
       }
 
       ws.onerror = () => {
@@ -144,9 +137,23 @@ class Connection {
     })
   }
 
-  async handleMessage(message) {
+  async handleMessage(message, resolve) {
     const route = message.route
     switch (route) {
+      case 'Connection': {
+        const salts = message.salts
+        this.keys.salts = salts
+
+        try {
+          await this.setKeys(this.session.seed)
+        } catch (e) {
+          console.log('Failed to set keys with:', e)
+        }
+
+        resolve(this.onSessionChange(this.session))
+        break
+      }
+
       case 'ApplyTransactions': {
         const dbId = message.dbId
         const dbNameHash = message.dbNameHash || this.state.dbIdToHash[dbId]
@@ -156,7 +163,7 @@ class Connection {
 
         const openingDatabase = message.dbNameHash && message.dbKey
         if (openingDatabase) {
-          const dbKeyString = await crypto.aesGcm.decryptString(this.keys.masterKey, message.dbKey)
+          const dbKeyString = await crypto.aesGcm.decryptString(this.keys.encryptionKey, message.dbKey)
           database.dbKeyString = dbKeyString
           database.dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
         }
@@ -217,20 +224,25 @@ class Connection {
         break
       }
 
-      case 'ReceiveRequestForMasterKey': {
+      case 'ReceiveRequestForSeed': {
         if (!this.keys.init) return
 
         const requesterPublicKey = message.requesterPublicKey
-        this.sendMasterKey(requesterPublicKey)
+        this.sendSeed(requesterPublicKey)
 
         break
       }
 
-      case 'ReceiveMasterKey': {
-        const { encryptedMasterKey, senderPublicKey } = message
-        const { tempKeyToRequestMasterKey, requesterPublicKey } = localData.getTempRequestForMasterKey(this.session.username)
+      case 'ReceiveSeed': {
+        const { encryptedSeed, senderPublicKey } = message
+        const { tempKeyToRequestSeed, requesterPublicKey } = localData.getTempRequestForSeed(this.session.username)
 
-        await this.receiveMasterKey(encryptedMasterKey, senderPublicKey, requesterPublicKey, tempKeyToRequestMasterKey)
+        await this.receiveSeed(
+          encryptedSeed,
+          senderPublicKey,
+          requesterPublicKey,
+          tempKeyToRequestSeed
+        )
 
         break
       }
@@ -245,9 +257,9 @@ class Connection {
       case 'Batch':
       case 'Bundle':
       case 'ClientHasKey':
-      case 'RequestMasterKey':
-      case 'GetRequestsForMasterKey':
-      case 'SendMasterKey':
+      case 'RequestSeed':
+      case 'GetRequestsForSeed':
+      case 'SendSeed':
       case 'GetPublicKey':
       case 'GrantDatabaseAccess':
       case 'GetDatabaseAccessGrants':
@@ -291,14 +303,20 @@ class Connection {
     this.onSessionChange(this.session)
   }
 
-  async setKeys(masterKeyString, requesterPublicKey) {
-    if (!masterKeyString) throw new Error('Missing master key')
-    if (!this.session.key) this.session.key = masterKeyString
+  async setKeys(seedString, requesterPublicKey) {
+    if (!seedString) throw new Error('Missing seed')
+    if (!this.keys.salts) throw new Error('Missing salts')
+    if (!this.session.seed) this.session.seed = seedString
 
-    this.keys.rawMasterKey = base64.decode(masterKeyString)
-    this.keys.masterKey = await crypto.aesGcm.getKeyFromRawKey(this.keys.rawMasterKey)
-    this.keys.masterKeyString = masterKeyString
-    this.keys.hmacKey = await crypto.hmac.importKey(this.keys.rawMasterKey)
+    this.keys.seedString = seedString
+
+    const seed = base64.decode(seedString)
+    const masterKey = await crypto.hkdf.importMasterKey(seed)
+
+    const salts = this.keys.salts
+    this.keys.encryptionKey = await crypto.aesGcm.importKeyFromMaster(masterKey, base64.decode(salts.encryptionKeySalt))
+    this.keys.dhPrivateKey = await crypto.diffieHellman.importKeyFromMaster(masterKey, base64.decode(salts.dhKeySalt))
+    this.keys.hmacKey = await crypto.hmac.importKeyFromMaster(masterKey, base64.decode(salts.hmacKeySalt))
 
     const action = 'ClientHasKey'
     const params = { requesterPublicKey } // only provided if first time validating since receving master key
@@ -307,7 +325,7 @@ class Connection {
     this.keys.init = true
 
     if (!this.signingUp) {
-      this.getRequestsForMasterKey()
+      this.getRequestsForSeed()
       this.getDatabaseAccessGrants()
     }
   }
@@ -351,37 +369,37 @@ class Connection {
     return response
   }
 
-  async requestMasterKey(requesterPublicKey, tempKeyToRequestMasterKey) {
-    const action = 'RequestMasterKey'
+  async requestSeed(requesterPublicKey, tempKeyToRequestSeed) {
+    const action = 'RequestSeed'
     const params = { requesterPublicKey }
-    const requestMasterKeyResponse = await this.request(action, params)
+    const requestSeedResponse = await this.request(action, params)
 
-    const { encryptedMasterKey, senderPublicKey } = requestMasterKeyResponse.data
-    if (encryptedMasterKey && senderPublicKey) {
-      const masterKey = await this.receiveMasterKey(encryptedMasterKey, senderPublicKey, requesterPublicKey, tempKeyToRequestMasterKey)
-      return masterKey
+    const { encryptedSeed, senderPublicKey } = requestSeedResponse.data
+    if (encryptedSeed && senderPublicKey) {
+      const seed = await this.receiveSeed(encryptedSeed, senderPublicKey, requesterPublicKey, tempKeyToRequestSeed)
+      return seed
     }
     return null
   }
 
-  async getRequestsForMasterKey() {
+  async getRequestsForSeed() {
     if (!this.keys.init) return
 
-    const response = await this.request('GetRequestsForMasterKey')
+    const response = await this.request('GetRequestsForSeed')
 
-    const masterKeyRequests = response.data.masterKeyRequests
+    const seedRequests = response.data.seedRequests
 
-    for (const masterKeyRequest of masterKeyRequests) {
-      const requesterPublicKey = masterKeyRequest['requester-public-key']
+    for (const seedRequest of seedRequests) {
+      const requesterPublicKey = seedRequest['requester-public-key']
 
-      this.sendMasterKey(requesterPublicKey)
+      this.sendSeed(requesterPublicKey)
     }
   }
 
   async grantDatabaseAccess(database, username, granteePublicKey, readOnly) {
     if (window.confirm(`Grant access to user '${username}' with public key:\n\n${granteePublicKey}\n`)) {
       const sharedSecret = crypto.diffieHellman.getSharedSecret(
-        this.keys.rawMasterKey,
+        this.keys.dhPrivateKey,
         new Uint8Array(base64.decode(granteePublicKey))
       )
 
@@ -408,7 +426,7 @@ class Connection {
 
       try {
         const sharedSecret = crypto.diffieHellman.getSharedSecret(
-          this.keys.rawMasterKey,
+          this.keys.dhPrivateKey,
           new Uint8Array(base64.decode(ownerPublicKey))
         )
 
@@ -420,7 +438,7 @@ class Connection {
 
         const dbName = await crypto.aesGcm.decryptString(dbKey, encryptedDbName)
 
-        if (window.confirm(`Accept access to database ${dbName} from ${owner} with public key: \n\n${ownerPublicKey}\n`)) {
+        if (window.confirm(`Accept access to database '${dbName}' from '${owner}' with public key: \n\n${ownerPublicKey}\n`)) {
           await this.acceptDatabaseAccessGrant(dbId, dbKeyString, dbName, encryptedDbName)
         }
 
@@ -435,7 +453,7 @@ class Connection {
     if (!this.keys.init) return
 
     const dbNameHash = await crypto.hmac.signString(this.keys.hmacKey, dbName)
-    const encryptedDbKey = await crypto.aesGcm.encryptString(this.keys.masterKey, dbKeyString)
+    const encryptedDbKey = await crypto.aesGcm.encryptString(this.keys.encryptionKey, dbKeyString)
 
     const action = 'AcceptDatabaseAccess'
     const params = { dbId, encryptedDbKey, dbNameHash, encryptedDbName }
@@ -443,53 +461,53 @@ class Connection {
     await this.request(action, params)
   }
 
-  async sendMasterKey(requesterPublicKey) {
-    if (this.sentMasterKeyTo[requesterPublicKey] || this.processingKeyRequest[requesterPublicKey]) return
-    this.processingKeyRequest[requesterPublicKey] = true
+  async sendSeed(requesterPublicKey) {
+    if (this.sentSeedTo[requesterPublicKey] || this.processingSeedRequest[requesterPublicKey]) return
+    this.processingSeedRequest[requesterPublicKey] = true
 
-    if (window.confirm(`Send the master key to device: \n\n${requesterPublicKey}\n`)) {
+    if (window.confirm(`Send the seed to device: \n\n${requesterPublicKey}\n`)) {
       try {
         const sharedSecret = crypto.diffieHellman.getSharedSecret(
-          this.keys.rawMasterKey,
+          this.keys.dhPrivateKey,
           new Uint8Array(base64.decode(requesterPublicKey))
         )
 
         const sharedRawKey = await crypto.sha256.hash(sharedSecret)
         const sharedKey = await crypto.aesGcm.getKeyFromRawKey(sharedRawKey)
 
-        const encryptedMasterKey = await crypto.aesGcm.encryptString(sharedKey, this.keys.masterKeyString)
+        const encryptedSeed = await crypto.aesGcm.encryptString(sharedKey, this.keys.seedString)
 
-        const action = 'SendMasterKey'
-        const params = { requesterPublicKey, encryptedMasterKey }
+        const action = 'SendSeed'
+        const params = { requesterPublicKey, encryptedSeed }
 
         await this.request(action, params)
-        this.sentMasterKeyTo[requesterPublicKey] = true
+        this.sentSeedTo[requesterPublicKey] = true
       } catch (e) {
         console.warn(e)
       }
     }
-    delete this.processingKeyRequest[requesterPublicKey]
+    delete this.processingSeedRequest[requesterPublicKey]
   }
 
-  async receiveMasterKey(encryptedMasterKey, senderPublicKey, requesterPublicKey, tempKeyToRequestMasterKey) {
+  async receiveSeed(encryptedSeed, senderPublicKey, requesterPublicKey, tempKeyToRequestSeed) {
     const sharedSecret = crypto.diffieHellman.getSharedSecret(
-      tempKeyToRequestMasterKey,
+      tempKeyToRequestSeed,
       new Uint8Array(base64.decode(senderPublicKey))
     )
 
     const sharedRawKey = await crypto.sha256.hash(sharedSecret)
     const sharedKey = await crypto.aesGcm.getKeyFromRawKey(sharedRawKey)
 
-    const masterKeyString = await crypto.aesGcm.decryptString(sharedKey, encryptedMasterKey)
+    const seedString = await crypto.aesGcm.decryptString(sharedKey, encryptedSeed)
 
-    await localData.saveKeyStringToLocalStorage(this.session.username, masterKeyString)
+    await localData.saveSeedStringToLocalStorage(this.session.username, seedString)
 
-    await this.setKeys(masterKeyString, requesterPublicKey)
+    await this.setKeys(seedString, requesterPublicKey)
 
-    localData.removeRequestForMasterKey(this.session.username)
+    localData.removeRequestForSeed(this.session.username)
 
     this.onSessionChange(this.session)
-    return masterKeyString
+    return seedString
   }
 }
 

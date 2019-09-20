@@ -1,4 +1,5 @@
-const ALGORITHM_NAME = 'SHA-256'
+const BYTE_SIZE = 32 // 256 / 8
+const HASH_ALGORITHM_NAME = 'SHA-256'
 
 /**
  *
@@ -7,7 +8,7 @@ const ALGORITHM_NAME = 'SHA-256'
 const hash = async (data) => {
   const result = await window.crypto.subtle.digest(
     {
-      name: ALGORITHM_NAME,
+      name: HASH_ALGORITHM_NAME,
     },
     data
   )
@@ -15,5 +16,7 @@ const hash = async (data) => {
 }
 
 export default {
+  BYTE_SIZE,
+  HASH_ALGORITHM_NAME,
   hash
 }

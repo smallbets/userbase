@@ -17,7 +17,7 @@ export default class App extends Component {
 
     this.state = {
       session: {
-        key: undefined,
+        seed: undefined,
         username: undefined,
         signedIn: undefined
       },
@@ -65,7 +65,7 @@ export default class App extends Component {
     if (!displaySignUpForm() && userMustLogInAgain) {
       // if the user is logged out, redirect to the sign-in form
       window.location.hash = 'sign-in'
-    } else if (userHasActiveSession && !session.key) {
+    } else if (userHasActiveSession && !session.seed) {
       // if the user is logged in, but the browser doesn't have a key for the user, redirect to the save-key form
       window.location.hash = 'save-key'
     }
@@ -83,8 +83,8 @@ export default class App extends Component {
     this.handleAutoRedirects(session)
   }
 
-  handleSetKeyInState(key) {
-    this.setState({ session: { ...this.state.session, key } })
+  handleSetKeyInState(seed) {
+    this.setState({ session: { ...this.state.session, seed } })
     window.location.hash = ''
   }
 
@@ -181,7 +181,7 @@ export default class App extends Component {
                 todos={todos}
                 loading={loading} />
             case 'show-key':
-              return <ShowKey keyString={session.key} />
+              return <ShowKey keyString={session.seed} />
             case 'save-key':
               return <SaveKey handleSetKeyInState={this.handleSetKeyInState} />
             case 'sign-in':

@@ -4,7 +4,7 @@ import { readArrayBufferAsString } from '../utils'
 const TEN_SECONDS_MS = 10 * 1000
 const TIMEOUT = TEN_SECONDS_MS
 
-const signUp = async (username, password, userId, publicKey) => {
+const signUp = async (username, password, userId, publicKey, encryptionKeySalt, dhKeySalt, hmacKeySalt) => {
   try {
     const signUpResponse = await axios({
       method: 'POST',
@@ -13,7 +13,10 @@ const signUp = async (username, password, userId, publicKey) => {
         username,
         password,
         userId,
-        publicKey
+        publicKey,
+        encryptionKeySalt,
+        dhKeySalt,
+        hmacKeySalt
       },
       responseType: 'arraybuffer',
       timeout: TIMEOUT

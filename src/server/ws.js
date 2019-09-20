@@ -68,34 +68,34 @@ class Connection {
     }
   }
 
-  openKeyRequest(requesterPublicKey) {
+  openSeedRequest(requesterPublicKey) {
     this.requesterPublicKey = requesterPublicKey
   }
 
-  sendKeyRequest(requesterPublicKey) {
+  sendSeedRequest(requesterPublicKey) {
     if (!this.clientHasKey) return
 
     const payload = {
-      route: 'ReceiveRequestForMasterKey',
+      route: 'ReceiveRequestForSeed',
       requesterPublicKey
     }
 
     this.socket.send(JSON.stringify(payload))
   }
 
-  sendMasterKey(senderPublicKey, requesterPublicKey, encryptedMasterKey) {
+  sendSeed(senderPublicKey, requesterPublicKey, encryptedSeed) {
     if (this.requesterPublicKey !== requesterPublicKey) return
 
     const payload = {
-      route: 'ReceiveMasterKey',
-      encryptedMasterKey,
+      route: 'ReceiveSeed',
+      encryptedSeed,
       senderPublicKey
     }
 
     this.socket.send(JSON.stringify(payload))
   }
 
-  deleteKeyRequest(requesterPublicKey) {
+  deleteSeedRequest(requesterPublicKey) {
     if (this.requesterPublicKey === requesterPublicKey) delete this.requesterPublicKey
   }
 }
@@ -132,30 +132,30 @@ export default class Connections {
     }
   }
 
-  static sendKeyRequest(userId, connectionId, requesterPublicKey) {
+  static sendSeedRequest(userId, connectionId, requesterPublicKey) {
     if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId][connectionId]) return
 
     const conn = Connections.sockets[userId][connectionId]
-    conn.openKeyRequest(requesterPublicKey)
+    conn.openSeedRequest(requesterPublicKey)
 
     for (const connection of Object.values(Connections.sockets[userId])) {
-      connection.sendKeyRequest(requesterPublicKey)
+      connection.sendSeedRequest(requesterPublicKey)
     }
   }
 
-  static sendMasterKey(userId, senderPublicKey, requesterPublicKey, encryptedMasterKey) {
+  static sendSeed(userId, senderPublicKey, requesterPublicKey, encryptedSeed) {
     if (!Connections.sockets || !Connections.sockets[userId]) return
 
     for (const conn of Object.values(Connections.sockets[userId])) {
-      conn.sendMasterKey(senderPublicKey, requesterPublicKey, encryptedMasterKey)
+      conn.sendSeed(senderPublicKey, requesterPublicKey, encryptedSeed)
     }
   }
 
-  static deleteKeyRequest(userId, requesterPublicKey) {
+  static deleteSeed(userId, requesterPublicKey) {
     if (!Connections.sockets || !Connections.sockets[userId]) return
 
     for (const conn of Object.values(Connections.sockets[userId])) {
-      conn.deleteKeyRequest(requesterPublicKey)
+      conn.deleteSeed(requesterPublicKey)
     }
   }
 

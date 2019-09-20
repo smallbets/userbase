@@ -54,10 +54,14 @@ exports.signUp = async function (req, res) {
   const password = req.body.password
   const userId = req.body.userId
   const publicKey = req.body.publicKey
+  const encryptionKeySalt = req.body.encryptionKeySalt
+  const dhKeySalt = req.body.dhKeySalt
+  const hmacKeySalt = req.body.hmacKeySalt
 
-  if (!username || !password || !userId || !publicKey) return res
-    .status(statusCodes['Bad Request'])
-    .send({ readableMessage: 'Missing required items' })
+  if (!username || !password || !userId || !publicKey || !encryptionKeySalt
+    || !dhKeySalt || !hmacKeySalt) return res
+      .status(statusCodes['Bad Request'])
+      .send({ readableMessage: 'Missing required items' })
 
   try {
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS)
@@ -69,6 +73,9 @@ exports.signUp = async function (req, res) {
       'password-hash': passwordHash,
       'user-id': userId,
       'public-key': publicKey,
+      'encryption-key-salt': encryptionKeySalt,
+      'diffie-hellman-key-salt': dhKeySalt,
+      'hmac-key-salt': hmacKeySalt,
       'validation-message': validationMessage
     }
 
@@ -276,7 +283,7 @@ exports.authenticateUser = async function (req, res, next) {
   }
 }
 
-exports.requestMasterKey = async function (userId, senderPublicKey, connectionId, requesterPublicKey) {
+exports.requestSeed = async function (userId, senderPublicKey, connectionId, requesterPublicKey) {
   if (!requesterPublicKey) return responseBuilder.errorResponse(
     statusCodes['Bad Request'],
     'Missing requester public key'
@@ -290,7 +297,7 @@ exports.requestMasterKey = async function (userId, senderPublicKey, connectionId
   const params = {
     TableName: setup.keyExchangeTableName,
     Item: keyExchange,
-    // do not overwrite if already exists. especially important if encrypted-master-key already exists,
+    // do not overwrite if already exists. especially important if encrypted-seed already exists,
     // but no need to overwrite ever
     ConditionExpression: 'attribute_not_exists(#userId)',
     ExpressionAttributeNames: {
@@ -303,7 +310,7 @@ exports.requestMasterKey = async function (userId, senderPublicKey, connectionId
 
     try {
       await ddbClient.put(params).promise()
-      connections.sendKeyRequest(userId, connectionId, requesterPublicKey)
+      connections.sendSeedRequest(userId, connectionId, requesterPublicKey)
     } catch (e) {
 
       if (e.name === 'ConditionalCheckFailedException') {
@@ -314,14 +321,13 @@ exports.requestMasterKey = async function (userId, senderPublicKey, connectionId
         }
 
         const existingKeyExchangeResponse = await ddbClient.get(existingKeyExchangeParams).promise()
-
         const existingKeyExchange = existingKeyExchangeResponse.Item
 
-        const encryptedMasterKey = existingKeyExchange['encrypted-master-key']
-        if (encryptedMasterKey) {
-          return responseBuilder.successResponse({ senderPublicKey, encryptedMasterKey })
+        const encryptedSeed = existingKeyExchange['encrypted-seed']
+        if (encryptedSeed) {
+          return responseBuilder.successResponse({ senderPublicKey, encryptedSeed })
         } else {
-          connections.sendKeyRequest(userId, connectionId, requesterPublicKey)
+          connections.sendSeedRequest(userId, connectionId, requesterPublicKey)
         }
 
       } else {
@@ -329,24 +335,24 @@ exports.requestMasterKey = async function (userId, senderPublicKey, connectionId
       }
     }
 
-    return responseBuilder.successResponse('Successfully sent out request for key!')
+    return responseBuilder.successResponse('Successfully sent out request for seed!')
   } catch (e) {
     return responseBuilder.errorResponse(
       statusCodes['Internal Server Error'],
-      `Failed to request master key with ${e}`
+      `Failed to request seed with ${e}`
     )
   }
 }
 
-exports.queryMasterKeyRequests = async function (userId) {
+exports.querySeedRequests = async function (userId) {
   const params = {
     TableName: setup.keyExchangeTableName,
     KeyName: '#userId',
     KeyConditionExpression: '#userId = :userId',
-    FilterExpression: 'attribute_not_exists(#encryptedMasterKey)',
+    FilterExpression: 'attribute_not_exists(#encryptedSeed)',
     ExpressionAttributeNames: {
       '#userId': 'user-id',
-      '#encryptedMasterKey': 'encrypted-master-key'
+      '#encryptedSeed': 'encrypted-seed'
     },
     ExpressionAttributeValues: {
       ':userId': userId
@@ -355,19 +361,19 @@ exports.queryMasterKeyRequests = async function (userId) {
 
   try {
     const ddbClient = connection.ddbClient()
-    const masterKeyRequests = await ddbClient.query(params).promise()
+    const seedRequests = await ddbClient.query(params).promise()
 
-    return responseBuilder.successResponse({ masterKeyRequests: masterKeyRequests.Items })
+    return responseBuilder.successResponse({ seedRequests: seedRequests.Items })
   } catch (e) {
     return responseBuilder.errorResponse(
       statusCodes['Internal Server Error'],
-      `Failed to get master key requests with ${e}`
+      `Failed to get seed requests with ${e}`
     )
   }
 }
 
-exports.sendMasterKey = async function (userId, senderPublicKey, requesterPublicKey, encryptedMasterKey) {
-  if (!requesterPublicKey || !encryptedMasterKey) return responseBuilder.errorResponse(
+exports.sendSeed = async function (userId, senderPublicKey, requesterPublicKey, encryptedSeed) {
+  if (!requesterPublicKey || !encryptedSeed) return responseBuilder.errorResponse(
     statusCodes['Bad Request'],
     'Missing required items'
   )
@@ -378,12 +384,12 @@ exports.sendMasterKey = async function (userId, senderPublicKey, requesterPublic
       'user-id': userId,
       'requester-public-key': requesterPublicKey
     },
-    UpdateExpression: 'set #encryptedMasterKey = :encryptedMasterKey',
+    UpdateExpression: 'set #encryptedSeed = :encryptedSeed',
     ExpressionAttributeNames: {
-      '#encryptedMasterKey': 'encrypted-master-key'
+      '#encryptedSeed': 'encrypted-seed'
     },
     ExpressionAttributeValues: {
-      ':encryptedMasterKey': encryptedMasterKey
+      ':encryptedSeed': encryptedSeed
     },
   }
 
@@ -391,27 +397,27 @@ exports.sendMasterKey = async function (userId, senderPublicKey, requesterPublic
     const ddbClient = connection.ddbClient()
     await ddbClient.update(updateKeyExchangeParams).promise()
 
-    connections.sendMasterKey(userId, senderPublicKey, requesterPublicKey, encryptedMasterKey)
+    connections.sendSeed(userId, senderPublicKey, requesterPublicKey, encryptedSeed)
 
     return responseBuilder.successResponse('Success!')
   } catch (e) {
     return responseBuilder.errorResponse(
       statusCodes['Internal Server Error'],
-      `Failed to send master key with ${e}`
+      `Failed to send seed with ${e}`
     )
   }
 }
 
-exports.deleteMasterKeyRequest = async function (userId, requesterPublicKey) {
+exports.deleteSeedRequest = async function (userId, requesterPublicKey) {
   const deleteKeyExchangeParams = {
     TableName: setup.keyExchangeTableName,
     Key: {
       'user-id': userId,
       'requester-public-key': requesterPublicKey
     },
-    ConditionExpression: 'attribute_exists(#encryptedMasterKey)',
+    ConditionExpression: 'attribute_exists(#encryptedSeed)',
     ExpressionAttributeNames: {
-      '#encryptedMasterKey': 'encrypted-master-key'
+      '#encryptedSeed': 'encrypted-seed'
     }
   }
 
@@ -419,12 +425,12 @@ exports.deleteMasterKeyRequest = async function (userId, requesterPublicKey) {
     const ddbClient = connection.ddbClient()
     await ddbClient.delete(deleteKeyExchangeParams).promise()
 
-    connections.deleteKeyRequest(userId, requesterPublicKey)
+    connections.deleteSeedRequest(userId, requesterPublicKey)
   } catch (e) {
     if (e.name === 'ConditionalCheckFailedException') {
-      logger.warn(`Encrypted master key not found for user ${userId} and public key ${requesterPublicKey}`)
+      logger.warn(`Encrypted seed not found for user ${userId} and public key ${requesterPublicKey}`)
     } else {
-      logger.warn(`Failed to delete key request for user ${userId} and public key ${requesterPublicKey}`)
+      logger.warn(`Failed to delete seed request for user ${userId} and public key ${requesterPublicKey}`)
     }
   }
 }

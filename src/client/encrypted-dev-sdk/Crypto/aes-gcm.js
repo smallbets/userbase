@@ -1,11 +1,14 @@
 import base64 from 'base64-arraybuffer'
+import hkdf from './hkdf'
 import { arrayBufferToString, stringToArrayBuffer, appendBuffer } from './utils'
 
-const ALGORITHIM_NAME = 'AES-GCM'
+const ENCRYPTION_ALGORITHM_NAME = 'AES-GCM'
 const BIT_SIZE = 256
 const KEY_IS_EXTRACTABLE = true
 const KEY_WILL_BE_USED_TO = ['encrypt', 'decrypt']
 const RAW_KEY_TYPE = 'raw'
+
+const ENCRYPTION_KEY_NAME = 'encryption'
 
 /**
  * NIST recommendation:
@@ -18,7 +21,7 @@ const RAW_KEY_TYPE = 'raw'
  * https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38d.pdf
  *
  **/
-const RECOMMENDED_IV_BYTE_SIZE = 96 / 8
+const RECOMMENDED_IV_BYTE_SIZE = 12 // 96 / 8
 
 /**
  * Source on tag length:
@@ -32,12 +35,25 @@ const windowOrSelfObject = () => {
     : self
 }
 
+const getEncryptionKeyParams = () => ({
+  name: ENCRYPTION_ALGORITHM_NAME,
+  length: BIT_SIZE
+})
+
+const importKeyFromMaster = async (masterKey, salt) => {
+  const encryptionKey = await window.crypto.subtle.deriveKey(
+    hkdf.getParams(ENCRYPTION_KEY_NAME, salt),
+    masterKey,
+    getEncryptionKeyParams(),
+    KEY_IS_EXTRACTABLE,
+    KEY_WILL_BE_USED_TO
+  )
+  return encryptionKey
+}
+
 const generateKey = async () => {
   const key = await window.crypto.subtle.generateKey(
-    {
-      name: ALGORITHIM_NAME,
-      length: BIT_SIZE
-    },
+    getEncryptionKeyParams(),
     KEY_IS_EXTRACTABLE,
     KEY_WILL_BE_USED_TO
   )
@@ -61,7 +77,7 @@ const getKeyFromRawKey = async (rawKey) => {
     RAW_KEY_TYPE,
     rawKey,
     {
-      name: ALGORITHIM_NAME
+      name: ENCRYPTION_ALGORITHM_NAME
     },
     KEY_IS_EXTRACTABLE,
     KEY_WILL_BE_USED_TO
@@ -96,7 +112,7 @@ const encrypt = async (key, plaintext) => {
   // this result is the concatenation of Array Buffers [ciphertext, auth tag]
   const ciphertextArrayBuffer = await windowOrSelfObject().crypto.subtle.encrypt(
     {
-      name: ALGORITHIM_NAME,
+      name: ENCRYPTION_ALGORITHM_NAME,
       iv,
       tagLength: RECOMMENDED_AUTHENTICATION_TAG_LENGTH
     },
@@ -132,7 +148,7 @@ const decrypt = async (key, encrypted) => {
 
   const plaintextArrayBuffer = await windowOrSelfObject().crypto.subtle.decrypt(
     {
-      name: ALGORITHIM_NAME,
+      name: ENCRYPTION_ALGORITHM_NAME,
       iv,
       tagLength: RECOMMENDED_AUTHENTICATION_TAG_LENGTH
     },
@@ -155,6 +171,8 @@ const decryptString = async (key, encryptedString) => {
 }
 
 export default {
+  getEncryptionKeyParams,
+  importKeyFromMaster,
   generateKey,
   getKeyStringFromKey,
   getKeyFromKeyString,

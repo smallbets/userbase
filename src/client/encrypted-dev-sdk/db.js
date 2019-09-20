@@ -324,7 +324,7 @@ const createDatabase = async (dbName, metadata) => {
 
   const [dbNameHash, encryptedDbKey, encryptedDbName, encryptedMetadata] = await Promise.all([
     crypto.hmac.signString(ws.keys.hmacKey, dbName),
-    crypto.aesGcm.encryptString(ws.keys.masterKey, dbKeyString),
+    crypto.aesGcm.encryptString(ws.keys.encryptionKey, dbKeyString),
     crypto.aesGcm.encryptString(dbKey, dbName),
     metadata && crypto.aesGcm.encryptJson(dbKey, metadata)
   ])
@@ -501,7 +501,7 @@ const findDatabases = async () => {
 
   const result = []
   for (const db of databasesResponse.data) {
-    const dbKeyString = await crypto.aesGcm.decryptString(ws.keys.masterKey, db.encryptedDbKey)
+    const dbKeyString = await crypto.aesGcm.decryptString(ws.keys.encryptionKey, db.encryptedDbKey)
     const dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
 
     const dbName = await crypto.aesGcm.decryptString(dbKey, db.dbName)

@@ -65,6 +65,17 @@ if (process.env.NODE_ENV == 'development') {
       const conn = connections.register(userId, ws)
       const connectionId = conn.id
 
+      const salts = {
+        encryptionKeySalt: res.locals.user['encryption-key-salt'],
+        dhKeySalt: res.locals.user['diffie-hellman-key-salt'],
+        hmacKeySalt: res.locals.user['hmac-key-salt']
+      }
+
+      ws.send(JSON.stringify({
+        route: 'Connection',
+        salts
+      }))
+
       ws.on('pong', heartbeat)
       ws.on('close', () => connections.close(conn))
 
@@ -82,7 +93,7 @@ if (process.env.NODE_ENV == 'development') {
 
           switch (action) {
             case 'ClientHasKey': {
-              if (params.requesterPublicKey) await auth.deleteMasterKeyRequest(userId, params.requesterPublicKey)
+              if (params.requesterPublicKey) await auth.deleteSeedRequest(userId, params.requesterPublicKey)
 
               // TO-DO: validate user actually possesses the key
               conn.clientHasKey = true
@@ -90,8 +101,8 @@ if (process.env.NODE_ENV == 'development') {
               response = responseBuilder.successResponse('Success!')
               break
             }
-            case 'RequestMasterKey': {
-              response = await auth.requestMasterKey(
+            case 'RequestSeed': {
+              response = await auth.requestSeed(
                 userId,
                 res.locals.user['public-key'],
                 connectionId,
@@ -148,16 +159,16 @@ if (process.env.NODE_ENV == 'development') {
                 response = await db.bundleTransactionLog(params.dbId, params.seqNo, params.bundle)
                 break
               }
-              case 'GetRequestsForMasterKey': {
-                response = await auth.queryMasterKeyRequests(userId)
+              case 'GetRequestsForSeed': {
+                response = await auth.querySeedRequests(userId)
                 break
               }
-              case 'SendMasterKey': {
-                response = await auth.sendMasterKey(
+              case 'SendSeed': {
+                response = await auth.sendSeed(
                   userId,
                   res.locals.user['public-key'],
                   params.requesterPublicKey,
-                  params.encryptedMasterKey
+                  params.encryptedSeed
                 )
                 break
               }
