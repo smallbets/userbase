@@ -141,8 +141,13 @@ class Connection {
     const route = message.route
     switch (route) {
       case 'Connection': {
-        const salts = message.salts
+        const {
+          salts,
+          encryptedValidationMessage
+        } = message
+
         this.keys.salts = salts
+        this.encryptedValidationMessage = new Uint8Array(encryptedValidationMessage.data)
 
         try {
           await this.setKeys(this.session.seed)
@@ -256,7 +261,7 @@ class Connection {
       case 'Delete':
       case 'Batch':
       case 'Bundle':
-      case 'ClientHasKey':
+      case 'ValidateKey':
       case 'RequestSeed':
       case 'GetRequestsForSeed':
       case 'SendSeed':
@@ -318,9 +323,7 @@ class Connection {
     this.keys.dhPrivateKey = await crypto.diffieHellman.importKeyFromMaster(masterKey, base64.decode(salts.dhKeySalt))
     this.keys.hmacKey = await crypto.hmac.importKeyFromMaster(masterKey, base64.decode(salts.hmacKeySalt))
 
-    const action = 'ClientHasKey'
-    const params = { requesterPublicKey } // only provided if first time validating since receving master key
-    await this.request(action, params)
+    await this.validateKey(requesterPublicKey)
 
     this.keys.init = true
 
@@ -328,6 +331,22 @@ class Connection {
       this.getRequestsForSeed()
       this.getDatabaseAccessGrants()
     }
+  }
+
+  async validateKey(requesterPublicKey) {
+    const sharedSecret = crypto.diffieHellman.getSharedSecretWithServer(this.keys.dhPrivateKey)
+
+    const sharedRawKey = await crypto.sha256.hash(sharedSecret)
+    const sharedKey = await crypto.aesGcm.getKeyFromRawKey(sharedRawKey)
+
+    const validationMessage = base64.encode(await crypto.aesGcm.decrypt(sharedKey, this.encryptedValidationMessage))
+
+    const action = 'ValidateKey'
+    const params = {
+      validationMessage,
+      requesterPublicKey // only provided if first time validating since receving master key
+    }
+    await this.request(action, params)
   }
 
   async request(action, params) {

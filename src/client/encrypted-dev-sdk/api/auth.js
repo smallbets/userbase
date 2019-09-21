@@ -33,15 +33,6 @@ const signUp = async (username, password, userId, publicKey, encryptionKeySalt, 
   }
 }
 
-const validateKey = async (validationMessage) => {
-  await axios({
-    method: 'POST',
-    url: '/api/auth/validate-key',
-    data: validationMessage,
-    timeout: TIMEOUT
-  })
-}
-
 const signOut = async () => {
   await axios({
     method: 'POST',
@@ -64,7 +55,6 @@ const signIn = async (username, password) => {
 
 export default {
   signUp,
-  validateKey,
   signOut,
   signIn,
 }

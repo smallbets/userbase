@@ -21,29 +21,21 @@ const signUp = async (username, password, onSessionChange) => {
   const hmacKeySalt = crypto.hkdf.generateSalt()
 
   const dhPrivateKey = await crypto.diffieHellman.importKeyFromMaster(masterKey, dhKeySalt)
-  const { publicKey, sharedSecret } = crypto.diffieHellman.getPublicKeyAndSharedSecretWithServer(dhPrivateKey)
+  const publicKey = crypto.diffieHellman.getPublicKey(dhPrivateKey)
 
-  const [encryptedValidationMessage, sharedKey] = await Promise.all([
-    api.auth.signUp(
-      lowerCaseUsername,
-      password,
-      userId,
-      base64.encode(publicKey),
-      base64.encode(encryptionKeySalt),
-      base64.encode(dhKeySalt),
-      base64.encode(hmacKeySalt)
-    ),
-    crypto.aesGcm.getKeyFromRawKey(await crypto.sha256.hash(sharedSecret))
-  ])
+  await api.auth.signUp(
+    lowerCaseUsername,
+    password,
+    userId,
+    base64.encode(publicKey),
+    base64.encode(encryptionKeySalt),
+    base64.encode(dhKeySalt),
+    base64.encode(hmacKeySalt)
+  )
 
-  const validationMessage = await crypto.aesGcm.decrypt(sharedKey, encryptedValidationMessage)
-
-  // Saves to local storage before validation to ensure user has it.
   // Warning: if user hits the sign up button twice,
-  // it's possible the key will be overwritten here and will be lost
+  // it's possible the seed will be overwritten here and will be lost
   await localData.saveSeedToLocalStorage(lowerCaseUsername, seed)
-
-  await api.auth.validateKey(validationMessage)
 
   const session = localData.signInSession(lowerCaseUsername)
 
@@ -114,7 +106,6 @@ const registerDevice = async () => {
   }
 }
 
-// TO-DO: validate the key is user's key
 const importKey = async (seedString) => {
   if (!ws.connected) throw new Error(wsNotOpen)
   if (ws.keys.init) throw new Error(deviceAlreadyRegistered)

@@ -24,13 +24,6 @@ const createDiffieHellman = (privateKey) => {
   return setPrivateKeyAndGenerateKeys(diffieHellman, privateKey)
 }
 
-const getPublicKeyAndSharedSecret = (privateKey, otherPublicKey) => {
-  const diffieHellman = createDiffieHellman(privateKey)
-  const publicKey = diffieHellman.getPublicKey()
-  const sharedSecret = diffieHellman.computeSecret(otherPublicKey)
-  return { publicKey, sharedSecret }
-}
-
 const getSharedSecret = (privateKey, otherPublicKey) => {
   const diffieHellman = createDiffieHellman(privateKey)
   return diffieHellman.computeSecret(otherPublicKey)
@@ -41,8 +34,8 @@ const getPublicKey = (privateKey) => {
   return diffieHellman.getPublicKey()
 }
 
-const getPublicKeyAndSharedSecretWithServer = (privateKey) => {
-  return getPublicKeyAndSharedSecret(privateKey, SERVER_PUBLIC_KEY)
+const getSharedSecretWithServer = (privateKey) => {
+  return getSharedSecret(privateKey, SERVER_PUBLIC_KEY)
 }
 
 const importKeyFromMaster = async (masterKey, salt) => {
@@ -61,7 +54,6 @@ const importKeyFromMaster = async (masterKey, salt) => {
 export default {
   getPublicKey,
   getSharedSecret,
-  getPublicKeyAndSharedSecret,
-  getPublicKeyAndSharedSecretWithServer,
+  getSharedSecretWithServer,
   importKeyFromMaster,
 }

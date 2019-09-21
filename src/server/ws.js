@@ -11,7 +11,7 @@ class Connection {
     this.socket = socket
     this.id = uuidv4()
     this.databases = {}
-    this.clientHasKey = false
+    this.keyValidated = false
     this.requesterPublicKey = undefined
   }
 
@@ -21,6 +21,10 @@ class Connection {
       lastSeqNo: -1,
       transactionLogSize: 0
     }
+  }
+
+  validateKey() {
+    this.keyValidated = true
   }
 
   async push(databaseId, dbNameHash, dbKey) {
@@ -73,7 +77,7 @@ class Connection {
   }
 
   sendSeedRequest(requesterPublicKey) {
-    if (!this.clientHasKey) return
+    if (!this.keyValidated) return
 
     const payload = {
       route: 'ReceiveRequestForSeed',
@@ -95,8 +99,8 @@ class Connection {
     this.socket.send(JSON.stringify(payload))
   }
 
-  deleteSeedRequest(requesterPublicKey) {
-    if (this.requesterPublicKey === requesterPublicKey) delete this.requesterPublicKey
+  deleteSeedRequest() {
+    delete this.requesterPublicKey
   }
 }
 
@@ -148,14 +152,6 @@ export default class Connections {
 
     for (const conn of Object.values(Connections.sockets[userId])) {
       conn.sendSeed(senderPublicKey, requesterPublicKey, encryptedSeed)
-    }
-  }
-
-  static deleteSeed(userId, requesterPublicKey) {
-    if (!Connections.sockets || !Connections.sockets[userId]) return
-
-    for (const conn of Object.values(Connections.sockets[userId])) {
-      conn.deleteSeed(requesterPublicKey)
     }
   }
 

@@ -62,6 +62,7 @@ if (process.env.NODE_ENV == 'development') {
 
       const userId = res.locals.user['user-id']
       const username = res.locals.user['username']
+      const userPublicKey = res.locals.user['public-key']
       const conn = connections.register(userId, ws)
       const connectionId = conn.id
 
@@ -71,9 +72,12 @@ if (process.env.NODE_ENV == 'development') {
         hmacKeySalt: res.locals.user['hmac-key-salt']
       }
 
+      const { validationMessage, encryptedValidationMessage } = auth.getValidationMessage(userPublicKey)
+
       ws.send(JSON.stringify({
         route: 'Connection',
-        salts
+        salts,
+        encryptedValidationMessage
       }))
 
       ws.on('pong', heartbeat)
@@ -91,34 +95,44 @@ if (process.env.NODE_ENV == 'development') {
 
           let response
 
-          switch (action) {
-            case 'ClientHasKey': {
-              if (params.requesterPublicKey) await auth.deleteSeedRequest(userId, params.requesterPublicKey)
+          if (!conn.keyValidated) {
 
-              // TO-DO: validate user actually possesses the key
-              conn.clientHasKey = true
-
-              response = responseBuilder.successResponse('Success!')
-              break
-            }
-            case 'RequestSeed': {
-              response = await auth.requestSeed(
-                userId,
-                res.locals.user['public-key'],
-                connectionId,
-                params.requesterPublicKey
-              )
-              break
-            }
-            default: {
-              if (!conn.clientHasKey) {
+            switch (action) {
+              case 'ValidateKey': {
+                response = await auth.validateKey(
+                  validationMessage,
+                  params.validationMessage,
+                  res.locals.user['seed-not-saved-yet'],
+                  userId,
+                  username,
+                  userPublicKey,
+                  params.requesterPublicKey,
+                  conn
+                )
+                break
+              }
+              case 'RequestSeed': {
+                response = await auth.requestSeed(
+                  userId,
+                  userPublicKey,
+                  connectionId,
+                  params.requesterPublicKey
+                )
+                break
+              }
+              default: {
                 response = responseBuilder.errorResponse(statusCodes['Unauthorized'], 'Key not validated')
               }
             }
-          }
 
-          if (!response) {
+          } else {
+
             switch (action) {
+              case 'ValidateKey':
+              case 'RequestSeed': {
+                response = responseBuilder.errorResponse(statusCodes['Bad Request'], 'Already validated key')
+                break
+              }
               case 'CreateDatabase': {
                 response = await db.createDatabase(
                   userId,
@@ -166,7 +180,7 @@ if (process.env.NODE_ENV == 'development') {
               case 'SendSeed': {
                 response = await auth.sendSeed(
                   userId,
-                  res.locals.user['public-key'],
+                  userPublicKey,
                   params.requesterPublicKey,
                   params.encryptedSeed
                 )

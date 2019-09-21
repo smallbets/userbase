@@ -35,8 +35,11 @@ export default class SaveKey extends PureComponent {
   }
 
   async componentDidMount() {
-    const { devicePublicKey, firstTimeRegistering } = await userLogic.registerDevice()
+    const result = await userLogic.registerDevice()
+    if (result.error === 'Already validated key') return
+    else if (result.error) return this.setState({ error: result.error })
 
+    const { firstTimeRegistering, devicePublicKey } = result
     if (firstTimeRegistering) {
       this.setState({ devicePublicKey, manualPrompt: true })
     } else {

@@ -66,8 +66,6 @@ exports.signUp = async function (req, res) {
   try {
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS)
 
-    const validationMessage = crypto.randomBytes(VALIDATION_MESSAGE_LENGTH)
-
     const user = {
       username: username.toLowerCase(),
       'password-hash': passwordHash,
@@ -76,18 +74,18 @@ exports.signUp = async function (req, res) {
       'encryption-key-salt': encryptionKeySalt,
       'diffie-hellman-key-salt': dhKeySalt,
       'hmac-key-salt': hmacKeySalt,
-      'validation-message': validationMessage
+      'seed-not-saved-yet': true
     }
 
     const params = {
       TableName: setup.usersTableName,
       Item: user,
       // if username does not exist, insert
-      // if it already exists and has a validation message, overwrite (bc key hasn't been validated yet)
-      // if it already exists and does not have a validation message, fail with ConditionalCheckFailedException (bc already validated)
-      ConditionExpression: 'attribute_not_exists(username) or attribute_exists(#validationMsg)',
+      // if it already exists and user hasn't saved seed yet, overwrite (to allow another sign up attempt)
+      // if it already exists and user has saved seed, fail with ConditionalCheckFailedException
+      ConditionExpression: 'attribute_not_exists(username) or attribute_exists(#seedNotSavedYet)',
       ExpressionAttributeNames: {
-        '#validationMsg': 'validation-message'
+        '#seedNotSavedYet': 'seed-not-saved-yet'
       },
     }
 
@@ -106,14 +104,9 @@ exports.signUp = async function (req, res) {
       throw e
     }
 
-    const publicKeyArrayBuffer = Buffer.from(publicKey, 'base64')
-    const sharedSecret = crypto.diffieHellman.computeSecret(publicKeyArrayBuffer)
-    const sharedKey = crypto.sha256.hash(sharedSecret)
-    const encryptedValidationMessage = crypto.aesGcm.encrypt(sharedKey, validationMessage)
-
     await createSession(userId, res)
 
-    return res.send(encryptedValidationMessage)
+    return res.send('Success!')
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -121,49 +114,75 @@ exports.signUp = async function (req, res) {
   }
 }
 
-exports.validateKey = async function (req, res) {
-  const user = res.locals.user
+exports.getValidationMessage = (publicKey) => {
+  const validationMessage = crypto.randomBytes(VALIDATION_MESSAGE_LENGTH)
 
-  if (req.readableLength !== VALIDATION_MESSAGE_LENGTH) return res
-    .status(statusCodes['Bad Request'])
-    .send({ readableMessage: 'Validation message is incorect length' })
+  const publicKeyArrayBuffer = Buffer.from(publicKey, 'base64')
+  const sharedSecret = crypto.diffieHellman.computeSecret(publicKeyArrayBuffer)
+  const sharedKey = crypto.sha256.hash(sharedSecret)
+  const encryptedValidationMessage = crypto.aesGcm.encrypt(sharedKey, validationMessage)
 
-  try {
-    const username = user['username']
+  return {
+    validationMessage,
+    encryptedValidationMessage
+  }
+}
 
-    const validationMessage = req.read()
+const userSavedSeed = async function (userId, username, publicKey) {
+  const updateUserParams = {
+    TableName: setup.usersTableName,
+    Key: {
+      'username': username
+    },
+    UpdateExpression: 'remove #seedNotSavedYet',
+    ConditionExpression: 'attribute_exists(#seedNotSavedYet) and #userId = :userId and #publicKey = :publicKey',
+    ExpressionAttributeNames: {
+      '#seedNotSavedYet': 'seed-not-saved-yet',
+      '#userId': 'user-id',
+      '#publicKey': 'public-key'
+    },
+    ExpressionAttributeValues: {
+      ':userId': userId,
+      ':publicKey': publicKey
+    },
+  }
 
-    const updateUserParams = {
-      TableName: setup.usersTableName,
-      Key: {
-        'username': username
-      },
-      UpdateExpression: 'remove #validationMsg',
-      ConditionExpression: '#validationMsg = :validationMsg',
-      ExpressionAttributeNames: {
-        '#validationMsg': 'validation-message'
-      },
-      ExpressionAttributeValues: {
-        ':validationMsg': validationMessage,
-      },
+  const ddbClient = connection.ddbClient()
+  await ddbClient.update(updateUserParams).promise()
+}
+
+exports.validateKey = async function (validationMessage, userProvidedValidationMessage, seedNotSavedYet,
+  userId, username, userPublicKey, requesterPublicKey, conn) {
+  if (validationMessage.toString('base64') === userProvidedValidationMessage) {
+
+    try {
+      if (seedNotSavedYet) {
+        try {
+          await userSavedSeed(userId, username, userPublicKey)
+        } catch (e) {
+          if (e.name === 'ConditionalCheckFailedException') {
+            return responseBuilder.errorResponse(statusCodes['Unauthorized'], 'Invalid seed')
+          }
+
+          throw e
+        }
+      } else {
+        // must be validating immediately after receiving the seed in a request. Clean up for safety --
+        // no need to keep storing this seed request in DDB
+        if (requesterPublicKey) deleteSeedRequest(userId, requesterPublicKey, conn)
+      }
+
+      conn.validateKey()
+
+      return responseBuilder.successResponse('Success!')
+    } catch (e) {
+      return responseBuilder.errorResponse(
+        statusCodes['Internal Server Error'],
+        `Failed to validate key with ${e}`
+      )
     }
-
-    const ddbClient = connection.ddbClient()
-    await ddbClient.update(updateUserParams).promise()
-
-    return res.end()
-  } catch (e) {
-    if (e.name === 'ConditionalCheckFailedException') {
-      return res
-        .status(statusCodes['Unauthorized'])
-        .send({
-          err: `Failed to validate key with error ${e}`,
-          readableMessage: 'Invalid key.'
-        })
-    }
-    return res
-      .status(statusCodes['Internal Server Error'])
-      .send({ err: `Failed to validate key with ${e}` })
+  } else {
+    return responseBuilder.errorResponse(statusCodes['Unauthorized'], 'Failed to validate key')
   }
 }
 
@@ -266,13 +285,6 @@ exports.authenticateUser = async function (req, res, next) {
     if (!user) return res
       .status(statusCodes['Not Found'])
       .send({ readableMessage: 'User no longer exists' })
-
-    // ensure user has already validated key, unless user is trying to validate key
-    if (req.path !== '/api/auth/validate-key') {
-      if (user['validation-message']) return res
-        .status(statusCodes['Unauthorized'])
-        .send({ readableMessage: 'User has not validated key yet' })
-    }
 
     res.locals.user = user // makes user object available in next route
     next()
@@ -408,7 +420,7 @@ exports.sendSeed = async function (userId, senderPublicKey, requesterPublicKey, 
   }
 }
 
-exports.deleteSeedRequest = async function (userId, requesterPublicKey) {
+const deleteSeedRequest = async function (userId, requesterPublicKey, conn) {
   const deleteKeyExchangeParams = {
     TableName: setup.keyExchangeTableName,
     Key: {
@@ -425,12 +437,12 @@ exports.deleteSeedRequest = async function (userId, requesterPublicKey) {
     const ddbClient = connection.ddbClient()
     await ddbClient.delete(deleteKeyExchangeParams).promise()
 
-    connections.deleteSeedRequest(userId, requesterPublicKey)
+    conn.deleteSeedRequest()
   } catch (e) {
     if (e.name === 'ConditionalCheckFailedException') {
       logger.warn(`Encrypted seed not found for user ${userId} and public key ${requesterPublicKey}`)
     } else {
-      logger.warn(`Failed to delete seed request for user ${userId} and public key ${requesterPublicKey}`)
+      logger.warn(`Failed to delete seed request for user ${userId} and public key ${requesterPublicKey} with ${e}`)
     }
   }
 }
