@@ -334,10 +334,7 @@ class Connection {
   }
 
   async validateKey(requesterPublicKey) {
-    const sharedSecret = crypto.diffieHellman.getSharedSecretWithServer(this.keys.dhPrivateKey)
-
-    const sharedRawKey = await crypto.sha256.hash(sharedSecret)
-    const sharedKey = await crypto.aesGcm.getKeyFromRawKey(sharedRawKey)
+    const sharedKey = await crypto.diffieHellman.getSharedKeyWithServer(this.keys.dhPrivateKey)
 
     const validationMessage = base64.encode(await crypto.aesGcm.decrypt(sharedKey, this.encryptedValidationMessage))
 
@@ -417,13 +414,10 @@ class Connection {
 
   async grantDatabaseAccess(database, username, granteePublicKey, readOnly) {
     if (window.confirm(`Grant access to user '${username}' with public key:\n\n${granteePublicKey}\n`)) {
-      const sharedSecret = crypto.diffieHellman.getSharedSecret(
+      const sharedKey = await crypto.diffieHellman.getSharedKey(
         this.keys.dhPrivateKey,
         new Uint8Array(base64.decode(granteePublicKey))
       )
-
-      const sharedRawKey = await crypto.sha256.hash(sharedSecret)
-      const sharedKey = await crypto.aesGcm.getKeyFromRawKey(sharedRawKey)
 
       const encryptedAccessKey = await crypto.aesGcm.encryptString(sharedKey, database.dbKeyString)
 
@@ -444,13 +438,10 @@ class Connection {
       const { dbId, ownerPublicKey, encryptedAccessKey, encryptedDbName, owner } = grant
 
       try {
-        const sharedSecret = crypto.diffieHellman.getSharedSecret(
+        const sharedKey = await crypto.diffieHellman.getSharedKey(
           this.keys.dhPrivateKey,
           new Uint8Array(base64.decode(ownerPublicKey))
         )
-
-        const sharedRawKey = await crypto.sha256.hash(sharedSecret)
-        const sharedKey = await crypto.aesGcm.getKeyFromRawKey(sharedRawKey)
 
         const dbKeyString = await crypto.aesGcm.decryptString(sharedKey, encryptedAccessKey)
         const dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
@@ -486,13 +477,10 @@ class Connection {
 
     if (window.confirm(`Send the seed to device: \n\n${requesterPublicKey}\n`)) {
       try {
-        const sharedSecret = crypto.diffieHellman.getSharedSecret(
+        const sharedKey = await crypto.diffieHellman.getSharedKey(
           this.keys.dhPrivateKey,
           new Uint8Array(base64.decode(requesterPublicKey))
         )
-
-        const sharedRawKey = await crypto.sha256.hash(sharedSecret)
-        const sharedKey = await crypto.aesGcm.getKeyFromRawKey(sharedRawKey)
 
         const encryptedSeed = await crypto.aesGcm.encryptString(sharedKey, this.keys.seedString)
 
@@ -509,13 +497,10 @@ class Connection {
   }
 
   async receiveSeed(encryptedSeed, senderPublicKey, requesterPublicKey, tempKeyToRequestSeed) {
-    const sharedSecret = crypto.diffieHellman.getSharedSecret(
+    const sharedKey = await crypto.diffieHellman.getSharedKey(
       tempKeyToRequestSeed,
       new Uint8Array(base64.decode(senderPublicKey))
     )
-
-    const sharedRawKey = await crypto.sha256.hash(sharedSecret)
-    const sharedKey = await crypto.aesGcm.getKeyFromRawKey(sharedRawKey)
 
     const seedString = await crypto.aesGcm.decryptString(sharedKey, encryptedSeed)
 

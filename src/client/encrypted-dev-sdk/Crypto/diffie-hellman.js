@@ -1,6 +1,7 @@
 import DH from 'diffie-hellman'
 import aesGcm from './aes-gcm'
 import hkdf from './hkdf'
+import sha256 from './sha-256'
 import { hexStringToArrayBuffer } from './utils'
 
 const KEY_IS_EXTRACTABLE = true
@@ -24,9 +25,13 @@ const createDiffieHellman = (privateKey) => {
   return setPrivateKeyAndGenerateKeys(diffieHellman, privateKey)
 }
 
-const getSharedSecret = (privateKey, otherPublicKey) => {
+const getSharedKey = async (privateKey, otherPublicKey) => {
   const diffieHellman = createDiffieHellman(privateKey)
-  return diffieHellman.computeSecret(otherPublicKey)
+  const sharedSecret = diffieHellman.computeSecret(otherPublicKey)
+
+  const sharedRawKey = await sha256.hash(sharedSecret)
+  const sharedKey = await aesGcm.getKeyFromRawKey(sharedRawKey)
+  return sharedKey
 }
 
 const getPublicKey = (privateKey) => {
@@ -34,8 +39,9 @@ const getPublicKey = (privateKey) => {
   return diffieHellman.getPublicKey()
 }
 
-const getSharedSecretWithServer = (privateKey) => {
-  return getSharedSecret(privateKey, SERVER_PUBLIC_KEY)
+const getSharedKeyWithServer = async (privateKey) => {
+  const sharedKey = await getSharedKey(privateKey, SERVER_PUBLIC_KEY)
+  return sharedKey
 }
 
 const importKeyFromMaster = async (masterKey, salt) => {
@@ -53,7 +59,7 @@ const importKeyFromMaster = async (masterKey, salt) => {
 
 export default {
   getPublicKey,
-  getSharedSecret,
-  getSharedSecretWithServer,
+  getSharedKey,
+  getSharedKeyWithServer,
   importKeyFromMaster,
 }
