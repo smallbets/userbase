@@ -17,8 +17,11 @@ const SESSION_COOKIE_NAME = 'sessionId'
 
 const VALIDATION_MESSAGE_LENGTH = 16
 
-const oneDayMs = 1000 * 60 * 60 * 24
+const oneDaySeconds = 60 * 60 * 24
+const oneDayMs = 1000 * oneDaySeconds
 const SESSION_LENGTH = oneDayMs
+
+const getTtl = secondsToLive => Math.floor(Date.now() / 1000) + secondsToLive
 
 const createSession = async function (userId, res) {
   const sessionId = crypto
@@ -301,14 +304,15 @@ exports.requestSeed = async function (userId, senderPublicKey, connectionId, req
     'Missing requester public key'
   )
 
-  const keyExchange = {
+  const seedExchange = {
     'user-id': userId,
-    'requester-public-key': requesterPublicKey
+    'requester-public-key': requesterPublicKey,
+    ttl: getTtl(oneDaySeconds)
   }
 
   const params = {
-    TableName: setup.keyExchangeTableName,
-    Item: keyExchange,
+    TableName: setup.seedExchangeTableName,
+    Item: seedExchange,
     // do not overwrite if already exists. especially important if encrypted-seed already exists,
     // but no need to overwrite ever
     ConditionExpression: 'attribute_not_exists(#userId)',
@@ -327,15 +331,15 @@ exports.requestSeed = async function (userId, senderPublicKey, connectionId, req
 
       if (e.name === 'ConditionalCheckFailedException') {
 
-        const existingKeyExchangeParams = {
-          TableName: setup.keyExchangeTableName,
-          Key: keyExchange
+        const existingSeedExchangeParams = {
+          TableName: setup.seedExchangeTableName,
+          Key: seedExchange
         }
 
-        const existingKeyExchangeResponse = await ddbClient.get(existingKeyExchangeParams).promise()
-        const existingKeyExchange = existingKeyExchangeResponse.Item
+        const existingSeedExchangeResponse = await ddbClient.get(existingSeedExchangeParams).promise()
+        const existingSeedExchange = existingSeedExchangeResponse.Item
 
-        const encryptedSeed = existingKeyExchange['encrypted-seed']
+        const encryptedSeed = existingSeedExchange['encrypted-seed']
         if (encryptedSeed) {
           return responseBuilder.successResponse({ senderPublicKey, encryptedSeed })
         } else {
@@ -358,7 +362,7 @@ exports.requestSeed = async function (userId, senderPublicKey, connectionId, req
 
 exports.querySeedRequests = async function (userId) {
   const params = {
-    TableName: setup.keyExchangeTableName,
+    TableName: setup.seedExchangeTableName,
     KeyName: '#userId',
     KeyConditionExpression: '#userId = :userId',
     FilterExpression: 'attribute_not_exists(#encryptedSeed)',
@@ -390,8 +394,8 @@ exports.sendSeed = async function (userId, senderPublicKey, requesterPublicKey, 
     'Missing required items'
   )
 
-  const updateKeyExchangeParams = {
-    TableName: setup.keyExchangeTableName,
+  const updateSeedExchangeParams = {
+    TableName: setup.seedExchangeTableName,
     Key: {
       'user-id': userId,
       'requester-public-key': requesterPublicKey
@@ -407,7 +411,7 @@ exports.sendSeed = async function (userId, senderPublicKey, requesterPublicKey, 
 
   try {
     const ddbClient = connection.ddbClient()
-    await ddbClient.update(updateKeyExchangeParams).promise()
+    await ddbClient.update(updateSeedExchangeParams).promise()
 
     connections.sendSeed(userId, senderPublicKey, requesterPublicKey, encryptedSeed)
 
@@ -421,8 +425,8 @@ exports.sendSeed = async function (userId, senderPublicKey, requesterPublicKey, 
 }
 
 const deleteSeedRequest = async function (userId, requesterPublicKey, conn) {
-  const deleteKeyExchangeParams = {
-    TableName: setup.keyExchangeTableName,
+  const deleteSeedExchangeParams = {
+    TableName: setup.seedExchangeTableName,
     Key: {
       'user-id': userId,
       'requester-public-key': requesterPublicKey
@@ -435,7 +439,7 @@ const deleteSeedRequest = async function (userId, requesterPublicKey, conn) {
 
   try {
     const ddbClient = connection.ddbClient()
-    await ddbClient.delete(deleteKeyExchangeParams).promise()
+    await ddbClient.delete(deleteSeedExchangeParams).promise()
 
     conn.deleteSeedRequest()
   } catch (e) {
@@ -503,7 +507,8 @@ exports.grantDatabaseAccess = async function (grantorId, granteeUsername, dbId, 
       'grantee-id': granteeId,
       'database-id': dbId,
       'encrypted-access-key': encryptedAccessKey,
-      'read-only': readOnly
+      'read-only': readOnly,
+      ttl: getTtl(oneDaySeconds)
     }
 
     const params = {

@@ -11,7 +11,7 @@ const sessionsTableName = usernamePrefix + 'sessions'
 const databaseTableName = usernamePrefix + 'database'
 const userDatabaseTableName = usernamePrefix + 'user-database'
 const transactionsTableName = usernamePrefix + 'transactions'
-const keyExchangeTableName = usernamePrefix + 'key-exchange'
+const seedExchangeTableName = usernamePrefix + 'seed-exchange'
 const databaseAccessGrantsTableName = usernamePrefix + 'database-access-grants'
 const dbStatesBucketName = usernamePrefix + 'db-states'
 
@@ -22,7 +22,7 @@ exports.sessionsTableName = sessionsTableName
 exports.databaseTableName = databaseTableName
 exports.userDatabaseTableName = userDatabaseTableName
 exports.transactionsTableName = transactionsTableName
-exports.keyExchangeTableName = keyExchangeTableName
+exports.seedExchangeTableName = seedExchangeTableName
 exports.databaseAccessGrantsTableName = databaseAccessGrantsTableName
 
 exports.userDatabaseIdIndex = userDatabaseIdIndex
@@ -149,7 +149,7 @@ async function setupDdb() {
   }
 
   // the key exchange table holds key data per user request
-  const keyExchangeTableParams = {
+  const seedExchangeTableParams = {
     AttributeDefinitions: [
       { AttributeName: 'user-id', AttributeType: 'S' },
       { AttributeName: 'requester-public-key', AttributeType: 'S' }
@@ -159,7 +159,14 @@ async function setupDdb() {
       { AttributeName: 'requester-public-key', KeyType: 'RANGE' }
     ],
     BillingMode: 'PAY_PER_REQUEST',
-    TableName: keyExchangeTableName
+    TableName: seedExchangeTableName
+  }
+  const seedExchangeTimeToLive = {
+    TableName: seedExchangeTableName,
+    TimeToLiveSpecification: {
+      AttributeName: 'ttl',
+      Enabled: true
+    }
   }
 
   // holds key data per db access grant
@@ -175,6 +182,13 @@ async function setupDdb() {
     BillingMode: 'PAY_PER_REQUEST',
     TableName: databaseAccessGrantsTableName
   }
+  const databaseAccessGrantTimeToLive = {
+    TableName: databaseAccessGrantsTableName,
+    TimeToLiveSpecification: {
+      AttributeName: 'ttl',
+      Enabled: true
+    }
+  }
 
   logger.info('Creating DynamoDB tables if necessary')
   await Promise.all([
@@ -183,8 +197,14 @@ async function setupDdb() {
     createTable(ddb, databaseTableParams),
     createTable(ddb, userDatabaseTableParams),
     createTable(ddb, transactionsTableParams),
-    createTable(ddb, keyExchangeTableParams),
+    createTable(ddb, seedExchangeTableParams),
     createTable(ddb, databaseAccessGrantsTableParams)
+  ])
+
+  logger.info('Setting time to live on tables if necessary')
+  await Promise.all([
+    setTimeToLive(ddb, seedExchangeTimeToLive),
+    setTimeToLive(ddb, databaseAccessGrantTimeToLive)
   ])
 }
 
@@ -211,6 +231,17 @@ async function createTable(ddb, params) {
   }
 
   await ddb.waitFor('tableExists', { TableName: params.TableName, $waiter: { delay: 2, maxAttempts: 60 } }).promise()
+}
+
+async function setTimeToLive(ddb, params) {
+  try {
+    await ddb.updateTimeToLive(params).promise()
+    logger.info(`Time to live set on ${params.TableName} successfully`)
+  } catch (e) {
+    if (!e.message.includes('TimeToLive is already enabled')) {
+      throw e
+    }
+  }
 }
 
 async function createBucket(s3, params) {
