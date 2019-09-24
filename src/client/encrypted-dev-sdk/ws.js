@@ -90,14 +90,8 @@ class Connection {
           this.connected = connected
 
           if (!session.seed) {
-            // re-request seed if already requested
-            const alreadySavedRequest = localData.getTempRequestForSeed(session.username)
-            if (alreadySavedRequest) {
-              const { requesterPublicKey, tempKeyToRequestSeed } = alreadySavedRequest
-
-              const seed = await this.requestSeed(requesterPublicKey, tempKeyToRequestSeed)
-              if (seed) return resolve() // already updated session inside receiveSeed()
-            }
+            const seed = await this.requestSeed()
+            if (seed) return resolve() // already updated session inside receiveSeed()
           }
         }
       }
@@ -385,7 +379,27 @@ class Connection {
     return response
   }
 
-  async requestSeed(requesterPublicKey, tempKeyToRequestSeed) {
+  async requestSeed() {
+    const alreadySavedRequest = localData.getTempRequestForSeed(this.session.username)
+    let tempKeyToRequestSeed, requesterPublicKey, firstTimeRequestingSeed
+
+    if (!alreadySavedRequest) {
+      // this could be random bytes -- it's not used to encrypt/decrypt anything, only to generate DH
+      tempKeyToRequestSeed = await crypto.aesGcm.getKeyStringFromKey(await crypto.aesGcm.generateKey())
+      const publicKey = crypto.diffieHellman.getPublicKey(tempKeyToRequestSeed)
+      requesterPublicKey = base64.encode(publicKey)
+
+      localData.setTempRequestForSeed(this.session.username, requesterPublicKey, tempKeyToRequestSeed)
+      firstTimeRequestingSeed = true
+    } else {
+      tempKeyToRequestSeed = alreadySavedRequest.tempKeyToRequestSeed
+      requesterPublicKey = alreadySavedRequest.requesterPublicKey
+    }
+
+    this.session.firstTimeRequestingSeed = firstTimeRequestingSeed
+    this.session.tempPublicKey = requesterPublicKey
+    this.onSessionChange(this.session)
+
     const action = 'RequestSeed'
     const params = { requesterPublicKey }
     const requestSeedResponse = await this.request(action, params)

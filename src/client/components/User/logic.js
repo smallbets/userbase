@@ -38,15 +38,6 @@ const saveKey = async (key) => {
   await encd.importKey(key)
 }
 
-const registerDevice = async () => {
-  try {
-    const { devicePublicKey, firstTimeRegistering } = await encd.registerDevice()
-    return { devicePublicKey, firstTimeRegistering }
-  } catch (e) {
-    return _errorHandler(e, 'register device')
-  }
-}
-
 const initSession = async (onSessionChange) => {
   try {
     await encd.initSession(onSessionChange)
@@ -60,6 +51,5 @@ export default {
   signOut,
   signIn,
   saveKey,
-  registerDevice,
   initSession
 }

@@ -19,7 +19,9 @@ export default class App extends Component {
       session: {
         seed: undefined,
         username: undefined,
-        signedIn: undefined
+        signedIn: undefined,
+        firstTimeRequestingSeed: undefined,
+        tempPublicKey: undefined
       },
       mode: undefined,
       todos: [],
@@ -183,7 +185,11 @@ export default class App extends Component {
             case 'show-key':
               return <ShowKey keyString={session.seed} />
             case 'save-key':
-              return <SaveKey handleSetKeyInState={this.handleSetKeyInState} />
+              return <SaveKey
+                handleSetKeyInState={this.handleSetKeyInState}
+                firstTimeRequestingSeed={session.firstTimeRequestingSeed}
+                tempPublicKey={session.tempPublicKey}
+              />
             case 'sign-in':
               return <UserForm
                 handleUpdateSession={this.handleUpdateSession}

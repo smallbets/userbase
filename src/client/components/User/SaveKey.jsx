@@ -1,5 +1,5 @@
 import React, { PureComponent } from 'react'
-import { string } from 'prop-types'
+import { string, bool } from 'prop-types'
 import userLogic from './logic'
 
 export default class SaveKey extends PureComponent {
@@ -10,9 +10,10 @@ export default class SaveKey extends PureComponent {
     this.state = {
       manualPrompt: false,
       keyString: '',
-      error: '',
-      devicePublicKey: undefined
+      error: ''
     }
+
+    this.mounted = false
 
     this.handleInputChange = this.handleInputChange.bind(this)
     this.handleSaveKey = this.handleSaveKey.bind(this)
@@ -34,24 +35,28 @@ export default class SaveKey extends PureComponent {
     await userLogic.saveKey(keyString)
   }
 
-  async componentDidMount() {
-    const result = await userLogic.registerDevice()
-    if (result.error === 'Already validated key') return
-    else if (result.error) return this.setState({ error: result.error })
+  componentDidMount() {
+    const { firstTimeRequestingSeed } = this.props
+    this.mounted = true
 
-    const { firstTimeRegistering, devicePublicKey } = result
-    if (firstTimeRegistering) {
-      this.setState({ devicePublicKey, manualPrompt: true })
+    if (firstTimeRequestingSeed) {
+      this.setState({ manualPrompt: true })
     } else {
       // if the key is not received automatically after 6 sec, prompt the user to enter it manually
-      setTimeout(() => this.setState({ manualPrompt: true }), 6 * 1000)
-
-      this.setState({ devicePublicKey })
+      setTimeout(
+        () => this.mounted && this.setState({ manualPrompt: true }),
+        6 * 1000
+      )
     }
   }
 
+  componentWillUnmount() {
+    this.mounted = false
+  }
+
   render() {
-    const { keyString, error, manualPrompt, devicePublicKey } = this.state
+    const { tempPublicKey } = this.props
+    const { keyString, error, manualPrompt } = this.state
 
     return (
       <form>
@@ -71,7 +76,7 @@ export default class SaveKey extends PureComponent {
                   Before sending, please verify the Device ID matches:
                 </div>
                 <div className='font-light text-xs xs:text-sm break-all p-0 select-all font-mono text-red-600'>
-                  {devicePublicKey}
+                  {tempPublicKey}
                 </div>
 
                 <div className='text-center mt-8 mb-6'>
@@ -121,5 +126,7 @@ export default class SaveKey extends PureComponent {
 }
 
 SaveKey.propTypes = {
-  keyString: string
+  keyString: string,
+  firstTimeRequestingSeed: bool,
+  tempPublicKey: string
 }

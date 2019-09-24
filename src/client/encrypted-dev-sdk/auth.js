@@ -78,34 +78,6 @@ const initSession = async (onSessionChange) => {
   }
 }
 
-const registerDevice = async () => {
-  if (!ws.connected) throw new Error(wsNotOpen)
-  if (ws.keys.init) throw new Error(deviceAlreadyRegistered)
-
-  const alreadySavedRequest = localData.getTempRequestForSeed(ws.session.username)
-
-  let requesterPublicKey
-  let tempKeyToRequestSeed
-  if (!alreadySavedRequest) {
-    // this could be random bytes -- it's not used to encrypt/decrypt anything, only to generate DH
-    tempKeyToRequestSeed = await crypto.aesGcm.getKeyStringFromKey(await crypto.aesGcm.generateKey())
-    const publicKey = crypto.diffieHellman.getPublicKey(tempKeyToRequestSeed)
-    requesterPublicKey = base64.encode(publicKey)
-
-    localData.setTempRequestForSeed(ws.session.username, requesterPublicKey, tempKeyToRequestSeed)
-  } else {
-    requesterPublicKey = alreadySavedRequest.requesterPublicKey
-    tempKeyToRequestSeed = alreadySavedRequest.tempKeyToRequestSeed
-  }
-
-  await ws.requestSeed(requesterPublicKey, tempKeyToRequestSeed)
-
-  return {
-    devicePublicKey: requesterPublicKey,
-    firstTimeRegistering: !alreadySavedRequest
-  }
-}
-
 const importKey = async (seedString) => {
   if (!ws.connected) throw new Error(wsNotOpen)
   if (ws.keys.init) throw new Error(deviceAlreadyRegistered)
@@ -135,7 +107,6 @@ export default {
   signOut,
   signIn,
   initSession,
-  registerDevice,
   importKey,
   grantDatabaseAccess,
 }

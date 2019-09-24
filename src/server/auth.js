@@ -304,15 +304,17 @@ exports.requestSeed = async function (userId, senderPublicKey, connectionId, req
     'Missing requester public key'
   )
 
-  const seedExchange = {
+  const seedExchangeKey = {
     'user-id': userId,
-    'requester-public-key': requesterPublicKey,
-    ttl: getTtl(oneDaySeconds)
+    'requester-public-key': requesterPublicKey
   }
 
   const params = {
     TableName: setup.seedExchangeTableName,
-    Item: seedExchange,
+    Item: {
+      ...seedExchangeKey,
+      ttl: getTtl(oneDaySeconds)
+    },
     // do not overwrite if already exists. especially important if encrypted-seed already exists,
     // but no need to overwrite ever
     ConditionExpression: 'attribute_not_exists(#userId)',
@@ -333,7 +335,7 @@ exports.requestSeed = async function (userId, senderPublicKey, connectionId, req
 
         const existingSeedExchangeParams = {
           TableName: setup.seedExchangeTableName,
-          Key: seedExchange
+          Key: seedExchangeKey
         }
 
         const existingSeedExchangeResponse = await ddbClient.get(existingSeedExchangeParams).promise()
@@ -353,6 +355,7 @@ exports.requestSeed = async function (userId, senderPublicKey, connectionId, req
 
     return responseBuilder.successResponse('Successfully sent out request for seed!')
   } catch (e) {
+    logger.error(`Failed to request seed for user ${userId} with ${e}`)
     return responseBuilder.errorResponse(
       statusCodes['Internal Server Error'],
       `Failed to request seed with ${e}`
