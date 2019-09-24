@@ -45,7 +45,7 @@ aws cloudformation deploy \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameter-overrides \
     GitHubOwner=encrypted-dev \
-    GitHubRepo=proof-of-concept \
+    GitHubRepo=userbase \
     GitHubBranch=master \
     GitHubPersonalAccessToken=$ACCESS_TOKEN \
     EC2StagingInstanceType=t3.micro \
