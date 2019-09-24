@@ -254,7 +254,6 @@ if (process.env.NODE_ENV == 'development') {
     )
 
     app.post('/api/auth/sign-up', auth.signUp)
-    app.post('/api/auth/validate-key', auth.authenticateUser, auth.validateKey)
     app.post('/api/auth/sign-in', auth.signIn)
     app.post('/api/auth/sign-out', auth.authenticateUser, auth.signOut)
 
