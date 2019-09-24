@@ -397,7 +397,7 @@ class Connection {
     }
 
     this.session.firstTimeRequestingSeed = firstTimeRequestingSeed
-    this.session.tempPublicKey = requesterPublicKey
+    this.session.tempPublicKey = await crypto.sha256.hashString(requesterPublicKey)
     this.onSessionChange(this.session)
 
     const action = 'RequestSeed'
@@ -427,10 +427,13 @@ class Connection {
   }
 
   async grantDatabaseAccess(database, username, granteePublicKey, readOnly) {
-    if (window.confirm(`Grant access to user '${username}' with public key:\n\n${granteePublicKey}\n`)) {
+    const granteePublicKeyArrayBuffer = new Uint8Array(base64.decode(granteePublicKey))
+    const granteePublicKeyHash = base64.encode(await crypto.sha256.hash(granteePublicKeyArrayBuffer))
+
+    if (window.confirm(`Grant access to user '${username}' with public key:\n\n${granteePublicKeyHash}\n`)) {
       const sharedKey = await crypto.diffieHellman.getSharedKey(
         this.keys.dhPrivateKey,
-        new Uint8Array(base64.decode(granteePublicKey))
+        granteePublicKeyArrayBuffer
       )
 
       const encryptedAccessKey = await crypto.aesGcm.encryptString(sharedKey, database.dbKeyString)
@@ -445,16 +448,17 @@ class Connection {
     if (!this.keys.init) return
 
     const response = await this.request('GetDatabaseAccessGrants')
-
     const databaseAccessGrants = response.data
 
     for (const grant of databaseAccessGrants) {
       const { dbId, ownerPublicKey, encryptedAccessKey, encryptedDbName, owner } = grant
 
       try {
+        const ownerPublicKeyArrayBuffer = new Uint8Array(base64.decode(ownerPublicKey))
+
         const sharedKey = await crypto.diffieHellman.getSharedKey(
           this.keys.dhPrivateKey,
-          new Uint8Array(base64.decode(ownerPublicKey))
+          ownerPublicKeyArrayBuffer
         )
 
         const dbKeyString = await crypto.aesGcm.decryptString(sharedKey, encryptedAccessKey)
@@ -462,7 +466,8 @@ class Connection {
 
         const dbName = await crypto.aesGcm.decryptString(dbKey, encryptedDbName)
 
-        if (window.confirm(`Accept access to database '${dbName}' from '${owner}' with public key: \n\n${ownerPublicKey}\n`)) {
+        const ownerPublicKeyHash = base64.encode(await crypto.sha256.hash(ownerPublicKeyArrayBuffer))
+        if (window.confirm(`Accept access to database '${dbName}' from '${owner}' with public key: \n\n${ownerPublicKeyHash}\n`)) {
           await this.acceptDatabaseAccessGrant(dbId, dbKeyString, dbName, encryptedDbName)
         }
 
@@ -486,14 +491,17 @@ class Connection {
   }
 
   async sendSeed(requesterPublicKey) {
-    if (this.sentSeedTo[requesterPublicKey] || this.processingSeedRequest[requesterPublicKey]) return
-    this.processingSeedRequest[requesterPublicKey] = true
+    const requesterPublicKeyArrayBuffer = new Uint8Array(base64.decode(requesterPublicKey))
+    const requesterPublicKeyHash = base64.encode(await crypto.sha256.hash(requesterPublicKeyArrayBuffer))
 
-    if (window.confirm(`Send the seed to device: \n\n${requesterPublicKey}\n`)) {
+    if (this.sentSeedTo[requesterPublicKeyHash] || this.processingSeedRequest[requesterPublicKeyHash]) return
+    this.processingSeedRequest[requesterPublicKeyHash] = true
+
+    if (window.confirm(`Send the seed to device: \n\n${requesterPublicKeyHash}\n`)) {
       try {
         const sharedKey = await crypto.diffieHellman.getSharedKey(
           this.keys.dhPrivateKey,
-          new Uint8Array(base64.decode(requesterPublicKey))
+          requesterPublicKeyArrayBuffer
         )
 
         const encryptedSeed = await crypto.aesGcm.encryptString(sharedKey, this.keys.seedString)
@@ -502,12 +510,12 @@ class Connection {
         const params = { requesterPublicKey, encryptedSeed }
 
         await this.request(action, params)
-        this.sentSeedTo[requesterPublicKey] = true
+        this.sentSeedTo[requesterPublicKeyHash] = true
       } catch (e) {
         console.warn(e)
       }
     }
-    delete this.processingSeedRequest[requesterPublicKey]
+    delete this.processingSeedRequest[requesterPublicKeyHash]
   }
 
   async receiveSeed(encryptedSeed, senderPublicKey, requesterPublicKey, tempKeyToRequestSeed) {
