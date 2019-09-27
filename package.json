@@ -13,7 +13,8 @@
     "watch:client": "webpack-dev-server --mode development --config webpack.config.js",
     "watch:perftest": "webpack-dev-server --mode development --run perftest --config webpack.config.js",
     "watch:server": "NODE_ENV=development nodemon --exec babel-node ./src/server/server.js | pino-pretty",
-    "deploy:infra": "./deploy/deploy-infra.sh"
+    "deploy:infra": "./deploy/deploy-infra.sh",
+    "transpile:sdk": "./node_modules/.bin/babel ./src/client/encrypted-dev-sdk/ --out-dir ./userbase-js/src --source-maps"
   },
   "repository": "https://github.com/dvassallo/encrypted.dev",
   "keywords": [],
@@ -31,6 +32,7 @@
     "body-parser": "^1.19.0",
     "cookie-parser": "^1.4.4",
     "copy-to-clipboard": "^3.2.0",
+    "cors": "^2.8.5",
     "diffie-hellman": "^5.0.3",
     "express": "^4.17.1",
     "express-pino-logger": "^4.0.0",
@@ -69,6 +71,7 @@
     "optimize-css-assets-webpack-plugin": "^5.0.1",
     "pino-pretty": "^3.2.0",
     "postcss-loader": "^3.0.0",
+    "source-map-loader": "^0.2.4",
     "ssh-keygen": "^0.4.2",
     "style-loader": "^0.23.1",
     "tailwindcss": "^1.0.4",

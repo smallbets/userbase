@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { readArrayBufferAsString } from '../utils'
+import ws from '../ws'
 
 const TEN_SECONDS_MS = 10 * 1000
 const TIMEOUT = TEN_SECONDS_MS
@@ -8,7 +9,7 @@ const signUp = async (username, password, userId, publicKey, encryptionKeySalt, 
   try {
     const signUpResponse = await axios({
       method: 'POST',
-      url: '/api/auth/sign-up',
+      url: `${ws.endpoint}/api/auth/sign-up`,
       data: {
         username,
         password,
@@ -36,7 +37,7 @@ const signUp = async (username, password, userId, publicKey, encryptionKeySalt, 
 const signOut = async () => {
   await axios({
     method: 'POST',
-    url: '/api/auth/sign-out',
+    url: `${ws.endpoint}/api/auth/sign-out`,
     timeout: TIMEOUT
   })
 }
@@ -44,7 +45,7 @@ const signOut = async () => {
 const signIn = async (username, password) => {
   await axios({
     method: 'POST',
-    url: '/api/auth/sign-in',
+    url: `${ws.endpoint}/api/auth/sign-in`,
     data: {
       username,
       password

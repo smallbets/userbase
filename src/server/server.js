@@ -7,6 +7,7 @@ import fs from 'fs'
 
 import bodyParser from 'body-parser'
 import cookieParser from 'cookie-parser'
+import cors from 'cors'
 import logger from './logger'
 import setup from './setup'
 import auth from './auth'
@@ -246,6 +247,7 @@ if (process.env.NODE_ENV == 'development') {
     app.use(express.static(distDir))
     app.use(bodyParser.json())
     app.use(cookieParser())
+    app.use(cors())
 
     app.get('/api', auth.authenticateUser, (req, res) =>
       req.ws

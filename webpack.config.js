@@ -32,6 +32,11 @@ module.exports = (env, argv) => {
         },
         {
           enforce: 'pre',
+          test: /\.js$/,
+          use: ['source-map-loader'],
+        },
+        {
+          enforce: 'pre',
           test: /\.jsx?$/,
           exclude: /node_modules/,
           loader: 'eslint-loader',

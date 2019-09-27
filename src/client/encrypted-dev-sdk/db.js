@@ -521,12 +521,12 @@ export default {
   openDatabase,
   createDatabase,
   findDatabases,
-  close,
   insert,
   update,
   'delete': delete_,
   batch,
 
   // used internally
-  getOpenDb
+  getOpenDb,
+  close,
 }

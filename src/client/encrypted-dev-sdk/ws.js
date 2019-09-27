@@ -3,7 +3,9 @@ import uuidv4 from 'uuid/v4'
 import LZString from 'lz-string'
 import localData from './localData'
 import crypto from './Crypto'
+import { removeProtocolFromEndpoint } from './utils'
 
+const DEFAULT_SERVICE_ENDPOINT = 'https://demo.encrypted.dev'
 const DEV_MODE = window.location.hostname === 'localhost'
 
 class RequestFailed extends Error {
@@ -26,11 +28,14 @@ class Connection {
   }
 
   init(session, onSessionChange, signingUp) {
+    const currentEndpoint = this.endpoint
+
     for (const property of Object.keys(this)) {
       delete this[property]
     }
 
     this.ws = null
+    this.endpoint = currentEndpoint || DEFAULT_SERVICE_ENDPOINT
     this.connected = false
 
     this.session = session
@@ -71,11 +76,12 @@ class Connection {
             reject(new Error('timeout'))
           }
         },
-        5000
+        10000
       )
 
+      const host = removeProtocolFromEndpoint(this.endpoint)
       const url = ((window.location.protocol === 'https:') ?
-        'wss://' : 'ws://') + window.location.host + '/api'
+        'wss://' : 'ws://') + host + '/api'
 
       const ws = new WebSocket(url)
 
@@ -97,6 +103,7 @@ class Connection {
       }
 
       ws.onmessage = async (e) => {
+        if (!connected) return
         await this.handleMessage(JSON.parse(e.data), resolve)
       }
 

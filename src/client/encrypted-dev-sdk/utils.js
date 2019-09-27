@@ -9,3 +9,16 @@ export const readArrayBufferAsString = (arrayBuffer) => {
     reader.readAsText(new Blob([arrayBuffer]))
   })
 }
+
+export const removeProtocolFromEndpoint = (endpoint) => {
+  const http = 'http://'
+  const https = 'https://'
+
+  if (endpoint.substring(0, http.length) === http) {
+    return endpoint.substring(http.length)
+  } else if (endpoint.substring(0, https.length) === https) {
+    return endpoint.substring(https.length)
+  } else {
+    return endpoint
+  }
+}
