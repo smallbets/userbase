@@ -64,6 +64,7 @@ class Connection {
     if (!session) throw new Error('Missing session')
     if (!session.username) throw new Error('Session missing username')
     if (!session.signedIn) throw new Error('Not signed in to session')
+    if (!session.sessionId) throw new Error('Session missing id')
 
     return new Promise(async (resolve, reject) => {
       let connected = false
@@ -81,7 +82,7 @@ class Connection {
 
       const host = removeProtocolFromEndpoint(this.endpoint)
       const url = ((window.location.protocol === 'https:') ?
-        'wss://' : 'ws://') + host + '/api'
+        'wss://' : 'ws://') + host + '/api?sessionId=' + session.sessionId
 
       const ws = new WebSocket(url)
 
@@ -253,6 +254,7 @@ class Connection {
         break
       }
 
+      case 'SignOut':
       case 'CreateDatabase':
       case 'GetDatabase':
       case 'OpenDatabase':
@@ -299,10 +301,17 @@ class Connection {
       : this.init(this.session, this.onSessionChange)
   }
 
-  signOut() {
-    if (!this.session || !this.session.username) return
-    localData.signOutSession(this.session.username)
+  async signOut() {
+    if (!this.session || !this.session.username || !this.session.sessionId) return
+    const sessionId = this.session.sessionId
 
+    if (this.connected) {
+      const action = 'SignOut'
+      const params = { sessionId }
+      await this.request(action, params)
+    }
+
+    localData.signOutSession(this.session.username)
     this.session.signedIn = false
 
     this.close()

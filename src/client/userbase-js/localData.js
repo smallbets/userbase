@@ -1,8 +1,8 @@
 import base64 from 'base64-arraybuffer'
 import crypto from './Crypto'
 
-const setCurrentSession = (username, signedIn) => {
-  const session = { username, signedIn }
+const setCurrentSession = (username, signedIn, sessionId) => {
+  const session = { username, signedIn, sessionId }
   const sessionString = JSON.stringify(session)
   localStorage.setItem('currentSession', sessionString)
 
@@ -32,9 +32,9 @@ const saveSeedToLocalStorage = async (username, seed) => {
   localStorage.setItem('seed.' + username, seedString)
 }
 
-const signInSession = (username) => {
+const signInSession = (username, sessionId) => {
   const signedIn = true
-  return setCurrentSession(username, signedIn)
+  return setCurrentSession(username, signedIn, sessionId)
 }
 
 const signOutSession = (username) => {

@@ -13,7 +13,6 @@ const SALT_ROUNDS = 10
 
 // source: https://github.com/OWASP/CheatSheetSeries/blob/master/cheatsheets/Session_Management_Cheat_Sheet.md#session-id-length
 const ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID = 16
-const SESSION_COOKIE_NAME = 'sessionId'
 
 const VALIDATION_MESSAGE_LENGTH = 16
 
@@ -23,7 +22,7 @@ const SESSION_LENGTH = oneDayMs
 
 const getTtl = secondsToLive => Math.floor(Date.now() / 1000) + secondsToLive
 
-const createSession = async function (userId, res) {
+const createSession = async function (userId) {
   const sessionId = crypto
     .randomBytes(ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID)
     .toString('hex')
@@ -42,14 +41,7 @@ const createSession = async function (userId, res) {
   const ddbClient = connection.ddbClient()
   await ddbClient.put(params).promise()
 
-  const cookieResponseHeaders = {
-    maxAge: SESSION_LENGTH,
-    httpOnly: true,
-    sameSite: 'Strict',
-    secure: process.env.NODE_ENV === 'production'
-  }
-
-  res.cookie(SESSION_COOKIE_NAME, sessionId, cookieResponseHeaders)
+  return sessionId
 }
 
 exports.signUp = async function (req, res) {
@@ -107,9 +99,8 @@ exports.signUp = async function (req, res) {
       throw e
     }
 
-    await createSession(userId, res)
-
-    return res.send('Success!')
+    const sessionId = await createSession(userId)
+    return res.send(sessionId)
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
@@ -193,6 +184,10 @@ exports.signIn = async function (req, res) {
   const username = req.body.username
   const password = req.body.password
 
+  if (!username || !password) return res
+    .status(statusCodes['Bad Request'])
+    .send({ readableMessage: 'Missing username or password' })
+
   const params = {
     TableName: setup.usersTableName,
     Key: {
@@ -214,17 +209,21 @@ exports.signIn = async function (req, res) {
       .status(statusCodes['Unauthorized'])
       .send({ readableMessage: 'Incorrect password' })
 
-    await createSession(user['user-id'], res)
-    return res.end()
+    const sessionId = await createSession(user['user-id'])
+    return res.send(sessionId)
   } catch (e) {
+    logger.error(`Username ${username} failed to sign in with ${e}`)
     return res
       .status(statusCodes['Internal Server Error'])
-      .send({ err: `Failed to sign in with ${e}` })
+      .send({ err: `Failed to sign in!` })
   }
 }
 
-exports.signOut = async function (req, res) {
-  const sessionId = req.cookies.sessionId
+exports.signOut = async function (sessionId) {
+  if (!sessionId) return responseBuilder.errorResponse(
+    statusCodes['Unauthorized'],
+    'Missing session id'
+  )
 
   const params = {
     TableName: setup.sessionsTableName,
@@ -241,17 +240,18 @@ exports.signOut = async function (req, res) {
     const ddbClient = connection.ddbClient()
     await ddbClient.update(params).promise()
 
-    res.clearCookie(SESSION_COOKIE_NAME)
-    return res.send({ success: true })
+    return responseBuilder.successResponse('Success!')
   } catch (e) {
-    return res
-      .status(statusCodes['Internal Server Error'])
-      .send({ err: `Failed to sign out with ${e}` })
+    logger.error(`Failed to sign out session ${sessionId} with ${e}`)
+    return responseBuilder.errorResponse(
+      statusCodes['Internal Server Error'],
+      'Failed to sign out!'
+    )
   }
 }
 
 exports.authenticateUser = async function (req, res, next) {
-  const sessionId = req.cookies.sessionId
+  const sessionId = req.query.sessionId
 
   if (!sessionId) return res
     .status(statusCodes['Unauthorized'])
@@ -268,20 +268,15 @@ exports.authenticateUser = async function (req, res, next) {
     const ddbClient = connection.ddbClient()
     const sessionResponse = await ddbClient.get(params).promise()
 
-    // validate session
     const session = sessionResponse.Item
-    if (!session) return res
-      .status(statusCodes['Unauthorized'])
-      .send({ readableMessage: 'Session does not exist' })
 
-    if (session.invalidated) return res
-      .status(statusCodes['Unauthorized'])
-      .send({ readableMessage: 'Invalid session' })
+    const sessionDoesNotExist = !session
+    if (sessionDoesNotExist) return res.status(statusCodes['Unauthorized']).end()
+
+    if (session.invalidated) return res.status(statusCodes['Unauthorized']).end()
 
     const sessionExpired = new Date() - new Date(session['creation-date']) > SESSION_LENGTH
-    if (sessionExpired) return res
-      .status(statusCodes['Unauthorized'])
-      .send({ readableMessage: 'Session expired' })
+    if (sessionExpired) return res.status(statusCodes['Unauthorized']).end()
 
     const userId = session['user-id']
     const user = await userController.findUserByUserId(userId)
@@ -292,9 +287,10 @@ exports.authenticateUser = async function (req, res, next) {
     res.locals.user = user // makes user object available in next route
     next()
   } catch (e) {
+    logger.error(`Failed to authenticate session ${sessionId} with ${e}`)
     return res
       .status(statusCodes['Internal Server Error'])
-      .send({ err: `Failed to authenticate user with ${e}` })
+      .send({ err: 'Failed to authenticate user' })
   }
 }
 

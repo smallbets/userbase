@@ -6,7 +6,6 @@ import https from 'https'
 import fs from 'fs'
 
 import bodyParser from 'body-parser'
-import cookieParser from 'cookie-parser'
 import cors from 'cors'
 import logger from './logger'
 import setup from './setup'
@@ -96,7 +95,9 @@ if (process.env.NODE_ENV == 'development') {
 
           let response
 
-          if (!conn.keyValidated) {
+          if (action === 'SignOut') {
+            response = await auth.signOut(params.sessionId)
+          } else if (!conn.keyValidated) {
 
             switch (action) {
               case 'ValidateKey': {
@@ -246,7 +247,6 @@ if (process.env.NODE_ENV == 'development') {
     app.use(expressLogger())
     app.use(express.static(distDir))
     app.use(bodyParser.json())
-    app.use(cookieParser())
     app.use(cors())
 
     app.get('/api', auth.authenticateUser, (req, res) =>
@@ -257,7 +257,6 @@ if (process.env.NODE_ENV == 'development') {
 
     app.post('/api/auth/sign-up', auth.signUp)
     app.post('/api/auth/sign-in', auth.signIn)
-    app.post('/api/auth/sign-out', auth.authenticateUser, auth.signOut)
 
   } catch (e) {
     logger.info(`Unhandled error while launching server: ${e}`)

@@ -23,7 +23,7 @@ const signUp = async (username, password, onSessionChange) => {
   const dhPrivateKey = await crypto.diffieHellman.importKeyFromMaster(masterKey, dhKeySalt)
   const publicKey = crypto.diffieHellman.getPublicKey(dhPrivateKey)
 
-  await api.auth.signUp(
+  const sessionId = await api.auth.signUp(
     lowerCaseUsername,
     password,
     userId,
@@ -37,7 +37,7 @@ const signUp = async (username, password, onSessionChange) => {
   // it's possible the seed will be overwritten here and will be lost
   await localData.saveSeedToLocalStorage(lowerCaseUsername, seed)
 
-  const session = localData.signInSession(lowerCaseUsername)
+  const session = localData.signInSession(lowerCaseUsername, sessionId)
 
   const signingUp = true
   await ws.connect(session, onSessionChange, signingUp)
@@ -46,16 +46,15 @@ const signUp = async (username, password, onSessionChange) => {
 }
 
 const signOut = async () => {
-  ws.signOut()
-  await api.auth.signOut()
+  await ws.signOut()
 }
 
 const signIn = async (username, password, onSessionChange) => {
   const lowerCaseUsername = username.toLowerCase()
 
-  await api.auth.signIn(lowerCaseUsername, password)
+  const sessionId = await api.auth.signIn(lowerCaseUsername, password)
 
-  const session = localData.signInSession(lowerCaseUsername)
+  const session = localData.signInSession(lowerCaseUsername, sessionId)
 
   const signingUp = false
   await ws.connect(session, onSessionChange, signingUp)
