@@ -1,4 +1,4 @@
-import encd from '../../encrypted-dev-sdk'
+import userbase from '../../userbase-js'
 
 const _errorHandler = (e, operation) => {
   console.log(`Failed to ${operation} with`, e, e.response && e.response.data)
@@ -12,7 +12,7 @@ const _errorHandler = (e, operation) => {
 
 const signUp = async (username, password, onSessionChange) => {
   try {
-    await encd.signUp(username, password, onSessionChange)
+    await userbase.signUp(username, password, onSessionChange)
   } catch (e) {
     return _errorHandler(e, 'sign up')
   }
@@ -20,7 +20,7 @@ const signUp = async (username, password, onSessionChange) => {
 
 const signOut = async () => {
   try {
-    await encd.signOut()
+    await userbase.signOut()
   } catch (e) {
     return _errorHandler(e, 'sign out')
   }
@@ -28,19 +28,19 @@ const signOut = async () => {
 
 const signIn = async (username, password, onSessionChange) => {
   try {
-    await encd.signIn(username, password, onSessionChange)
+    await userbase.signIn(username, password, onSessionChange)
   } catch (e) {
     return _errorHandler(e, 'sign in')
   }
 }
 
 const saveKey = async (key) => {
-  await encd.importKey(key)
+  await userbase.importKey(key)
 }
 
 const initSession = async (onSessionChange) => {
   try {
-    await encd.initSession(onSessionChange)
+    await userbase.initSession(onSessionChange)
   } catch (e) {
     return _errorHandler(e, 'init session')
   }

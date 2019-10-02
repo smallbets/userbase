@@ -1,6 +1,6 @@
 import uuidv4 from 'uuid/v4'
-import crypto from './Crypto'
 import SortedArray from 'sorted-array'
+import crypto from './Crypto'
 import ws from './ws'
 
 const success = 'Success'

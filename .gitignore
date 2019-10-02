@@ -5,3 +5,5 @@ coverage
 deploy/cfn/output
 logs
 .DS_Store
+
+npm_build

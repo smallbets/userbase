@@ -1,7 +1,10 @@
-import 'babel-polyfill'
 import config from './config'
 import auth from './auth'
 import db from './db'
+
+if (!global._babelPolyfill) {
+  require('babel-polyfill')
+}
 
 export default {
   updateConfig: config.updateConfig,

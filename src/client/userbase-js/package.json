@@ -1,0 +1,37 @@
+{
+  "bugs": {
+    "url": "https://github.com/encrypted-dev/userbase/issues"
+  },
+  "dependencies": {
+    "axios": "^0.19.0",
+    "base64-arraybuffer": "^0.2.0",
+    "diffie-hellman": "^5.0.3",
+    "lz-string": "^1.4.4",
+    "sorted-array": "^2.0.4",
+    "uuid": "^3.3.3",
+    "babel-polyfill": "^6.26.0"
+  },
+  "deprecated": false,
+  "description": "Userbase JS browser SDK",
+  "devDependencies": {
+    "@babel/runtime": "^7.6.2"
+  },
+  "homepage": "https://github.com/encrypted-dev/userbase",
+  "keywords": [
+    "database",
+    "userbase",
+    "userbase SDK",
+    "encryption",
+    "end-to-end encryption",
+    "js client",
+    "authentication"
+  ],
+  "license": "MIT",
+  "main": "src/index.js",
+  "name": "userbase-js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/encrypted-dev/userbase.git"
+  },
+  "version": "0.0.1"
+}
