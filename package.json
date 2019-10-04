@@ -5,12 +5,14 @@
   "main": "./proof-of-concept/server/app.js",
   "scripts": {
     "clean": "rm -Rf build dist",
-    "build": "npm run clean && babel src/proof-of-concept/server -d build && webpack --mode production --config src/proof-of-concept/client/webpack.config.js",
+    "build": "npm run clean && npm-run-all -p build:client build:server",
+    "build:client": "cd ./src/proof-of-concept && npm run build:client",
+    "build:server": "cd ./src/proof-of-concept && npm run build:server",
     "start": "npm-run-all -r -p watch:server watch:client",
-    "start:prod": "npm stop && node ./node_modules/forever/bin/forever --minUptime 5000 --spinSleepTime 1000 -l ../logs/encd.log -p $(pwd) -a start ./build/app.js",
+    "start:prod": "npm stop && node ./node_modules/forever/bin/forever --minUptime 5000 --spinSleepTime 1000 -l ../logs/encd.log -p $(pwd) -a start ./src/proof-of-concept/build/app.js",
     "stop": "node ./node_modules/forever/bin/forever stopall",
-    "watch:client": "webpack-dev-server --mode development --config webpack.config.js",
-    "watch:server": "NODE_ENV=development nodemon --exec 'babel-node ./src/proof-of-concept/server/app.js' | pino-pretty",
+    "watch:client": "cd ./src/proof-of-concept && npm run watch:client",
+    "watch:server": "NODE_ENV=development nodemon --exec 'babel-node ./src/proof-of-concept/server/app.js --presets @babel/preset-env' | pino-pretty",
     "deploy:infra": "./deploy/deploy-infra.sh",
     "transpile:sdk": "./node_modules/.bin/babel src/userbase-js/ --out-dir ./npm_build/userbase-js --source-maps --ignore ./src/userbase-js/node_modules && npm run copy:sdkfiles",
     "copy:sdkfiles": "rsync -am --exclude='*.js' --exclude='node_modules' ./src/userbase-js/ ./npm_build/userbase-js",
@@ -66,7 +68,6 @@
     "url-loader": "^1.1.2",
     "webpack": "^4.41.0",
     "webpack-cli": "^3.3.2",
-    "webpack-dev-server": "^3.5.1",
     "webpack-merge": "^4.2.1"
   },
   "optionalDependencies": {

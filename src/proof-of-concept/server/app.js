@@ -1,11 +1,10 @@
 import express from 'express'
 import fs from 'fs'
-import cors from 'cors'
 
 import userbaseServer from 'userbase-server'
 
 const app = express()
-const distDir = "./dist"
+const distDir = './src/proof-of-concept/dist'
 
 const httpsKeyPath = '../keys/key.pem'
 const httpsCertPath = '../keys/cert.pem'
@@ -23,6 +22,5 @@ const userbaseConfig = {
 }
 
 app.use(express.static(distDir))
-app.use(cors())
 
 userbaseServer(app, userbaseConfig)

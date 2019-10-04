@@ -1,8 +1,8 @@
 import React from 'react'
 import ReactDOM from 'react-dom'
 import 'babel-polyfill'
-import App from './App'
 import userbase from 'userbase-js'
+import App from './App'
 
 import './style.css'
 

@@ -2,8 +2,8 @@ import userbase from 'userbase-js'
 
 const getDbName = (username) => {
   if (!username) throw new Error('Empty username')
-  return 'test-ttl-todos'
-  // return username + '-todos'
+  // return 'test-ttl-todos'
+  return username + '-todos'
 }
 
 const openDatabase = async (username, onDbChangeHandler, onWebSocketConnect) => {

@@ -9,7 +9,7 @@ module.exports = (env, argv) => {
 
   const config = {
     entry: {
-      main: './src/proof-of-concept/client/index.js'
+      main: './client/index.js'
     },
     output: {
       path: path.join(__dirname, 'dist'),
@@ -74,9 +74,9 @@ module.exports = (env, argv) => {
     },
     plugins: [
       new HtmlWebPackPlugin({
-        template: './src/proof-of-concept/client/index.html',
+        template: './client/index.html',
         filename: './index.html',
-        favicon: './src/proof-of-concept/client/img/favicon.ico',
+        favicon: './client/img/favicon.ico',
         excludeChunks: ['server']
       }),
       new webpack.NoEmitOnErrorsPlugin(),
