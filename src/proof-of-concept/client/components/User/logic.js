@@ -1,4 +1,4 @@
-import userbase from '../../userbase-js'
+import userbase from 'userbase-js'
 
 const _errorHandler = (e, operation) => {
   console.log(`Failed to ${operation} with`, e, e.response && e.response.data)

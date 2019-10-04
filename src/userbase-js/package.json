@@ -27,7 +27,7 @@
     "authentication"
   ],
   "license": "MIT",
-  "main": "src/index.js",
+  "main": "./index.js",
   "name": "userbase-js",
   "repository": {
     "type": "git",

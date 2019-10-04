@@ -9,7 +9,7 @@ module.exports = (env, argv) => {
 
   const config = {
     entry: {
-      main: './src/client/index.js'
+      main: './src/proof-of-concept/client/index.js'
     },
     output: {
       path: path.join(__dirname, 'dist'),
@@ -47,9 +47,15 @@ module.exports = (env, argv) => {
           }
         },
         {
-          test: /\.jsx?$/,
+          test: /\.(js|jsx)$/,
           exclude: /node_modules/,
-          loader: 'babel-loader'
+          use: {
+            loader: 'babel-loader',
+            options: {
+              presets: ['@babel/preset-env', '@babel/react'],
+              plugins: ['@babel/transform-runtime']
+            }
+          }
         },
         {
           test: /\.html$/,
@@ -68,9 +74,9 @@ module.exports = (env, argv) => {
     },
     plugins: [
       new HtmlWebPackPlugin({
-        template: './src/client/index.html',
+        template: './src/proof-of-concept/client/index.html',
         filename: './index.html',
-        favicon: './src/client/img/favicon.ico',
+        favicon: './src/proof-of-concept/client/img/favicon.ico',
         excludeChunks: ['server']
       }),
       new webpack.NoEmitOnErrorsPlugin(),
@@ -87,7 +93,7 @@ module.exports = (env, argv) => {
       inline: true,
 
       host: '0.0.0.0',
-      port: argv.run != 'perftest' ? 3000 : 3001,
+      port: 3000,
       proxy: {
         '/api/*': {
           target: 'http://localhost:8080/',
@@ -97,13 +103,9 @@ module.exports = (env, argv) => {
       }
     }
 
-    if (argv.run == 'perftest') {
-      config.entry.main = ['./src/performance-test/setup.js']
-    }
-
     config.plugins.push(new webpack.HotModuleReplacementPlugin())
     config.plugins.push(new OpenBrowserPlugin({
-      url: argv.run != 'perftest' ? 'http://localhost:3000' : 'http://localhost:3001'
+      url: 'http://localhost:3000'
     }))
   }
 

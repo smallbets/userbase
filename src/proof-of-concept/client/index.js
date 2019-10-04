@@ -2,7 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom'
 import 'babel-polyfill'
 import App from './App'
-import userbase from './userbase-js'
+import userbase from 'userbase-js'
 
 import './style.css'
 

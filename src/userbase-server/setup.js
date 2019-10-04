@@ -4,7 +4,7 @@ import logger from './logger'
 import memcache from './memcache'
 
 // if running in dev mode, prefix the DynamoDB tables and S3 buckets with the username
-const usernamePrefix = (process.env.NODE_ENV == 'development') ? os.userInfo().username + '-' : ''
+const usernamePrefix = (process.env.NODE_ENV == 'development') ? os.userInfo().username + '-2-' : ''
 
 const usersTableName = usernamePrefix + 'users'
 const sessionsTableName = usernamePrefix + 'sessions'

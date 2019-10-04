@@ -10,7 +10,7 @@
       "name": "Debug Encrypted.dev",
       "sourceMaps": true,
       "preLaunchTask": "npm: build:server",
-      "program": "${workspaceFolder}/src/server/server.js",
+      "program": "${workspaceFolder}/src/proof-of-concept/server/app.js",
       "stopOnEntry": false,
       "outFiles": [
         "${workspaceRoot}/build/**"

@@ -1,0 +1,28 @@
+{
+  "name": "@userbase/poc",
+  "version": "0.0.1",
+  "description": "Proof-of-concept of an end-to-end encrypted framework for web and mobile apps.",
+  "main": "./server/app.js",
+  "repository": "https://github.com/dvassallo/encrypted.dev",
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=4.3.2"
+  },
+  "dependencies": {
+    "babel-polyfill": "^6.26.0",
+    "copy-to-clipboard": "^3.2.0",
+    "cors": "^2.8.5",
+    "express": "^4.17.1",
+    "react": "^16.8.6",
+    "react-dom": "^16.8.6",
+    "tailwindcss": "^1.0.4",
+    "userbase-js": "file:../userbase-js",
+    "userbase-server": "file:../userbase-server"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.4.5",
+    "babel-loader": "^8.0.6"
+  }
+}

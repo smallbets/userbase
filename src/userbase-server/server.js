@@ -1,12 +1,9 @@
-import express from 'express'
 import expressLogger from 'express-pino-logger'
 import WebSocket from 'ws'
 import http from 'http'
 import https from 'https'
-import fs from 'fs'
 
 import bodyParser from 'body-parser'
-import cors from 'cors'
 import logger from './logger'
 import setup from './setup'
 import auth from './auth'
@@ -20,24 +17,25 @@ const ONE_KB = 1024
 // DynamoDB single item limit: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html#limits-items
 const FOUR_HUNDRED_KB = 400 * ONE_KB
 
-const app = express()
-const distDir = "./dist"
-const httpsKey = '../keys/key.pem'
-const httpsCert = '../keys/cert.pem'
-const httpPort = process.env.PORT || 8080
-const httpsPort = process.env.PORT || 8443
-const certExists = fs.existsSync(httpsKey) && fs.existsSync(httpsCert)
-
 if (process.env.NODE_ENV == 'development') {
   logger.warn('Development Mode')
 }
 
-(async () => {
+export default (async (app, userbaseConfig = {}) => {
   try {
     await setup.init()
 
+    const {
+      httpsKey,
+      httpsCert
+    } = userbaseConfig
+
+    const certExists = httpsKey && httpsCert
+    const httpPort = userbaseConfig.httpPort || 8080
+    const httpsPort = userbaseConfig.httpsPort || 8443
+
     const server = certExists ?
-      https.createServer({ key: fs.readFileSync(httpsKey), cert: fs.readFileSync(httpsCert) }, app)
+      https.createServer({ key: httpsKey, cert: httpsCert }, app)
         .listen(httpsPort, () => logger.info(`App listening on https port ${httpsPort}....`)) :
       http.createServer(app)
         .listen(httpPort, () => logger.info(`App listening on http port ${httpPort}....`))
@@ -245,9 +243,7 @@ if (process.env.NODE_ENV == 'development') {
     }, 30000)
 
     app.use(expressLogger())
-    app.use(express.static(distDir))
     app.use(bodyParser.json())
-    app.use(cors())
 
     app.get('/api', auth.authenticateUser, (req, res) =>
       req.ws
@@ -261,4 +257,4 @@ if (process.env.NODE_ENV == 'development') {
   } catch (e) {
     logger.info(`Unhandled error while launching server: ${e}`)
   }
-})()
+})

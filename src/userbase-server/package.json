@@ -1,0 +1,33 @@
+{
+  "bugs": {
+    "url": "https://github.com/encrypted-dev/userbase/issues"
+  },
+  "dependencies": {
+    "aws-sdk": "^2.467.0",
+    "bcrypt": "^3.0.6",
+    "body-parser": "^1.19.0",
+    "express-pino-logger": "^4.0.0",
+    "pino": "^5.13.0",
+    "uuid": "^3.3.2",
+    "ws": "^7.1.1"
+  },
+  "deprecated": false,
+  "description": "Userbase server built for Express",
+  "homepage": "https://github.com/encrypted-dev/userbase",
+  "keywords": [
+    "database",
+    "userbase",
+    "userbase server",
+    "encryption",
+    "end-to-end encryption",
+    "authentication"
+  ],
+  "license": "MIT",
+  "main": "index.js",
+  "name": "userbase-server",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/encrypted-dev/userbase.git"
+  },
+  "version": "0.0.0"
+}

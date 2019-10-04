@@ -2,23 +2,28 @@
   "name": "encrypted.dev",
   "version": "0.0.1",
   "description": "An end-to-end encrypted framework for web and mobile apps.",
-  "main": "./src/server/server.js",
+  "main": "./proof-of-concept/server/app.js",
   "scripts": {
-    "perftest": "npm-run-all -r -p watch:server watch:perftest",
     "clean": "rm -Rf build dist",
-    "build": "npm run clean && babel src/server -d build && webpack --mode production --config webpack.config.js",
+    "build": "npm run clean && babel src/proof-of-concept/server -d build && webpack --mode production --config src/proof-of-concept/client/webpack.config.js",
     "start": "npm-run-all -r -p watch:server watch:client",
-    "start:prod": "npm stop && node ./node_modules/forever/bin/forever --minUptime 5000 --spinSleepTime 1000 -l ../logs/encd.log -p $(pwd) -a start ./build/server.js",
+    "start:prod": "npm stop && node ./node_modules/forever/bin/forever --minUptime 5000 --spinSleepTime 1000 -l ../logs/encd.log -p $(pwd) -a start ./build/app.js",
     "stop": "node ./node_modules/forever/bin/forever stopall",
     "watch:client": "webpack-dev-server --mode development --config webpack.config.js",
-    "watch:perftest": "webpack-dev-server --mode development --run perftest --config webpack.config.js",
-    "watch:server": "NODE_ENV=development nodemon --exec babel-node ./src/server/server.js | pino-pretty",
+    "watch:server": "NODE_ENV=development nodemon --exec 'babel-node ./src/proof-of-concept/server/app.js' | pino-pretty",
     "deploy:infra": "./deploy/deploy-infra.sh",
-    "transpile:sdk": "./node_modules/.bin/babel ./src/client/userbase-js/ --out-dir ./npm_build/userbase-js --source-maps --ignore ./src/client/userbase-js/node_modules && npm run copy:sdkfiles",
-    "copy:sdkfiles": "rsync -am --exclude='*.js' --exclude='node_modules' ./src/client/userbase-js/ ./npm_build/userbase-js",
-    "patch:sdk": "cd ./src/client/userbase-js && printf 'Input patch commit message: ' && read message && npm version patch -m '$message' && npm run copy:sdkfiles",
+    "transpile:sdk": "./node_modules/.bin/babel src/userbase-js/ --out-dir ./npm_build/userbase-js --source-maps --ignore ./src/userbase-js/node_modules && npm run copy:sdkfiles",
+    "copy:sdkfiles": "rsync -am --exclude='*.js' --exclude='node_modules' ./src/userbase-js/ ./npm_build/userbase-js",
+    "patch:sdk": "cd ./src/userbase-js && printf 'Input patch commit message: ' && read message && npm version patch -m '$message' && npm run copy:sdkfiles",
     "publish:sdk": "cd ./npm_build/userbase-js && npm publish",
-    "postinstall": "cd ./src/client/userbase-js && npm install"
+    "install:sdk": "cd ./src/userbase-js && npm install",
+    "install:server": "cd ./src/userbase-server && npm install",
+    "install:poc": "cd ./src/proof-of-concept && npm install",
+    "postinstall": "npm-run-all -p install:sdk install:server install:poc",
+    "rm:sdk": "cd ./src/userbase-js && rm -rf node_modules",
+    "rm:server": "cd ./src/userbase-server && rm -rf node_modules",
+    "rm:poc": "cd ./src/proof-of-concept && rm -rf node_modules && rm package-lock.json",
+    "rm:all": "npm-run-all -p rm:sdk rm:server rm:poc"
   },
   "repository": "https://github.com/dvassallo/encrypted.dev",
   "keywords": [],
@@ -26,21 +31,6 @@
   "license": "MIT",
   "engines": {
     "node": ">=4.3.2"
-  },
-  "dependencies": {
-    "aws-sdk": "^2.467.0",
-    "bcrypt": "^3.0.6",
-    "body-parser": "^1.19.0",
-    "copy-to-clipboard": "^3.2.0",
-    "cors": "^2.8.5",
-    "express": "^4.17.1",
-    "express-pino-logger": "^4.0.0",
-    "forever": "^1.0.0",
-    "pino": "^5.13.0",
-    "react": "^16.8.6",
-    "react-dom": "^16.8.6",
-    "uuid": "^3.3.2",
-    "ws": "^7.1.1"
   },
   "devDependencies": {
     "@babel/cli": "^7.4.4",
@@ -53,13 +43,12 @@
     "autoprefixer": "^9.6.0",
     "babel-eslint": "^10.0.1",
     "babel-loader": "^8.0.6",
-    "babel-polyfill": "^6.26.0",
     "css-loader": "^2.1.1",
-    "dotenv": "^8.0.0",
     "eslint": "^5.16.0",
     "eslint-loader": "^2.1.2",
     "eslint-plugin-react": "^7.13.0",
     "file-loader": "^3.0.1",
+    "forever": "^1.0.0",
     "html-loader": "^0.5.5",
     "html-webpack-plugin": "^3.2.0",
     "nodemon": "^1.19.1",
@@ -75,7 +64,7 @@
     "tailwindcss": "^1.0.4",
     "terser-webpack-plugin": "^1.3.0",
     "url-loader": "^1.1.2",
-    "webpack": "^4.32.2",
+    "webpack": "^4.41.0",
     "webpack-cli": "^3.3.2",
     "webpack-dev-server": "^3.5.1",
     "webpack-merge": "^4.2.1"
@@ -83,5 +72,9 @@
   "optionalDependencies": {
     "bufferutil": "^4.0.1",
     "utf-8-validate": "^5.0.2"
+  },
+  "dependencies": {
+    "react": "^16.10.2",
+    "react-dom": "^16.10.2"
   }
 }

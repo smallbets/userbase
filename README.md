@@ -29,9 +29,9 @@ Whenever the browser runs a database query, it asks the server for any new trans
 
 ## Performance
 
-A major focus of the proof of concept was on performance. The repo includes 3 load tests that set up the app with 1K, 10K, and 100K to-do items. On a 2.9 GHz i9 MacBook Pro with 100 Mbps network, the app was able to fetch and decrypt 1K items in 0.3s, 10K in 0.8s, and 100K in 6.4s. Once the app had loaded the data, querying it was nearly instantaneous.
+A major focus of the proof of concept was on performance. On a 2.9 GHz i9 MacBook Pro with 100 Mbps network, the app was able to fetch and decrypt 1K items in 0.3s, 10K in 0.8s, and 100K in 6.4s. Once the app had loaded the data, querying it was nearly instantaneous.
 
-Performance is still an area under development, and more results will be published soon. You can also run the perf tests yourself by following [these instructions](docs/perftest.md).
+Performance is still an area under development, and more results will be published soon.
 
 ## What's Next?
 
