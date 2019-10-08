@@ -3,7 +3,9 @@
     "url": "https://github.com/encrypted-dev/userbase/issues"
   },
   "dependencies": {
+    "@babel/runtime": "^7.6.2",
     "aws-sdk": "^2.467.0",
+    "babel-polyfill": "^6.26.0",
     "bcrypt": "^3.0.6",
     "body-parser": "^1.19.0",
     "express-pino-logger": "^4.0.0",
@@ -29,5 +31,5 @@
     "type": "git",
     "url": "git+https://github.com/encrypted-dev/userbase.git"
   },
-  "version": "0.0.0"
+  "version": "0.0.1"
 }

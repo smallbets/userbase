@@ -9,13 +9,11 @@
     "lz-string": "^1.4.4",
     "sorted-array": "^2.0.4",
     "uuid": "^3.3.3",
-    "babel-polyfill": "^6.26.0"
+    "babel-polyfill": "^6.26.0",
+    "@babel/runtime": "^7.6.2"
   },
   "deprecated": false,
   "description": "Userbase JS browser SDK",
-  "devDependencies": {
-    "@babel/runtime": "^7.6.2"
-  },
   "homepage": "https://github.com/encrypted-dev/userbase",
   "keywords": [
     "database",
@@ -33,5 +31,5 @@
     "type": "git",
     "url": "git+https://github.com/encrypted-dev/userbase.git"
   },
-  "version": "0.0.1"
+  "version": "0.0.3"
 }
