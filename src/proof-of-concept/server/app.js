@@ -11,8 +11,8 @@ const httpsCertPath = '../keys/cert.pem'
 const httpPort = process.env.PORT || 8080
 const httpsPort = process.env.PORT || 8443
 const certExists = fs.existsSync(httpsKeyPath) && fs.existsSync(httpsCertPath)
-const httpsKey = certExists && fs.readFileSync(httpsKey)
-const httpsCert = certExists && fs.readFileSync(httpsCert)
+const httpsKey = certExists && fs.readFileSync(httpsKeyPath)
+const httpsCert = certExists && fs.readFileSync(httpsCertPath)
 
 const userbaseConfig = {
   httpsKey,
