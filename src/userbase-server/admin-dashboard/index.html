@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang=en>
+
+<head>
+  <meta charset=utf-8>
+  <meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=0" />
+  <title>Userbase - Admin Dashboard</title>
+  <link rel="shortcut icon" href="/favicon.ico">
+</head>
+
+<body>
+  <div id=content>
+    <form style="margin: auto; width: max-content; margin-top: 40px;" onsubmit="createAdminAndApp(event)">
+
+      E-mail:
+      <br>
+      <input required type="email" name="email">
+      <br>
+      <br>
+
+      Password:
+      <br>
+      <input required type="password" name="password">
+      <br>
+      <br>
+
+      App Name:
+      <br>
+      <input required type="text" name="appName">
+      <br>
+      <br>
+
+      <div style="text-align: center;">
+        <input type="submit" value="Submit">
+      </div>
+
+    </form>
+
+  </div>
+
+  <script type="text/javascript">
+
+    function createAdminAndApp(event) {
+      event.preventDefault()
+
+      var email = event.target[0].value
+      var password = event.target[1].value
+      var appName = event.target[2].value
+
+      if (!email || !password || !appName) {
+        alert('Missing field!')
+      }
+
+      createAdmin(email, password, appName)
+
+      return false
+    }
+
+    function createAdmin(email, password, appName) {
+      var adminId = getId()
+
+      var xhr = new XMLHttpRequest();
+      xhr.open("POST", "/admin/create-admin");
+      xhr.setRequestHeader("Content-Type", "application/json");
+
+      xhr.send(JSON.stringify({
+        adminName: email,
+        password,
+        adminId
+      }));
+
+      xhr.onreadystatechange = function () {
+        if (this.readyState === XMLHttpRequest.DONE && this.status === 200) {
+          var sessionId = this.response
+
+          createApp(sessionId, appName)
+        }
+      }
+    }
+
+    function createApp(sessionId, appName) {
+      var appId = getId()
+
+      var xhr = new XMLHttpRequest();
+      xhr.open("POST", `/admin/create-app?sessionId=${sessionId}`);
+      xhr.setRequestHeader("Content-Type", "application/json");
+
+      xhr.send(JSON.stringify({
+        appId,
+        appName
+      }));
+
+      xhr.onreadystatechange = function () {
+        if (this.readyState === XMLHttpRequest.DONE && this.status === 200) {
+          var success = this.response
+          if (success === 'Success!') {
+            handleSuccessfulCreation(appId)
+          }
+        }
+      }
+    }
+
+    function handleSuccessfulCreation(appId) {
+      var h3 = document.createElement('h3')
+      h3.innerHTML = `APP ID: ${appId}`
+      h3.style = "text-align: center;"
+      document.body.appendChild(h3)
+
+      var mainContent = document.getElementById('content')
+      document.body.removeChild(mainContent)
+
+      alert(`Success! Your app id is: ${appId}`)
+    }
+
+    function getId() {
+      return Math.random().toString().substring(2)
+    }
+
+  </script>
+
+</body>
+
+</html>

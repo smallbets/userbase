@@ -5,11 +5,16 @@ import ws from './ws'
 import db from './db'
 import crypto from './Crypto'
 import localData from './localData'
+import config from './config'
 
+const appIdNotSet = 'App id not set'
 const wsNotOpen = 'Web Socket not open'
 const deviceAlreadyRegistered = 'Device already registered'
 
 const signUp = async (username, password, onSessionChange) => {
+  const appId = config.getAppId()
+  if (!appId) throw new Error(appIdNotSet)
+
   const lowerCaseUsername = username.toLowerCase()
   const userId = uuidv4()
 
@@ -40,16 +45,21 @@ const signUp = async (username, password, onSessionChange) => {
   const session = localData.signInSession(lowerCaseUsername, sessionId)
 
   const signingUp = true
-  await ws.connect(session, onSessionChange, signingUp)
+  await ws.connect(session, appId, onSessionChange, signingUp)
 
   return session
 }
 
 const signOut = async () => {
+  if (!ws.connected) throw new Error(wsNotOpen)
+
   await ws.signOut()
 }
 
 const signIn = async (username, password, onSessionChange) => {
+  const appId = config.getAppId()
+  if (!appId) throw new Error(appIdNotSet)
+
   const lowerCaseUsername = username.toLowerCase()
 
   const sessionId = await api.auth.signIn(lowerCaseUsername, password)
@@ -57,19 +67,22 @@ const signIn = async (username, password, onSessionChange) => {
   const session = localData.signInSession(lowerCaseUsername, sessionId)
 
   const signingUp = false
-  await ws.connect(session, onSessionChange, signingUp)
+  await ws.connect(session, appId, onSessionChange, signingUp)
 
   return session
 }
 
 const initSession = async (onSessionChange) => {
+  const appId = config.getAppId()
+  if (!appId) throw new Error(appIdNotSet)
+
   const session = localData.getCurrentSession()
   if (!session) return onSessionChange({ username: undefined, signedIn: false, seed: undefined })
   if (!session.username || !session.signedIn) return onSessionChange(session)
 
   try {
     const signingUp = false
-    await ws.connect(session, onSessionChange, signingUp)
+    await ws.connect(session, appId, onSessionChange, signingUp)
   } catch (e) {
     ws.close()
     onSessionChange(ws.session)

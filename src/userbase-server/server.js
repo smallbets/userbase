@@ -1,3 +1,4 @@
+import path from 'path'
 import expressLogger from 'express-pino-logger'
 import WebSocket from 'ws'
 import http from 'http'
@@ -6,7 +7,8 @@ import https from 'https'
 import bodyParser from 'body-parser'
 import logger from './logger'
 import setup from './setup'
-import auth from './auth'
+import admin from './admin'
+import user from './user'
 import db from './db'
 import connections from './ws'
 import statusCodes from './statusCodes'
@@ -70,7 +72,7 @@ export default (async (app, userbaseConfig = {}) => {
         hmacKeySalt: res.locals.user['hmac-key-salt']
       }
 
-      const { validationMessage, encryptedValidationMessage } = auth.getValidationMessage(userPublicKey)
+      const { validationMessage, encryptedValidationMessage } = user.getValidationMessage(userPublicKey)
 
       ws.send(JSON.stringify({
         route: 'Connection',
@@ -94,25 +96,22 @@ export default (async (app, userbaseConfig = {}) => {
           let response
 
           if (action === 'SignOut') {
-            response = await auth.signOut(params.sessionId)
+            response = await user.signOut(params.sessionId)
           } else if (!conn.keyValidated) {
 
             switch (action) {
               case 'ValidateKey': {
-                response = await auth.validateKey(
+                response = await user.validateKey(
                   validationMessage,
                   params.validationMessage,
-                  res.locals.user['seed-not-saved-yet'],
-                  userId,
-                  username,
-                  userPublicKey,
+                  res.locals.user,
                   params.requesterPublicKey,
                   conn
                 )
                 break
               }
               case 'RequestSeed': {
-                response = await auth.requestSeed(
+                response = await user.requestSeed(
                   userId,
                   userPublicKey,
                   connectionId,
@@ -174,11 +173,11 @@ export default (async (app, userbaseConfig = {}) => {
                 break
               }
               case 'GetRequestsForSeed': {
-                response = await auth.querySeedRequests(userId)
+                response = await user.querySeedRequests(userId)
                 break
               }
               case 'SendSeed': {
-                response = await auth.sendSeed(
+                response = await user.sendSeed(
                   userId,
                   userPublicKey,
                   params.requesterPublicKey,
@@ -187,11 +186,11 @@ export default (async (app, userbaseConfig = {}) => {
                 break
               }
               case 'GetPublicKey': {
-                response = await auth.getPublicKey(params.username)
+                response = await user.getPublicKey(params.username)
                 break
               }
               case 'GrantDatabaseAccess': {
-                response = await auth.grantDatabaseAccess(
+                response = await user.grantDatabaseAccess(
                   userId,
                   params.username,
                   params.dbId,
@@ -201,11 +200,11 @@ export default (async (app, userbaseConfig = {}) => {
                 break
               }
               case 'GetDatabaseAccessGrants': {
-                response = await auth.queryDatabaseAccessGrants(userId)
+                response = await user.queryDatabaseAccessGrants(userId)
                 break
               }
               case 'AcceptDatabaseAccess': {
-                response = await auth.acceptDatabaseAccess(
+                response = await user.acceptDatabaseAccess(
                   userId,
                   params.dbId,
                   params.dbNameHash,
@@ -245,14 +244,21 @@ export default (async (app, userbaseConfig = {}) => {
     app.use(expressLogger())
     app.use(bodyParser.json())
 
-    app.get('/api', auth.authenticateUser, (req, res) =>
+    app.get('/api', user.authenticateUser, (req, res) =>
       req.ws
         ? res.ws(socket => wss.emit('connection', socket, req, res))
         : res.send('Not a websocket!')
     )
 
-    app.post('/api/auth/sign-up', auth.signUp)
-    app.post('/api/auth/sign-in', auth.signIn)
+    app.get('/admin', function (req, res) {
+      res.sendFile(path.join(__dirname + '/admin-dashboard/index.html'))
+    })
+
+    app.post('/admin/create-admin', admin.createAdmin)
+    app.post('/admin/create-app', admin.authenticateAdmin, admin.createApp)
+
+    app.post('/api/auth/sign-up', user.signUp)
+    app.post('/api/auth/sign-in', user.signIn)
 
   } catch (e) {
     logger.info(`Unhandled error while launching server: ${e}`)

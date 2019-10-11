@@ -6,6 +6,8 @@ import memcache from './memcache'
 // if running in dev mode, prefix the DynamoDB tables and S3 buckets with the username
 const usernamePrefix = (process.env.NODE_ENV == 'development') ? os.userInfo().username + '-' : ''
 
+const adminTableName = usernamePrefix + 'admin'
+const appsTableName = usernamePrefix + 'apps'
 const usersTableName = usernamePrefix + 'users'
 const sessionsTableName = usernamePrefix + 'sessions'
 const databaseTableName = usernamePrefix + 'database'
@@ -17,6 +19,8 @@ const dbStatesBucketName = usernamePrefix + 'db-states'
 
 const userDatabaseIdIndex = 'UserDatabaseIdIndex'
 
+exports.adminTableName = adminTableName
+exports.appsTableName = appsTableName
 exports.usersTableName = usersTableName
 exports.sessionsTableName = sessionsTableName
 exports.databaseTableName = databaseTableName
@@ -62,16 +66,52 @@ exports.init = async function () {
 async function setupDdb() {
   const ddb = new aws.DynamoDB({ apiVersion: '2012-08-10' })
 
-  // the users table holds a record per user
+  // the admin table holds a record per admin account
+  const adminTableParams = {
+    TableName: adminTableName,
+    BillingMode: 'PAY_PER_REQUEST',
+    AttributeDefinitions: [
+      { AttributeName: 'admin-name', AttributeType: 'S' },
+      { AttributeName: 'admin-id', AttributeType: 'S' }
+    ],
+    KeySchema: [
+      { AttributeName: 'admin-name', KeyType: 'HASH' }
+    ],
+    GlobalSecondaryIndexes: [{
+      IndexName: 'AdminIdIndex',
+      KeySchema: [
+        { AttributeName: 'admin-id', KeyType: 'HASH' }
+      ],
+      Projection: { ProjectionType: 'ALL' }
+    }]
+  }
+
+  // the apps table holds a record for apps per admin account
+  const appsTableParams = {
+    TableName: appsTableName,
+    BillingMode: 'PAY_PER_REQUEST',
+    AttributeDefinitions: [
+      { AttributeName: 'admin-id', AttributeType: 'S' },
+      { AttributeName: 'app-name', AttributeType: 'S' }
+    ],
+    KeySchema: [
+      { AttributeName: 'admin-id', KeyType: 'HASH' },
+      { AttributeName: 'app-name', KeyType: 'RANGE' }
+    ]
+  }
+
+  // the users table holds a record for user per app
   const usersTableParams = {
     TableName: usersTableName,
     BillingMode: 'PAY_PER_REQUEST',
     AttributeDefinitions: [
       { AttributeName: 'username', AttributeType: 'S' },
+      { AttributeName: 'app-id', AttributeType: 'S' },
       { AttributeName: 'user-id', AttributeType: 'S' }
     ],
     KeySchema: [
-      { AttributeName: 'username', KeyType: 'HASH' }
+      { AttributeName: 'username', KeyType: 'HASH' },
+      { AttributeName: 'app-id', KeyType: 'RANGE' }
     ],
     GlobalSecondaryIndexes: [{
       IndexName: 'UserIdIndex',
@@ -82,7 +122,7 @@ async function setupDdb() {
     }]
   }
 
-  // the sessions table holds a record per user session
+  // the sessions table holds a record per admin OR user session
   const sessionsTableParams = {
     AttributeDefinitions: [
       { AttributeName: 'session-id', AttributeType: 'S' }
@@ -192,6 +232,8 @@ async function setupDdb() {
 
   logger.info('Creating DynamoDB tables if necessary')
   await Promise.all([
+    createTable(ddb, adminTableParams),
+    createTable(ddb, appsTableParams),
     createTable(ddb, usersTableParams),
     createTable(ddb, sessionsTableParams),
     createTable(ddb, databaseTableParams),
