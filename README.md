@@ -1,4 +1,35 @@
-[![A proof of concept for an end-to-end encrypted web developmenet framework](docs/proof_of_concept.png)](https://encrypted.dev)
+<p align="center">
+  <a href="https://userbase.dev"><img src="docs/logo.png" width="441" alt="Userbase — A database for frontend developers"></a>
+</p>
+
+Userbase is a database, but purpose-built for web apps. It is accessible directly from the browser through a very simple JavaScript SDK.
+
+## What does it do?
+
+Userbase becomes your database, as well as your backend. You can create fully dynamic web apps using only static JavaScript, HTML, and CSS. No backend code necessary.
+
+### Zero management
+Unlike a regular database, all Userbase queries run in the browser, with the server-side acting as a dumb data store. There's no database to manage or worry about.
+
+### Built-in user management
+Unlike a regular database, Userbase takes care of your user accounts. It comes with built-in APIs for user signups, logins, and access control.
+
+### End-to-end encrypted
+Userbase won't show you what your users store in your web app. Yes, that's a feature — maybe the most important feature. Userbase spares you from the liability of handling user data by encrypting everything in the browser, using keys that always stay with the user.
+
+## When would I use it?
+If you're building a web app, you will likely need a database. Userbase can replace your database...
+
+- If you want to build a web app without writing any backend code.
+- If you never want to see your users' data.
+- If you're tired of dealing with databases.
+- If you want to radically simplify your GDPR compliance.
+- And if you want to keep things really simple.
+
+## How do I start?
+Userbase will be available around mid-December 2019. You can [subscribe to the mailing list](https://userbase.dev/mailing-list) to keep up to date.
+
+## Demo
 
 This is a simple to-do web app with a twist: All user data is **end-to-end encrypted**.
 
@@ -6,12 +37,9 @@ Every to-do item gets encrypted by the browser with a secret key that never goes
 
 For now, this is just a prototype app. It's a proof of concept to demonstrate that web apps like this can work and perform adequately without server-side database queries. With end-to-end encryption, all database queries must happen in the browser. The server is there just to handle access control and store the encrypted data.
 
-## Demo
-
 The point of the demo is that it should feel indistinguishable from a regular web app, despite the fact that all database queries are running over encrypted data, and in the browser.
 
 Give it a go, and judge for yourself: **https://demo.encrypted.dev**
-
 
 <p align="center">
   <a href="https://demo.encrypted.dev"><img width="649" alt="Proof of concept demo" src="docs/demo.png"></a>
@@ -31,19 +59,6 @@ Whenever the browser runs a database query, it asks the server for any new trans
 
 A major focus of the proof of concept was on performance. On a 2.9 GHz i9 MacBook Pro with 100 Mbps network, the app was able to fetch and decrypt 1K items in 0.3s, 10K in 0.8s, and 100K in 6.4s. Once the app had loaded the data, querying it was nearly instantaneous.
 
-Performance is still an area under development, and more results will be published soon.
-
-## What's Next?
-
-A framework will be extracted from this prototype to help anyone build web and mobile apps with end-to-end encrypted user data. The framework will be 100% open source and MIT licensed. If you want to keep up to date with its progress you can [subscribe to the mailing list](https://updates.encrypted.dev/subscribe). (No more than one or two emails a month.) You can also [follow on Twitter](https://twitter.com/dvassallo) for more frequent updates.
-
-There are still a few things being explored that haven't been validated by this proof of concept yet:
-
-- Data sharing across users.
-- Secret key rotation or revocation.
-- Real-time live queries and push notifications.
-- Other ways of distributing the secret key across devices (beyond copy/pasting).
-
 ## Development
 
 Running this app requires an AWS account. You just need to provide your AWS credentials and the app will automatically create all the AWS resources it needs: 3 DynamoDB tables with per-request billing, and 1 S3 bucket. To run the app locally, put your AWS credentials in `~/.aws/credentials` under a profile called `encrypted`:
@@ -58,7 +73,7 @@ aws_secret_access_key=<YOUR SECRET KEY>" >> ~/.aws/credentials
 Check out the repo:
 
 ```
-git clone https://github.com/encrypted-dev/proof-of-concept.git
+git clone https://github.com/encrypted-dev/userbase.git
 ```
 
 Install the dependencies:
@@ -74,6 +89,9 @@ npm start
 ```
 
 Go to http://localhost:3000 and you should see the sign in screen.
+
+## Who's behind this?
+This product is the work of [Daniel Vassallo](https://twitter.com/dvassallo) and [Justin Berman](https://twitter.com/justinberman95). If you have any questions, or there's anything we can do to help you with your web app, please [get in touch](daniel@encrypted.dev). Thank you!
 
 ## License
 
