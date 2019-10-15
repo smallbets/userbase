@@ -6,6 +6,7 @@ import logger from './logger'
 
 // source: https://github.com/OWASP/CheatSheetSeries/blob/master/cheatsheets/Session_Management_Cheat_Sheet.md#session-id-length
 const ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID = 16
+const SESSION_COOKIE_NAME = 'adminSessionId'
 
 const oneDaySeconds = 60 * 60 * 24
 const oneDayMs = 1000 * oneDaySeconds
@@ -31,6 +32,17 @@ const createSession = async function (adminId) {
   await ddbClient.put(params).promise()
 
   return sessionId
+}
+
+const setSessionCookie = (res, sessionId) => {
+  const cookieResponseHeaders = {
+    maxAge: SESSION_LENGTH,
+    httpOnly: true,
+    sameSite: 'Strict',
+    secure: process.env.NODE_ENV === 'production'
+  }
+
+  res.cookie(SESSION_COOKIE_NAME, sessionId, cookieResponseHeaders)
 }
 
 exports.createAdmin = async function (req, res) {
@@ -76,7 +88,8 @@ exports.createAdmin = async function (req, res) {
     }
 
     const sessionId = await createSession(adminId)
-    return res.send(sessionId)
+    setSessionCookie(res, sessionId)
+    return res.end()
   } catch (e) {
     logger.error(`Failed to create admin with ${e}`)
     return res
@@ -111,8 +124,77 @@ const findAdminByAdminId = async (adminId) => {
   return adminResponse.Items[0]
 }
 
+exports.signInAdmin = async function (req, res) {
+  const adminName = req.body.adminName
+  const password = req.body.password
+
+  if (!adminName || !password) return res
+    .status(statusCodes['Bad Request'])
+    .send({ readableMessage: 'Missing required items' })
+
+  const params = {
+    TableName: setup.adminTableName,
+    Key: {
+      'admin-name': adminName.toLowerCase()
+    },
+  }
+
+  try {
+    const ddbClient = connection.ddbClient()
+    const adminResponse = await ddbClient.get(params).promise()
+
+    const admin = adminResponse.Item
+
+    const doesNotExist = !admin
+    const incorrectPassword = doesNotExist || !(await crypto.bcrypt.compare(password, admin['password-hash']))
+
+    if (doesNotExist || incorrectPassword) return res
+      .status(statusCodes['Unauthorized']).end()
+
+    const sessionId = await createSession(admin['admin-id'])
+    setSessionCookie(res, sessionId)
+    return res.end()
+  } catch (e) {
+    logger.error(`Admin ${adminName} failed to sign in with ${e}`)
+    return res
+      .status(statusCodes['Internal Server Error'])
+      .send({ err: `Failed to sign in admin!` })
+  }
+}
+
+exports.signOutAdmin = async function (req, res) {
+  const sessionId = req.cookies[SESSION_COOKIE_NAME]
+
+  if (!sessionId) return res
+    .status(statusCodes['Unauthorized'])
+    .send('Missing session id')
+
+  const params = {
+    TableName: setup.sessionsTableName,
+    Key: {
+      'session-id': sessionId
+    },
+    UpdateExpression: 'set invalidated = :invalidated',
+    ExpressionAttributeValues: {
+      ':invalidated': true,
+    }
+  }
+
+  try {
+    const ddbClient = connection.ddbClient()
+    await ddbClient.update(params).promise()
+
+    return res.status(statusCodes['Success']).end()
+  } catch (e) {
+    logger.error(`Failed to sign out session ${sessionId} with ${e}`)
+    return res
+      .status(statusCodes['Internal Server Error'])
+      .send('Failed to sign out!')
+  }
+}
+
 exports.authenticateAdmin = async function (req, res, next) {
-  const sessionId = req.query.sessionId
+  const sessionId = req.cookies[SESSION_COOKIE_NAME]
 
   if (!sessionId) return res
     .status(statusCodes['Unauthorized'])
@@ -199,5 +281,35 @@ exports.createApp = async function (req, res) {
     return res
       .status(statusCodes['Internal Server Error'])
       .send({ err: 'Failed to create app' })
+  }
+}
+
+exports.listApps = async function (req, res) {
+  const admin = res.locals.admin
+  const adminId = admin['admin-id']
+
+  const params = {
+    TableName: setup.appsTableName,
+    KeyConditionExpression: '#adminId = :adminId',
+    ExpressionAttributeNames: {
+      '#adminId': 'admin-id'
+    },
+    ExpressionAttributeValues: {
+      ':adminId': adminId
+    }
+  }
+
+  try {
+    const ddbClient = connection.ddbClient()
+    const appsResponse = await ddbClient.query(params).promise()
+
+    // TO-DO: Pagination
+
+    return res.status(statusCodes['Success']).send(appsResponse.Items)
+  } catch (e) {
+    logger.error(`Failed to list apps with ${e}`)
+    return res
+      .status(statusCodes['Internal Server Error'])
+      .send({ err: 'Failed to list apps'})
   }
 }

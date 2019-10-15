@@ -5,6 +5,7 @@ import http from 'http'
 import https from 'https'
 
 import bodyParser from 'body-parser'
+import cookieParser from 'cookie-parser'
 import logger from './logger'
 import setup from './setup'
 import admin from './admin'
@@ -243,6 +244,7 @@ export default (async (app, userbaseConfig = {}) => {
 
     app.use(expressLogger())
     app.use(bodyParser.json())
+    app.use(cookieParser())
 
     app.get('/api', user.authenticateUser, (req, res) =>
       req.ws
@@ -250,15 +252,18 @@ export default (async (app, userbaseConfig = {}) => {
         : res.send('Not a websocket!')
     )
 
+    app.post('/api/auth/sign-up', user.signUp)
+    app.post('/api/auth/sign-in', user.signIn)
+
     app.get('/admin', function (req, res) {
       res.sendFile(path.join(__dirname + '/admin-dashboard/index.html'))
     })
 
     app.post('/admin/create-admin', admin.createAdmin)
     app.post('/admin/create-app', admin.authenticateAdmin, admin.createApp)
-
-    app.post('/api/auth/sign-up', user.signUp)
-    app.post('/api/auth/sign-in', user.signIn)
+    app.post('/admin/sign-in', admin.signInAdmin)
+    app.post('/admin/sign-out', admin.authenticateAdmin, admin.signOutAdmin)
+    app.post('/admin/list-apps', admin.authenticateAdmin, admin.listApps)
 
   } catch (e) {
     logger.info(`Unhandled error while launching server: ${e}`)

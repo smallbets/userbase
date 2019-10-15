@@ -10,110 +10,243 @@
 
 <body>
   <div id=content>
-    <form style="margin: auto; width: max-content; margin-top: 40px;" onsubmit="createAdminAndApp(event)">
 
-      E-mail:
-      <br>
-      <input required type="email" name="email">
-      <br>
-      <br>
+    <div id="landing-page">
+      <form id="sign-in-form" style="text-align: right;" onsubmit="signIn(event)">
+        <span>
+          <label style="display: inline-block">
+            E-mail
+            <input id="sign-in-email" required type="email" name="email" autocomplete="username">
+          </label>
 
-      Password:
-      <br>
-      <input required type="password" name="password">
-      <br>
-      <br>
+          <label style="display: inline-block; margin-left: 20px">
+            Password
+            <input required type="password" name="password" autocomplete="current-password">
+          </label>
 
-      App Name:
-      <br>
-      <input required type="text" name="appName">
-      <br>
-      <br>
+          <input style="margin-left: 10px;" type="submit" value="Sign In">
+        </span>
+      </form>
 
-      <div style="text-align: center;">
-        <input type="submit" value="Submit">
+      <h2 style="text-align: center;">Create Admin Account</h2>
+      <form id="create-admin-form" style="margin: auto; width: max-content; margin-top: 20px; border: .1rem solid black; border-radius: 1rem; padding: 1rem;"
+        onsubmit="createAdminAndApp(event)">
+
+        <label>
+          E-mail:
+          <br>
+          <input required type="email" name="email" autocomplete="username">
+        </label>
+        <br>
+        <br>
+
+        <label>
+          Password:
+          <br>
+          <input required type="password" name="password" autocomplete="new-password">
+        </label>
+        <br>
+        <br>
+
+        <label>
+          App Name:
+          <br>
+          <input required type="text" name="appName" autocomplete="off">
+        </label>
+        <br>
+        <br>
+
+        <div style="text-align: center;">
+          <input type="submit" value="Get Started">
+        </div>
+
+      </form>
+    </div>
+
+    <div id="home-page" style="display: none;">
+      <div style="text-align: right; margin-right: 1rem;">
+        <button type="button" onclick="signOut(event)">Sign Out</button>
       </div>
 
-    </form>
+      <table id="apps-table" cellpadding="5" style="margin: auto;">
+        <tr>
+          <th>App Name</th>
+          <th>App ID</th>
+        </tr>
+        <tbody id="apps-table-body">
+        </tbody>
+      </table>
+    </div>
 
   </div>
 
   <script type="text/javascript">
+    var LANDING_PAGE = document.getElementById('landing-page')
+    var HOME_PAGE = document.getElementById('home-page')
+
+    var currentSessionJson = localStorage.getItem('currentAdminSession')
+    var currentSession = currentSessionJson && JSON.parse(currentSessionJson)
+
+    var signInInput = document.getElementById('sign-in-email')
+    signInInput.value = currentSession && currentSession.adminName
+
+    if (currentSession && currentSession.signedIn) {
+      listApps()
+    }
 
     function createAdminAndApp(event) {
       event.preventDefault()
 
-      var email = event.target[0].value
+      var adminName = event.target[0].value
       var password = event.target[1].value
       var appName = event.target[2].value
 
-      if (!email || !password || !appName) {
+      if (!adminName || !password || !appName) {
         alert('Missing field!')
+      } else {
+        document.getElementById('create-admin-form').reset()
+        createAdmin(adminName, password, appName)
       }
-
-      createAdmin(email, password, appName)
-
-      return false
     }
 
-    function createAdmin(email, password, appName) {
+    function createAdmin(adminName, password, appName) {
       var adminId = getId()
 
-      var xhr = new XMLHttpRequest();
-      xhr.open("POST", "/admin/create-admin");
-      xhr.setRequestHeader("Content-Type", "application/json");
+      var xhr = new XMLHttpRequest()
+      xhr.open("POST", "/admin/create-admin")
+      xhr.setRequestHeader("Content-Type", "application/json")
 
       xhr.send(JSON.stringify({
-        adminName: email,
+        adminName,
         password,
         adminId
-      }));
+      }))
 
       xhr.onreadystatechange = function () {
         if (this.readyState === XMLHttpRequest.DONE && this.status === 200) {
-          var sessionId = this.response
-
-          createApp(sessionId, appName)
+          setCurrentSession(adminName, true)
+          createApp(appName)
         }
       }
     }
 
-    function createApp(sessionId, appName) {
+    function createApp(appName) {
       var appId = getId()
 
-      var xhr = new XMLHttpRequest();
-      xhr.open("POST", `/admin/create-app?sessionId=${sessionId}`);
-      xhr.setRequestHeader("Content-Type", "application/json");
+      var xhr = new XMLHttpRequest()
+      xhr.open("POST", "/admin/create-app")
+      xhr.setRequestHeader("Content-Type", "application/json")
 
       xhr.send(JSON.stringify({
         appId,
         appName
-      }));
+      }))
 
       xhr.onreadystatechange = function () {
         if (this.readyState === XMLHttpRequest.DONE && this.status === 200) {
-          var success = this.response
-          if (success === 'Success!') {
-            handleSuccessfulCreation(appId)
+          alert(`Success! Your app id is: ${appId}`)
+
+          var apps = [{
+            'app-id': appId,
+            'app-name': appName
+          }]
+          displayApps(apps)
+        }
+      }
+    }
+
+    function getId() {
+      return Math.random().toString().substring(2)
+    }
+
+    function signIn(event) {
+      event.preventDefault()
+
+      var adminName = event.target[0].value
+      var password = event.target[1].value
+
+      if (!adminName || !password) {
+        alert('Missing field!')
+      } else {
+
+        var xhr = new XMLHttpRequest()
+        xhr.open("POST", "/admin/sign-in")
+        xhr.setRequestHeader("Content-Type", "application/json")
+
+        xhr.send(JSON.stringify({
+          adminName,
+          password
+        }))
+
+        xhr.onreadystatechange = function () {
+          if (this.readyState === XMLHttpRequest.DONE && this.status === 200) {
+            setCurrentSession(adminName, true)
+            listApps()
+
+            event.target.reset()
+          } else if (this.readyState === XMLHttpRequest.DONE && this.status === 401) {
+            alert('Incorrect password')
+            event.target[1].value = ''
           }
         }
       }
     }
 
-    function handleSuccessfulCreation(appId) {
-      var h3 = document.createElement('h3')
-      h3.innerHTML = `APP ID: ${appId}`
-      h3.style = "text-align: center;"
-      document.body.appendChild(h3)
-
-      var mainContent = document.getElementById('content')
-      document.body.removeChild(mainContent)
-
-      alert(`Success! Your app id is: ${appId}`)
+    function setCurrentSession(adminName, signedIn) {
+      const adminSession = { adminName, signedIn }
+      localStorage.setItem('currentAdminSession', JSON.stringify(adminSession))
     }
 
-    function getId() {
-      return Math.random().toString().substring(2)
+    function listApps() {
+      var xhr = new XMLHttpRequest()
+      xhr.open("POST", "/admin/list-apps")
+      xhr.setRequestHeader("Content-Type", "application/json")
+
+      xhr.send()
+
+      xhr.onreadystatechange = function () {
+        if (this.readyState === XMLHttpRequest.DONE && this.status === 200) {
+          var apps = this.response
+          displayApps(JSON.parse(apps))
+        }
+      }
+    }
+
+    function displayApps(apps) {
+      LANDING_PAGE.style.display = "none"
+      HOME_PAGE.style.display = "block"
+      var appsTableBody = document.getElementById("apps-table-body")
+
+      for (var app of apps) {
+        var tr = document.createElement('tr')
+
+        var appNameTd = document.createElement('td')
+        appNameTd.innerHTML = app['app-name']
+
+        var appIdTd = document.createElement('td')
+        appIdTd.innerHTML = app['app-id']
+
+        tr.appendChild(appNameTd)
+        tr.appendChild(appIdTd)
+
+        appsTableBody.appendChild(tr)
+      }
+    }
+
+    function signOut(event) {
+      event.preventDefault()
+
+      var xhr = new XMLHttpRequest()
+      xhr.open("POST", "/admin/sign-out")
+
+      xhr.send()
+
+      setCurrentSession(currentSession.adminName, false)
+      signInInput.value = currentSession.adminName
+      document.getElementById("apps-table-body").innerHTML = ""
+
+      LANDING_PAGE.style.display = "block"
+      HOME_PAGE.style.display = "none"
     }
 
   </script>

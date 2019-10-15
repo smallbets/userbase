@@ -146,9 +146,6 @@ exports.authenticateUser = async function (req, res, next) {
     res.locals.user = user // makes user object available in next route
     next()
   } catch (e) {
-    console.log(e)
-
-
     logger.error(`Failed to authenticate user session ${sessionId} with ${e}`)
     return res
       .status(statusCodes['Internal Server Error'])
@@ -257,14 +254,12 @@ exports.signIn = async function (req, res) {
     const userResponse = await ddbClient.get(params).promise()
 
     const user = userResponse.Item
-    if (!user) return res
-      .status(statusCodes['Not Found'])
-      .send({ readableMessage: 'Username not found' })
 
-    const passwordMatch = await crypto.bcrypt.compare(password, user['password-hash'])
-    if (!passwordMatch) return res
-      .status(statusCodes['Unauthorized'])
-      .send({ readableMessage: 'Incorrect password' })
+    const doesNotExist = !user
+    const incorrectPassword = doesNotExist || !(await crypto.bcrypt.compare(password, user['password-hash']))
+
+    if (doesNotExist || incorrectPassword) return res
+      .status(statusCodes['Unauthorized']).end()
 
     const sessionId = await createSession(user['user-id'], appId)
     return res.send(sessionId)
