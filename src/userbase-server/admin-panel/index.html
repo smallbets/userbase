@@ -110,53 +110,54 @@
     }
 
     function createAdmin(adminName, password, appName) {
-      var adminId = getId()
-
       var xhr = new XMLHttpRequest()
       xhr.open("POST", "/admin/create-admin")
       xhr.setRequestHeader("Content-Type", "application/json")
 
       xhr.send(JSON.stringify({
         adminName,
-        password,
-        adminId
+        password
       }))
 
       xhr.onreadystatechange = function () {
-        if (this.readyState === XMLHttpRequest.DONE && this.status === 200) {
-          setCurrentSession(adminName, true)
-          createApp(appName)
+        if (this.readyState === XMLHttpRequest.DONE) {
+          if (this.status === 200) {
+            setCurrentSession(adminName, true)
+            createApp(appName)
+          } else if (this.status === 409) {
+            alert(`Admin '${adminName}' already exists`)
+          } else {
+            alert('Something went wrong! Please try again.')
+          }
         }
       }
     }
 
     function createApp(appName) {
-      var appId = getId()
-
       var xhr = new XMLHttpRequest()
       xhr.open("POST", "/admin/create-app")
       xhr.setRequestHeader("Content-Type", "application/json")
 
-      xhr.send(JSON.stringify({
-        appId,
-        appName
-      }))
+      xhr.send(JSON.stringify({ appName }))
 
       xhr.onreadystatechange = function () {
-        if (this.readyState === XMLHttpRequest.DONE && this.status === 200) {
-          alert(`Success! Your app id is: ${appId}`)
+        if (this.readyState === XMLHttpRequest.DONE) {
+          if (this.status === 200) {
+            var appId = this.response
 
-          var apps = [{
-            'app-id': appId,
-            'app-name': appName
-          }]
-          displayApps(apps)
+            var apps = [{
+              'app-id': appId,
+              'app-name': appName
+            }]
+            displayApps(apps)
+
+            alert(`Success! Your app id is: ${appId}`)
+
+          } else {
+            alert('Something went wrong! Please try again.')
+          }
         }
       }
-    }
-
-    function getId() {
-      return Math.random().toString().substring(2)
     }
 
     function signIn(event) {
@@ -168,7 +169,6 @@
       if (!adminName || !password) {
         alert('Missing field!')
       } else {
-
         var xhr = new XMLHttpRequest()
         xhr.open("POST", "/admin/sign-in")
         xhr.setRequestHeader("Content-Type", "application/json")
@@ -179,14 +179,17 @@
         }))
 
         xhr.onreadystatechange = function () {
-          if (this.readyState === XMLHttpRequest.DONE && this.status === 200) {
-            setCurrentSession(adminName, true)
-            listApps()
-
-            event.target.reset()
-          } else if (this.readyState === XMLHttpRequest.DONE && this.status === 401) {
-            alert('Incorrect password')
-            event.target[1].value = ''
+          if (this.readyState === XMLHttpRequest.DONE) {
+            if (this.status === 200) {
+              setCurrentSession(adminName, true)
+              listApps()
+              event.target.reset()
+            } else if (this.status === 401) {
+                alert('Incorrect password')
+                event.target[1].value = ''
+            } else {
+              alert('Something went wrong! Please try again')
+            }
           }
         }
       }
@@ -205,9 +208,13 @@
       xhr.send()
 
       xhr.onreadystatechange = function () {
-        if (this.readyState === XMLHttpRequest.DONE && this.status === 200) {
-          var apps = this.response
-          displayApps(JSON.parse(apps))
+        if (this.readyState === XMLHttpRequest.DONE) {
+          if (this.status === 200) {
+            var apps = this.response
+            displayApps(JSON.parse(apps))
+          } else {
+            alert('Something went wrong! Please refresh the page.')
+          }
         }
       }
     }

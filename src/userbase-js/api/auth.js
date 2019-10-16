@@ -5,14 +5,13 @@ import config from '../config'
 const TEN_SECONDS_MS = 10 * 1000
 const TIMEOUT = TEN_SECONDS_MS
 
-const signUp = async (username, password, userId, publicKey, encryptionKeySalt, dhKeySalt, hmacKeySalt) => {
+const signUp = async (username, password, publicKey, encryptionKeySalt, dhKeySalt, hmacKeySalt) => {
   const signUpResponse = await axios({
     method: 'POST',
     url: `${ws.endpoint}/api/auth/sign-up?appId=${config.getAppId()}`,
     data: {
       username,
       password,
-      userId,
       publicKey,
       encryptionKeySalt,
       dhKeySalt,

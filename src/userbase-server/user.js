@@ -1,3 +1,4 @@
+import uuidv4 from 'uuid/v4'
 import connection from './connection'
 import setup from './setup'
 import statusCodes from './statusCodes'
@@ -46,16 +47,17 @@ exports.signUp = async function (req, res) {
 
   const username = req.body.username
   const password = req.body.password
-  const userId = req.body.userId
   const publicKey = req.body.publicKey
   const encryptionKeySalt = req.body.encryptionKeySalt
   const dhKeySalt = req.body.dhKeySalt
   const hmacKeySalt = req.body.hmacKeySalt
 
-  if (!appId || !username || !password || !userId || !publicKey || !encryptionKeySalt
+  if (!appId || !username || !password || !publicKey || !encryptionKeySalt
     || !dhKeySalt || !hmacKeySalt) return res
       .status(statusCodes['Bad Request'])
       .send({ readableMessage: 'Missing required items' })
+
+  const userId = uuidv4()
 
   try {
     const passwordHash = await crypto.bcrypt.hash(password)

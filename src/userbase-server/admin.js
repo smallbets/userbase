@@ -1,3 +1,4 @@
+import uuidv4 from 'uuid/v4'
 import crypto from './crypto'
 import connection from './connection'
 import setup from './setup'
@@ -45,8 +46,8 @@ const setSessionCookie = (res, sessionId) => {
   res.cookie(SESSION_COOKIE_NAME, sessionId, cookieResponseHeaders)
 }
 
-async function createAdmin (adminName, password, adminId) {
-  if (!adminName || !password || !adminId) throw {
+async function createAdmin (adminName, password, adminId = uuidv4()) {
+  if (!adminName || !password) throw {
     status: statusCodes['Bad Request'],
     data: { readableMessage: 'Missing required items' }
   }
@@ -71,6 +72,7 @@ async function createAdmin (adminName, password, adminId) {
 
     const ddbClient = connection.ddbClient()
     await ddbClient.put(params).promise()
+    return adminId
   } catch (e) {
     if (e && e.name === 'ConditionalCheckFailedException') {
       throw {
@@ -94,10 +96,10 @@ exports.createAdmin = createAdmin
 exports.createAdminController = async function (req, res) {
   const adminName = req.body.adminName
   const password = req.body.password
-  const adminId = req.body.adminId
 
+  let adminId
   try {
-    await createAdmin(adminName, password, adminId)
+    adminId = await createAdmin(adminName, password)
   } catch (e) {
     return res
       .status(e.status)
@@ -254,8 +256,8 @@ exports.authenticateAdmin = async function (req, res, next) {
   }
 }
 
-const createApp = async function (appName, appId, adminId) {
-  if (!appName || !appId || !adminId) throw {
+const createApp = async function (appName, adminId, appId = uuidv4()) {
+  if (!appName || !adminId) throw {
     status: statusCodes['Bad Request'],
     data: { readableMessage: 'Missing required items' }
   }
@@ -278,6 +280,7 @@ const createApp = async function (appName, appId, adminId) {
   try {
     const ddbClient = connection.ddbClient()
     await ddbClient.put(params).promise()
+    return appId
   } catch (e) {
     if (e.name === 'ConditionalCheckFailedException') {
       throw {
@@ -288,7 +291,7 @@ const createApp = async function (appName, appId, adminId) {
         }
       }
     } else {
-      logger.error(`Failed to create app ${appId} with ${e}`)
+      logger.error(`Failed to create app ${appName} for admin ${adminId} with ${e}`)
       throw {
         status: statusCodes['Internal Server Error'],
         data: { err: 'Failed to create app' }
@@ -306,8 +309,8 @@ exports.createAppController = async function (req, res) {
   const adminId = admin['admin-id']
 
   try {
-    await createApp(appName, appId, adminId)
-    return res.send('Success!')
+    const appId = await createApp(appName, adminId)
+    return res.send(appId)
   } catch (e) {
     return res
       .status(e.status)

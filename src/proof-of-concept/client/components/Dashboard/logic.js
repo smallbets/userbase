@@ -2,7 +2,6 @@ import userbase from 'userbase-js'
 
 const getDbName = (username) => {
   if (!username) throw new Error('Empty username')
-  // return 'test-ttl-todos'
   return username + '-todos'
 }
 

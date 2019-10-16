@@ -1,4 +1,3 @@
-import uuidv4 from 'uuid/v4'
 import base64 from 'base64-arraybuffer'
 import api from './api'
 import ws from './ws'
@@ -16,7 +15,6 @@ const signUp = async (username, password, onSessionChange) => {
   if (!appId) throw new Error(appIdNotSet)
 
   const lowerCaseUsername = username.toLowerCase()
-  const userId = uuidv4()
 
   const seed = await crypto.generateSeed()
   const masterKey = await crypto.hkdf.importMasterKey(seed)
@@ -31,7 +29,6 @@ const signUp = async (username, password, onSessionChange) => {
   const sessionId = await api.auth.signUp(
     lowerCaseUsername,
     password,
-    userId,
     base64.encode(publicKey),
     base64.encode(encryptionKeySalt),
     base64.encode(dhKeySalt),
