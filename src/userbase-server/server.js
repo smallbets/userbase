@@ -24,7 +24,7 @@ if (process.env.NODE_ENV == 'development') {
   logger.warn('Development Mode')
 }
 
-export default (async (app, userbaseConfig = {}) => {
+async function start (app, userbaseConfig = {}) {
   try {
     await setup.init()
 
@@ -256,11 +256,11 @@ export default (async (app, userbaseConfig = {}) => {
     app.post('/api/auth/sign-in', user.signIn)
 
     app.get('/admin', function (req, res) {
-      res.sendFile(path.join(__dirname + '/admin-dashboard/index.html'))
+      res.sendFile(path.join(__dirname + '/admin-panel/index.html'))
     })
 
-    app.post('/admin/create-admin', admin.createAdmin)
-    app.post('/admin/create-app', admin.authenticateAdmin, admin.createApp)
+    app.post('/admin/create-admin', admin.createAdminController)
+    app.post('/admin/create-app', admin.authenticateAdmin, admin.createAppController)
     app.post('/admin/sign-in', admin.signInAdmin)
     app.post('/admin/sign-out', admin.authenticateAdmin, admin.signOutAdmin)
     app.post('/admin/list-apps', admin.authenticateAdmin, admin.listApps)
@@ -268,4 +268,18 @@ export default (async (app, userbaseConfig = {}) => {
   } catch (e) {
     logger.info(`Unhandled error while launching server: ${e}`)
   }
-})
+}
+
+function createAdmin(adminName, password, adminId) {
+  return admin.createAdmin(adminName, password, adminId)
+}
+
+function createApp(appName, appId, adminId) {
+  return admin.createApp(appName, appId, adminId)
+}
+
+export default {
+  start,
+  createAdmin,
+  createApp
+}

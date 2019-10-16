@@ -45,14 +45,11 @@ const setSessionCookie = (res, sessionId) => {
   res.cookie(SESSION_COOKIE_NAME, sessionId, cookieResponseHeaders)
 }
 
-exports.createAdmin = async function (req, res) {
-  const adminName = req.body.adminName
-  const password = req.body.password
-  const adminId = req.body.adminId
-
-  if (!adminName || !password || !adminId) return res
-    .status(statusCodes['Bad Request'])
-    .send({ readableMessage: 'Missing required items' })
+async function createAdmin (adminName, password, adminId) {
+  if (!adminName || !password || !adminId) throw {
+    status: statusCodes['Bad Request'],
+    data: { readableMessage: 'Missing required items' }
+  }
 
   try {
     const passwordHash = await crypto.bcrypt.hash(password)
@@ -72,29 +69,50 @@ exports.createAdmin = async function (req, res) {
       },
     }
 
-    try {
-      const ddbClient = connection.ddbClient()
-      await ddbClient.put(params).promise()
-    } catch (e) {
-      if (e.name === 'ConditionalCheckFailedException') {
-        return res
-          .status(statusCodes['Conflict'])
-          .send({
-            err: `Failed to create admin with error ${e}`,
-            readableMessage: 'Admin name already exists'
-          })
+    const ddbClient = connection.ddbClient()
+    await ddbClient.put(params).promise()
+  } catch (e) {
+    if (e && e.name === 'ConditionalCheckFailedException') {
+      throw {
+        status: statusCodes['Conflict'],
+        data: {
+          err: `Failed to create admin with error ${e}`,
+          readableMessage: 'Admin name already exists'
+        }
       }
-      throw e
+    } else {
+      logger.error(`Failed to create admin with ${e}`)
+      throw {
+        status: statusCodes['Internal Server Error'],
+        data: { err: 'Failed to create admin' }
+      }
     }
+  }
+}
+exports.createAdmin = createAdmin
 
+exports.createAdminController = async function (req, res) {
+  const adminName = req.body.adminName
+  const password = req.body.password
+  const adminId = req.body.adminId
+
+  try {
+    await createAdmin(adminName, password, adminId)
+  } catch (e) {
+    return res
+      .status(e.status)
+      .send(e.data)
+  }
+
+  try {
     const sessionId = await createSession(adminId)
     setSessionCookie(res, sessionId)
     return res.end()
   } catch (e) {
-    logger.error(`Failed to create admin with ${e}`)
+    logger.error(`Failed to create session for admin ${adminId} with ${e}`)
     return res
       .status(statusCodes['Internal Server Error'])
-      .send({ err: 'Failed to create admin' })
+      .send({ err: 'Failed to create session!' })
   }
 }
 
@@ -236,16 +254,11 @@ exports.authenticateAdmin = async function (req, res, next) {
   }
 }
 
-exports.createApp = async function (req, res) {
-  const appName = req.body.appName
-  const appId = req.body.appId
-
-  const admin = res.locals.admin
-  const adminId = admin['admin-id']
-
-  if (!appName || !appId) return res
-    .status(statusCodes['Bad Request'])
-    .send({ readableMessage: 'Missing required items' })
+const createApp = async function (appName, appId, adminId) {
+  if (!appName || !appId || !adminId) throw {
+    status: statusCodes['Bad Request'],
+    data: { readableMessage: 'Missing required items' }
+  }
 
   const app = {
     'admin-id': adminId,
@@ -265,22 +278,40 @@ exports.createApp = async function (req, res) {
   try {
     const ddbClient = connection.ddbClient()
     await ddbClient.put(params).promise()
-
-    return res.send('Success!')
   } catch (e) {
     if (e.name === 'ConditionalCheckFailedException') {
-      return res
-        .status(statusCodes['Conflict'])
-        .send({
+      throw {
+        status: statusCodes['Conflict'],
+        data: {
           err: `Failed to create app with error ${e}`,
           readableMessage: 'App name already exists'
-        })
+        }
+      }
+    } else {
+      logger.error(`Failed to create app ${appId} with ${e}`)
+      throw {
+        status: statusCodes['Internal Server Error'],
+        data: { err: 'Failed to create app' }
+      }
     }
+  }
+}
+exports.createApp = createApp
 
-    logger.error(`Failed to create app ${appId} with ${e}`)
+exports.createAppController = async function (req, res) {
+  const appName = req.body.appName
+  const appId = req.body.appId
+
+  const admin = res.locals.admin
+  const adminId = admin['admin-id']
+
+  try {
+    await createApp(appName, appId, adminId)
+    return res.send('Success!')
+  } catch (e) {
     return res
-      .status(statusCodes['Internal Server Error'])
-      .send({ err: 'Failed to create app' })
+      .status(e.status)
+      .send(e.data)
   }
 }
 
@@ -301,11 +332,17 @@ exports.listApps = async function (req, res) {
 
   try {
     const ddbClient = connection.ddbClient()
-    const appsResponse = await ddbClient.query(params).promise()
 
-    // TO-DO: Pagination
+    let appsResponse = await ddbClient.query(params).promise()
+    let apps = appsResponse.Items
 
-    return res.status(statusCodes['Success']).send(appsResponse.Items)
+    while (appsResponse.LastEvaluatedKey) {
+      params.ExclusiveStartKey = appsResponse.LastEvaluatedKey
+      const appsResponse = await ddbClient.query(params).promise()
+      apps.push(appsResponse.Items)
+    }
+
+    return res.status(statusCodes['Success']).send(apps)
   } catch (e) {
     logger.error(`Failed to list apps with ${e}`)
     return res

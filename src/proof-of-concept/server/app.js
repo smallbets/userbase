@@ -1,5 +1,6 @@
 import express from 'express'
 import fs from 'fs'
+import http from 'http'
 
 import userbaseServer from 'userbase-server'
 
@@ -21,6 +22,41 @@ const userbaseConfig = {
   httpPort
 }
 
-app.use(express.static(distDir))
+const ADMIN_NAME = 'admin'
+const ADMIN_ID = 'admin-id'
 
-userbaseServer(app, userbaseConfig)
+const APP_NAME = 'proof-of-concept'
+const APP_ID = 'poc-id'
+
+const CONFLICT_STATUS_CODE = 409
+
+start()
+async function start() {
+  app.use(express.static(distDir))
+  await userbaseServer.start(app, userbaseConfig)
+
+  await setupAdmin()
+  await setupApp()
+}
+
+async function setupAdmin() {
+  try {
+    const adminPassword = process.env['sm.ADMIN_ACCOUNT_PASSWORD']
+
+    await userbaseServer.createAdmin(ADMIN_NAME, adminPassword, ADMIN_ID)
+  } catch (e) {
+    if (!e || e.status !== CONFLICT_STATUS_CODE) {
+      console.log(`Failed to set up new admin account with ${JSON.stringify(e)}`)
+    }
+  }
+}
+
+async function setupApp() {
+  try {
+    await userbaseServer.createApp(APP_NAME, APP_ID, ADMIN_ID)
+  } catch (e) {
+    if (!e || e.status !== CONFLICT_STATUS_CODE) {
+      console.log(`Failed to set up new app with ${JSON.stringify(e)}`)
+    }
+  }
+}

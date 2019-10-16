@@ -6,7 +6,7 @@ import App from './App'
 
 import './style.css'
 
-const APP_ID = '06562548247064748'
+const APP_ID = 'poc-id'
 userbase.updateConfig({ appId: APP_ID })
 
 // use our own server for development
