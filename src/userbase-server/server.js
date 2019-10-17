@@ -274,8 +274,8 @@ function createAdmin(adminName, password, adminId) {
   return admin.createAdmin(adminName, password, adminId)
 }
 
-function createApp(appName, appId, adminId) {
-  return admin.createApp(appName, appId, adminId)
+function createApp(appName, adminId, appId) {
+  return admin.createApp(appName, adminId, appId)
 }
 
 export default {

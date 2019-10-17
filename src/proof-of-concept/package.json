@@ -52,9 +52,10 @@
   },
   "scripts": {
     "build:client": "webpack --mode production --config webpack.config.js",
-    "build:server": "babel ./server -d build --presets=@babel/preset-env && npm run build:userbase-server && npm run install:userbase-server",
+    "build:server": "babel ./server -d build --presets=@babel/preset-env && npm run build:userbase-server && npm run install:userbase-server && npm run copy:admin-panel",
     "build:userbase-server": "babel ../userbase-server -d build/node_modules/userbase-server --ignore ../userbase-server/node_modules --presets=@babel/preset-env --plugins=@babel/transform-runtime",
     "install:userbase-server": "cp ../userbase-server/package.json build/node_modules/userbase-server/ && cd ./build/node_modules/userbase-server && npm install",
+    "copy:admin-panel": "cp -R ../userbase-server/admin-panel build/node_modules/userbase-server/admin-panel",
     "watch:client": "webpack-dev-server --mode development --config webpack.config.js"
   }
 }

@@ -1,6 +1,5 @@
 import express from 'express'
 import fs from 'fs'
-import http from 'http'
 
 import userbaseServer from 'userbase-server'
 
@@ -53,7 +52,7 @@ async function setupAdmin() {
 
 async function setupApp() {
   try {
-    await userbaseServer.createApp(APP_NAME, APP_ID, ADMIN_ID)
+    await userbaseServer.createApp(APP_NAME, ADMIN_ID, APP_ID)
   } catch (e) {
     if (!e || e.status !== CONFLICT_STATUS_CODE) {
       console.log(`Failed to set up new app with ${JSON.stringify(e)}`)
