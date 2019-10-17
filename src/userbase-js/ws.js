@@ -60,7 +60,7 @@ class Connection {
     }
   }
 
-  connect(session, onSessionChange, signingUp) {
+  connect(session, appId, onSessionChange, signingUp) {
     if (!session) throw new Error('Missing session')
     if (!session.username) throw new Error('Session missing username')
     if (!session.signedIn) throw new Error('Not signed in to session')
@@ -82,7 +82,7 @@ class Connection {
 
       const host = removeProtocolFromEndpoint(this.endpoint)
       const url = ((window.location.protocol === 'https:') ?
-        'wss://' : 'ws://') + host + '/api?sessionId=' + session.sessionId
+        'wss://' : 'ws://') + `${host}/api?sessionId=${session.sessionId}&appId=${appId}`
 
       const ws = new WebSocket(url)
 

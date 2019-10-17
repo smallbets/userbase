@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang=en>
+
+<head>
+  <meta charset=utf-8>
+  <meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=0" />
+  <title>Userbase - Admin Panel</title>
+  <link rel="shortcut icon" href="/favicon.ico">
+</head>
+
+<body>
+  <div id=content>
+
+    <div id="landing-page">
+      <form id="sign-in-form" style="text-align: right;" onsubmit="signIn(event)">
+        <span>
+          <label style="display: inline-block">
+            E-mail
+            <input id="sign-in-email" required type="text" autocomplete="username">
+          </label>
+
+          <label style="display: inline-block; margin-left: 20px">
+            Password
+            <input required type="password" autocomplete="current-password">
+          </label>
+
+          <input style="margin-left: 10px;" type="submit" value="Sign In">
+        </span>
+      </form>
+
+      <h2 style="text-align: center;">Create Admin Account</h2>
+      <form id="create-admin-form" style="margin: auto; width: max-content; margin-top: 20px; border: .1rem solid black; border-radius: 1rem; padding: 1rem;"
+        onsubmit="createAdminAndApp(event)">
+
+        <label>
+          E-mail:
+          <br>
+          <input required type="text" autocomplete="username">
+        </label>
+        <br>
+        <br>
+
+        <label>
+          Password:
+          <br>
+          <input required type="password" autocomplete="new-password">
+        </label>
+        <br>
+        <br>
+
+        <label>
+          App Name:
+          <br>
+          <input required type="text" name="appName" autocomplete="off">
+        </label>
+        <br>
+        <br>
+
+        <div style="text-align: center;">
+          <input type="submit" value="Get Started">
+        </div>
+
+      </form>
+    </div>
+
+    <div id="home-page" style="display: none;">
+      <div style="text-align: right; margin-right: 1rem;">
+        <button type="button" onclick="signOut(event)">Sign Out</button>
+      </div>
+
+      <table id="apps-table" cellpadding="5" style="margin: auto;">
+        <tr>
+          <th>App Name</th>
+          <th>App ID</th>
+        </tr>
+        <tbody id="apps-table-body">
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <script type="text/javascript">
+    var LANDING_PAGE = document.getElementById('landing-page')
+    var HOME_PAGE = document.getElementById('home-page')
+
+    var currentSessionJson = localStorage.getItem('currentAdminSession')
+    var currentSession = currentSessionJson && JSON.parse(currentSessionJson)
+
+    var signInInput = document.getElementById('sign-in-email')
+    signInInput.value = currentSession && currentSession.adminName
+
+    if (currentSession && currentSession.signedIn) {
+      listApps()
+    }
+
+    function createAdminAndApp(event) {
+      event.preventDefault()
+
+      var adminName = event.target[0].value
+      var password = event.target[1].value
+      var appName = event.target[2].value
+
+      if (!adminName || !password || !appName) {
+        alert('Missing field!')
+      } else {
+        document.getElementById('create-admin-form').reset()
+        createAdmin(adminName, password, appName)
+      }
+    }
+
+    function createAdmin(adminName, password, appName) {
+      var xhr = new XMLHttpRequest()
+      xhr.open("POST", "/admin/create-admin")
+      xhr.setRequestHeader("Content-Type", "application/json")
+
+      xhr.send(JSON.stringify({
+        adminName,
+        password
+      }))
+
+      xhr.onreadystatechange = function () {
+        if (this.readyState === XMLHttpRequest.DONE) {
+          if (this.status === 200) {
+            setCurrentSession(adminName, true)
+            createApp(appName)
+          } else if (this.status === 409) {
+            alert(`Admin '${adminName}' already exists`)
+          } else {
+            alert('Something went wrong! Please try again.')
+          }
+        }
+      }
+    }
+
+    function createApp(appName) {
+      var xhr = new XMLHttpRequest()
+      xhr.open("POST", "/admin/create-app")
+      xhr.setRequestHeader("Content-Type", "application/json")
+
+      xhr.send(JSON.stringify({ appName }))
+
+      xhr.onreadystatechange = function () {
+        if (this.readyState === XMLHttpRequest.DONE) {
+          if (this.status === 200) {
+            var appId = this.response
+
+            var apps = [{
+              'app-id': appId,
+              'app-name': appName
+            }]
+            displayApps(apps)
+
+            alert(`Success! Your app id is: ${appId}`)
+
+          } else {
+            alert('Something went wrong! Please try again.')
+          }
+        }
+      }
+    }
+
+    function signIn(event) {
+      event.preventDefault()
+
+      var adminName = event.target[0].value
+      var password = event.target[1].value
+
+      if (!adminName || !password) {
+        alert('Missing field!')
+      } else {
+        var xhr = new XMLHttpRequest()
+        xhr.open("POST", "/admin/sign-in")
+        xhr.setRequestHeader("Content-Type", "application/json")
+
+        xhr.send(JSON.stringify({
+          adminName,
+          password
+        }))
+
+        xhr.onreadystatechange = function () {
+          if (this.readyState === XMLHttpRequest.DONE) {
+            if (this.status === 200) {
+              setCurrentSession(adminName, true)
+              listApps()
+              event.target.reset()
+            } else if (this.status === 401) {
+                alert('Incorrect password')
+                event.target[1].value = ''
+            } else {
+              alert('Something went wrong! Please try again')
+            }
+          }
+        }
+      }
+    }
+
+    function setCurrentSession(adminName, signedIn) {
+      const adminSession = { adminName, signedIn }
+      localStorage.setItem('currentAdminSession', JSON.stringify(adminSession))
+    }
+
+    function listApps() {
+      var xhr = new XMLHttpRequest()
+      xhr.open("POST", "/admin/list-apps")
+      xhr.setRequestHeader("Content-Type", "application/json")
+
+      xhr.send()
+
+      xhr.onreadystatechange = function () {
+        if (this.readyState === XMLHttpRequest.DONE) {
+          if (this.status === 200) {
+            var apps = this.response
+            displayApps(JSON.parse(apps))
+          } else {
+            alert('Something went wrong! Please refresh the page.')
+          }
+        }
+      }
+    }
+
+    function displayApps(apps) {
+      LANDING_PAGE.style.display = "none"
+      HOME_PAGE.style.display = "block"
+      var appsTableBody = document.getElementById("apps-table-body")
+
+      for (var app of apps) {
+        var tr = document.createElement('tr')
+
+        var appNameTd = document.createElement('td')
+        appNameTd.innerHTML = app['app-name']
+
+        var appIdTd = document.createElement('td')
+        appIdTd.innerHTML = app['app-id']
+
+        tr.appendChild(appNameTd)
+        tr.appendChild(appIdTd)
+
+        appsTableBody.appendChild(tr)
+      }
+    }
+
+    function signOut(event) {
+      event.preventDefault()
+
+      var xhr = new XMLHttpRequest()
+      xhr.open("POST", "/admin/sign-out")
+
+      xhr.send()
+
+      setCurrentSession(currentSession.adminName, false)
+      signInInput.value = currentSession.adminName
+      document.getElementById("apps-table-body").innerHTML = ""
+
+      LANDING_PAGE.style.display = "block"
+      HOME_PAGE.style.display = "none"
+    }
+
+  </script>
+
+</body>
+
+</html>

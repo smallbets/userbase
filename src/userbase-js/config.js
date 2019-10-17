@@ -1,10 +1,22 @@
 import ws from './ws'
 
-const updateConfig = (newEndpoint) => {
+let userbaseAppId = null
+const getAppId = () => userbaseAppId
+
+const updateConfig = ({ appId, newEndpoint }) => {
   if (ws.connected) throw new Error('WebSocket already open')
-  ws.endpoint = newEndpoint
+
+  if (appId) {
+    if (userbaseAppId) throw new Error('App id already set')
+    userbaseAppId = appId
+  }
+
+  if (newEndpoint) {
+    ws.endpoint = newEndpoint
+  }
 }
 
 export default {
-  updateConfig
+  updateConfig,
+  getAppId
 }
