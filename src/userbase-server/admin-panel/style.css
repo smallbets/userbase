@@ -1,0 +1,126 @@
+@tailwind base;
+
+@font-face {
+  font-family: 'Font Awesome 5 Free';
+  font-style: normal;
+  font-weight: 400;
+  font-display: auto;
+  src: url("./fonts/fa-regular-400.eot");
+  src: url("./fonts/fa-regular-400.eot?#iefix") format("embedded-opentype"), url("./fonts/fa-regular-400.woff2") format("woff2"), url("./fonts/fa-regular-400.woff") format("woff"), url("./fonts/fa-regular-400.ttf") format("truetype"), url("./fonts/fa-regular-400.svg#fontawesome") format("svg");
+}
+
+@font-face {
+  font-family: 'Font Awesome 5 Free';
+  font-style: normal;
+  font-weight: 900;
+  font-display: auto;
+  src: url("./fonts/fa-solid-900.eot");
+  src: url("./fonts/fa-solid-900.eot?#iefix") format("embedded-opentype"), url("./fonts/fa-solid-900.woff2") format("woff2"), url("./fonts/fa-solid-900.woff") format("woff"), url("./fonts/fa-solid-900.ttf") format("truetype"), url("./fonts/fa-solid-900.svg#fontawesome") format("svg");
+}
+
+@tailwind components;
+
+body {
+  @apply bg-primary;
+}
+
+a {
+  @apply underline;
+}
+
+a:hover {
+  @apply text-orange-700;
+}
+
+.btn {
+  @apply rounded-lg w-20 pt-1 pb-1 bg-secondary font-bold cursor-pointer text-yellow-900 h-8;
+}
+
+.content {
+  @apply max-w-md font-bold bg-white p-8 shadow-md;
+}
+
+.btn:disabled {
+  @apply cursor-not-allowed text-yellow-600;
+}
+
+.btn-cancel {
+  @apply rounded-lg w-20 pt-1 pb-1 bg-transparent text-sm h-8 border cursor-pointer border-gray-600 font-normal;
+}
+
+.checkbox {
+  @apply border border-green-700 text-white w-5 h-5 ml-2 bg-white inline-block rounded text-xs p-1 leading-none;
+  margin-top: 2px;
+}
+
+.checkbox-checked {
+  @apply border border-green-700 text-white w-5 h-5 ml-2 bg-green-500 inline-block rounded text-xs p-1 leading-none;
+  margin-top: 2px;
+}
+
+.todo-text {
+  @apply font-light text-sm h-8 p-2 border border-gray-500 outline-none;
+}
+
+.todo-item {
+  @apply inline-block ml-2 font-semibold flex-1
+}
+
+.error {
+  @apply text-red-600 text-xs italic mt-6 font-medium;
+}
+
+.message {
+  @apply text-gray-600 text-xs italic mt-6 font-medium;
+}
+
+@tailwind utilities;
+
+.loader {
+  border: 4px solid #f3f3f3;
+  border-radius: 50%;
+  border-top: 4px solid grey;
+  -webkit-animation: spin 1s linear infinite; /* Safari */
+  animation: spin 1s linear infinite;
+}
+
+/* Safari */
+@-webkit-keyframes spin {
+  0% { -webkit-transform: rotate(0deg); }
+  100% { -webkit-transform: rotate(360deg); }
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.fa-check:before {
+  font-family: 'Font Awesome 5 Free';
+  content: "\f00c";
+}
+
+.fa-check-empty:before {
+  font-family: 'Font Awesome 5 Free';
+  content: "-";
+}
+
+.fa-trash-alt:before {
+  font-family: 'Font Awesome 5 Free';
+  content: "\f2ed";
+}
+
+.fa-key:before {
+  font-family: 'Font Awesome 5 Free';
+  content: "\f084";
+}
+
+.fa-times-circle:before {
+  font-family: 'Font Awesome 5 Free';
+  content: "\f057";
+}
+
+.fa-user-plus:before {
+  font-family: 'Font Awesome 5 Free';
+  content: "\f234"
+}

@@ -15,6 +15,8 @@ import connections from './ws'
 import statusCodes from './statusCodes'
 import responseBuilder from './responseBuilder'
 
+const adminPanelDir = '/admin-panel/dist'
+
 const ONE_KB = 1024
 
 // DynamoDB single item limit: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html#limits-items
@@ -24,7 +26,7 @@ if (process.env.NODE_ENV == 'development') {
   logger.warn('Development Mode')
 }
 
-async function start (app, userbaseConfig = {}) {
+async function start (express, app, userbaseConfig = {}) {
   try {
     await setup.init()
 
@@ -255,9 +257,7 @@ async function start (app, userbaseConfig = {}) {
     app.post('/api/auth/sign-up', user.signUp)
     app.post('/api/auth/sign-in', user.signIn)
 
-    app.get('/admin', function (req, res) {
-      res.sendFile(path.join(__dirname + '/admin-panel/index.html'))
-    })
+    app.use('/admin', express.static(path.join(__dirname + adminPanelDir)))
 
     app.post('/admin/create-admin', admin.createAdminController)
     app.post('/admin/create-app', admin.authenticateAdmin, admin.createAppController)

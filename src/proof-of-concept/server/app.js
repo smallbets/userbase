@@ -32,7 +32,7 @@ const CONFLICT_STATUS_CODE = 409
 start()
 async function start() {
   app.use(express.static(distDir))
-  await userbaseServer.start(app, userbaseConfig)
+  await userbaseServer.start(express, app, userbaseConfig)
 
   await setupAdmin()
   await setupApp()
