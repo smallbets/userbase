@@ -7,17 +7,9 @@ export default class App extends Component {
   constructor(props) {
     super(props)
 
-    const sessionJson = localStorage.getItem('adminSession')
-    const session = sessionJson && JSON.parse(sessionJson)
-
-    const mode = !session ? 'create-admin'
-      : session.signedIn
-        ? 'dashboard'
-        : 'sign-in'
-
     this.state = {
-      mode,
-      adminName: session && session.adminName
+      mode: undefined,
+      adminName: undefined
     }
 
     this.handleSignOut = this.handleSignOut.bind(this)
@@ -63,17 +55,17 @@ export default class App extends Component {
         if (signedIn) {
           this.setState({ mode: 'dashboard' })
         } else {
-          if (session) {
-            window.location.hash = 'sign-in'
-          } else {
-            window.location.hash = 'create-admin'
-          }
+          window.location.hash = session ? 'sign-in' : 'create-admin'
         }
     }
   }
 
   render() {
     const { mode, adminName } = this.state
+
+    if (!mode) {
+      return <div />
+    }
 
     return (
       <div>

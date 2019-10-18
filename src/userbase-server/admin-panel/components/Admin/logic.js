@@ -23,16 +23,17 @@ const signOutLocalSession = () => {
 
 const createAdmin = async (adminName, password) => {
   try {
+    const lowerCaseAdminName = adminName.toLowerCase()
     await axios({
       method: 'POST',
       url: '/admin/create-admin',
       data: {
-        adminName,
+        adminName: lowerCaseAdminName,
         password
       },
       timeout: TEN_SECONDS_MS
     })
-    signInLocalSession(adminName)
+    signInLocalSession(lowerCaseAdminName)
   } catch (e) {
     if (e && e.response) {
       throw new Error(e.response.data)
@@ -71,15 +72,17 @@ const signOut = async () => {
 
 const signIn = async (adminName, password) => {
   try {
+    const lowerCaseAdminName = adminName.toLowerCase()
     await axios({
       method: 'POST',
       url: '/admin/sign-in',
       data: {
-        adminName,
+        adminName: lowerCaseAdminName,
         password
       },
       timeout: TEN_SECONDS_MS
     })
+    signInLocalSession(lowerCaseAdminName)
   } catch (e) {
     if (e && e.response) {
       throw new Error(e.response.data)
@@ -87,8 +90,6 @@ const signIn = async (adminName, password) => {
       throw e
     }
   }
-
-  signInLocalSession(adminName)
 }
 
 export default {
