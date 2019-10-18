@@ -749,7 +749,7 @@ exports.acceptDatabaseAccess = async function (granteeId, dbId, dbNameHash, encr
 async function findUserByUserId(userId) {
   const params = {
     TableName: setup.usersTableName,
-    IndexName: 'UserIdIndex',
+    IndexName: setup.userIdIndex,
     KeyConditionExpression: '#userId = :userId',
     ExpressionAttributeNames: {
       '#userId': 'user-id'

@@ -26,7 +26,7 @@ if (process.env.NODE_ENV == 'development') {
   logger.warn('Development Mode')
 }
 
-async function start (express, app, userbaseConfig = {}) {
+async function start(express, app, userbaseConfig = {}) {
   try {
     await setup.init()
 
@@ -264,6 +264,7 @@ async function start (express, app, userbaseConfig = {}) {
     app.post('/admin/sign-in', admin.signInAdmin)
     app.post('/admin/sign-out', admin.authenticateAdmin, admin.signOutAdmin)
     app.post('/admin/list-apps', admin.authenticateAdmin, admin.listApps)
+    app.post('/admin/list-app-users', admin.authenticateAdmin, admin.listAppUsers)
 
   } catch (e) {
     logger.info(`Unhandled error while launching server: ${e}`)
@@ -271,11 +272,11 @@ async function start (express, app, userbaseConfig = {}) {
 }
 
 function createAdmin(adminName, password, adminId) {
-  return admin.createAdmin(adminName, password, adminId)
+  return admin.createAdmin(adminName, password, adminId)
 }
 
 function createApp(appName, adminId, appId) {
-  return admin.createApp(appName, adminId, appId)
+  return admin.createApp(appName, adminId, appId)
 }
 
 export default {

@@ -2,6 +2,7 @@ import React, { Component } from 'react'
 import AdminForm from './components/Admin/AdminForm'
 import adminLogic from './components/Admin/logic'
 import Dashboard from './components/Dashboard/Dashboard'
+import AppUsersTable from './components/Dashboard/AppUsersTable'
 
 export default class App extends Component {
   constructor(props) {
@@ -44,19 +45,18 @@ export default class App extends Component {
     switch (hashRoute) {
       case 'create-admin':
       case 'sign-in':
-        if (signedIn) {
-          window.location.hash = ''
-        } else {
-          this.setState({ mode: hashRoute })
-        }
-        break
+        return signedIn
+          ? window.location.hash = ''
+          : this.setState({ mode: hashRoute })
 
       default:
-        if (signedIn) {
-          this.setState({ mode: 'dashboard' })
-        } else {
-          window.location.hash = session ? 'sign-in' : 'create-admin'
+        if (hashRoute && hashRoute.substring(0, 4) === 'app=' && signedIn) {
+          return this.setState({ mode: 'app-users-table' })
         }
+
+        return signedIn
+          ? this.setState({ mode: 'dashboard' })
+          : window.location.hash = session ? 'sign-in' : 'create-admin'
     }
   }
 
@@ -108,6 +108,9 @@ export default class App extends Component {
 
             case 'dashboard':
               return <Dashboard />
+
+            case 'app-users-table':
+              return <AppUsersTable appName={window.location.hash.substring(5)} />
 
             default:
               return null

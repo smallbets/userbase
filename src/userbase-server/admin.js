@@ -118,7 +118,7 @@ exports.createAdminController = async function (req, res) {
 const findAdminByAdminId = async (adminId) => {
   const params = {
     TableName: setup.adminTableName,
-    IndexName: 'AdminIdIndex',
+    IndexName: setup.adminIdIndex,
     KeyConditionExpression: '#adminId = :adminId',
     ExpressionAttributeNames: {
       '#adminId': 'admin-id'
@@ -335,7 +335,7 @@ exports.listApps = async function (req, res) {
 
     while (appsResponse.LastEvaluatedKey) {
       params.ExclusiveStartKey = appsResponse.LastEvaluatedKey
-      const appsResponse = await ddbClient.query(params).promise()
+      appsResponse = await ddbClient.query(params).promise()
       apps.push(appsResponse.Items)
     }
 
@@ -345,5 +345,61 @@ exports.listApps = async function (req, res) {
     return res
       .status(statusCodes['Internal Server Error'])
       .send('Failed to list apps')
+  }
+}
+
+async function getApp(adminId, appName) {
+  const params = {
+    TableName: setup.appsTableName,
+    Key: {
+      'admin-id': adminId,
+      'app-name': appName
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+  const appResponse = await ddbClient.get(params).promise()
+  return appResponse.Item
+}
+
+exports.listAppUsers = async function (req, res) {
+  const appName = req.query.appName
+
+  const admin = res.locals.admin
+  const adminId = admin['admin-id']
+
+  try {
+    const app = await getApp(adminId, appName)
+    if (!app) return res.status(statusCodes['Not Found']).send('App not found')
+
+    const params = {
+      TableName: setup.usersTableName,
+      IndexName: setup.appIdIndex,
+      KeyConditionExpression: '#appId = :appId',
+      ExpressionAttributeNames: {
+        '#appId': 'app-id'
+      },
+      ExpressionAttributeValues: {
+        ':appId': app['app-id']
+      }
+    }
+
+    const ddbClient = connection.ddbClient()
+
+    let usersResponse = await ddbClient.query(params).promise()
+    let users = usersResponse.Items
+
+    while (usersResponse.LastEvaluatedKey) {
+      params.ExclusiveStartKey = usersResponse.LastEvaluatedKey
+      usersResponse = await ddbClient.query(params).promise()
+      users.push(usersResponse.Items)
+    }
+
+    return res.status(statusCodes['Success']).send(users)
+  } catch (e) {
+    logger.error(`Failed to list app users for app ${appName} and admin ${adminId} with ${e}`)
+    return res
+      .status(statusCodes['Internal Server Error'])
+      .send('Failed to list app users')
   }
 }

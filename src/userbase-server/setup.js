@@ -17,8 +17,6 @@ const seedExchangeTableName = usernamePrefix + 'seed-exchange'
 const databaseAccessGrantsTableName = usernamePrefix + 'database-access-grants'
 const dbStatesBucketName = usernamePrefix + 'db-states'
 
-const userDatabaseIdIndex = 'UserDatabaseIdIndex'
-
 exports.adminTableName = adminTableName
 exports.appsTableName = appsTableName
 exports.usersTableName = usersTableName
@@ -29,6 +27,14 @@ exports.transactionsTableName = transactionsTableName
 exports.seedExchangeTableName = seedExchangeTableName
 exports.databaseAccessGrantsTableName = databaseAccessGrantsTableName
 
+const adminIdIndex = 'AdminIdIndex'
+const userIdIndex = 'UserIdIndex'
+const appIdIndex = 'AppIdIndex'
+const userDatabaseIdIndex = 'UserDatabaseIdIndex'
+
+exports.adminIdIndex = adminIdIndex
+exports.userIdIndex = userIdIndex
+exports.appIdIndex = appIdIndex
 exports.userDatabaseIdIndex = userDatabaseIdIndex
 
 let s3
@@ -78,7 +84,7 @@ async function setupDdb() {
       { AttributeName: 'admin-name', KeyType: 'HASH' }
     ],
     GlobalSecondaryIndexes: [{
-      IndexName: 'AdminIdIndex',
+      IndexName: adminIdIndex,
       KeySchema: [
         { AttributeName: 'admin-id', KeyType: 'HASH' }
       ],
@@ -113,13 +119,22 @@ async function setupDdb() {
       { AttributeName: 'username', KeyType: 'HASH' },
       { AttributeName: 'app-id', KeyType: 'RANGE' }
     ],
-    GlobalSecondaryIndexes: [{
-      IndexName: 'UserIdIndex',
-      KeySchema: [
-        { AttributeName: 'user-id', KeyType: 'HASH' }
-      ],
-      Projection: { ProjectionType: 'ALL' }
-    }]
+    GlobalSecondaryIndexes: [
+      {
+        IndexName: userIdIndex,
+        KeySchema: [
+          { AttributeName: 'user-id', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' }
+      },
+      {
+        IndexName: appIdIndex,
+        KeySchema: [
+          { AttributeName: 'app-id', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' }
+      }
+    ]
   }
 
   // the sessions table holds a record per admin OR user session

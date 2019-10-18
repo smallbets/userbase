@@ -30,11 +30,11 @@ export default class Dashboard extends Component {
             ? <div className='text-center'><div className='loader w-6 h-6 inline-block' /></div>
             : <div className='container content text-center'>
 
-              <table className='table-auto border-collapse border-2 border-gray-500 mx-auto'>
+              <table className='table-auto w-full border-collapse border-2 border-gray-500 mx-auto'>
 
                 <thead>
                   <tr>
-                    <th className='border border-gray-400 px-4 py-2 text-gray-800'>App Name</th>
+                    <th className='border border-gray-400 px-4 py-2 text-gray-800'>App</th>
                     <th className='border border-gray-400 px-4 py-2 text-gray-800'>App ID</th>
                   </tr>
                 </thead>
@@ -42,12 +42,12 @@ export default class Dashboard extends Component {
                 <tbody>
 
                   {apps && apps.length !== 0 && apps.map((app) => (
-
                     <tr key={app['app-id']}>
-                      <td className='border border-gray-400 px-4 py-2 font-light'>{app['app-name']}</td>
+                      <td className='border border-gray-400 px-4 py-2 font-light'>
+                        <a href={`#app=${app['app-name']}`}>{app['app-name']}</a>
+                      </td>
                       <td className='border border-gray-400 px-4 py-2 font-light'>{app['app-id']}</td>
                     </tr>
-
                   ))}
 
                 </tbody>
