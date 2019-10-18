@@ -46,10 +46,10 @@ const setSessionCookie = (res, sessionId) => {
   res.cookie(SESSION_COOKIE_NAME, sessionId, cookieResponseHeaders)
 }
 
-async function createAdmin (adminName, password, adminId = uuidv4()) {
+async function createAdmin(adminName, password, adminId = uuidv4()) {
   if (!adminName || !password) throw {
     status: statusCodes['Bad Request'],
-    data: { readableMessage: 'Missing required items' }
+    data: 'Missing required items'
   }
 
   try {
@@ -77,16 +77,13 @@ async function createAdmin (adminName, password, adminId = uuidv4()) {
     if (e && e.name === 'ConditionalCheckFailedException') {
       throw {
         status: statusCodes['Conflict'],
-        data: {
-          err: `Failed to create admin with error ${e}`,
-          readableMessage: 'Admin name already exists'
-        }
+        data: 'Admin already exists'
       }
     } else {
       logger.error(`Failed to create admin with ${e}`)
       throw {
         status: statusCodes['Internal Server Error'],
-        data: { err: 'Failed to create admin' }
+        data: 'Failed to create admin'
       }
     }
   }
@@ -114,7 +111,7 @@ exports.createAdminController = async function (req, res) {
     logger.error(`Failed to create session for admin ${adminId} with ${e}`)
     return res
       .status(statusCodes['Internal Server Error'])
-      .send({ err: 'Failed to create session!' })
+      .send('Failed to create session!')
   }
 }
 
@@ -150,7 +147,7 @@ exports.signInAdmin = async function (req, res) {
 
   if (!adminName || !password) return res
     .status(statusCodes['Bad Request'])
-    .send({ readableMessage: 'Missing required items' })
+    .send('Missing required items')
 
   const params = {
     TableName: setup.adminTableName,
@@ -169,7 +166,8 @@ exports.signInAdmin = async function (req, res) {
     const incorrectPassword = doesNotExist || !(await crypto.bcrypt.compare(password, admin['password-hash']))
 
     if (doesNotExist || incorrectPassword) return res
-      .status(statusCodes['Unauthorized']).end()
+      .status(statusCodes['Unauthorized'])
+      .send('Incorrect password')
 
     const sessionId = await createSession(admin['admin-id'])
     setSessionCookie(res, sessionId)
@@ -178,7 +176,7 @@ exports.signInAdmin = async function (req, res) {
     logger.error(`Admin ${adminName} failed to sign in with ${e}`)
     return res
       .status(statusCodes['Internal Server Error'])
-      .send({ err: `Failed to sign in admin!` })
+      .send('Failed to sign in admin!')
   }
 }
 
@@ -218,7 +216,7 @@ exports.authenticateAdmin = async function (req, res, next) {
 
   if (!sessionId) return res
     .status(statusCodes['Unauthorized'])
-    .send({ readableMessage: 'Missing session token' })
+    .send('Missing session token')
 
   const params = {
     TableName: setup.sessionsTableName,
@@ -244,7 +242,7 @@ exports.authenticateAdmin = async function (req, res, next) {
     const admin = await findAdminByAdminId(session['admin-id'])
     if (!admin) return res
       .status(statusCodes['Not Found'])
-      .send({ readableMessage: 'Admin does not exist' })
+      .send('Admin does not exist')
 
     res.locals.admin = admin // makes admin object available in next route
     next()
@@ -252,14 +250,14 @@ exports.authenticateAdmin = async function (req, res, next) {
     logger.error(`Failed to authenticate admin session ${sessionId} with ${e}`)
     return res
       .status(statusCodes['Internal Server Error'])
-      .send({ err: 'Failed to authenticate admin' })
+      .send('Failed to authenticate admin')
   }
 }
 
 const createApp = async function (appName, adminId, appId = uuidv4()) {
   if (!appName || !adminId) throw {
     status: statusCodes['Bad Request'],
-    data: { readableMessage: 'Missing required items' }
+    data: 'Missing required items'
   }
 
   const app = {
@@ -285,16 +283,13 @@ const createApp = async function (appName, adminId, appId = uuidv4()) {
     if (e.name === 'ConditionalCheckFailedException') {
       throw {
         status: statusCodes['Conflict'],
-        data: {
-          err: `Failed to create app with error ${e}`,
-          readableMessage: 'App name already exists'
-        }
+        data: 'App already exists'
       }
     } else {
       logger.error(`Failed to create app ${appName} for admin ${adminId} with ${e}`)
       throw {
         status: statusCodes['Internal Server Error'],
-        data: { err: 'Failed to create app' }
+        data: 'Failed to create app'
       }
     }
   }
@@ -303,7 +298,6 @@ exports.createApp = createApp
 
 exports.createAppController = async function (req, res) {
   const appName = req.body.appName
-  const appId = req.body.appId
 
   const admin = res.locals.admin
   const adminId = admin['admin-id']
@@ -350,6 +344,6 @@ exports.listApps = async function (req, res) {
     logger.error(`Failed to list apps with ${e}`)
     return res
       .status(statusCodes['Internal Server Error'])
-      .send({ err: 'Failed to list apps'})
+      .send('Failed to list apps')
   }
 }
