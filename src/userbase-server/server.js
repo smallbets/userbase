@@ -246,7 +246,7 @@ async function start(express, app, userbaseConfig = {}) {
     }, 30000)
 
     app.use(expressLogger())
-    app.user(cors())
+    app.use(cors())
     app.use(bodyParser.json())
     app.use(cookieParser())
 
