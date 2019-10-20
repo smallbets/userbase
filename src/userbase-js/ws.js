@@ -3,7 +3,7 @@ import uuidv4 from 'uuid/v4'
 import LZString from 'lz-string'
 import localData from './localData'
 import crypto from './Crypto'
-import { removeProtocolFromEndpoint } from './utils'
+import { removeProtocolFromEndpoint, getProtocolFromEndpoint } from './utils'
 
 const DEFAULT_SERVICE_ENDPOINT = 'https://demo.encrypted.dev'
 const DEV_MODE = window.location.hostname === 'localhost'
@@ -81,7 +81,8 @@ class Connection {
       )
 
       const host = removeProtocolFromEndpoint(this.endpoint)
-      const url = ((window.location.protocol === 'https:') ?
+      const protocol = getProtocolFromEndpoint(this.endpoint)
+      const url = ((protocol === 'https') ?
         'wss://' : 'ws://') + `${host}/api?sessionId=${session.sessionId}&appId=${appId}`
 
       const ws = new WebSocket(url)
