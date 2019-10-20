@@ -7,12 +7,12 @@ if (!global._babelPolyfill) {
 }
 
 export default {
-  updateConfig: config.updateConfig,
+  configure: config.configure,
 
   signUp: auth.signUp,
   signIn: auth.signIn,
   signOut: auth.signOut,
-  initSession: auth.initSession,
+  init: auth.init,
   importKey: auth.importKey,
   grantDatabaseAccess: auth.grantDatabaseAccess,
 

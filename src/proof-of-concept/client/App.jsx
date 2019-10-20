@@ -40,7 +40,7 @@ export default class App extends Component {
   }
 
   async componentDidMount() {
-    await userLogic.initSession(this.handleUpdateSession)
+    await userLogic.init(this.handleUpdateSession)
 
     window.addEventListener('hashchange', this.handleReadHash, false)
   }

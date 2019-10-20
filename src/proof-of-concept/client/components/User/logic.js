@@ -38,9 +38,9 @@ const saveKey = async (key) => {
   await userbase.importKey(key)
 }
 
-const initSession = async (onSessionChange) => {
+const init = async (onSessionChange) => {
   try {
-    await userbase.initSession(onSessionChange)
+    await userbase.init(onSessionChange)
   } catch (e) {
     return _errorHandler(e, 'init session')
   }
@@ -51,5 +51,5 @@ export default {
   signOut,
   signIn,
   saveKey,
-  initSession
+  init
 }

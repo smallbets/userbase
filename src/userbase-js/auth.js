@@ -10,7 +10,7 @@ const appIdNotSet = 'App id not set'
 const wsNotOpen = 'Web Socket not open'
 const deviceAlreadyRegistered = 'Device already registered'
 
-const signUp = async (username, password, onSessionChange) => {
+const signUp = async (username, password, onSessionChange = (() => { })) => {
   const appId = config.getAppId()
   if (!appId) throw new Error(appIdNotSet)
 
@@ -53,7 +53,7 @@ const signOut = async () => {
   await ws.signOut()
 }
 
-const signIn = async (username, password, onSessionChange) => {
+const signIn = async (username, password, onSessionChange = (() => { })) => {
   const appId = config.getAppId()
   if (!appId) throw new Error(appIdNotSet)
 
@@ -69,7 +69,7 @@ const signIn = async (username, password, onSessionChange) => {
   return session
 }
 
-const initSession = async (onSessionChange) => {
+const init = async (onSessionChange = (() => { })) => {
   const appId = config.getAppId()
   if (!appId) throw new Error(appIdNotSet)
 
@@ -80,6 +80,7 @@ const initSession = async (onSessionChange) => {
   try {
     const signingUp = false
     await ws.connect(session, appId, onSessionChange, signingUp)
+    return session
   } catch (e) {
     ws.close()
     onSessionChange(ws.session)
@@ -115,7 +116,7 @@ export default {
   signUp,
   signOut,
   signIn,
-  initSession,
+  init,
   importKey,
   grantDatabaseAccess,
 }
