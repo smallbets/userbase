@@ -1,0 +1,1 @@
+window.userbase = require('.').default

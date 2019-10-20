@@ -35,10 +35,12 @@
     "copy:sdkfiles": "rsync -am --exclude='*.js' --exclude='node_modules' ./src/userbase-js/ ./npm_build/userbase-js",
     "patch:sdk": "cd ./src/userbase-js && printf 'Input patch commit message: ' && read message && npm version patch -m '$message' && cd ../.. && npm run copy:sdkfiles",
     "publish:sdk": "cd ./npm_build/userbase-js && npm publish",
+    "browserify:sdk": "browserify ./src/userbase-js/userbase.js -o userbase.js",
     "transpile:server": "babel src/userbase-server/ --presets=@babel/preset-env --plugins=@babel/transform-runtime --out-dir ./npm_build/userbase-server --source-maps --ignore ./src/userbase-server/node_modules && npm run copy:serverfiles",
     "copy:serverfiles": "rsync -am --exclude='*.js' --exclude='node_modules' ./src/userbase-server/ ./npm_build/userbase-server",
     "patch:server": "cd ./src/userbase-server && printf 'Input patch commit message: ' && read message && npm version patch -m '$message' && cd ../.. && npm run copy:serverfiles",
-    "publish:server": "cd ./npm_build/userbase-server && npm publish"
+    "publish:server": "cd ./npm_build/userbase-server && npm publish",
+    "build:sdk-script": "webpack --mode production --config ./src/userbase-js/webpack.config.js"
   },
   "repository": "https://github.com/dvassallo/encrypted.dev",
   "keywords": [],
@@ -54,12 +56,16 @@
     "@babel/plugin-transform-runtime": "^7.6.2",
     "@babel/preset-env": "^7.4.5",
     "babel-eslint": "^10.0.1",
+    "babel-loader": "^8.0.6",
+    "browserify": "^16.5.0",
     "eslint": "^5.16.0",
-    "eslint-plugin-react": "^7.16.0",
     "forever": "^1.0.0",
     "nodemon": "^1.19.1",
     "npm-run-all": "^4.1.5",
-    "pino-pretty": "^3.2.0"
+    "pino-pretty": "^3.2.0",
+    "source-map-loader": "^0.2.4",
+    "webpack": "^4.41.2",
+    "webpack-cli": "^3.3.9"
   },
   "optionalDependencies": {
     "bufferutil": "^4.0.1",
