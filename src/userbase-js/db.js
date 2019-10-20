@@ -5,6 +5,7 @@ import ws from './ws'
 
 const success = 'Success'
 const itemAlreadyExists = 'Item already exists'
+const itemDoesNotExist = 'Item does not exist'
 const itemAlreadyDeleted = 'Item already deleted'
 const versionConflict = 'Version conflict'
 const wsNotOpen = 'Web Socket not open'
@@ -211,6 +212,10 @@ class Database {
     }
   }
 
+  itemExists(itemId) {
+    return this.items[itemId] ? true : false
+  }
+
   applyInsert(itemId, seqNo, record, indexInBatch) {
     const item = { seqNo }
     if (typeof indexInBatch === 'number') item.indexInBatch = indexInBatch
@@ -414,6 +419,7 @@ const update = async (dbName, id, item) => {
 const _buildUpdateParams = async (database, itemId, item) => {
   if (!itemId) throw new Error('Update missing item id')
   if (!item) throw new Error('Update missing item')
+  if (!database.itemExists(itemId)) throw new Error(itemDoesNotExist)
 
   const itemKey = await crypto.hmac.signString(ws.keys.hmacKey, itemId)
   const currentVersion = database.getItemVersionNumber(itemId)
@@ -434,6 +440,7 @@ const delete_ = async (dbName, id) => {
 
 const _buildDeleteParams = async (database, itemId) => {
   if (!itemId) throw new Error('Delete missing item id')
+  if (!database.itemExists(itemId)) throw new Error(itemAlreadyDeleted)
 
   const itemKey = await crypto.hmac.signString(ws.keys.hmacKey, itemId)
   const currentVersion = database.getItemVersionNumber(itemId)
