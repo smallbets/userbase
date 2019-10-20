@@ -351,11 +351,27 @@ const openDatabase = async (dbName, changeHandler) => {
     throw new Error(dbAlreadyOpen)
   }
 
-  ws.state.databases[dbNameHash] = new Database(changeHandler)
+  let receivedMessage
+
+  const firstMessageFromWebSocket = new Promise((resolve, reject) => {
+    receivedMessage = resolve
+
+    setTimeout(() => { reject(new Error('timeout')) }, 5000)
+  })
+
+  const handlerWrapper = (items) => {
+    changeHandler(items)
+    receivedMessage()
+  }
+
+  ws.state.databases[dbNameHash] = new Database(handlerWrapper)
 
   const action = 'OpenDatabase'
   const params = { dbNameHash }
+
   await ws.request(action, params)
+
+  await firstMessageFromWebSocket
 }
 
 const getOpenDb = (dbName) => {
