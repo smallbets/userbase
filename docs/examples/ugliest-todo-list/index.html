@@ -4,9 +4,8 @@
 <head>
   <title>Ugliest To-Do List</title>
   <script type="text/javascript" src="https://userbase-public.s3-us-west-2.amazonaws.com/userbase-js/userbase.js"></script>
-  <!--<script type="text/javascript" src="../../../build/script/userbase.js"></script>-->
   <script type="text/javascript">
-    const APP_ID = 'a43ae910-fc89-43fe-a7a3-a11a53b49325'
+    userbase.configure({ appId: 'a43ae910-fc89-43fe-a7a3-a11a53b49325' })
   </script>
 </head>
 
@@ -47,16 +46,13 @@
     <div id="todos"></div>
 
     <form onsubmit="addTodo(event)">
-      <input id="new-todo" type="text" placeholder="New to-do">
+      <input id="new-todo" type="text" required placeholder="New to-do">
       <input type="submit" value="Add">
     </form>
     <div id="add-todo-error"></div>
   </div>
 
   <script type="text/javascript">
-    // configure the userbase SDK
-    userbase.configure({ appId: APP_ID })
-
     // hide everything initially
     document.getElementById('account-form').style.display = 'none'
     document.getElementById('todo-list').style.display = 'none'
@@ -110,7 +106,52 @@
         .catch((e) => document.getElementById('add-todo-error').innerHTML = e)
     }
 
-    // renders the to-do list
+    // this renders the to-do list whenever the database gets updated
+    function databaseChange(items) {
+      const todosList = document.getElementById('todos')
+
+      // clear the list
+      todosList.innerHTML = ''
+
+      // render all the to-do items
+      for (let i = 0; i < items.length; i++) {
+
+        // build the todo delete button
+        const todoDelete = document.createElement('button')
+        todoDelete.innerHTML = 'X'
+        todoDelete.style.display = 'inline-block'
+        todoDelete.onclick = () => {
+          userbase.delete('todos', items[i].itemId)
+            .catch((e) => document.getElementById('add-todo-error').innerHTML = e)
+        }
+
+        // build the todo checkbox
+        const todoBox = document.createElement('input')
+        todoBox.type = 'checkbox'
+        todoBox.id = items[i].itemId
+        todoBox.checked = items[i].record.complete ? true : false
+        todoBox.onclick = (e) => {
+          e.preventDefault()
+
+          userbase.update('todos', items[i].itemId, { 'todo': items[i].record.todo, 'complete': !items[i].record.complete })
+            .catch((e) => document.getElementById('add-todo-error').innerHTML = e)
+        }
+
+        // build the todo label
+        const todoLabel = document.createElement('label')
+        todoLabel.innerHTML = items[i].record.todo
+        todoLabel.style.textDecoration = items[i].record.complete ? 'line-through' : 'none'
+
+        // append the todo item to the list
+        const todoItem = document.createElement('div')
+        todoItem.appendChild(todoDelete)
+        todoItem.appendChild(todoBox)
+        todoItem.appendChild(todoLabel)
+        todosList.appendChild(todoItem)
+      }
+    }
+
+    // shows the to-do list and starts listenting to database changes
     function openTodoList(session) {
       if (!session || !session.signedIn) {
         // if user is not logged in, show the login / new account form
@@ -119,69 +160,28 @@
         return
       }
 
-      // this runs whenever the database gets updated
-      const stateChange = (items) => {
-        const todosList = document.getElementById('todos')
+      openDatabase(session)
+    }
 
-        // clear the list
-        todosList.innerHTML = ''
-
-        // render all the to-do items
-        for (let i = 0; i < items.length; i++) {
-          // build the todo delete button
-          const todoDelete = document.createElement('button')
-          todoDelete.innerHTML = 'X'
-          todoDelete.style.display = 'inline-block'
-          todoDelete.onclick = () => {
-            userbase.delete('todos', items[i].itemId)
-              .catch((e) => document.getElementById('add-todo-error').innerHTML = e)
+    // opens the database and listens to changes
+    function openDatabase(session) {
+      // set the database change listener
+      userbase.openDatabase('todos', databaseChange)
+        .then(() => {
+          // show the todo list once the database is open
+          document.getElementById('email').innerHTML = session.username
+          document.getElementById('account-form').style.display = 'none'
+          document.getElementById('todo-list').style.display = 'block'
+          document.getElementById('new-todo').focus()
+        })
+        .catch((e) => {
+          if (e.toString().includes('Database not found')) {
+            // create the database if it wasn't found
+            userbase.createDatabase('todos', {}).then(() => openDatabase())
+          } else {
+            document.getElementById('create-error').innerHTML = e
           }
-
-          // build the todo checkbox
-          const todoBox = document.createElement('input')
-          todoBox.type = 'checkbox'
-          todoBox.id = items[i].itemId
-          todoBox.checked = items[i].record.complete ? true : false
-          todoBox.onclick = (e) => {
-            e.preventDefault()
-
-            userbase.update('todos', items[i].itemId, { 'todo': items[i].record.todo, 'complete': !items[i].record.complete })
-              .catch((e) => document.getElementById('add-todo-error').innerHTML = e)
-          }
-
-          // build the todo label
-          const todoLabel = document.createElement('label')
-          todoLabel.innerHTML = items[i].record.todo
-          todoLabel.style.textDecoration = items[i].record.complete ? 'line-through' : 'none'
-
-          // append the todo item to the list
-          const todoItem = document.createElement('div')
-          todoItem.appendChild(todoDelete)
-          todoItem.appendChild(todoBox)
-          todoItem.appendChild(todoLabel)
-          todosList.appendChild(todoItem)
-        }
-      }
-
-      // open the database and listen to changes
-      const openDatabase = () => {
-        userbase.openDatabase('todos', stateChange)
-          .then(() => {
-            // show the todo list once the database is open
-            document.getElementById('email').innerHTML = session.username
-            document.getElementById('account-form').style.display = 'none'
-            document.getElementById('todo-list').style.display = 'block'
-          })
-          .catch((e) => {
-            if (e.toString().includes('Database not found')) {
-              userbase.createDatabase('todos', {}).then(() => openDatabase())
-            } else {
-              document.getElementById('login-error').innerHTML = e
-            }
-          })
-      }
-
-      openDatabase()
+        })
     }
 
   </script>
