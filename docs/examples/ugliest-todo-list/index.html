@@ -63,7 +63,7 @@
 
     // login handler
     function login(e) {
-      e.preventDefault()
+      preventFormSubmit(e)
 
       const username = document.getElementById('login-email').value
       const password = document.getElementById('login-password').value
@@ -75,7 +75,7 @@
 
     // new account handler
     function createAccount(e) {
-      e.preventDefault()
+      preventFormSubmit(e)
 
       const username = document.getElementById('create-email').value
       const password = document.getElementById('create-password').value
@@ -97,7 +97,7 @@
 
     // add a to-do item handler
     function addTodo(e) {
-      e.preventDefault()
+      preventFormSubmit(e)
 
       const todo = document.getElementById('new-todo').value
 
@@ -177,11 +177,16 @@
         .catch((e) => {
           if (e.toString().includes('Database not found')) {
             // create the database if it wasn't found
-            userbase.createDatabase('todos', {}).then(() => openDatabase())
+            userbase.createDatabase('todos', {}).then(() => openDatabase(session))
           } else {
             document.getElementById('create-error').innerHTML = e
           }
         })
+    }
+
+    function preventFormSubmit(e) {
+      e.preventDefault()
+      if (window.history.replaceState) window.history.replaceState(null, null, window.location.href);
     }
 
   </script>

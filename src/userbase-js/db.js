@@ -357,11 +357,11 @@ const openDatabase = async (dbName, changeHandler) => {
   }
 
   let receivedMessage
+  let timeoutWaitForMessage
 
   const firstMessageFromWebSocket = new Promise((resolve, reject) => {
     receivedMessage = resolve
-
-    setTimeout(() => { reject(new Error('timeout')) }, 5000)
+    timeoutWaitForMessage = reject
   })
 
   const handlerWrapper = (items) => {
@@ -375,6 +375,8 @@ const openDatabase = async (dbName, changeHandler) => {
   const params = { dbNameHash }
 
   await ws.request(action, params)
+
+  setTimeout(() => { timeoutWaitForMessage(new Error('timeout')) }, 5000)
 
   await firstMessageFromWebSocket
 }
