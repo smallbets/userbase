@@ -168,10 +168,16 @@
       // set the database change listener
       userbase.openDatabase('todos', databaseChange)
         .then(() => {
-          // show the todo list once the database is open
+          // show the todo list once the database is open, and clear everything else
           document.getElementById('email').innerHTML = session.username
           document.getElementById('account-form').style.display = 'none'
           document.getElementById('todo-list').style.display = 'block'
+          document.getElementById('login-email').value = ''
+          document.getElementById('login-password').value = ''
+          document.getElementById('create-email').value = ''
+          document.getElementById('create-password').value = ''
+          document.getElementById('create-error').innerHTML = ''
+          document.getElementById('login-error').innerHTML = ''
           document.getElementById('new-todo').focus()
         })
         .catch((e) => {
