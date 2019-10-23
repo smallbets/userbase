@@ -536,11 +536,9 @@ const findDatabases = async () => {
     const dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
 
     const dbName = await crypto.aesGcm.decryptString(dbKey, db.dbName)
-    const metadata = db.metadata && await crypto.aesGcm.decryptJson(dbKey, db.metadata)
 
     result.push({
       dbName,
-      metadata,
       owner: db.owner,
       access: db.access
     })

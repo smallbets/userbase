@@ -14,10 +14,8 @@ export default {
   signOut: auth.signOut,
   init: auth.init,
   importKey: auth.importKey,
-  grantDatabaseAccess: auth.grantDatabaseAccess,
 
   createOrOpenDatabase: db.createOrOpenDatabase,
-  findDatabases: db.findDatabases,
 
   insert: db.insert,
   update: db.update,

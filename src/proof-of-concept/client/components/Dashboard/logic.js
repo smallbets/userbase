@@ -60,19 +60,10 @@ const updateTodo = async (username, todo, newTodoInput, handleRemoveUserAuthenti
   }
 }
 
-const grantDatabaseAccess = async (grantorUsername, granteeUsername, readOnly) => {
-  try {
-    await userbase.grantDatabaseAccess(getDbName(grantorUsername), granteeUsername, readOnly)
-  } catch (e) {
-    _errorHandler(e, 'grant db access')
-  }
-}
-
 export default {
   createOrOpenDatabase,
   insertTodo,
   deleteTodo,
   toggleTodo,
   updateTodo,
-  grantDatabaseAccess,
 }

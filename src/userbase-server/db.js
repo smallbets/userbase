@@ -252,7 +252,6 @@ exports.findDatabases = async function (userId, username) {
         encryptedDbKey: userDbs[i]['encrypted-db-key'],
         dbName: db['database-name'],
         owner: ownerId === userId ? username : otherUsersByUserId[ownerId].username,
-        metadata: db['metadata'],
         access: otherUserDbsGrantedAccess[i].map(otherUserDb => {
           const otherUserId = otherUserDb['user-id']
           return {

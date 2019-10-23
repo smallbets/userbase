@@ -36,7 +36,6 @@ export default class App extends Component {
     this.handleRemoveUserAuthentication = this.handleRemoveUserAuthentication.bind(this)
     this.handleReadHash = this.handleReadHash.bind(this)
     this.handleAutoRedirects = this.handleAutoRedirects.bind(this)
-    this.handleGrantDatabaseAccess = this.handleGrantDatabaseAccess.bind(this)
   }
 
   async componentDidMount() {
@@ -105,18 +104,6 @@ export default class App extends Component {
     this.setState({ mode: this.getViewMode(this.state.session) })
   }
 
-  async handleGrantDatabaseAccess() {
-    const username = window.prompt('Grant access to this database to user:')
-    if (!username) return
-    const readOnly = window.confirm('Grant read only access')
-
-    await dashboardLogic.grantDatabaseAccess(
-      this.state.session.username,
-      username,
-      readOnly
-    )
-  }
-
   // this is a primitive router based on the hash and component state
   getViewMode(session) {
     const userHasActiveSession = session && session.signedIn
@@ -166,7 +153,6 @@ export default class App extends Component {
               </ul>
               : <ul>
                 <li className='inline-block ml-4 font-light'>{session.username}</li>
-                <li className='inline-block ml-4'><a className='fa-user-plus no-underline cursor-pointer' onClick={this.handleGrantDatabaseAccess}></a></li>
                 <li className='inline-block ml-4'><a className={'fa-key no-underline ' + (mode === 'show-key' ? 'text-orange-600' : '')} href='#show-key'></a></li>
                 <li className='inline-block ml-4'><a href='#' onClick={this.handleSignOut}>Sign out</a></li>
               </ul>
