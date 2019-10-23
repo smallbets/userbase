@@ -357,14 +357,15 @@ const createOrOpenDatabase = async (dbName, changeHandler) => {
 
   if (ws.state.databases[dbNameHash] && ws.state.databases[dbNameHash].init) {
     throw new Error(dbAlreadyOpen)
+  } else if (ws.state.databases[dbNameHash]) {
+    throw new Error('Already opening database')
   }
 
   let receivedMessage
-  let timeoutWaitForMessage
 
   const firstMessageFromWebSocket = new Promise((resolve, reject) => {
     receivedMessage = resolve
-    timeoutWaitForMessage = reject
+    setTimeout(() => reject(new Error('timeout')), 5000)
   })
 
   const handlerWrapper = (items) => {
@@ -372,16 +373,18 @@ const createOrOpenDatabase = async (dbName, changeHandler) => {
     receivedMessage()
   }
 
-  ws.state.databases[dbNameHash] = new Database(handlerWrapper)
+  ws.state.databases[dbNameHash] = new Database(handlerWrapper) // eslint-disable-line require-atomic-updates
 
   const action = 'OpenDatabase'
   const params = { dbNameHash }
 
-  await ws.request(action, params)
-
-  setTimeout(() => { timeoutWaitForMessage(new Error('timeout')) }, 5000)
-
-  await firstMessageFromWebSocket
+  try {
+    await ws.request(action, params)
+    await firstMessageFromWebSocket
+  } catch (e) {
+    delete ws.state.databases[dbNameHash]
+    throw e
+  }
 }
 
 const getOpenDb = (dbName) => {
