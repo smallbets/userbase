@@ -142,8 +142,7 @@ async function start(express, app, userbaseConfig = {}) {
                   params.dbNameHash,
                   params.dbId,
                   params.encryptedDbName,
-                  params.encryptedDbKey,
-                  params.encryptedMetadata
+                  params.encryptedDbKey
                 )
                 break
               }

@@ -16,8 +16,7 @@ export default {
   importKey: auth.importKey,
   grantDatabaseAccess: auth.grantDatabaseAccess,
 
-  openDatabase: db.openDatabase,
-  createDatabase: db.createDatabase,
+  createOrOpenDatabase: db.createOrOpenDatabase,
   findDatabases: db.findDatabases,
 
   insert: db.insert,

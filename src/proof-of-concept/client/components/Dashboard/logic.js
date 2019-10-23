@@ -5,23 +5,12 @@ const getDbName = (username) => {
   return username + '-todos'
 }
 
-const openDatabase = async (username, onDbChangeHandler, onWebSocketConnect) => {
+const createOrOpenDatabase = async (username, onDbChangeHandler, onWebSocketConnect) => {
   try {
-    await userbase.openDatabase(getDbName(username), onDbChangeHandler)
+    await userbase.createOrOpenDatabase(getDbName(username), onDbChangeHandler)
     onWebSocketConnect()
     return true
   } catch (e) {
-    if (e.response && e.response.data === 'Database not found') {
-      try {
-        await userbase.createDatabase(getDbName(username))
-        await userbase.openDatabase(getDbName(username), onDbChangeHandler)
-        onWebSocketConnect()
-        return true
-      } catch (err) {
-        // do nothing
-      }
-    }
-
     return false
   }
 }
@@ -80,7 +69,7 @@ const grantDatabaseAccess = async (grantorUsername, granteeUsername, readOnly) =
 }
 
 export default {
-  openDatabase,
+  createOrOpenDatabase,
   insertTodo,
   deleteTodo,
   toggleTodo,

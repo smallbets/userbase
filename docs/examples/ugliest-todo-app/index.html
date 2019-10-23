@@ -160,13 +160,13 @@
         return
       }
 
-      openDatabase(session)
+      createOrOpenDatabase(session)
     }
 
     // opens the database and listens to changes
-    function openDatabase(session) {
+    function createOrOpenDatabase(session) {
       // set the database change listener
-      userbase.openDatabase('todos', databaseChange)
+      userbase.createOrOpenDatabase('todos', databaseChange)
         .then(() => {
           // show the todo list once the database is open, and clear everything else
           document.getElementById('email').innerHTML = session.username
@@ -181,12 +181,7 @@
           document.getElementById('new-todo').focus()
         })
         .catch((e) => {
-          if (e.toString().includes('Database not found')) {
-            // create the database if it wasn't found
-            userbase.createDatabase('todos', {}).then(() => openDatabase(session))
-          } else {
-            document.getElementById('create-error').innerHTML = e
-          }
+          document.getElementById('create-error').innerHTML = e
         })
     }
 
