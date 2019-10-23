@@ -9,7 +9,7 @@ import userController from './user'
 
 const getS3DbStateKey = (databaseId, bundleSeqNo) => `${databaseId}/${bundleSeqNo}`
 
-exports.createDatabase = async function (userId, dbNameHash, dbId, encryptedDbName, encryptedDbKey, encryptedMetadata) {
+exports.createDatabase = async function (userId, dbNameHash, dbId, encryptedDbName, encryptedDbKey) {
   if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
   if (!dbId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
   if (!encryptedDbName) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name')
@@ -18,8 +18,7 @@ exports.createDatabase = async function (userId, dbNameHash, dbId, encryptedDbNa
   const database = {
     'database-id': dbId,
     'owner-id': userId,
-    'database-name': encryptedDbName,
-    metadata: encryptedMetadata
+    'database-name': encryptedDbName
   }
 
   const userDatabase = {
@@ -62,7 +61,11 @@ exports.createDatabase = async function (userId, dbNameHash, dbId, encryptedDbNa
     if (e.message && e.message.includes('ConditionalCheckFailed')) {
       return responseBuilder.errorResponse(statusCodes['Conflict'], 'Database already exists')
     }
-    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to create database with ${e}`)
+    logger.error(`Failed to create database for user ${userId} with ${e}`)
+    return responseBuilder.errorResponse(
+      statusCodes['Internal Server Error'],
+      'Failed to create database'
+    )
   }
 }
 

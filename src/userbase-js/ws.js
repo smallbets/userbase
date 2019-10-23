@@ -66,7 +66,7 @@ class Connection {
     if (!session.signedIn) throw new Error('Not signed in to session')
     if (!session.sessionId) throw new Error('Session missing id')
 
-    return new Promise(async (resolve, reject) => {
+    return new Promise((resolve, reject) => {
       let connected = false
       let timeout = false
       setTimeout(

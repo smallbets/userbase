@@ -61,7 +61,7 @@ export default class App extends Component {
     let userHasActiveSession = session && session.signedIn
 
     if (loading && userHasActiveSession) {
-      await dashboardLogic.openDatabase(session.username, this.handleDbChange, () => this.setState({ loading: false }))
+      await dashboardLogic.createOrOpenDatabase(session.username, this.handleDbChange, () => this.setState({ loading: false }))
     }
 
     if (!displaySignUpForm() && userMustLogInAgain) {

@@ -318,7 +318,7 @@ class Database {
   }
 }
 
-const createDatabase = async (dbName, metadata) => {
+const createDatabase = async (dbName) => {
   if (!ws.connected) throw new Error(wsNotOpen)
   if (!ws.keys.init) throw new Error(keyNotFound)
 
@@ -327,11 +327,10 @@ const createDatabase = async (dbName, metadata) => {
   const dbKey = await crypto.aesGcm.generateKey()
   const dbKeyString = await crypto.aesGcm.getKeyStringFromKey(dbKey)
 
-  const [dbNameHash, encryptedDbKey, encryptedDbName, encryptedMetadata] = await Promise.all([
+  const [dbNameHash, encryptedDbKey, encryptedDbName] = await Promise.all([
     crypto.hmac.signString(ws.keys.hmacKey, dbName),
     crypto.aesGcm.encryptString(ws.keys.encryptionKey, dbKeyString),
-    crypto.aesGcm.encryptString(dbKey, dbName),
-    metadata && crypto.aesGcm.encryptJson(dbKey, metadata)
+    crypto.aesGcm.encryptString(dbKey, dbName)
   ])
 
   const action = 'CreateDatabase'
@@ -339,18 +338,22 @@ const createDatabase = async (dbName, metadata) => {
     dbNameHash,
     dbId,
     encryptedDbKey,
-    encryptedDbName,
-    encryptedMetadata,
+    encryptedDbName
   }
   await ws.request(action, params)
 }
 
-const openDatabase = async (dbName, changeHandler) => {
-  if (!ws.connected) throw new Error(wsNotOpen)
-  if (!ws.keys.init) throw new Error(keyNotFound)
+const createOrOpenDatabase = async (dbName, changeHandler) => {
+  try {
+    await createDatabase(dbName)
+  } catch (e) {
+    if (e.message !== 'Database already exists') {
+      throw e
+    }
+  }
 
   const dbNameHash = ws.state.dbNameToHash[dbName] || await crypto.hmac.signString(ws.keys.hmacKey, dbName)
-  ws.state.dbNameToHash[dbName] = dbNameHash
+  ws.state.dbNameToHash[dbName] = dbNameHash // eslint-disable-line require-atomic-updates
 
   if (ws.state.databases[dbNameHash] && ws.state.databases[dbNameHash].init) {
     throw new Error(dbAlreadyOpen)
@@ -543,8 +546,7 @@ const findDatabases = async () => {
 }
 
 export default {
-  openDatabase,
-  createDatabase,
+  createOrOpenDatabase,
   findDatabases,
   insert,
   update,
