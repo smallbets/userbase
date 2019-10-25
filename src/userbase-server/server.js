@@ -109,7 +109,6 @@ async function start(express, app, userbaseConfig = {}) {
                   validationMessage,
                   params.validationMessage,
                   res.locals.user,
-                  params.requesterPublicKey,
                   conn
                 )
                 break

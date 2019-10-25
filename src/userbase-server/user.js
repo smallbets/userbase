@@ -196,7 +196,7 @@ const userSavedSeed = async function (userId, appId, username, publicKey) {
   await ddbClient.update(updateUserParams).promise()
 }
 
-exports.validateKey = async function (validationMessage, userProvidedValidationMessage, user, requesterPublicKey, conn) {
+exports.validateKey = async function (validationMessage, userProvidedValidationMessage, user, conn) {
   const seedNotSavedYet = user['seed-not-saved-yet']
   const userId = user['user-id']
   const appId = user['app-id']
@@ -216,9 +216,9 @@ exports.validateKey = async function (validationMessage, userProvidedValidationM
           throw e
         }
       } else {
-        // must be validating immediately after receiving the seed in a request. Clean up for safety --
+        // must be validating after requesting the seed. Clean up for safety --
         // no need to keep storing this seed request in DDB
-        if (requesterPublicKey) deleteSeedRequest(userId, requesterPublicKey, conn)
+        if (conn.requesterPublicKey) deleteSeedRequest(userId, conn)
       }
 
       conn.validateKey()
@@ -436,16 +436,14 @@ exports.sendSeed = async function (userId, senderPublicKey, requesterPublicKey, 
   }
 }
 
-const deleteSeedRequest = async function (userId, requesterPublicKey, conn) {
+const deleteSeedRequest = async function (userId, conn) {
+  const requesterPublicKey = conn.requesterPublicKey
+
   const deleteSeedExchangeParams = {
     TableName: setup.seedExchangeTableName,
     Key: {
       'user-id': userId,
       'requester-public-key': requesterPublicKey
-    },
-    ConditionExpression: 'attribute_exists(#encryptedSeed)',
-    ExpressionAttributeNames: {
-      '#encryptedSeed': 'encrypted-seed'
     }
   }
 
@@ -455,11 +453,7 @@ const deleteSeedRequest = async function (userId, requesterPublicKey, conn) {
 
     conn.deleteSeedRequest()
   } catch (e) {
-    if (e.name === 'ConditionalCheckFailedException') {
-      logger.warn(`Encrypted seed not found for user ${userId} and public key ${requesterPublicKey}`)
-    } else {
-      logger.warn(`Failed to delete seed request for user ${userId} and public key ${requesterPublicKey} with ${e}`)
-    }
+    logger.warn(`Failed to delete seed request for user ${userId} and public key ${requesterPublicKey} with ${e}`)
   }
 }
 

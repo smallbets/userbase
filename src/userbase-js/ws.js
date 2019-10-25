@@ -234,13 +234,12 @@ class Connection {
 
       case 'ReceiveSeed': {
         const { encryptedSeed, senderPublicKey } = message
-        const { seedRequestPublicKey, seedRequestPrivateKey } = localData.getSeedRequest(this.username)
+        const { seedRequestPrivateKey } = localData.getSeedRequest(this.username)
 
         await this.receiveSeed(
           encryptedSeed,
           senderPublicKey,
-          seedRequestPrivateKey,
-          seedRequestPublicKey
+          seedRequestPrivateKey
         )
 
         break
@@ -307,7 +306,7 @@ class Connection {
     return session
   }
 
-  async setKeys(seedString, seedRequestPublicKey) {
+  async setKeys(seedString) {
     if (this.keys.init) return
     if (!seedString) throw new Error('Missing seed')
     if (!this.keys.salts) throw new Error('Missing salts')
@@ -321,7 +320,7 @@ class Connection {
     this.keys.dhPrivateKey = await crypto.diffieHellman.importKeyFromMaster(masterKey, base64.decode(salts.dhKeySalt))
     this.keys.hmacKey = await crypto.hmac.importKeyFromMaster(masterKey, base64.decode(salts.hmacKeySalt))
 
-    await this.validateKey(seedRequestPublicKey)
+    await this.validateKey()
 
     this.keys.init = true
 
@@ -333,17 +332,13 @@ class Connection {
     this.resolveConnection({ username: this.username, seed: seedString, signedIn: true })
   }
 
-  async validateKey(seedRequestPublicKey) {
+  async validateKey() {
     const sharedKey = await crypto.diffieHellman.getSharedKeyWithServer(this.keys.dhPrivateKey)
 
     const validationMessage = base64.encode(await crypto.aesGcm.decrypt(sharedKey, this.encryptedValidationMessage))
 
     const action = 'ValidateKey'
     const params = { validationMessage }
-    if (seedRequestPublicKey) {
-      // only provided if first time validating since receving master key
-      params.requesterPublicKey = seedRequestPublicKey
-    }
 
     await this.request(action, params)
   }
@@ -400,7 +395,7 @@ class Connection {
 
     const { encryptedSeed, senderPublicKey } = requestSeedResponse.data
     if (encryptedSeed && senderPublicKey) {
-      await this.receiveSeed(encryptedSeed, senderPublicKey, seedRequestPrivateKey, seedRequestPublicKey)
+      await this.receiveSeed(encryptedSeed, senderPublicKey, seedRequestPrivateKey)
     } else {
       await this.inputSeedManually(username, seedRequestPublicKey)
     }
@@ -422,7 +417,7 @@ class Connection {
     const seedString = window.prompt(
       `Welcome, ${username}!`
       + '\n\n'
-      + `Sign in from a device you used before to send the secret seed to this device.`
+      + 'Sign in from a device you used before to send the secret seed to this device.'
       + '\n\n'
       + 'Before sending, please verify the Device ID matches:'
       + '\n\n'
@@ -431,10 +426,11 @@ class Connection {
       + 'You can also manually enter the secret seed below. You received your secret seed when you created your account.'
       + '\n\n'
       + 'Hit cancel to sign out.'
+      + '\n'
     )
 
     if (seedString) {
-      await this.setKeys(seedString)
+      await this.saveSeed(username, seedString)
     } else {
       const userHitCancel = seedString === null
       if (userHitCancel) {
@@ -550,7 +546,7 @@ class Connection {
     delete this.processingSeedRequest[requesterPublicKeyHash]
   }
 
-  async receiveSeed(encryptedSeed, senderPublicKey, seedRequestPrivateKey, seedRequestPublicKey) {
+  async receiveSeed(encryptedSeed, senderPublicKey, seedRequestPrivateKey) {
     const sharedKey = await crypto.diffieHellman.getSharedKey(
       seedRequestPrivateKey,
       new Uint8Array(base64.decode(senderPublicKey))
@@ -558,11 +554,13 @@ class Connection {
 
     const seedString = await crypto.aesGcm.decryptString(sharedKey, encryptedSeed)
 
-    await localData.saveSeedString(this.username, seedString)
+    await this.saveSeed(this.username, seedString)
+  }
 
-    await this.setKeys(seedString, seedRequestPublicKey)
-
-    localData.removeSeedRequest(this.username)
+  async saveSeed(username, seedString) {
+    localData.saveSeedString(username, seedString)
+    await this.setKeys(seedString)
+    localData.removeSeedRequest(username)
   }
 }
 
