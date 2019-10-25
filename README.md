@@ -72,14 +72,6 @@ aws_access_key_id=<YOUR ACCESS KEY>
 aws_secret_access_key=<YOUR SECRET KEY>" >> ~/.aws/credentials
 ```
 
-### Create Environment vars
-We do you use AWS Secrets Manager to store ENV vars, you can create your own secret with the following command line.
-Put your own secrets and password.
-
-```
-aws secretsmanager --profile encrypted create-secret --name env --region=us-west-2 --secret-string '{"SECRET_FOR_DIFFIE_HELLMAN":"0000000000000000000000000000000000000000000000000000","ADMIN_ACCOUNT_PASSWORD":"1111111111111111"}'
-```
-
 ### Check out the repo
 
 ```
@@ -88,7 +80,7 @@ git clone https://github.com/encrypted-dev/userbase.git
 
 ### Install the dependencies
 
-### Windows WSL
+#### Windows WSL
 
 To bypass symlink issues we have to disable symlinks on WSL, more info available at: https://github.com/MicrosoftDocs/WSL/issues/26
 and https://github.com/Microsoft/WSL/issues/14
@@ -102,7 +94,7 @@ npm install --no-bin-links
 npm install
 ```
 
-Start the dev server:
+### Start the dev server
 
 ```
 npm start
