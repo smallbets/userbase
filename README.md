@@ -61,7 +61,9 @@ A major focus of the proof of concept was on performance. On a 2.9 GHz i9 MacBo
 
 ## Development
 
-Running this app requires an AWS account. You just need to provide your AWS credentials and the app will automatically create all the AWS resources it needs: 3 DynamoDB tables with per-request billing, and 1 S3 bucket. To run the app locally, put your AWS credentials in `~/.aws/credentials` under a profile called `encrypted`:
+### Setting up AWS Keys
+Running this app requires an AWS account with an Access Key. To create one, you can follow the guide on [AWS Blog](https://aws.amazon.com/blogs/security/how-to-find-update-access-keys-password-mfa-aws-management-console/)
+You just need to provide your AWS credentials and the app will automatically create all the AWS resources it needs: 3 DynamoDB tables with per-request billing, and 1 S3 bucket. To run the app locally, put your AWS credentials in `~/.aws/credentials` under a profile called `encrypted`:
 
 ```
 echo "
@@ -70,14 +72,32 @@ aws_access_key_id=<YOUR ACCESS KEY>
 aws_secret_access_key=<YOUR SECRET KEY>" >> ~/.aws/credentials
 ```
 
-Check out the repo:
+### Create Environment vars
+We do you use AWS Secrets Manager to store ENV vars, you can create your own secret with the following command line.
+Put your own secrets and password.
+
+```
+aws secretsmanager --profile encrypted create-secret --name env --region=us-west-2 --secret-string '{"SECRET_FOR_DIFFIE_HELLMAN":"0000000000000000000000000000000000000000000000000000","ADMIN_ACCOUNT_PASSWORD":"1111111111111111"}'
+```
+
+### Check out the repo
 
 ```
 git clone https://github.com/encrypted-dev/userbase.git
 ```
 
-Install the dependencies:
+### Install the dependencies
 
+### Windows WSL
+
+To bypass symlink issues we have to disable symlinks on WSL, more info available at: https://github.com/MicrosoftDocs/WSL/issues/26
+and https://github.com/Microsoft/WSL/issues/14
+
+```
+npm install --no-bin-links
+```
+
+#### Mac/Linux
 ```
 npm install
 ```
