@@ -5,9 +5,6 @@ import localData from './localData'
 import crypto from './Crypto'
 import { removeProtocolFromEndpoint, getProtocolFromEndpoint } from './utils'
 
-const DEFAULT_SERVICE_ENDPOINT = 'https://demo.encrypted.dev'
-const DEV_MODE = window.location.hostname === 'localhost'
-
 class RequestFailed extends Error {
   constructor(action, response, message, ...params) {
     super(...params)
@@ -27,7 +24,7 @@ class Connection {
     this.init()
   }
 
-  init(session, onSessionChange, signingUp) {
+  init(resolveConnection, username, sessionId, seedString, signingUp) {
     const currentEndpoint = this.endpoint
 
     for (const property of Object.keys(this)) {
@@ -35,20 +32,21 @@ class Connection {
     }
 
     this.ws = null
-    this.endpoint = currentEndpoint || DEFAULT_SERVICE_ENDPOINT
+    this.endpoint = currentEndpoint
     this.connected = false
 
-    this.session = session
-    this.onSessionChange = onSessionChange
-
-    this.signingUp = signingUp
-
-    this.requests = {}
-
+    this.resolveConnection = resolveConnection
+    this.username = username
+    this.sessionId = sessionId
+    this.seedString = seedString
     this.keys = {
       init: false,
       salts: {}
     }
+
+    this.signingUp = signingUp
+
+    this.requests = {}
 
     this.processingSeedRequest = {}
     this.sentSeedTo = {}
@@ -60,11 +58,11 @@ class Connection {
     }
   }
 
-  connect(session, appId, onSessionChange, signingUp) {
-    if (!session) throw new Error('Missing session')
-    if (!session.username) throw new Error('Session missing username')
-    if (!session.signedIn) throw new Error('Not signed in to session')
-    if (!session.sessionId) throw new Error('Session missing id')
+  connect(appId, sessionId, username, seedString, signingUp = false) {
+    if (!appId) throw new Error('Missing app ID')
+    if (!sessionId) throw new Error('Missing session ID')
+    if (!username) throw new Error('Missing username')
+    if (this.connected) throw new Error('Web Socket already connected')
 
     return new Promise((resolve, reject) => {
       let connected = false
@@ -83,7 +81,7 @@ class Connection {
       const host = removeProtocolFromEndpoint(this.endpoint)
       const protocol = getProtocolFromEndpoint(this.endpoint)
       const url = ((protocol === 'https') ?
-        'wss://' : 'ws://') + `${host}/api?sessionId=${session.sessionId}&appId=${appId}`
+        'wss://' : 'ws://') + `${host}/api?appId=${appId}&sessionId=${sessionId}`
 
       const ws = new WebSocket(url)
 
@@ -93,13 +91,12 @@ class Connection {
           return
         } else {
           connected = true
-          this.init(session, onSessionChange, signingUp)
+          this.init(resolve, username, sessionId, seedString, signingUp)
           this.ws = ws
           this.connected = connected
 
-          if (!session.seed) {
-            const seed = await this.requestSeed()
-            if (seed) return resolve() // already updated session inside receiveSeed()
+          if (!seedString) {
+            await this.requestSeed(username)
           }
         }
       }
@@ -111,7 +108,6 @@ class Connection {
 
       ws.onerror = () => {
         if (!connected) {
-          if (!DEV_MODE) this.signOut()
           reject(new Error('WebSocket error'))
         } else {
           this.close()
@@ -134,13 +130,12 @@ class Connection {
       }
 
       ws.onclose = () => {
-        this.init(this.session, onSessionChange)
-        onSessionChange(this.session)
+        this.init(this.resolveConnection, this.username, this.sessionId, this.seed, this.signingUp)
       }
     })
   }
 
-  async handleMessage(message, resolve) {
+  async handleMessage(message) {
     const route = message.route
     switch (route) {
       case 'Connection': {
@@ -152,13 +147,9 @@ class Connection {
         this.keys.salts = salts
         this.encryptedValidationMessage = new Uint8Array(encryptedValidationMessage.data)
 
-        try {
-          await this.setKeys(this.session.seed)
-        } catch (e) {
-          console.log('Failed to set keys with:', e)
+        if (this.seedString) {
+          await this.setKeys(this.seedString)
         }
-
-        resolve(this.onSessionChange(this.session))
         break
       }
 
@@ -243,13 +234,13 @@ class Connection {
 
       case 'ReceiveSeed': {
         const { encryptedSeed, senderPublicKey } = message
-        const { tempKeyToRequestSeed, requesterPublicKey } = localData.getTempRequestForSeed(this.session.username)
+        const { seedRequestPublicKey, seedRequestPrivateKey } = localData.getSeedRequest(this.username)
 
         await this.receiveSeed(
           encryptedSeed,
           senderPublicKey,
-          requesterPublicKey,
-          tempKeyToRequestSeed
+          seedRequestPrivateKey,
+          seedRequestPublicKey
         )
 
         break
@@ -299,32 +290,28 @@ class Connection {
   close() {
     this.ws
       ? this.ws.close()
-      : this.init(this.session, this.onSessionChange)
+      : this.init(this.resolveConnection, this.username, this.sessionId, this.seedString, false)
   }
 
   async signOut() {
-    if (!this.session || !this.session.username || !this.session.sessionId) return
-    const sessionId = this.session.sessionId
+    localData.signOutSession(this.username)
 
-    if (this.connected) {
-      const action = 'SignOut'
-      const params = { sessionId }
-      await this.request(action, params)
-    }
+    const sessionId = this.sessionId
 
-    localData.signOutSession(this.session.username)
-    this.session.signedIn = false
+    const action = 'SignOut'
+    const params = { sessionId }
+    await this.request(action, params)
 
+    const session = { username: this.username, signedIn: false }
     this.close()
-    this.onSessionChange(this.session)
+    return session
   }
 
-  async setKeys(seedString, requesterPublicKey) {
+  async setKeys(seedString, seedRequestPublicKey) {
+    if (this.keys.init) return
     if (!seedString) throw new Error('Missing seed')
     if (!this.keys.salts) throw new Error('Missing salts')
-    if (!this.session.seed) this.session.seed = seedString
-
-    this.keys.seedString = seedString
+    if (!this.seedString) this.seedString = seedString
 
     const seed = base64.decode(seedString)
     const masterKey = await crypto.hkdf.importMasterKey(seed)
@@ -334,7 +321,7 @@ class Connection {
     this.keys.dhPrivateKey = await crypto.diffieHellman.importKeyFromMaster(masterKey, base64.decode(salts.dhKeySalt))
     this.keys.hmacKey = await crypto.hmac.importKeyFromMaster(masterKey, base64.decode(salts.hmacKeySalt))
 
-    await this.validateKey(requesterPublicKey)
+    await this.validateKey(seedRequestPublicKey)
 
     this.keys.init = true
 
@@ -342,18 +329,22 @@ class Connection {
       this.getRequestsForSeed()
       this.getDatabaseAccessGrants()
     }
+
+    this.resolveConnection({ username: this.username, seed: seedString, signedIn: true })
   }
 
-  async validateKey(requesterPublicKey) {
+  async validateKey(seedRequestPublicKey) {
     const sharedKey = await crypto.diffieHellman.getSharedKeyWithServer(this.keys.dhPrivateKey)
 
     const validationMessage = base64.encode(await crypto.aesGcm.decrypt(sharedKey, this.encryptedValidationMessage))
 
     const action = 'ValidateKey'
-    const params = {
-      validationMessage,
-      requesterPublicKey // only provided if first time validating since receving master key
+    const params = { validationMessage }
+    if (seedRequestPublicKey) {
+      // only provided if first time validating since receving master key
+      params.requesterPublicKey = seedRequestPublicKey
     }
+
     await this.request(action, params)
   }
 
@@ -396,37 +387,61 @@ class Connection {
     return response
   }
 
-  async requestSeed() {
-    const alreadySavedRequest = localData.getTempRequestForSeed(this.session.username)
-    let tempKeyToRequestSeed, requesterPublicKey, firstTimeRequestingSeed
-
-    if (!alreadySavedRequest) {
-      // this could be random bytes -- it's not used to encrypt/decrypt anything, only to generate DH
-      tempKeyToRequestSeed = await crypto.aesGcm.getKeyStringFromKey(await crypto.aesGcm.generateKey())
-      const publicKey = crypto.diffieHellman.getPublicKey(tempKeyToRequestSeed)
-      requesterPublicKey = base64.encode(publicKey)
-
-      localData.setTempRequestForSeed(this.session.username, requesterPublicKey, tempKeyToRequestSeed)
-      firstTimeRequestingSeed = true
-    } else {
-      tempKeyToRequestSeed = alreadySavedRequest.tempKeyToRequestSeed
-      requesterPublicKey = alreadySavedRequest.requesterPublicKey
-    }
-
-    this.session.firstTimeRequestingSeed = firstTimeRequestingSeed
-    this.session.tempPublicKey = await crypto.sha256.hashString(requesterPublicKey)
-    this.onSessionChange(this.session)
+  async requestSeed(username) {
+    const seedRequest = localData.getSeedRequest(username) || await this.buildSeedRequest(username)
+    const {
+      seedRequestPrivateKey,
+      seedRequestPublicKey
+    } = seedRequest
 
     const action = 'RequestSeed'
-    const params = { requesterPublicKey }
+    const params = { requesterPublicKey: seedRequestPublicKey }
     const requestSeedResponse = await this.request(action, params)
 
     const { encryptedSeed, senderPublicKey } = requestSeedResponse.data
     if (encryptedSeed && senderPublicKey) {
-      const seed = await this.receiveSeed(encryptedSeed, senderPublicKey, requesterPublicKey, tempKeyToRequestSeed)
-      return seed
+      await this.receiveSeed(encryptedSeed, senderPublicKey, seedRequestPrivateKey, seedRequestPublicKey)
+    } else {
+      await this.inputSeedManually(username, seedRequestPublicKey)
     }
-    return null
+  }
+
+  async buildSeedRequest(username) {
+    // this could be random bytes -- it's not used to encrypt/decrypt anything, only to generate DH
+    const seedRequestPrivateKey = await crypto.aesGcm.getKeyStringFromKey(await crypto.aesGcm.generateKey())
+    const publicKey = crypto.diffieHellman.getPublicKey(seedRequestPrivateKey)
+    const seedRequestPublicKey = base64.encode(publicKey)
+
+    localData.setSeedRequest(username, seedRequestPublicKey, seedRequestPrivateKey)
+    return { seedRequestPrivateKey, seedRequestPublicKey }
+  }
+
+  async inputSeedManually(username, seedRequestPublicKey) {
+    const seedRequestPublicKeyHash = await crypto.sha256.hashString(seedRequestPublicKey)
+
+    const seedString = window.prompt(
+      `Welcome, ${username}!`
+      + '\n\n'
+      + `Sign in from a device you used before to send the secret seed to this device.`
+      + '\n\n'
+      + 'Before sending, please verify the Device ID matches:'
+      + '\n\n'
+      + seedRequestPublicKeyHash
+      + '\n\n'
+      + 'You can also manually enter the secret seed below. You received your secret seed when you created your account.'
+      + '\n\n'
+      + 'Hit cancel to sign out.'
+    )
+
+    if (seedString) {
+      await this.setKeys(seedString)
+    } else {
+      const userHitCancel = seedString === null
+      if (userHitCancel) {
+        await this.signOut()
+        this.resolveConnection({ username, signedIn: false })
+      }
+    }
   }
 
   async getRequestsForSeed() {
@@ -521,7 +536,7 @@ class Connection {
           requesterPublicKeyArrayBuffer
         )
 
-        const encryptedSeed = await crypto.aesGcm.encryptString(sharedKey, this.keys.seedString)
+        const encryptedSeed = await crypto.aesGcm.encryptString(sharedKey, this.seedString)
 
         const action = 'SendSeed'
         const params = { requesterPublicKey, encryptedSeed }
@@ -535,22 +550,19 @@ class Connection {
     delete this.processingSeedRequest[requesterPublicKeyHash]
   }
 
-  async receiveSeed(encryptedSeed, senderPublicKey, requesterPublicKey, tempKeyToRequestSeed) {
+  async receiveSeed(encryptedSeed, senderPublicKey, seedRequestPrivateKey, seedRequestPublicKey) {
     const sharedKey = await crypto.diffieHellman.getSharedKey(
-      tempKeyToRequestSeed,
+      seedRequestPrivateKey,
       new Uint8Array(base64.decode(senderPublicKey))
     )
 
     const seedString = await crypto.aesGcm.decryptString(sharedKey, encryptedSeed)
 
-    await localData.saveSeedStringToLocalStorage(this.session.username, seedString)
+    await localData.saveSeedString(this.username, seedString)
 
-    await this.setKeys(seedString, requesterPublicKey)
+    await this.setKeys(seedString, seedRequestPublicKey)
 
-    localData.removeRequestForSeed(this.session.username)
-
-    this.onSessionChange(this.session)
-    return seedString
+    localData.removeSeedRequest(this.username)
   }
 }
 

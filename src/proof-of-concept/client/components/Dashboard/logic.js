@@ -5,14 +5,8 @@ const getDbName = (username) => {
   return username + '-todos'
 }
 
-const createOrOpenDatabase = async (username, onDbChangeHandler, onWebSocketConnect) => {
-  try {
-    await userbase.createOrOpenDatabase(getDbName(username), onDbChangeHandler)
-    onWebSocketConnect()
-    return true
-  } catch (e) {
-    return false
-  }
+const createOrOpenDatabase = async (username, onDbChangeHandler) => {
+  await userbase.createOrOpenDatabase(getDbName(username), onDbChangeHandler)
 }
 
 const _errorHandler = (e, operation, handleRemoveUserAuthentication) => {

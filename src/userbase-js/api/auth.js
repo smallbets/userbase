@@ -3,7 +3,6 @@ import ws from '../ws'
 import config from '../config'
 
 const TEN_SECONDS_MS = 10 * 1000
-const TIMEOUT = TEN_SECONDS_MS
 
 const signUp = async (username, password, publicKey, encryptionKeySalt, dhKeySalt, hmacKeySalt) => {
   const signUpResponse = await axios({
@@ -17,7 +16,7 @@ const signUp = async (username, password, publicKey, encryptionKeySalt, dhKeySal
       dhKeySalt,
       hmacKeySalt
     },
-    timeout: TIMEOUT
+    timeout: TEN_SECONDS_MS
   })
 
   const sessionId = signUpResponse.data
@@ -32,14 +31,26 @@ const signIn = async (username, password) => {
       username,
       password
     },
-    timeout: TIMEOUT
+    timeout: TEN_SECONDS_MS
   })
 
   const sessionId = signInResponse.data
   return sessionId
 }
 
+const signInWithSession = async (sessionId) => {
+  const signInWithSessionResponse = await axios({
+    method: 'POST',
+    url: `${ws.endpoint}/api/auth/sign-in-with-session?appId=${config.getAppId()}&sessionId=${sessionId}`,
+    timeout: TEN_SECONDS_MS
+  })
+
+  const extendedDate = signInWithSessionResponse.data
+  return extendedDate
+}
+
 export default {
   signUp,
   signIn,
+  signInWithSession,
 }

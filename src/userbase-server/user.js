@@ -55,7 +55,7 @@ exports.signUp = async function (req, res) {
   if (!appId || !username || !password || !publicKey || !encryptionKeySalt
     || !dhKeySalt || !hmacKeySalt) return res
       .status(statusCodes['Bad Request'])
-      .send({ readableMessage: 'Missing required items' })
+      .send('Missing required items')
 
   const userId = uuidv4()
 
@@ -93,10 +93,7 @@ exports.signUp = async function (req, res) {
       if (e.name === 'ConditionalCheckFailedException') {
         return res
           .status(statusCodes['Conflict'])
-          .send({
-            err: `Failed to sign up with error ${e}`,
-            readableMessage: 'Username already exists'
-          })
+          .send('Username already exists')
       }
       throw e
     }
@@ -106,7 +103,7 @@ exports.signUp = async function (req, res) {
   } catch (e) {
     return res
       .status(statusCodes['Internal Server Error'])
-      .send({ err: `Failed to sign up with ${e}` })
+      .send('Failed to sign up!')
   }
 }
 
@@ -116,7 +113,7 @@ exports.authenticateUser = async function (req, res, next) {
 
   if (!sessionId || !appId) return res
     .status(statusCodes['Unauthorized'])
-    .send({ readableMessage: 'Missing session token or app id' })
+    .send('Missing session token or app id')
 
   const params = {
     TableName: setup.sessionsTableName,
@@ -133,17 +130,23 @@ exports.authenticateUser = async function (req, res, next) {
 
     const doesNotExist = !session
     const invalidated = doesNotExist || session.invalidated
-    const expired = invalidated || (new Date() - new Date(session['creation-date']) > SESSION_LENGTH)
-    const appDoesNotMatch = expired || session['app-id'] !== appId
-    const isNotUserSession = appDoesNotMatch || !session['user-id']
 
-    if (doesNotExist || invalidated || expired || appDoesNotMatch || isNotUserSession) return res
-      .status(statusCodes['Unauthorized']).end()
+    const sessionStartDate = new Date(session['extended-date'] || session['creation-date'])
+    const expired = invalidated || new Date() - sessionStartDate > SESSION_LENGTH
+
+    const isNotUserSession = expired || !session['user-id']
+
+    if (doesNotExist || invalidated || expired || isNotUserSession) return res
+      .status(statusCodes['Unauthorized']).send('Invalid session')
+
+    const appDoesNotMatch = isNotUserSession || session['app-id'] !== appId
+    if (appDoesNotMatch) return res
+      .status(statusCodes['Unauthorized']).send('Invalid app ID')
 
     const user = await findUserByUserId(session['user-id'])
     if (!user) return res
       .status(statusCodes['Not Found'])
-      .send({ readableMessage: 'User no longer exists' })
+      .send('User no longer exists')
 
     res.locals.user = user // makes user object available in next route
     next()
@@ -151,7 +154,7 @@ exports.authenticateUser = async function (req, res, next) {
     logger.error(`Failed to authenticate user session ${sessionId} with ${e}`)
     return res
       .status(statusCodes['Internal Server Error'])
-      .send({ err: 'Failed to authenticate user' })
+      .send('Failed to authenticate user')
   }
 }
 
@@ -241,7 +244,7 @@ exports.signIn = async function (req, res) {
 
   if (!appId || !username || !password) return res
     .status(statusCodes['Bad Request'])
-    .send({ readableMessage: 'Missing required items' })
+    .send('Missing required items')
 
   const params = {
     TableName: setup.usersTableName,
@@ -261,7 +264,7 @@ exports.signIn = async function (req, res) {
     const incorrectPassword = doesNotExist || !(await crypto.bcrypt.compare(password, user['password-hash']))
 
     if (doesNotExist || incorrectPassword) return res
-      .status(statusCodes['Unauthorized']).end()
+      .status(statusCodes['Unauthorized']).send('Invalid password')
 
     const sessionId = await createSession(user['user-id'], appId)
     return res.send(sessionId)
@@ -269,7 +272,7 @@ exports.signIn = async function (req, res) {
     logger.error(`Username ${username} failed to sign in with ${e}`)
     return res
       .status(statusCodes['Internal Server Error'])
-      .send({ err: `Failed to sign in!` })
+      .send('Failed to sign in!')
   }
 }
 
@@ -772,3 +775,34 @@ async function findUserByUserId(userId) {
   return userResponse.Items[0]
 }
 exports.findUserByUserId = findUserByUserId
+
+exports.extendSession = async function (req, res) {
+  const sessionId = req.query.sessionId
+
+  const extendedDate = new Date().toISOString()
+
+  const params = {
+    TableName: setup.sessionsTableName,
+    Key: {
+      'session-id': sessionId
+    },
+    UpdateExpression: 'set #extendedDate = :extendedDate',
+    ExpressionAttributeNames: {
+      '#extendedDate': 'extended-date'
+    },
+    ExpressionAttributeValues: {
+      ':extendedDate': extendedDate
+    }
+  }
+
+  try {
+    const ddbClient = connection.ddbClient()
+    await ddbClient.update(params).promise()
+    return res.send(extendedDate)
+  } catch (e) {
+    logger.error(`Unable to extend session ${sessionId} with: ${e}`)
+    return res
+      .status(statusCodes['Internal Server Error'])
+      .send('Failed to extend session')
+  }
+}

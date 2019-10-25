@@ -1,5 +1,8 @@
 import ws from './ws'
 
+const DEFAULT_SERVICE_ENDPOINT = 'https://demo.encrypted.dev'
+ws.endpoint = DEFAULT_SERVICE_ENDPOINT
+
 let userbaseAppId = null
 const getAppId = () => userbaseAppId
 

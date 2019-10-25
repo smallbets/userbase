@@ -7,10 +7,8 @@ import localData from './localData'
 import config from './config'
 
 const appIdNotSet = 'App id not set'
-const wsNotOpen = 'Web Socket not open'
-const deviceAlreadyRegistered = 'Device already registered'
 
-const signUp = async (username, password, onSessionChange = (() => { })) => {
+const signUp = async (username, password) => {
   const appId = config.getAppId()
   if (!appId) throw new Error(appIdNotSet)
 
@@ -35,25 +33,24 @@ const signUp = async (username, password, onSessionChange = (() => { })) => {
     base64.encode(hmacKeySalt)
   )
 
+  const seedString = base64.encode(seed)
   // Warning: if user hits the sign up button twice,
   // it's possible the seed will be overwritten here and will be lost
-  await localData.saveSeedToLocalStorage(lowerCaseUsername, seed)
+  localData.saveSeedString(username, seedString)
 
-  const session = localData.signInSession(lowerCaseUsername, sessionId)
+  localData.signInSession(lowerCaseUsername, sessionId)
 
   const signingUp = true
-  await ws.connect(session, appId, onSessionChange, signingUp)
-
-  return session
+  await ws.connect(appId, sessionId, lowerCaseUsername, seedString, signingUp)
+  return { username: lowerCaseUsername, seed: seedString, signedIn: true }
 }
 
 const signOut = async () => {
-  if (!ws.connected) throw new Error(wsNotOpen)
-
-  await ws.signOut()
+  const session = await ws.signOut()
+  return session
 }
 
-const signIn = async (username, password, onSessionChange = (() => { })) => {
+const signIn = async (username, password) => {
   const appId = config.getAppId()
   if (!appId) throw new Error(appIdNotSet)
 
@@ -61,40 +58,36 @@ const signIn = async (username, password, onSessionChange = (() => { })) => {
 
   const sessionId = await api.auth.signIn(lowerCaseUsername, password)
 
-  const session = localData.signInSession(lowerCaseUsername, sessionId)
+  localData.signInSession(lowerCaseUsername, sessionId)
 
-  const signingUp = false
-  await ws.connect(session, appId, onSessionChange, signingUp)
-
+  const savedSeedString = localData.getSeedString(lowerCaseUsername) // might be null if does not have seed saved
+  const session = await ws.connect(appId, sessionId, username, savedSeedString)
+  if (!session.signedIn) throw new Error('Canceled')
   return session
 }
 
-const init = async (onSessionChange = (() => { })) => {
+const init = async () => {
   const appId = config.getAppId()
   if (!appId) throw new Error(appIdNotSet)
 
-  const session = localData.getCurrentSession()
-  if (!session) return onSessionChange({ username: undefined, signedIn: false, seed: undefined })
-  if (!session.username || !session.signedIn) return onSessionChange(session)
+  const currentSession = localData.getCurrentSession()
+  if (!currentSession) return { signedIn: false }
+
+  const { signedIn, username, sessionId } = currentSession
+  if (!signedIn) return { username: username, signedIn: false }
 
   try {
-    const signingUp = false
-    await ws.connect(session, appId, onSessionChange, signingUp)
-    return session
+    await api.auth.signInWithSession(sessionId)
   } catch (e) {
-    ws.close()
-    onSessionChange(ws.session)
+    if (e && e.response && e.response.data === 'Invalid session') {
+      return { username, signedIn: false }
+    }
     throw e
   }
-}
 
-const importKey = async (seedString) => {
-  if (!ws.connected) throw new Error(wsNotOpen)
-  if (ws.keys.init) throw new Error(deviceAlreadyRegistered)
-
-  localData.saveSeedStringToLocalStorage(ws.session.username, seedString)
-  await ws.setKeys(seedString)
-  ws.onSessionChange(ws.session)
+  const savedSeedString = localData.getSeedString(username) // might be null if does not have seed saved
+  const session = await ws.connect(appId, sessionId, username, savedSeedString)
+  return session
 }
 
 const grantDatabaseAccess = async (dbName, username, readOnly) => {
@@ -117,6 +110,5 @@ export default {
   signOut,
   signIn,
   init,
-  importKey,
   grantDatabaseAccess,
 }

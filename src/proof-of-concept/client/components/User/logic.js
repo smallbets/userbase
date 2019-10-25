@@ -6,13 +6,14 @@ const _errorHandler = (e, operation) => {
   const timeout = e.response && e.response.status === 504 || e.message.includes('timeout')
   if (timeout) return { error: 'Something went wrong, please try again!' }
 
-  const errorMsg = (e.response && e.response.data.readableMessage) || e.message
+  const errorMsg = (e.response && e.response.data) || e.message
   return { error: errorMsg }
 }
 
-const signUp = async (username, password, onSessionChange) => {
+const signUp = async (username, password) => {
   try {
-    await userbase.signUp(username, password, onSessionChange)
+    const session = await userbase.signUp(username, password)
+    return session
   } catch (e) {
     return _errorHandler(e, 'sign up')
   }
@@ -20,29 +21,28 @@ const signUp = async (username, password, onSessionChange) => {
 
 const signOut = async () => {
   try {
-    await userbase.signOut()
+    const session = await userbase.signOut()
+    return session
   } catch (e) {
     return _errorHandler(e, 'sign out')
   }
 }
 
-const signIn = async (username, password, onSessionChange) => {
+const signIn = async (username, password) => {
   try {
-    await userbase.signIn(username, password, onSessionChange)
+    const session = await userbase.signIn(username, password)
+    return session
   } catch (e) {
     return _errorHandler(e, 'sign in')
   }
 }
 
-const saveKey = async (key) => {
-  await userbase.importKey(key)
-}
-
-const init = async (onSessionChange) => {
+const init = async () => {
   try {
-    await userbase.init(onSessionChange)
+    const session = await userbase.init()
+    return session
   } catch (e) {
-    return _errorHandler(e, 'init session')
+    return _errorHandler(e, 'init')
   }
 }
 
@@ -50,6 +50,5 @@ export default {
   signUp,
   signOut,
   signIn,
-  saveKey,
   init
 }

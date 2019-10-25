@@ -13,7 +13,7 @@ export default class UserForm extends Component {
     }
 
     this.handleInputChange = this.handleInputChange.bind(this)
-    this.handleSubmit = this.handleSubmit.bind(this)
+    this.handleSubmitForm = this.handleSubmitForm.bind(this)
   }
 
   // prevent last pass error in console: https://github.com/KillerCodeMonkey/ngx-quill/issues/351
@@ -43,19 +43,20 @@ export default class UserForm extends Component {
     })
   }
 
-  async handleSubmit(event) {
-    const { formType, handleUpdateSession } = this.props
+  async handleSubmitForm(event) {
+    const { formType, handleSubmit } = this.props
     const { username, password } = this.state
     event.preventDefault()
 
     await this.setState({ loading: true })
 
-    let result
-    if (formType === 'Sign Up') result = await userLogic.signUp(username, password, handleUpdateSession)
-    else if (formType === 'Sign In') result = await userLogic.signIn(username, password, handleUpdateSession)
+    let session
+    if (formType === 'Sign Up') session = await userLogic.signUp(username, password)
+    else if (formType === 'Sign In') session = await userLogic.signIn(username, password)
     else return console.error('Unknown form type')
 
-    if (result && result.error) this.setState({ error: result.error, loading: false })
+    if (session && session.error) this.setState({ error: session.error, loading: false })
+    else handleSubmit(session)
   }
 
   render() {
@@ -65,7 +66,7 @@ export default class UserForm extends Component {
     const disabled = !username || !password
 
     return (
-      <form onSubmit={this.handleSubmit}>
+      <form onSubmit={this.handleSubmitForm}>
 
         <div className='container content text-xs xs:text-base'>
 
@@ -133,7 +134,7 @@ export default class UserForm extends Component {
 }
 
 UserForm.propTypes = {
-  handleUpdateSession: func,
+  handleSubmit: func,
   formType: string,
   placeholderUsername: string
 }

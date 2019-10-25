@@ -1,75 +1,59 @@
-import base64 from 'base64-arraybuffer'
-import crypto from './Crypto'
-
 const setCurrentSession = (username, signedIn, sessionId) => {
   const session = { username, signedIn, sessionId }
   const sessionString = JSON.stringify(session)
-  localStorage.setItem('currentSession', sessionString)
-
-  const seedString = localStorage.getItem('seed.' + session.username)
-  return { ...session, seed: seedString }
+  localStorage.setItem('userbaseCurrentSession', sessionString)
 }
 
 const getCurrentSession = () => {
-  const currentSessionString = localStorage.getItem('currentSession')
-  const currentSession = JSON.parse(currentSessionString)
-
-  if (!currentSession) return undefined
-
-  const seedString = localStorage.getItem('seed.' + currentSession.username)
-  return { ...currentSession, seed: seedString }
+  const currentSessionString = localStorage.getItem('userbaseCurrentSession')
+  return JSON.parse(currentSessionString)
 }
 
-const saveSeedStringToLocalStorage = async (username, seedString) => {
-  const seed = base64.decode(seedString)
-  await crypto.hkdf.importMasterKey(seed) // ensures seed is valid, would throw if invalid
-
-  localStorage.setItem('seed.' + username, seedString)
+const saveSeedString = (username, seedString) => {
+  localStorage.setItem('userbaseSeed.' + username, seedString)
 }
 
-const saveSeedToLocalStorage = async (username, seed) => {
-  const seedString = base64.encode(seed)
-  localStorage.setItem('seed.' + username, seedString)
+const getSeedString = (username) => {
+  return localStorage.getItem('userbaseSeed.' + username)
 }
 
 const signInSession = (username, sessionId) => {
   const signedIn = true
-  return setCurrentSession(username, signedIn, sessionId)
+  setCurrentSession(username, signedIn, sessionId)
 }
 
 const signOutSession = (username) => {
   const signedIn = false
   setCurrentSession(username, signedIn)
-  return { username, signedIn }
 }
 
-const setTempRequestForSeed = (username, requesterPublicKey, tempKeyToRequestSeed) => {
-  const request = requesterPublicKey + '|' + tempKeyToRequestSeed
-  localStorage.setItem(`${username}.temp-request-for-seed`, request)
+const setSeedRequest = (username, seedRequestPublicKey, seedRequestPrivateKey) => {
+  const seedRequest = seedRequestPublicKey + '|' + seedRequestPrivateKey
+  localStorage.setItem(`userbaseSeedRequest.${username}`, seedRequest)
 }
 
-const getTempRequestForSeed = (username) => {
-  const request = localStorage.getItem(`${username}.temp-request-for-seed`)
-  if (!request) return request
+const getSeedRequest = (username) => {
+  const seedRequest = localStorage.getItem(`userbaseSeedRequest.${username}`)
+  if (!seedRequest) return null
 
-  const requestForSeed = request.split('|')
-  const requesterPublicKey = requestForSeed[0]
-  const tempKeyToRequestSeed = requestForSeed[1]
+  const seedRequestArray = seedRequest.split('|')
+  const seedRequestPublicKey = seedRequestArray[0]
+  const seedRequestPrivateKey = seedRequestArray[1]
 
-  return { requesterPublicKey, tempKeyToRequestSeed }
+  return { seedRequestPublicKey, seedRequestPrivateKey }
 }
 
-const removeRequestForSeed = (username) => {
-  return localStorage.removeItem(`${username}.temp-request-for-seed`)
+const removeSeedRequest = (username) => {
+  return localStorage.removeItem(`userbaseSeedRequest.${username}`)
 }
 
 export default {
   signInSession,
   signOutSession,
   getCurrentSession,
-  saveSeedStringToLocalStorage,
-  saveSeedToLocalStorage,
-  setTempRequestForSeed,
-  getTempRequestForSeed,
-  removeRequestForSeed,
+  saveSeedString,
+  getSeedString,
+  setSeedRequest,
+  getSeedRequest,
+  removeSeedRequest,
 }
