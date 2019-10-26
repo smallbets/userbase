@@ -15,7 +15,7 @@ export default {
   init: auth.init,
   importKey: auth.importKey,
 
-  createOrOpenDatabase: db.createOrOpenDatabase,
+  openDatabase: db.openDatabase,
 
   insert: db.insert,
   update: db.update,

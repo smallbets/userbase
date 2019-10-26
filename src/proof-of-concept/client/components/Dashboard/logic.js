@@ -5,8 +5,8 @@ const getDbName = (username) => {
   return username + '-todos'
 }
 
-const createOrOpenDatabase = async (username, onDbChangeHandler) => {
-  await userbase.createOrOpenDatabase(getDbName(username), onDbChangeHandler)
+const openDatabase = async (username, onDbChangeHandler) => {
+  await userbase.openDatabase(getDbName(username), onDbChangeHandler)
 }
 
 const _errorHandler = (e, operation, handleRemoveUserAuthentication) => {
@@ -55,7 +55,7 @@ const updateTodo = async (username, todo, newTodoInput, handleRemoveUserAuthenti
 }
 
 export default {
-  createOrOpenDatabase,
+  openDatabase,
   insertTodo,
   deleteTodo,
   toggleTodo,

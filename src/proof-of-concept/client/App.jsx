@@ -36,7 +36,7 @@ export default class App extends Component {
     this.setState({ session })
     this.handleReadHash()
 
-    if (session.signedIn) await dbLogic.createOrOpenDatabase(session.username, this.handleDbChange)
+    if (session.signedIn) await dbLogic.openDatabase(session.username, this.handleDbChange)
   }
 
   componentWillUnmount() {
@@ -49,13 +49,13 @@ export default class App extends Component {
 
   async handleSignIn(session) {
     this.setState({ session })
-    await dbLogic.createOrOpenDatabase(session.username, this.handleDbChange)
+    await dbLogic.openDatabase(session.username, this.handleDbChange)
     window.location.hash = ''
   }
 
   async handleSignUp(session) {
     this.setState({ session })
-    await dbLogic.createOrOpenDatabase(session.username, this.handleDbChange)
+    await dbLogic.openDatabase(session.username, this.handleDbChange)
     window.location.hash = 'show-seed'
   }
 

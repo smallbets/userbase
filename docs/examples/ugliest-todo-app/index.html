@@ -160,13 +160,13 @@
         return
       }
 
-      createOrOpenDatabase(session)
+      openDatabase(session)
     }
 
     // opens the database and listens to changes
-    function createOrOpenDatabase(session) {
+    function openDatabase(session) {
       // set the database change listener
-      userbase.createOrOpenDatabase('todos', databaseChange)
+      userbase.openDatabase('todos', databaseChange)
         .then(() => {
           // show the todo list once the database is open, and clear everything else
           document.getElementById('email').innerHTML = session.username

@@ -343,7 +343,7 @@ const createDatabase = async (dbName) => {
   await ws.request(action, params)
 }
 
-const createOrOpenDatabase = async (dbName, changeHandler) => {
+const openDatabase = async (dbName, changeHandler) => {
   try {
     await createDatabase(dbName)
   } catch (e) {
@@ -547,7 +547,7 @@ const findDatabases = async () => {
 }
 
 export default {
-  createOrOpenDatabase,
+  openDatabase,
   findDatabases,
   insert,
   update,
