@@ -800,3 +800,13 @@ exports.extendSession = async function (req, res) {
       .send('Failed to extend session')
   }
 }
+
+exports.getServerPublicKey = async function (_, res) {
+  try {
+    console.log('hello?')
+    return res.send(crypto.diffieHellman.getPublicKey())
+  } catch (e) {
+    logger.error(`Failed to get server public key with ${e}`)
+    return res.status(statusCodes['Internal Server Error']).send('Failed to get server public key')
+  }
+}

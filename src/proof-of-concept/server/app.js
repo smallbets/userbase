@@ -1,5 +1,6 @@
 import express from 'express'
 import fs from 'fs'
+import crypto from 'crypto'
 
 import userbaseServer from 'userbase-server'
 
@@ -40,9 +41,14 @@ async function start() {
 
 async function setupAdmin() {
   try {
-    const adminPassword = process.env['sm.ADMIN_ACCOUNT_PASSWORD']
+    let adminPassword = process.env['sm.ADMIN_ACCOUNT_PASSWORD']
+    let storePasswordInSecretsManager
+    if (!adminPassword) {
+      adminPassword = crypto.randomBytes(16).toString('base64')
+      storePasswordInSecretsManager = true
+    }
 
-    await userbaseServer.createAdmin(ADMIN_NAME, adminPassword, ADMIN_ID)
+    await userbaseServer.createAdmin(ADMIN_NAME, adminPassword, ADMIN_ID, storePasswordInSecretsManager)
   } catch (e) {
     if (!e || e.status !== CONFLICT_STATUS_CODE) {
       console.log(`Failed to set up new admin account with ${JSON.stringify(e)}`)

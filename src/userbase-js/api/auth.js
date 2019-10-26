@@ -49,8 +49,21 @@ const signInWithSession = async (sessionId) => {
   return extendedDate
 }
 
+const getServerPublicKey = async () => {
+  const serverPublicKeyResponse = await axios({
+    method: 'GET',
+    url: `${ws.endpoint}/api/auth/server-public-key`,
+    timeout: TEN_SECONDS_MS,
+    responseType: 'arraybuffer'
+  })
+
+  const serverPublicKey = serverPublicKeyResponse.data
+  return serverPublicKey
+}
+
 export default {
   signUp,
   signIn,
   signInWithSession,
+  getServerPublicKey
 }

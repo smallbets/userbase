@@ -2,6 +2,7 @@ import aws from 'aws-sdk'
 import os from 'os'
 import logger from './logger'
 import memcache from './memcache'
+import crypto from './crypto'
 
 // if running in dev mode, prefix the DynamoDB tables and S3 buckets with the username
 const usernamePrefix = (process.env.NODE_ENV == 'development') ? os.userInfo().username + '-' : ''
@@ -41,6 +42,10 @@ let s3
 const getS3Connection = () => s3
 exports.s3 = getS3Connection
 exports.dbStatesBucketName = dbStatesBucketName
+
+let sm
+exports.getSecrets = getSecrets
+exports.updateSecrets = updateSecrets
 
 exports.init = async function () {
   // look for AWS credentials under the 'encrypted' profile
@@ -315,11 +320,43 @@ async function createBucket(s3, params) {
 }
 
 async function setupSM() {
-  const sm = new aws.SecretsManager()
+  logger.info('Setting environment variables from secrets manager')
+  sm = new aws.SecretsManager()
 
-  const secret = await sm.getSecretValue({ SecretId: 'env' }).promise()
+  const secrets = await getSecrets()
 
-  for (const [key, value] of Object.entries(JSON.parse(secret.SecretString))) {
+  if (!secrets[crypto.diffieHellman.dhPrivateKeyName]) {
+    await setupDhSecret(secrets)
+  }
+
+  for (const [key, value] of Object.entries(secrets)) {
     process.env['sm.' + key] = value
   }
+}
+
+async function setupDhSecret(secrets) {
+  const dhPrivateKey = crypto.diffieHellman.generatePrivateKey().toString('hex')
+
+  await updateSecrets(secrets, crypto.diffieHellman.dhPrivateKeyName, dhPrivateKey)
+
+  logger.info('Successfully created diffie hellman private key')
+}
+
+async function getSecrets() {
+  const secret = await sm.getSecretValue({ SecretId: 'env' }).promise()
+  const secrets = JSON.parse(secret.SecretString)
+  return secrets
+}
+
+async function updateSecrets(secrets, secretKeyName, secretValue) {
+  secrets[secretKeyName] = secretValue
+
+  const params = {
+    SecretId: 'env',
+    SecretString: JSON.stringify(secrets)
+  }
+
+  await sm.updateSecret(params).promise()
+
+  process.env['sm.' + secretKeyName] = secretValue
 }

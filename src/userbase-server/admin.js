@@ -46,13 +46,18 @@ const setSessionCookie = (res, sessionId) => {
   res.cookie(SESSION_COOKIE_NAME, sessionId, cookieResponseHeaders)
 }
 
-async function createAdmin(adminName, password, adminId = uuidv4()) {
+async function createAdmin(adminName, password, adminId = uuidv4(), storePasswordInSecretsManager = false) {
   if (!adminName || !password) throw {
     status: statusCodes['Bad Request'],
     data: 'Missing required items'
   }
 
   try {
+    if (storePasswordInSecretsManager) {
+      const secrets = await setup.getSecrets()
+      await setup.updateSecrets(secrets, 'ADMIN_ACCOUNT_PASSWORD', password)
+    }
+
     const passwordHash = await crypto.bcrypt.hash(password)
 
     const admin = {

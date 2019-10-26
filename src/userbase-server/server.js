@@ -257,6 +257,7 @@ async function start(express, app, userbaseConfig = {}) {
     app.post('/api/auth/sign-up', user.signUp)
     app.post('/api/auth/sign-in', user.signIn)
     app.post('/api/auth/sign-in-with-session', user.authenticateUser, user.extendSession)
+    app.get('/api/auth/server-public-key', user.getServerPublicKey)
 
     app.use('/admin', express.static(path.join(__dirname + adminPanelDir)))
 
@@ -272,8 +273,8 @@ async function start(express, app, userbaseConfig = {}) {
   }
 }
 
-function createAdmin(adminName, password, adminId) {
-  return admin.createAdmin(adminName, password, adminId)
+function createAdmin(adminName, password, adminId, storePasswordInSecretsManager = false) {
+  return admin.createAdmin(adminName, password, adminId, storePasswordInSecretsManager)
 }
 
 function createApp(appName, adminId, appId) {
