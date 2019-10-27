@@ -268,6 +268,10 @@ async function start(express, app, userbaseConfig = {}) {
     app.post('/admin/list-apps', admin.authenticateAdmin, admin.listApps)
     app.post('/admin/list-app-users', admin.authenticateAdmin, admin.listAppUsers)
 
+    app.get('/ping', function (req, res) {
+      res.send('Healthy')
+    })
+
   } catch (e) {
     logger.info(`Unhandled error while launching server: ${e}`)
   }
