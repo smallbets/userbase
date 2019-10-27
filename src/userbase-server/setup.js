@@ -22,6 +22,7 @@ const transactionsTableName = usernamePrefix + 'transactions'
 const seedExchangeTableName = usernamePrefix + 'seed-exchange'
 const databaseAccessGrantsTableName = usernamePrefix + 'database-access-grants'
 const dbStatesBucketNamePrefix = usernamePrefix + 'db-states'
+const secretManagerSecretId = usernamePrefix + 'env'
 
 exports.adminTableName = adminTableName
 exports.appsTableName = appsTableName
@@ -366,16 +367,31 @@ async function setupDhSecret(secrets) {
 }
 
 async function getSecrets() {
-  const secret = await sm.getSecretValue({ SecretId: 'env' }).promise()
-  const secrets = JSON.parse(secret.SecretString)
-  return secrets
+  try {
+    await sm.createSecret({ Name: secretManagerSecretId }).promise()
+  } catch (e) {
+    if (e.code !== 'ResourceExistsException') {
+      throw e
+    }
+  }
+
+  try {
+    const secret = await sm.getSecretValue({ SecretId: secretManagerSecretId }).promise()
+    const secrets = JSON.parse(secret.SecretString)
+    return secrets
+  } catch (e) {
+    if (e.code !== 'ResourceNotFoundException') {
+      throw e
+    }
+    return {}
+  }
 }
 
 async function updateSecrets(secrets, secretKeyName, secretValue) {
   secrets[secretKeyName] = secretValue
 
   const params = {
-    SecretId: 'env',
+    SecretId: secretManagerSecretId,
     SecretString: JSON.stringify(secrets)
   }
 
