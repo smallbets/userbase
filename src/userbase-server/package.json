@@ -9,7 +9,6 @@
     "bcrypt": "^3.0.6",
     "body-parser": "^1.19.0",
     "cookie-parser": "^1.4.4",
-    "cors": "^2.8.5",
     "express-pino-logger": "^4.0.0",
     "pino": "^5.13.0",
     "uuid": "^3.3.2",

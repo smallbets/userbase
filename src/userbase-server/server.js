@@ -1,7 +1,6 @@
 import path from 'path'
 import expressLogger from 'express-pino-logger'
 import WebSocket from 'ws'
-import cors from 'cors'
 import http from 'http'
 import https from 'https'
 
@@ -243,8 +242,7 @@ async function start(express, app, userbaseConfig = {}) {
       })
     }, 30000)
 
-    app.use(expressLogger())
-    app.use(cors())
+    app.use(expressLogger({ logger }))
     app.use(bodyParser.json())
     app.use(cookieParser())
 

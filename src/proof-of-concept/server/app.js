@@ -1,6 +1,7 @@
 import express from 'express'
 import fs from 'fs'
 import crypto from 'crypto'
+import cors from 'cors'
 
 import userbaseServer from 'userbase-server'
 
@@ -32,6 +33,7 @@ const CONFLICT_STATUS_CODE = 409
 
 start()
 async function start() {
+  app.use(cors())
   app.use(express.static(distDir))
   await userbaseServer.start(express, app, userbaseConfig)
 
