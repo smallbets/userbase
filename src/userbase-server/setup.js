@@ -397,6 +397,7 @@ async function getEC2Region() {
           reject(err)
           return
         }
+        logger.info(`Running on EC2 in ${data.Region}`)
         resolve(data.Region)
       })
       setTimeout(() => reject(new Error('timeout')), 5000)
