@@ -457,7 +457,7 @@ exports.bundleTransactionLog = async function (databaseId, seqNo, bundle) {
     }
 
     const dbStateParams = {
-      Bucket: setup.dbStatesBucketName,
+      Bucket: setup.getDbStatesBucketName(),
       Key: getS3DbStateKey(databaseId, bundleSeqNo),
       Body: bundle
     }
@@ -502,7 +502,7 @@ exports.getBundle = async function (databaseId, bundleSeqNo) {
 
   try {
     const params = {
-      Bucket: setup.dbStatesBucketName,
+      Bucket: setup.getDbStatesBucketName(),
       Key: getS3DbStateKey(databaseId, bundleSeqNo)
     }
     const s3 = setup.s3()

@@ -4,6 +4,11 @@ import logger from './logger'
 import memcache from './memcache'
 import crypto from './crypto'
 
+let awsAccountId
+let initialized = false
+
+const defaultRegion = 'us-west-2'
+
 // if running in dev mode, prefix the DynamoDB tables and S3 buckets with the username
 const usernamePrefix = (process.env.NODE_ENV == 'development') ? os.userInfo().username + '-' : ''
 
@@ -16,7 +21,7 @@ const userDatabaseTableName = usernamePrefix + 'user-database'
 const transactionsTableName = usernamePrefix + 'transactions'
 const seedExchangeTableName = usernamePrefix + 'seed-exchange'
 const databaseAccessGrantsTableName = usernamePrefix + 'database-access-grants'
-const dbStatesBucketName = usernamePrefix + 'db-states'
+const dbStatesBucketNamePrefix = usernamePrefix + 'db-states'
 
 exports.adminTableName = adminTableName
 exports.appsTableName = appsTableName
@@ -38,10 +43,18 @@ exports.userIdIndex = userIdIndex
 exports.appIdIndex = appIdIndex
 exports.userDatabaseIdIndex = userDatabaseIdIndex
 
+const getDbStatesBucketName = function () {
+  if (!initialized || !awsAccountId) {
+    throw new Error('Setup not initialized')
+  }
+
+  return dbStatesBucketNamePrefix + '-' + awsAccountId
+}
+
 let s3
 const getS3Connection = () => s3
 exports.s3 = getS3Connection
-exports.dbStatesBucketName = dbStatesBucketName
+exports.getDbStatesBucketName = getDbStatesBucketName
 
 let sm
 exports.getSecrets = getSecrets
@@ -63,7 +76,17 @@ exports.init = async function () {
 
   logger.info('Loading AWS credentials')
   aws.config.credentials = await chain.resolvePromise()
-  aws.config.update({ region: 'us-west-2' })
+
+  const region = await getEC2Region() || defaultRegion
+
+  aws.config.update({ region })
+
+  // get the AWS account id
+  const accountInfo = await (new aws.STS({ apiVersion: '2011-06-15' })).getCallerIdentity({}).promise()
+  awsAccountId = accountInfo.Account
+  logger.info(`Running as Account ID: ${awsAccountId}`)
+
+  initialized = true
 
   await setupDdb()
   await setupS3()
@@ -274,7 +297,7 @@ async function setupS3() {
   s3 = new aws.S3({ apiVersion: '2006-03-01' })
 
   const bucketParams = {
-    Bucket: dbStatesBucketName,
+    Bucket: getDbStatesBucketName(),
     ACL: 'private'
   }
 
@@ -359,4 +382,27 @@ async function updateSecrets(secrets, secretKeyName, secretValue) {
   await sm.updateSecret(params).promise()
 
   process.env['sm.' + secretKeyName] = secretValue
+}
+
+async function getEC2Region() {
+  try {
+    return await new Promise((resolve, reject) => {
+      new aws.MetadataService({
+        httpOptions: {
+          timeout: 2000,
+          maxRetries: 0
+        }
+      }).request("/latest/dynamic/instance-identity/document", function (err, data) {
+        if (err) {
+          reject(err)
+          return
+        }
+        resolve(data.Region)
+      })
+      setTimeout(() => reject(new Error('timeout')), 5000)
+    })
+  } catch {
+    logger.info(`Not running on EC2 - Using default region: ${defaultRegion}`)
+    return null
+  }
 }
