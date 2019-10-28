@@ -50,6 +50,20 @@ const signOut = async () => {
   return session
 }
 
+class SignInFailed extends Error {
+  constructor(message, username, ...params) {
+    super(...params)
+
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, SignInFailed)
+    }
+
+    this.name = 'Sign in failed'
+    this.message = message
+    this.username = username
+  }
+}
+
 const signIn = async (username, password) => {
   const appId = config.getAppId()
   if (!appId) throw new Error(appIdNotSet)
@@ -62,31 +76,38 @@ const signIn = async (username, password) => {
 
   const savedSeedString = localData.getSeedString(lowerCaseUsername) // might be null if does not have seed saved
   const session = await ws.connect(appId, sessionId, username, savedSeedString)
-  if (!session.signedIn) throw new Error('Canceled')
+  if (!session.signedIn) throw new SignInFailed('Canceled', lowerCaseUsername)
   return session
 }
 
-const init = async () => {
+const getLastUsedUsername = () => {
+  const lastUsedSession = localData.getCurrentSession()
+  if (!lastUsedSession) return undefined
+  else return lastUsedSession.username
+}
+
+const signInWithSession = async () => {
   const appId = config.getAppId()
   if (!appId) throw new Error(appIdNotSet)
 
   const currentSession = localData.getCurrentSession()
-  if (!currentSession) return { signedIn: false }
+  if (!currentSession) throw new SignInFailed('No session available')
 
   const { signedIn, username, sessionId } = currentSession
-  if (!signedIn) return { username: username, signedIn: false }
+  if (!signedIn) throw new SignInFailed('User is not signed in', username)
 
   try {
     await api.auth.signInWithSession(sessionId)
   } catch (e) {
     if (e && e.response && e.response.data === 'Invalid session') {
-      return { username, signedIn: false }
+      throw new SignInFailed('Invalid session', username)
     }
     throw e
   }
 
   const savedSeedString = localData.getSeedString(username) // might be null if does not have seed saved
   const session = await ws.connect(appId, sessionId, username, savedSeedString)
+  if (!session.signedIn) throw new SignInFailed('Canceled', username)
   return session
 }
 
@@ -109,6 +130,7 @@ export default {
   signUp,
   signOut,
   signIn,
-  init,
+  getLastUsedUsername,
+  signInWithSession,
   grantDatabaseAccess,
 }

@@ -131,7 +131,7 @@ exports.authenticateUser = async function (req, res, next) {
     const doesNotExist = !session
     const invalidated = doesNotExist || session.invalidated
 
-    const sessionStartDate = new Date(session['extended-date'] || session['creation-date'])
+    const sessionStartDate = invalidated || new Date(session['extended-date'] || session['creation-date'])
     const expired = invalidated || new Date() - sessionStartDate > SESSION_LENGTH
 
     const isNotUserSession = expired || !session['user-id']
@@ -803,7 +803,6 @@ exports.extendSession = async function (req, res) {
 
 exports.getServerPublicKey = async function (_, res) {
   try {
-    console.log('hello?')
     return res.send(crypto.diffieHellman.getPublicKey())
   } catch (e) {
     logger.error(`Failed to get server public key with ${e}`)

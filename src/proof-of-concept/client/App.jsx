@@ -1,4 +1,5 @@
 import React, { Component } from 'react'
+import userbase from 'userbase-js'
 import userLogic from './components/User/logic'
 import dbLogic from './components/Dashboard/logic'
 import Dashboard from './components/Dashboard/Dashboard'
@@ -11,7 +12,7 @@ export default class App extends Component {
 
     this.state = {
       session: {
-        username: undefined,
+        username: userbase.getLastUsedUsername(),
         seed: undefined,
         signedIn: false
       },
@@ -31,12 +32,15 @@ export default class App extends Component {
   async componentDidMount() {
     window.addEventListener('hashchange', this.handleReadHash, false)
 
-    const session = await userLogic.init()
+    const username = this.state.session.username
+    if (!username) return this.handleReadHash()
+
+    const session = await userLogic.signInWithSession()
+    if (!session || !session.signedIn) return this.handleReadHash()
 
     this.setState({ session })
     this.handleReadHash()
-
-    if (session.signedIn) await dbLogic.openDatabase(session.username, this.handleDbChange)
+    await dbLogic.openDatabase(session.username, this.handleDbChange)
   }
 
   componentWillUnmount() {

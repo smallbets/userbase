@@ -58,7 +58,7 @@
     document.getElementById('todo-list').style.display = 'none'
 
     // check if there's an existing session cookie, and validate it
-    userbase.init()
+    userbase.signInWithSession()
       .then((session) => openTodoList(session))
 
     // login handler

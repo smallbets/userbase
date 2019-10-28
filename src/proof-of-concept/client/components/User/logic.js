@@ -37,12 +37,12 @@ const signIn = async (username, password) => {
   }
 }
 
-const init = async () => {
+const signInWithSession = async () => {
   try {
-    const session = await userbase.init()
+    const session = await userbase.signInWithSession()
     return session
   } catch (e) {
-    return _errorHandler(e, 'init')
+    return _errorHandler(e, 'sign in with session')
   }
 }
 
@@ -50,5 +50,5 @@ export default {
   signUp,
   signOut,
   signIn,
-  init
+  signInWithSession
 }
