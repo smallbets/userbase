@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <script type="text/javascript" src="https://userbase-public.s3-us-west-2.amazonaws.com/userbase-js/userbase.js"></script>
+  <script type="text/javascript">
+    // configure the Userbase SDK
+    userbase.configure({ appId: 'a43ae910-fc89-43fe-a7a3-a11a53b49325' })
+
+    // set the variable that will hold the data for the test
+    let database = []
+
+    // helper method to generate a random string
+    const randomString = function () { return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15) }
+
+    // the function that gets called when the Userbase database gets updated
+    const databaseChange = function (items) {
+      // clear the database variable
+      database = []
+
+      // copy all the iterms to the database
+      for (let i = 0; i < items.length; i++) {
+        database.push(items[i])
+      }
+    }
+
+    // generate a random username and password
+    const username = randomString() + "-user"
+    const password = randomString() + "-pass"
+
+    // sign up the user
+    userbase.signUp(username, password)
+      .then((session) => {
+        // verify the session
+        console.assert(session.username === username, 'username does not match')
+        console.assert(session.signedIn, 'signedIn should be true')
+        console.assert(session.seed, 'seed should not be empty')
+        console.log('login successful', session)
+
+        // open the database
+        return userbase.openDatabase('test', databaseChange)
+      })
+      .then(() => console.log('database open successful'))
+      // do some inserts
+      .then(() => { return userbase.insert('test', { 'item': 'Item 1' }, '1') })
+      .then(() => { return userbase.insert('test', { 'item': 'Item 2' }, '2') })
+      .then(() => { return userbase.insert('test', { 'item': 'Item 3' }, '3') })
+      .then(() => {
+        // verify that the database contains all the inserted items
+        console.log('inserts successful')
+        console.assert(database.length === 3, 'database size should be 3')
+        console.assert(database[0].record.item === 'Item 1', 'item 1 mismatch')
+        console.assert(database[1].record.item === 'Item 2', 'item 2 mismatch')
+        console.assert(database[2].record.item === 'Item 3', 'item 3 mismatch')
+        console.log('all items found')
+      })
+      // update the 2nd item
+      .then(() => { return userbase.update('test', '2', { 'item': 'Item Updated' }) })
+      .then(() => {
+        // verify that the database contains the expected values, including the updated item
+        console.log('update successful')
+        console.assert(database.length === 3, 'database size should be 3')
+        console.assert(database[0].record.item === 'Item 1', 'item 1 mismatch')
+        console.assert(database[1].record.item === 'Item Updated', 'item 2 mismatch')
+        console.assert(database[2].record.item === 'Item 3', 'item 3 mismatch')
+        console.log('all items found')
+      })
+      // delete all items
+      .then(() => { return userbase.delete('test', '1') })
+      .then(() => { return userbase.delete('test', '2') })
+      .then(() => { return userbase.delete('test', '3') })
+      .then(() => {
+        // verify that the database is empty
+        console.log('deletes successful')
+        console.assert(database.length === 0, 'database size should be 0')
+      })
+      .then(() => { console.log('test passed') })
+      .catch((e) => console.assert(false, e))
+  </script>
+</head>
+</body>
