@@ -8,6 +8,8 @@ export default class AdminForm extends Component {
     this.state = {
       adminName: this.props.placeholderAdminName,
       password: '',
+      firstName: '',
+      lastName: '',
       error: '',
       loading: false
     }
@@ -45,14 +47,14 @@ export default class AdminForm extends Component {
 
   async handleSubmit(event) {
     const { formType } = this.props
-    const { adminName, password } = this.state
+    const { adminName, password, firstName, lastName } = this.state
     event.preventDefault()
 
     await this.setState({ loading: true })
 
     try {
       if (formType === 'Create Admin') {
-        await adminLogic.createAdmin(adminName, password)
+        await adminLogic.createAdmin(adminName, password, firstName, lastName)
       } else if (formType === 'Sign In') {
         await adminLogic.signIn(adminName, password)
       } else {
@@ -66,10 +68,10 @@ export default class AdminForm extends Component {
   }
 
   render() {
-    const { adminName, password, error, loading } = this.state
+    const { adminName, password, firstName, lastName, error, loading } = this.state
     const { formType } = this.props
 
-    const disabled = !adminName || !password
+    const disabled = !adminName || !password || (formType === 'Create Admin' && (!firstName || !lastName))
 
     return (
       <form onSubmit={this.handleSubmit}>
@@ -109,6 +111,36 @@ export default class AdminForm extends Component {
                 />
               </div>
             </div>
+
+            {formType === 'Create Admin' &&
+              <div className='table-row'>
+                <div className='table-cell p-2 text-right'>First Name</div>
+                <div className='table-cell p-2'>
+                  <input
+                    className='font-light text-xs xs:text-sm w-48 sm:w-64 h-8 p-2 border border-gray-500 outline-none'
+                    type='text'
+                    name='firstName'
+                    autoComplete='fname'
+                    onChange={this.handleInputChange}
+                  />
+                </div>
+              </div>
+            }
+
+            {formType === 'Create Admin' &&
+              <div className='table-row'>
+                <div className='table-cell p-2 text-right'>Last Name</div>
+                <div className='table-cell p-2'>
+                  <input
+                    className='font-light text-xs xs:text-sm w-48 sm:w-64 h-8 p-2 border border-gray-500 outline-none'
+                    type='text'
+                    name='lastName'
+                    autoComplete='lname'
+                    onChange={this.handleInputChange}
+                  />
+                </div>
+              </div>
+            }
 
           </div>
 
