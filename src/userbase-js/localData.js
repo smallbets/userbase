@@ -1,5 +1,5 @@
-const setCurrentSession = (username, signedIn, sessionId) => {
-  const session = { username, signedIn, sessionId }
+const setCurrentSession = (username, signedIn, sessionId, creationDate) => {
+  const session = { username, signedIn, sessionId, creationDate }
   const sessionString = JSON.stringify(session)
   localStorage.setItem('userbaseCurrentSession', sessionString)
 }
@@ -17,9 +17,9 @@ const getSeedString = (username) => {
   return localStorage.getItem('userbaseSeed.' + username)
 }
 
-const signInSession = (username, sessionId) => {
+const signInSession = (username, sessionId, creationDate) => {
   const signedIn = true
-  setCurrentSession(username, signedIn, sessionId)
+  setCurrentSession(username, signedIn, sessionId, creationDate)
 }
 
 const signOutSession = (username) => {

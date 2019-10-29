@@ -24,7 +24,7 @@ class Connection {
     this.init()
   }
 
-  init(resolveConnection, username, sessionId, seedString, signingUp) {
+  init(resolveConnection, rejectConnection, username, sessionId, seedString, signingUp) {
     const currentEndpoint = this.endpoint
 
     for (const property of Object.keys(this)) {
@@ -36,6 +36,8 @@ class Connection {
     this.connected = false
 
     this.resolveConnection = resolveConnection
+    this.rejectConnection = rejectConnection
+
     this.username = username
     this.sessionId = sessionId
     this.seedString = seedString
@@ -91,7 +93,7 @@ class Connection {
           return
         } else {
           connected = true
-          this.init(resolve, username, sessionId, seedString, signingUp)
+          this.init(resolve, reject, username, sessionId, seedString, signingUp)
           this.ws = ws
           this.connected = connected
 
@@ -130,7 +132,7 @@ class Connection {
       }
 
       ws.onclose = () => {
-        this.init(this.resolveConnection, this.username, this.sessionId, this.seed, this.signingUp)
+        this.init(this.resolveConnection, this.rejectConnection, this.username, this.sessionId, this.seed, this.signingUp)
       }
     })
   }
@@ -289,7 +291,7 @@ class Connection {
   close() {
     this.ws
       ? this.ws.close()
-      : this.init(this.resolveConnection, this.username, this.sessionId, this.seedString, false)
+      : this.init(this.resolveConnection, this.rejectConnection, this.username, this.sessionId, this.seedString, false)
   }
 
   async signOut() {
@@ -329,7 +331,7 @@ class Connection {
       this.getDatabaseAccessGrants()
     }
 
-    this.resolveConnection({ username: this.username, seed: seedString, signedIn: true })
+    this.resolveConnection(seedString)
   }
 
   async validateKey() {
@@ -435,7 +437,7 @@ class Connection {
       const userHitCancel = seedString === null
       if (userHitCancel) {
         await this.signOut()
-        this.resolveConnection({ username, signedIn: false })
+        this.rejectConnection(new Error('Canceled'))
       }
     }
   }

@@ -24,7 +24,7 @@ const signUp = async (username, password) => {
   const dhPrivateKey = await crypto.diffieHellman.importKeyFromMaster(masterKey, dhKeySalt)
   const publicKey = crypto.diffieHellman.getPublicKey(dhPrivateKey)
 
-  const sessionId = await api.auth.signUp(
+  const session = await api.auth.signUp(
     lowerCaseUsername,
     password,
     base64.encode(publicKey),
@@ -32,17 +32,18 @@ const signUp = async (username, password) => {
     base64.encode(dhKeySalt),
     base64.encode(hmacKeySalt)
   )
+  const { sessionId, creationDate } = session
 
   const seedString = base64.encode(seed)
   // Warning: if user hits the sign up button twice,
   // it's possible the seed will be overwritten here and will be lost
   localData.saveSeedString(username, seedString)
 
-  localData.signInSession(lowerCaseUsername, sessionId)
+  localData.signInSession(lowerCaseUsername, sessionId, creationDate)
 
   const signingUp = true
   await ws.connect(appId, sessionId, lowerCaseUsername, seedString, signingUp)
-  return { username: lowerCaseUsername, seed: seedString, signedIn: true }
+  return { username: lowerCaseUsername, seed: seedString, signedIn: true, creationDate }
 }
 
 const signOut = async () => {
@@ -70,14 +71,21 @@ const signIn = async (username, password) => {
 
   const lowerCaseUsername = username.toLowerCase()
 
-  const sessionId = await api.auth.signIn(lowerCaseUsername, password)
+  const session = await api.auth.signIn(lowerCaseUsername, password)
+  const { sessionId, creationDate } = session
 
-  localData.signInSession(lowerCaseUsername, sessionId)
+  localData.signInSession(lowerCaseUsername, sessionId, creationDate)
 
   const savedSeedString = localData.getSeedString(lowerCaseUsername) // might be null if does not have seed saved
-  const session = await ws.connect(appId, sessionId, username, savedSeedString)
-  if (!session.signedIn) throw new SignInFailed('Canceled', lowerCaseUsername)
-  return session
+  try {
+    const seedString = await ws.connect(appId, sessionId, username, savedSeedString)
+    return { username: lowerCaseUsername, seed: seedString, signedIn: true, creationDate }
+  } catch (e) {
+    if (e.message === 'Canceled') {
+      throw new SignInFailed('Canceled', lowerCaseUsername)
+    }
+    throw e
+  }
 }
 
 const getLastUsedUsername = () => {
@@ -93,11 +101,12 @@ const signInWithSession = async () => {
   const currentSession = localData.getCurrentSession()
   if (!currentSession) throw new SignInFailed('No session available')
 
-  const { signedIn, username, sessionId } = currentSession
+  const { signedIn, username, sessionId, creationDate } = currentSession
   if (!signedIn) throw new SignInFailed('User is not signed in', username)
 
+  let extendedDate
   try {
-    await api.auth.signInWithSession(sessionId)
+    extendedDate = await api.auth.signInWithSession(sessionId)
   } catch (e) {
     if (e && e.response && e.response.data === 'Invalid session') {
       throw new SignInFailed('Invalid session', username)
@@ -106,9 +115,15 @@ const signInWithSession = async () => {
   }
 
   const savedSeedString = localData.getSeedString(username) // might be null if does not have seed saved
-  const session = await ws.connect(appId, sessionId, username, savedSeedString)
-  if (!session.signedIn) throw new SignInFailed('Canceled', username)
-  return session
+  try {
+    const seedString = await ws.connect(appId, sessionId, username, savedSeedString)
+    return { username, seed: seedString, signedIn: true, creationDate, extendedDate }
+  } catch (e) {
+    if (e.message === 'Canceled') {
+      throw new SignInFailed('Canceled', username)
+    }
+    throw e
+  }
 }
 
 const grantDatabaseAccess = async (dbName, username, readOnly) => {

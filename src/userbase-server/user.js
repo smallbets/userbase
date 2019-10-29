@@ -24,11 +24,12 @@ const createSession = async function (userId, appId) {
     .randomBytes(ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID)
     .toString('hex')
 
+  const creationDate = new Date().toISOString()
   const session = {
     'session-id': sessionId,
     'user-id': userId,
     'app-id': appId,
-    'creation-date': new Date().toISOString()
+    'creation-date': creationDate
   }
 
   const params = {
@@ -39,7 +40,7 @@ const createSession = async function (userId, appId) {
   const ddbClient = connection.ddbClient()
   await ddbClient.put(params).promise()
 
-  return sessionId
+  return { sessionId, creationDate }
 }
 
 const getAppByAppId = async function (appId) {
@@ -104,7 +105,8 @@ exports.signUp = async function (req, res) {
       'encryption-key-salt': encryptionKeySalt,
       'diffie-hellman-key-salt': dhKeySalt,
       'hmac-key-salt': hmacKeySalt,
-      'seed-not-saved-yet': true
+      'seed-not-saved-yet': true,
+      'creation-date': new Date().toISOString()
     }
 
     const params = {
@@ -151,8 +153,8 @@ exports.signUp = async function (req, res) {
       throw e
     }
 
-    const sessionId = await createSession(userId, appId)
-    return res.send(sessionId)
+    const session = await createSession(userId, appId)
+    return res.send(session)
   } catch (e) {
     logger.warn(`Failed to sign up user ${username} and app id ${appId} with ${e}`)
     return res
@@ -328,8 +330,8 @@ exports.signIn = async function (req, res) {
     if (doesNotExist || incorrectPassword) return res
       .status(statusCodes['Unauthorized']).send('Invalid password')
 
-    const sessionId = await createSession(user['user-id'], appId)
-    return res.send(sessionId)
+    const session = await createSession(user['user-id'], appId)
+    return res.send(session)
   } catch (e) {
     logger.error(`Username ${username} failed to sign in with ${e}`)
     return res

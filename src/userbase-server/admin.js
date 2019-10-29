@@ -63,7 +63,8 @@ async function createAdmin(adminName, password, adminId = uuidv4(), storePasswor
     const admin = {
       'admin-name': adminName.toLowerCase(),
       'password-hash': passwordHash,
-      'admin-id': adminId
+      'admin-id': adminId,
+      'creation-date': new Date().toISOString()
     }
 
     if (firstName || lastName) {
@@ -280,7 +281,8 @@ const createApp = async function (appName, adminId, appId = uuidv4()) {
   const app = {
     'admin-id': adminId,
     'app-name': appName,
-    'app-id': appId
+    'app-id': appId,
+    'creation-date': new Date().toISOString()
   }
 
   const params = {
