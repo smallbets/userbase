@@ -21,5 +21,5 @@ export default {
   insert: db.insert,
   update: db.update,
   delete: db.delete,
-  batch: db.batch
+  transaction: db.transaction
 }

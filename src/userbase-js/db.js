@@ -81,10 +81,10 @@ class Database {
     this.items = {}
 
     const compareItems = (a, b) => {
-      if (a.seqNo < b.seqNo || (a.seqNo === b.seqNo && a.indexInBatch < b.indexInBatch)) {
+      if (a.seqNo < b.seqNo || (a.seqNo === b.seqNo && a.operationIndex < b.operationIndex)) {
         return -1
       }
-      if (a.seqNo > b.seqNo || (a.seqNo === b.seqNo && a.indexInBatch > b.indexInBatch)) {
+      if (a.seqNo > b.seqNo || (a.seqNo === b.seqNo && a.operationIndex > b.operationIndex)) {
         return 1
       }
       return 0
@@ -175,7 +175,7 @@ class Database {
         return this.applyDelete(itemId)
       }
 
-      case 'Batch': {
+      case 'BatchTransaction': {
         const batch = transaction.operations
         const recordPromises = []
 
@@ -185,12 +185,12 @@ class Database {
         const records = await Promise.all(recordPromises)
 
         try {
-          this.validateBatch(batch, records)
+          this.validateBatchTransaction(batch, records)
         } catch (transactionCode) {
           return transactionCode
         }
 
-        return this.applyBatch(seqNo, batch, records)
+        return this.applyBatchTransaction(seqNo, batch, records)
       }
     }
   }
@@ -216,9 +216,9 @@ class Database {
     return this.items[itemId] ? true : false
   }
 
-  applyInsert(itemId, seqNo, record, indexInBatch) {
+  applyInsert(itemId, seqNo, record, operationIndex) {
     const item = { seqNo }
-    if (typeof indexInBatch === 'number') item.indexInBatch = indexInBatch
+    if (typeof operationIndex === 'number') item.operationIndex = operationIndex
 
     this.items[itemId] = {
       ...item,
@@ -241,7 +241,7 @@ class Database {
     return success
   }
 
-  validateBatch(batch, records) {
+  validateBatchTransaction(batch, records) {
     const uniqueItemIds = {}
 
     for (let i = 0; i < batch.length; i++) {
@@ -266,7 +266,7 @@ class Database {
     }
   }
 
-  applyBatch(seqNo, batch, records) {
+  applyBatchTransaction(seqNo, batch, records) {
     for (let i = 0; i < batch.length; i++) {
       const operation = batch[i]
 
@@ -458,10 +458,10 @@ const _buildDeleteParams = async (database, itemId) => {
   return { itemKey, encryptedItem }
 }
 
-const batch = async (dbName, operations) => {
+const transaction = async (dbName, operations) => {
   const database = getOpenDb(dbName)
 
-  const action = 'Batch'
+  const action = 'BatchTransaction'
 
   const operationParamsPromises = operations.map(operation => {
 
@@ -479,7 +479,7 @@ const batch = async (dbName, operations) => {
         const id = operation.id
         const item = operation.item
 
-        return _buildUpdateParams(database, id, item)
+        return _buildUpdateParams(database, item, id)
       }
 
       case 'Delete': {
@@ -552,7 +552,7 @@ export default {
   insert,
   update,
   'delete': delete_,
-  batch,
+  transaction,
 
   // used internally
   getOpenDb,

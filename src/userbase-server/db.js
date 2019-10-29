@@ -400,7 +400,7 @@ exports.doCommand = async function (command, userId, dbNameHash, databaseId, key
   }
 }
 
-exports.batch = async function (userId, dbNameHash, databaseId, operations) {
+exports.batchTransaction = async function (userId, dbNameHash, databaseId, operations) {
   if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
   if (!databaseId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
   if (!operations || !operations.length) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing operations')
@@ -424,7 +424,7 @@ exports.batch = async function (userId, dbNameHash, databaseId, operations) {
   }
 
   try {
-    const command = 'Batch'
+    const command = 'BatchTransaction'
 
     const transaction = {
       'database-id': databaseId,

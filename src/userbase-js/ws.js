@@ -253,7 +253,7 @@ class Connection {
       case 'Insert':
       case 'Update':
       case 'Delete':
-      case 'Batch':
+      case 'BatchTransaction':
       case 'Bundle':
       case 'ValidateKey':
       case 'RequestSeed':
