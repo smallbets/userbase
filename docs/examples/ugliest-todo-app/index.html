@@ -69,7 +69,7 @@
     }
 
     function showLoginAndNewAccountForm(username) {
-      document.getElementById('login-email').value = username
+      if (username) document.getElementById('login-email').value = username
       document.getElementById('account-form').style.display = 'block'
       document.getElementById('todo-list').style.display = 'none'
     }
