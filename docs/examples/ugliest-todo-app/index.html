@@ -133,7 +133,7 @@
         todoBox.onclick = (e) => {
           e.preventDefault()
 
-          userbase.update('todos', items[i].itemId, { 'todo': items[i].record.todo, 'complete': !items[i].record.complete })
+          userbase.update('todos', { 'todo': items[i].record.todo, 'complete': !items[i].record.complete }, items[i].itemId)
             .catch((e) => document.getElementById('add-todo-error').innerHTML = e)
         }
 

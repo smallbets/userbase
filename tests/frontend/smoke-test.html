@@ -55,7 +55,7 @@
         console.log('all items found')
       })
       // update the 2nd item
-      .then(() => { return userbase.update('test', '2', { 'item': 'Item Updated' }) })
+      .then(() => { return userbase.update('test', { 'item': 'Item Updated' }, '2') })
       .then(() => {
         // verify that the database contains the expected values, including the updated item
         console.log('update successful')

@@ -415,16 +415,16 @@ const _buildInsertParams = async (database, item, id) => {
   return { itemKey, encryptedItem }
 }
 
-const update = async (dbName, id, item) => {
+const update = async (dbName, item, id) => {
   const database = getOpenDb(dbName)
 
   const action = 'Update'
-  const params = await _buildUpdateParams(database, id, item)
+  const params = await _buildUpdateParams(database, item, id)
 
   await postTransaction(database, action, params)
 }
 
-const _buildUpdateParams = async (database, itemId, item) => {
+const _buildUpdateParams = async (database, item, itemId) => {
   if (!itemId) throw new Error('Update missing item id')
   if (!item) throw new Error('Update missing item')
   if (!database.itemExists(itemId)) throw new Error(itemDoesNotExist)
@@ -437,11 +437,11 @@ const _buildUpdateParams = async (database, itemId, item) => {
   return { itemKey, encryptedItem }
 }
 
-const delete_ = async (dbName, id) => {
+const delete_ = async (dbName, itemId) => {
   const database = getOpenDb(dbName)
 
   const action = 'Delete'
-  const params = await _buildDeleteParams(database, id)
+  const params = await _buildDeleteParams(database, itemId)
 
   await postTransaction(database, action, params)
 }
