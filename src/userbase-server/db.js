@@ -193,7 +193,7 @@ const findOtherUsersGrantedAccessToDb = async function (dbId, userId, otherUsers
   for (const otherUserDb of otherUserDbsGrantedAccess) {
     const otherUserId = otherUserDb['user-id']
     if (!otherUsersByUserId[otherUserId]) {
-      otherUsersByUserId[otherUserId] = userQueries.push(userController.findUserByUserId(otherUserId))
+      otherUsersByUserId[otherUserId] = userQueries.push(userController.getUserByUserId(otherUserId))
     }
   }
   const uniqueUsers = await Promise.all(userQueries)

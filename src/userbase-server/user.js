@@ -42,6 +42,35 @@ const createSession = async function (userId, appId) {
   return sessionId
 }
 
+const getAppByAppId = async function (appId) {
+  const params = {
+    TableName: setup.appsTableName,
+    IndexName: setup.appIdIndex,
+    KeyConditionExpression: '#appId = :appId',
+    ExpressionAttributeNames: {
+      '#appId': 'app-id'
+    },
+    ExpressionAttributeValues: {
+      ':appId': appId
+    },
+    Select: 'ALL_ATTRIBUTES'
+  }
+
+  const ddbClient = connection.ddbClient()
+  const appResponse = await ddbClient.query(params).promise()
+
+  if (!appResponse || appResponse.Items.length === 0) return null
+
+  if (appResponse.Items.length > 1) {
+    // too sensitive not to throw here. This should never happen
+    const errorMsg = `Too many apps found with app id ${appId}`
+    logger.fatal(errorMsg)
+    throw new Error(errorMsg)
+  }
+
+  return appResponse.Items[0]
+}
+
 exports.signUp = async function (req, res) {
   const appId = req.query.appId
 
@@ -60,6 +89,10 @@ exports.signUp = async function (req, res) {
   const userId = uuidv4()
 
   try {
+    // Warning: uses secondary index here. It's possible index won't be up to date and this fails
+    const app = await getAppByAppId(appId)
+    if (!app) return res.status(statusCodes['Unauthorized']).send('Invalid app ID')
+
     const passwordHash = await crypto.bcrypt.hash(password)
 
     const user = {
@@ -75,25 +108,45 @@ exports.signUp = async function (req, res) {
     }
 
     const params = {
-      TableName: setup.usersTableName,
-      Item: user,
-      // if username does not exist, insert
-      // if it already exists and user hasn't saved seed yet, overwrite (to allow another sign up attempt)
-      // if it already exists and user has saved seed, fail with ConditionalCheckFailedException
-      ConditionExpression: 'attribute_not_exists(username) or attribute_exists(#seedNotSavedYet)',
-      ExpressionAttributeNames: {
-        '#seedNotSavedYet': 'seed-not-saved-yet'
-      },
+      TransactItems: [{
+        // ensure app still exists when creating user
+        ConditionCheck: {
+          TableName: setup.appsTableName,
+          Key: {
+            'admin-id': app['admin-id'],
+            'app-name': app['app-name']
+          },
+          ConditionExpression: '#appId = :appId',
+          ExpressionAttributeNames: {
+            '#appId': 'app-id'
+          },
+          ExpressionAttributeValues: {
+            ':appId': appId,
+          },
+        },
+      }, {
+        Put: {
+          TableName: setup.usersTableName,
+          Item: user,
+          // if username does not exist, insert
+          // if it already exists and user hasn't saved seed yet, overwrite (to allow another sign up attempt)
+          // if it already exists and user has saved seed, fail with ConditionalCheckFailedException
+          ConditionExpression: 'attribute_not_exists(username) or attribute_exists(#seedNotSavedYet)',
+          ExpressionAttributeNames: {
+            '#seedNotSavedYet': 'seed-not-saved-yet'
+          },
+        }
+      }]
     }
 
     try {
       const ddbClient = connection.ddbClient()
-      await ddbClient.put(params).promise()
+      await ddbClient.transactWrite(params).promise()
     } catch (e) {
-      if (e.name === 'ConditionalCheckFailedException') {
-        return res
-          .status(statusCodes['Conflict'])
-          .send('Username already exists')
+      if (e.message.includes('[ConditionalCheckFailed')) {
+        return res.status(statusCodes['Unauthorized']).send('Invalid app ID')
+      } else if (e.message.includes('ConditionalCheckFailed]')) {
+        return res.status(statusCodes['Conflict']).send('Username already exists')
       }
       throw e
     }
@@ -101,6 +154,7 @@ exports.signUp = async function (req, res) {
     const sessionId = await createSession(userId, appId)
     return res.send(sessionId)
   } catch (e) {
+    logger.warn(`Failed to sign up user ${username} and app id ${appId} with ${e}`)
     return res
       .status(statusCodes['Internal Server Error'])
       .send('Failed to sign up!')
@@ -143,10 +197,14 @@ exports.authenticateUser = async function (req, res, next) {
     if (appDoesNotMatch) return res
       .status(statusCodes['Unauthorized']).send('Invalid app ID')
 
-    const user = await findUserByUserId(session['user-id'])
-    if (!user) return res
-      .status(statusCodes['Not Found'])
-      .send('User no longer exists')
+    // Warning: uses secondary indexes here. It's possible index won't be up to date and this fails
+    const [user, app] = await Promise.all([
+      getUserByUserId(session['user-id']),
+      getAppByAppId(session['app-id'])
+    ])
+
+    if (!user) return res.status(statusCodes['Not Found']).send('User not found')
+    if (!app) return res.status(statusCodes['Not Found']).send('App not found')
 
     res.locals.user = user // makes user object available in next route
     next()
@@ -255,6 +313,10 @@ exports.signIn = async function (req, res) {
   }
 
   try {
+    // Warning: uses secondary index here. It's possible index won't be up to date and this fails
+    const app = await getAppByAppId(appId)
+    if (!app) return res.status(statusCodes['Unauthorized']).send('Invalid app ID')
+
     const ddbClient = connection.ddbClient()
     const userResponse = await ddbClient.get(params).promise()
 
@@ -552,7 +614,7 @@ const getDbOwners = async function (databases) {
     if (!ownerId) continue
 
     if (typeof ownerIndex[ownerId] === 'number') continue
-    ownerIndex[ownerId] = ownerPromises.push(findUserByUserId(ownerId)) - 1
+    ownerIndex[ownerId] = ownerPromises.push(getUserByUserId(ownerId)) - 1
   }
   const owners = await Promise.all(ownerPromises)
   return { ownerIndex, owners }
@@ -743,7 +805,7 @@ exports.acceptDatabaseAccess = async function (granteeId, dbId, dbNameHash, encr
   }
 }
 
-async function findUserByUserId(userId) {
+async function getUserByUserId(userId) {
   const params = {
     TableName: setup.usersTableName,
     IndexName: setup.userIdIndex,
@@ -763,12 +825,14 @@ async function findUserByUserId(userId) {
   if (!userResponse || userResponse.Items.length === 0) return null
 
   if (userResponse.Items.length > 1) {
-    logger.warn(`Too many users found with id ${userId}`)
+    const errorMsg = `Too many users found with id ${userId}`
+    logger.fatal(errorMsg)
+    throw new Error(errorMsg)
   }
 
   return userResponse.Items[0]
 }
-exports.findUserByUserId = findUserByUserId
+exports.getUserByUserId = getUserByUserId
 
 exports.extendSession = async function (req, res) {
   const sessionId = req.query.sessionId
