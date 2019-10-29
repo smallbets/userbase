@@ -1,13 +1,13 @@
 import axios from 'axios'
 
 const TEN_SECONDS_MS = 10 * 1000
+const UNAUTHORIZED = 401
+const DEFAULT_APP_NAME = 'Preview'
 
 const handleSignOut = () => {
   signOutLocalSession()
   window.location.hash = 'sign-in'
 }
-
-const UNAUTHORIZED = 401
 
 const signInLocalSession = (adminName) => {
   const adminSession = JSON.stringify({ adminName, signedIn: true })
@@ -43,13 +43,13 @@ const createAdmin = async (adminName, password) => {
   }
 }
 
-const createApp = async (appName) => {
+const createApp = async () => {
   try {
     await axios({
       method: 'POST',
       url: '/admin/create-app',
       data: {
-        appName
+        appName: DEFAULT_APP_NAME
       },
       timeout: TEN_SECONDS_MS
     })
