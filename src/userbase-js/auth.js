@@ -7,6 +7,8 @@ import localData from './localData'
 import config from './config'
 
 const appIdNotSet = 'App id not set'
+const wsAlreadyConnected = 'Web Socket already connected'
+const sessionAlreadyExists = 'A session already exists'
 
 const signUp = async (username, password) => {
   const appId = config.getAppId()
@@ -42,8 +44,15 @@ const signUp = async (username, password) => {
   localData.signInSession(lowerCaseUsername, sessionId, creationDate)
 
   const signingUp = true
-  await ws.connect(appId, sessionId, lowerCaseUsername, seedString, signingUp)
-  return { username: lowerCaseUsername, seed: seedString, signedIn: true, creationDate }
+  try {
+    await ws.connect(appId, sessionId, lowerCaseUsername, seedString, signingUp)
+    return { username: lowerCaseUsername, seed: seedString, signedIn: true, creationDate }
+  } catch (e) {
+    if (e.message === wsAlreadyConnected) {
+      throw new SignInFailed(sessionAlreadyExists, e.username)
+    }
+    throw e
+  }
 }
 
 const signOut = async () => {
@@ -82,7 +91,9 @@ const signIn = async (username, password) => {
     return { username: lowerCaseUsername, seed: seedString, signedIn: true, creationDate }
   } catch (e) {
     if (e.message === 'Canceled') {
-      throw new SignInFailed('Canceled', lowerCaseUsername)
+      throw new SignInFailed('Canceled', e.username)
+    } else if (e.message === wsAlreadyConnected) {
+      throw new SignInFailed(sessionAlreadyExists, e.username)
     }
     throw e
   }
@@ -120,7 +131,9 @@ const signInWithSession = async () => {
     return { username, seed: seedString, signedIn: true, creationDate, extendedDate }
   } catch (e) {
     if (e.message === 'Canceled') {
-      throw new SignInFailed('Canceled', username)
+      throw new SignInFailed('Canceled', e.username)
+    } else if (e.message === wsAlreadyConnected) {
+      throw new SignInFailed(sessionAlreadyExists, e.username)
     }
     throw e
   }

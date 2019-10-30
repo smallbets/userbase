@@ -5,6 +5,8 @@ import localData from './localData'
 import crypto from './Crypto'
 import { removeProtocolFromEndpoint, getProtocolFromEndpoint } from './utils'
 
+const wsAlreadyConnected = 'Web Socket already connected'
+
 class RequestFailed extends Error {
   constructor(action, response, message, ...params) {
     super(...params)
@@ -16,6 +18,20 @@ class RequestFailed extends Error {
     this.name = `RequestFailed: ${action} (${response && response.status})`
     this.message = message || (response && response.data) || 'Error'
     this.response = response
+  }
+}
+
+class WebSocketError extends Error {
+  constructor(message, username, ...params) {
+    super(...params)
+
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, WebSocketError)
+    }
+
+    this.name = 'WebSocket error'
+    this.message = message
+    this.username = username
   }
 }
 
@@ -61,10 +77,10 @@ class Connection {
   }
 
   connect(appId, sessionId, username, seedString, signingUp = false) {
-    if (!appId) throw new Error('Missing app ID')
-    if (!sessionId) throw new Error('Missing session ID')
-    if (!username) throw new Error('Missing username')
-    if (this.connected) throw new Error('Web Socket already connected')
+    if (!appId) throw new WebSocketError('Missing app ID')
+    if (!sessionId) throw new WebSocketError('Missing session ID')
+    if (!username) throw new WebSocketError('Missing username')
+    if (this.connected) throw new WebSocketError(wsAlreadyConnected, this.username)
 
     return new Promise((resolve, reject) => {
       let connected = false
@@ -74,7 +90,7 @@ class Connection {
           if (!connected) {
             timeout = true
             this.close()
-            reject(new Error('timeout'))
+            reject(new WebSocketError('timeout'))
           }
         },
         10000
@@ -92,10 +108,10 @@ class Connection {
           this.close()
           return
         } else {
-          connected = true
+          if (this.connected) return reject(new WebSocketError(wsAlreadyConnected, this.username))
           this.init(resolve, reject, username, sessionId, seedString, signingUp)
+          this.connected = connected = true
           this.ws = ws
-          this.connected = connected
 
           if (!seedString) {
             await this.requestSeed(username)
@@ -110,7 +126,7 @@ class Connection {
 
       ws.onerror = () => {
         if (!connected) {
-          reject(new Error('WebSocket error'))
+          reject(new WebSocketError('WebSocket error'))
         } else {
           this.close()
         }
@@ -310,8 +326,8 @@ class Connection {
 
   async setKeys(seedString) {
     if (this.keys.init) return
-    if (!seedString) throw new Error('Missing seed')
-    if (!this.keys.salts) throw new Error('Missing salts')
+    if (!seedString) throw new WebSocketError('Missing seed', this.username)
+    if (!this.keys.salts) throw new WebSocketError('Missing salts', this.username)
     if (!this.seedString) this.seedString = seedString
 
     const seed = base64.decode(seedString)
@@ -437,7 +453,7 @@ class Connection {
       const userHitCancel = seedString === null
       if (userHitCancel) {
         await this.signOut()
-        this.rejectConnection(new Error('Canceled'))
+        this.rejectConnection(new WebSocketError('Canceled', this.username))
       }
     }
   }
