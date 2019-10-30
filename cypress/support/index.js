@@ -18,11 +18,11 @@ import './commands'
 
 // Alternatively you can use CommonJS syntax:
 // require('./commands')
-Cypress.on('fail', (error, runnable) => {
-  debugger
+// Cypress.on('fail', (error, runnable) => {
+//   debugger
 
-  // we now have access to the err instance
-  // and the mocha runnable this failed on
+//   // we now have access to the err instance
+//   // and the mocha runnable this failed on
 
-  throw error // throw error to have test still fail
-})
+//   throw error // throw error to have test still fail
+// })
