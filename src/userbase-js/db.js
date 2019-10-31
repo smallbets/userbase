@@ -2,6 +2,8 @@ import uuidv4 from 'uuid/v4'
 import SortedArray from 'sorted-array'
 import crypto from './Crypto'
 import ws from './ws'
+import errors from './errors'
+import statusCodes from './statusCodes'
 
 const success = 'Success'
 const itemAlreadyExists = 'Item already exists'
@@ -10,8 +12,21 @@ const itemAlreadyDeleted = 'Item already deleted'
 const versionConflict = 'Version conflict'
 const wsNotOpen = 'Web Socket not open'
 const dbNotOpen = 'Database not open'
-const dbAlreadyOpen = 'Database already open'
 const keyNotFound = 'Key not found'
+
+const MAX_DB_NAME_CHAR_LENGTH = 100
+
+const _parseGenericErrors = (e) => {
+  if (e.response) {
+    if (e.response.status === statusCodes['Internal Server Error']) {
+      throw new errors.InternalServerError
+    } else if (e.response.status === statusCodes['Gateway Timeout']) {
+      throw new errors.Timeout
+    }
+  } else if (e.message && e.message.includes('timeout')) {
+    throw new errors.Timeout
+  }
+}
 
 class UnverifiedTransaction {
   constructor(startSeqNo) {
@@ -318,49 +333,7 @@ class Database {
   }
 }
 
-const createDatabase = async (dbName) => {
-  if (!ws.connected) throw new Error(wsNotOpen)
-  if (!ws.keys.init) throw new Error(keyNotFound)
-
-  const dbId = uuidv4()
-
-  const dbKey = await crypto.aesGcm.generateKey()
-  const dbKeyString = await crypto.aesGcm.getKeyStringFromKey(dbKey)
-
-  const [dbNameHash, encryptedDbKey, encryptedDbName] = await Promise.all([
-    crypto.hmac.signString(ws.keys.hmacKey, dbName),
-    crypto.aesGcm.encryptString(ws.keys.encryptionKey, dbKeyString),
-    crypto.aesGcm.encryptString(dbKey, dbName)
-  ])
-
-  const action = 'CreateDatabase'
-  const params = {
-    dbNameHash,
-    dbId,
-    encryptedDbKey,
-    encryptedDbName
-  }
-  await ws.request(action, params)
-}
-
-const openDatabase = async (dbName, changeHandler) => {
-  try {
-    await createDatabase(dbName)
-  } catch (e) {
-    if (e.message !== 'Database already exists') {
-      throw e
-    }
-  }
-
-  const dbNameHash = ws.state.dbNameToHash[dbName] || await crypto.hmac.signString(ws.keys.hmacKey, dbName)
-  ws.state.dbNameToHash[dbName] = dbNameHash // eslint-disable-line require-atomic-updates
-
-  if (ws.state.databases[dbNameHash] && ws.state.databases[dbNameHash].init) {
-    throw new Error(dbAlreadyOpen)
-  } else if (ws.state.databases[dbNameHash]) {
-    throw new Error('Already opening database')
-  }
-
+const _openDatabase = async (dbNameHash, changeHandler) => {
   let receivedMessage
 
   const firstMessageFromWebSocket = new Promise((resolve, reject) => {
@@ -383,8 +356,65 @@ const openDatabase = async (dbName, changeHandler) => {
     await firstMessageFromWebSocket
   } catch (e) {
     delete ws.state.databases[dbNameHash]
+    _parseGenericErrors(e)
     throw e
   }
+}
+
+const _createDatabase = async (dbName, dbNameHash) => {
+  const dbId = uuidv4()
+
+  const dbKey = await crypto.aesGcm.generateKey()
+  const dbKeyString = await crypto.aesGcm.getKeyStringFromKey(dbKey)
+
+  const [encryptedDbKey, encryptedDbName] = await Promise.all([
+    crypto.aesGcm.encryptString(ws.keys.encryptionKey, dbKeyString),
+    crypto.aesGcm.encryptString(dbKey, dbName)
+  ])
+
+  const action = 'CreateDatabase'
+  const params = {
+    dbNameHash,
+    dbId,
+    encryptedDbKey,
+    encryptedDbName
+  }
+
+  try {
+    await ws.request(action, params)
+  } catch (e) {
+    if (e.message !== 'Database already exists') {
+      _parseGenericErrors(e)
+      throw e
+    }
+  }
+}
+
+const _validateDbInput = (dbName, changeHandler) => {
+  if (!dbName) throw new errors.DatabaseNameCannotBeBlank
+  if (typeof dbName !== 'string') throw new errors.DatabaseNameMustBeString
+  if (dbName.length > MAX_DB_NAME_CHAR_LENGTH) throw new errors.DatabaseNameTooLong(MAX_DB_NAME_CHAR_LENGTH)
+
+  if (!ws.connected) throw new errors.SessionNotConnected
+  if (!ws.keys.init) throw new errors.KeyNotFound
+
+  if (changeHandler && typeof changeHandler !== 'function') throw new errors.ChangeHandlerMustBeFunction
+}
+
+const openDatabase = async (dbName, changeHandler = () => { }) => {
+  _validateDbInput(dbName, changeHandler)
+
+  const dbNameHash = ws.state.dbNameToHash[dbName] || await crypto.hmac.signString(ws.keys.hmacKey, dbName)
+  ws.state.dbNameToHash[dbName] = dbNameHash // eslint-disable-line require-atomic-updates
+
+  if (ws.state.databases[dbNameHash] && ws.state.databases[dbNameHash].init) {
+    throw new errors.DatabaseAlreadyOpen
+  } else if (ws.state.databases[dbNameHash]) {
+    throw new errors.AlreadyOpeningDatabase
+  }
+
+  await _createDatabase(dbName, dbNameHash)
+  await _openDatabase(dbNameHash, changeHandler)
 }
 
 const getOpenDb = (dbName) => {

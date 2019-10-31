@@ -27,8 +27,6 @@ const _connectWebSocket = async (appId, sessionId, username, seed, signingUp) =>
     const seedString = await ws.connect(appId, sessionId, username, seed, signingUp)
     return seedString
   } catch (e) {
-    console.log('HEY', e)
-
     _parseGenericErrors(e)
 
     if (e.message === 'Web Socket already connected') {

@@ -110,6 +110,7 @@ class Connection {
           reject(new WebSocketError(wsAlreadyConnected, username))
           return
         }
+
         this.init(resolve, reject, username, sessionId, seedString, signingUp)
         this.ws = ws
 
