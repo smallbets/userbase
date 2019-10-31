@@ -19,6 +19,11 @@ const oneDaySeconds = 60 * 60 * 24
 const oneDayMs = 1000 * oneDaySeconds
 const SESSION_LENGTH = oneDayMs
 
+const MAX_USERNAME_CHAR_LENGTH = 100
+
+const MAX_PASSWORD_CHAR_LENGTH = 1000
+const MIN_PASSWORD_CHAR_LENGTH = 6
+
 const createSession = async function (userId, appId) {
   const sessionId = crypto
     .randomBytes(ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID)
@@ -72,6 +77,56 @@ const getAppByAppId = async function (appId) {
   return appResponse.Items[0]
 }
 
+const _buildSignUpParams = async (username, password, appId, userId, publicKey, salts, app) => {
+  const passwordHash = await crypto.bcrypt.hash(password)
+  const { encryptionKeySalt, dhKeySalt, hmacKeySalt } = salts
+
+  const user = {
+    username: username.toLowerCase(),
+    'password-hash': passwordHash,
+    'app-id': appId,
+    'user-id': userId,
+    'public-key': publicKey,
+    'encryption-key-salt': encryptionKeySalt,
+    'diffie-hellman-key-salt': dhKeySalt,
+    'hmac-key-salt': hmacKeySalt,
+    'seed-not-saved-yet': true,
+    'creation-date': new Date().toISOString()
+  }
+
+  return {
+    TransactItems: [{
+      // ensure app still exists when creating user
+      ConditionCheck: {
+        TableName: setup.appsTableName,
+        Key: {
+          'admin-id': app['admin-id'],
+          'app-name': app['app-name']
+        },
+        ConditionExpression: '#appId = :appId',
+        ExpressionAttributeNames: {
+          '#appId': 'app-id'
+        },
+        ExpressionAttributeValues: {
+          ':appId': appId,
+        },
+      },
+    }, {
+      Put: {
+        TableName: setup.usersTableName,
+        Item: user,
+        // if username does not exist, insert
+        // if it already exists and user hasn't saved seed yet, overwrite (to allow another sign up attempt)
+        // if it already exists and user has saved seed, fail with ConditionalCheckFailedException
+        ConditionExpression: 'attribute_not_exists(username) or attribute_exists(#seedNotSavedYet)',
+        ExpressionAttributeNames: {
+          '#seedNotSavedYet': 'seed-not-saved-yet'
+        },
+      }
+    }]
+  }
+}
+
 exports.signUp = async function (req, res) {
   const appId = req.query.appId
 
@@ -82,64 +137,37 @@ exports.signUp = async function (req, res) {
   const dhKeySalt = req.body.dhKeySalt
   const hmacKeySalt = req.body.hmacKeySalt
 
-  if (!appId || !username || !password || !publicKey || !encryptionKeySalt
-    || !dhKeySalt || !hmacKeySalt) return res
-      .status(statusCodes['Bad Request'])
-      .send('Missing required items')
+  if (!appId || !username || !password || !publicKey || !encryptionKeySalt || !dhKeySalt || !hmacKeySalt) {
+    return res.status(statusCodes['Bad Request']).send('Missing required items')
+  }
 
-  const userId = uuidv4()
+  if (username.length > MAX_USERNAME_CHAR_LENGTH) return res.status(statusCodes['Bad Request'])
+    .send({
+      error: 'UsernameTooLong',
+      maxLength: MAX_USERNAME_CHAR_LENGTH
+    })
+
+  if (password.length < MIN_PASSWORD_CHAR_LENGTH) return res.status(statusCodes['Bad Request'])
+    .send({
+      error: 'PasswordTooShort',
+      minLength: MIN_PASSWORD_CHAR_LENGTH
+    })
+
+  if (password.length > MAX_PASSWORD_CHAR_LENGTH) return res.status(statusCodes['Bad Request'])
+    .send({
+      error: 'PasswordTooLong',
+      maxLength: MAX_PASSWORD_CHAR_LENGTH
+    })
 
   try {
+    const userId = uuidv4()
+
     // Warning: uses secondary index here. It's possible index won't be up to date and this fails
     const app = await getAppByAppId(appId)
     if (!app) return res.status(statusCodes['Unauthorized']).send('Invalid app ID')
 
-    const passwordHash = await crypto.bcrypt.hash(password)
-
-    const user = {
-      username: username.toLowerCase(),
-      'password-hash': passwordHash,
-      'app-id': appId,
-      'user-id': userId,
-      'public-key': publicKey,
-      'encryption-key-salt': encryptionKeySalt,
-      'diffie-hellman-key-salt': dhKeySalt,
-      'hmac-key-salt': hmacKeySalt,
-      'seed-not-saved-yet': true,
-      'creation-date': new Date().toISOString()
-    }
-
-    const params = {
-      TransactItems: [{
-        // ensure app still exists when creating user
-        ConditionCheck: {
-          TableName: setup.appsTableName,
-          Key: {
-            'admin-id': app['admin-id'],
-            'app-name': app['app-name']
-          },
-          ConditionExpression: '#appId = :appId',
-          ExpressionAttributeNames: {
-            '#appId': 'app-id'
-          },
-          ExpressionAttributeValues: {
-            ':appId': appId,
-          },
-        },
-      }, {
-        Put: {
-          TableName: setup.usersTableName,
-          Item: user,
-          // if username does not exist, insert
-          // if it already exists and user hasn't saved seed yet, overwrite (to allow another sign up attempt)
-          // if it already exists and user has saved seed, fail with ConditionalCheckFailedException
-          ConditionExpression: 'attribute_not_exists(username) or attribute_exists(#seedNotSavedYet)',
-          ExpressionAttributeNames: {
-            '#seedNotSavedYet': 'seed-not-saved-yet'
-          },
-        }
-      }]
-    }
+    const salts = { encryptionKeySalt, dhKeySalt, hmacKeySalt }
+    const params = await _buildSignUpParams(username, password, appId, userId, publicKey, salts, app)
 
     try {
       const ddbClient = connection.ddbClient()
@@ -156,10 +184,8 @@ exports.signUp = async function (req, res) {
     const session = await createSession(userId, appId)
     return res.send(session)
   } catch (e) {
-    logger.warn(`Failed to sign up user ${username} and app id ${appId} with ${e}`)
-    return res
-      .status(statusCodes['Internal Server Error'])
-      .send('Failed to sign up!')
+    logger.warn(`Failed to sign up user '${username}' of app '${appId}' with ${e}`)
+    return res.status(statusCodes['Internal Server Error']).end()
   }
 }
 
@@ -306,18 +332,36 @@ exports.signIn = async function (req, res) {
     .status(statusCodes['Bad Request'])
     .send('Missing required items')
 
-  const params = {
-    TableName: setup.usersTableName,
-    Key: {
-      username: username.toLowerCase(),
-      'app-id': appId
-    },
-  }
+  if (username.length > MAX_USERNAME_CHAR_LENGTH) return res.status(statusCodes['Bad Request'])
+    .send({
+      error: 'UsernameTooLong',
+      maxLength: MAX_USERNAME_CHAR_LENGTH
+    })
+
+  if (password.length < MIN_PASSWORD_CHAR_LENGTH) return res.status(statusCodes['Bad Request'])
+    .send({
+      error: 'PasswordTooShort',
+      minLength: MIN_PASSWORD_CHAR_LENGTH
+    })
+
+  if (password.length > MAX_PASSWORD_CHAR_LENGTH) return res.status(statusCodes['Bad Request'])
+    .send({
+      error: 'PasswordTooLong',
+      maxLength: MAX_PASSWORD_CHAR_LENGTH
+    })
 
   try {
     // Warning: uses secondary index here. It's possible index won't be up to date and this fails
     const app = await getAppByAppId(appId)
     if (!app) return res.status(statusCodes['Unauthorized']).send('Invalid app ID')
+
+    const params = {
+      TableName: setup.usersTableName,
+      Key: {
+        username: username.toLowerCase(),
+        'app-id': appId
+      },
+    }
 
     const ddbClient = connection.ddbClient()
     const userResponse = await ddbClient.get(params).promise()
@@ -333,10 +377,8 @@ exports.signIn = async function (req, res) {
     const session = await createSession(user['user-id'], appId)
     return res.send(session)
   } catch (e) {
-    logger.error(`Username ${username} failed to sign in with ${e}`)
-    return res
-      .status(statusCodes['Internal Server Error'])
-      .send('Failed to sign in!')
+    logger.error(`Username '${username}' failed to sign in with ${e}`)
+    return res.status(statusCodes['Internal Server Error']).end()
   }
 }
 

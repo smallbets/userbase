@@ -3,11 +3,7 @@ import userbase from 'userbase-js'
 const _errorHandler = (e, operation) => {
   console.log(`Failed to ${operation} with`, e, e.response && e.response.data)
 
-  const timeout = e.response && e.response.status === 504 || e.message.includes('timeout')
-  if (timeout) return { error: 'Something went wrong, please try again!' }
-
-  const errorMsg = (e.response && e.response.data) || e.message
-  return { error: errorMsg }
+  return { error: e.message }
 }
 
 const signUp = async (username, password) => {

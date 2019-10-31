@@ -1,11 +1,15 @@
 import ws from './ws'
 import api from './api'
+import errors from './errors'
 
 const DEFAULT_SERVICE_ENDPOINT = 'https://demo.encrypted.dev'
 ws.endpoint = DEFAULT_SERVICE_ENDPOINT
 
 let userbaseAppId = null
-const getAppId = () => userbaseAppId
+const getAppId = () => {
+  if (!userbaseAppId) throw new errors.AppIdNotSet
+  return userbaseAppId
+}
 
 let serverPublicKey = null
 const getServerPublicKey = async () => {

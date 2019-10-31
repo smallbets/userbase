@@ -5,18 +5,63 @@ import db from './db'
 import crypto from './Crypto'
 import localData from './localData'
 import config from './config'
+import errors from './errors'
+import statusCodes from './statusCodes'
 
-const appIdNotSet = 'App id not set'
-const wsAlreadyConnected = 'Web Socket already connected'
-const sessionAlreadyExists = 'A session already exists'
+const _parseGenericErrors = (e) => {
+  if (e.response) {
+    if (e.response.data === 'Invalid app ID') {
+      throw new errors.InvalidAppId(e.response.status)
+    } else if (e.response.status === statusCodes['Internal Server Error']) {
+      throw new errors.InternalServerError
+    } else if (e.response.status === statusCodes['Gateway Timeout']) {
+      throw new errors.Timeout
+    }
+  } else if (e.message && e.message.includes('timeout')) {
+    throw new errors.Timeout
+  }
+}
 
-const signUp = async (username, password) => {
-  const appId = config.getAppId()
-  if (!appId) throw new Error(appIdNotSet)
+const _connectWebSocket = async (appId, sessionId, username, seed, signingUp) => {
+  try {
+    const seedString = await ws.connect(appId, sessionId, username, seed, signingUp)
+    return seedString
+  } catch (e) {
+    console.log('HEY', e)
 
-  const lowerCaseUsername = username.toLowerCase()
+    _parseGenericErrors(e)
 
-  const seed = await crypto.generateSeed()
+    if (e.message === 'Web Socket already connected') {
+      throw new errors.SessionAlreadyExists(e.username)
+    } else if (e.message === 'Canceled') {
+      throw new errors.UserCanceledSignIn('Canceled', e.username)
+    }
+
+    throw e
+  }
+}
+
+const _validateSignUpOrSignInInput = (username, password) => {
+  if (!username) throw new errors.UsernameCannotBeBlank
+  if (!password) throw new errors.PasswordCannotBeBlank
+
+  if (typeof username !== 'string') throw new errors.UsernameMustBeString
+  if (typeof password !== 'string') throw new errors.PasswordMustBeString
+}
+
+const _parseGenericUsernameAndPasswordErrors = (e) => {
+  if (e.response) {
+    if (e.response.data.error === 'UsernameTooLong') {
+      throw new errors.UsernameTooLong(e.response.data.maxLength)
+    } else if (e.response.data.error === 'PasswordTooShort') {
+      throw new errors.PasswordTooShort(e.response.data.minLength)
+    } else if (e.response.data.error === 'PasswordTooLong') {
+      throw new errors.PasswordTooLong(e.response.data.maxLength)
+    }
+  }
+}
+
+const _generateKeysAndSignUp = async (username, password, seed) => {
   const masterKey = await crypto.hkdf.importMasterKey(seed)
 
   const encryptionKeySalt = crypto.hkdf.generateSalt()
@@ -26,77 +71,92 @@ const signUp = async (username, password) => {
   const dhPrivateKey = await crypto.diffieHellman.importKeyFromMaster(masterKey, dhKeySalt)
   const publicKey = crypto.diffieHellman.getPublicKey(dhPrivateKey)
 
-  const session = await api.auth.signUp(
-    lowerCaseUsername,
-    password,
-    base64.encode(publicKey),
-    base64.encode(encryptionKeySalt),
-    base64.encode(dhKeySalt),
-    base64.encode(hmacKeySalt)
-  )
+  try {
+    const session = await api.auth.signUp(
+      username,
+      password,
+      base64.encode(publicKey),
+      base64.encode(encryptionKeySalt),
+      base64.encode(dhKeySalt),
+      base64.encode(hmacKeySalt)
+    )
+    return session
+  } catch (e) {
+    _parseGenericErrors(e)
+    _parseGenericUsernameAndPasswordErrors(e)
+
+    if (e.response && e.response.status === statusCodes['Conflict']) {
+      throw new errors.UsernameAlreadyExists(username)
+    }
+
+    throw e
+  }
+}
+
+const signUp = async (username, password) => {
+  _validateSignUpOrSignInInput(username, password)
+
+  const appId = config.getAppId()
+  const lowerCaseUsername = username.toLowerCase()
+  const seed = await crypto.generateSeed()
+
+  const session = await _generateKeysAndSignUp(lowerCaseUsername, password, seed)
   const { sessionId, creationDate } = session
 
   const seedString = base64.encode(seed)
   // Warning: if user hits the sign up button twice,
   // it's possible the seed will be overwritten here and will be lost
-  localData.saveSeedString(username, seedString)
+  localData.saveSeedString(lowerCaseUsername, seedString)
 
   localData.signInSession(lowerCaseUsername, sessionId, creationDate)
 
   const signingUp = true
+  await _connectWebSocket(appId, sessionId, lowerCaseUsername, seedString, signingUp)
+  return { username: lowerCaseUsername, seed: seedString, signedIn: true, creationDate }
+}
+
+const signOut = async () => {
   try {
-    await ws.connect(appId, sessionId, lowerCaseUsername, seedString, signingUp)
-    return { username: lowerCaseUsername, seed: seedString, signedIn: true, creationDate }
+    const session = await ws.signOut()
+    return session
   } catch (e) {
-    if (e.message === wsAlreadyConnected) {
-      throw new SignInFailed(sessionAlreadyExists, e.username)
-    }
+    _parseGenericErrors(e)
     throw e
   }
 }
 
-const signOut = async () => {
-  const session = await ws.signOut()
-  return session
-}
+const _signInWrapper = async (username, password) => {
+  try {
+    const session = await api.auth.signIn(username, password)
+    return session
+  } catch (e) {
+    _parseGenericErrors(e)
+    _parseGenericUsernameAndPasswordErrors(e)
 
-class SignInFailed extends Error {
-  constructor(message, username, ...params) {
-    super(...params)
-
-    if (Error.captureStackTrace) {
-      Error.captureStackTrace(this, SignInFailed)
+    if (e.response && e.response.data === 'Invalid password') {
+      throw new errors.UsernameOrPasswordMismatch
     }
 
-    this.name = 'Sign in failed'
-    this.message = message
-    this.username = username
+    throw e
   }
 }
 
 const signIn = async (username, password) => {
+  _validateSignUpOrSignInInput(username, password)
+
   const appId = config.getAppId()
-  if (!appId) throw new Error(appIdNotSet)
 
   const lowerCaseUsername = username.toLowerCase()
 
-  const session = await api.auth.signIn(lowerCaseUsername, password)
+  const session = await _signInWrapper(lowerCaseUsername, password)
   const { sessionId, creationDate } = session
 
   localData.signInSession(lowerCaseUsername, sessionId, creationDate)
 
   const savedSeedString = localData.getSeedString(lowerCaseUsername) // might be null if does not have seed saved
-  try {
-    const seedString = await ws.connect(appId, sessionId, username, savedSeedString)
-    return { username: lowerCaseUsername, seed: seedString, signedIn: true, creationDate }
-  } catch (e) {
-    if (e.message === 'Canceled') {
-      throw new SignInFailed('Canceled', e.username)
-    } else if (e.message === wsAlreadyConnected) {
-      throw new SignInFailed(sessionAlreadyExists, e.username)
-    }
-    throw e
-  }
+
+  const seedString = await _connectWebSocket(appId, sessionId, username, savedSeedString)
+  return { username: lowerCaseUsername, seed: seedString, signedIn: true, creationDate }
 }
 
 const getLastUsedUsername = () => {
@@ -107,36 +167,29 @@ const getLastUsedUsername = () => {
 
 const signInWithSession = async () => {
   const appId = config.getAppId()
-  if (!appId) throw new Error(appIdNotSet)
 
   const currentSession = localData.getCurrentSession()
-  if (!currentSession) throw new SignInFailed('No session available')
+  if (!currentSession) throw new errors.NoSessionAvailable
 
   const { signedIn, username, sessionId, creationDate } = currentSession
-  if (!signedIn) throw new SignInFailed('User is not signed in', username)
+  if (!signedIn) throw new errors.UserNotSignedIn(username)
 
   let extendedDate
   try {
     extendedDate = await api.auth.signInWithSession(sessionId)
   } catch (e) {
-    if (e && e.response && e.response.data === 'Invalid session') {
-      throw new SignInFailed('Invalid session', username)
+    _parseGenericErrors(e)
+
+    if (e.response && e.response.data === 'Invalid session') {
+      throw new errors.InvalidSession(username)
     }
+
     throw e
   }
 
   const savedSeedString = localData.getSeedString(username) // might be null if does not have seed saved
-  try {
-    const seedString = await ws.connect(appId, sessionId, username, savedSeedString)
-    return { username, seed: seedString, signedIn: true, creationDate, extendedDate }
-  } catch (e) {
-    if (e.message === 'Canceled') {
-      throw new SignInFailed('Canceled', e.username)
-    } else if (e.message === wsAlreadyConnected) {
-      throw new SignInFailed(sessionAlreadyExists, e.username)
-    }
-    throw e
-  }
+  const seedString = await _connectWebSocket(appId, sessionId, username, savedSeedString)
+  return { username, seed: seedString, signedIn: true, creationDate, extendedDate }
 }
 
 const grantDatabaseAccess = async (dbName, username, readOnly) => {
