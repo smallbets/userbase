@@ -433,13 +433,13 @@ class Connection {
     const seedString = window.prompt(
       `Welcome, ${username}!`
       + '\n\n'
-      + 'Sign in from a device you used before to send the secret seed to this device.'
+      + 'Sign in from a device you used before to send the secret key to this device.'
       + '\n\n'
       + 'Before sending, please verify the Device ID matches:'
       + '\n\n'
       + seedRequestPublicKeyHash
       + '\n\n'
-      + 'You can also manually enter the secret seed below. You received your secret seed when you created your account.'
+      + 'You can also manually enter the secret key below. You received your secret key when you created your account.'
       + '\n\n'
       + 'Hit cancel to sign out.'
       + '\n'

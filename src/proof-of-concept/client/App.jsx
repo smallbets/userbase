@@ -1,21 +1,18 @@
 import React, { Component } from 'react'
-import userbase from 'userbase-js'
 import userLogic from './components/User/logic'
 import dbLogic from './components/Dashboard/logic'
 import Dashboard from './components/Dashboard/Dashboard'
 import UserForm from './components/User/UserForm'
-import ShowSeed from './components/User/ShowSeed'
+import ShowKey from './components/User/ShowKey'
 
 export default class App extends Component {
   constructor(props) {
     super(props)
 
     this.state = {
-      session: {
-        username: userbase.getLastUsedUsername(),
-        seed: undefined,
-        signedIn: false
-      },
+      username: undefined,
+      key: undefined,
+      signedIn: false,
       mode: undefined,
       loadingTodos: true,
       todos: []
@@ -32,15 +29,22 @@ export default class App extends Component {
   async componentDidMount() {
     window.addEventListener('hashchange', this.handleReadHash, false)
 
-    const username = this.state.session.username
-    if (!username) return this.handleReadHash()
-
     const session = await userLogic.signInWithSession()
-    if (!session || !session.signedIn) return this.handleReadHash()
+    if (session.user) {
+      const { username, key } = session.user
+      this.setState({ username, key, signedIn: true })
 
-    this.setState({ session })
-    this.handleReadHash()
-    await dbLogic.openDatabase(session.username, this.handleDbChange)
+      this.handleReadHash()
+
+      await dbLogic.openDatabase(username, this.handleDbChange)
+    } else {
+
+      if (session.lastUsedUsername) {
+        this.setState({ username: session.lastUsedUsername })
+      }
+
+      this.handleReadHash()
+    }
   }
 
   componentWillUnmount() {
@@ -51,16 +55,18 @@ export default class App extends Component {
     this.setState({ todos, loadingTodos: false })
   }
 
-  async handleSignIn(session) {
-    this.setState({ session })
-    await dbLogic.openDatabase(session.username, this.handleDbChange)
+  async handleSignIn(user) {
+    const { username, key } = user
+    this.setState({ username, key, signedIn: true })
+    await dbLogic.openDatabase(username, this.handleDbChange)
     window.location.hash = ''
   }
 
-  async handleSignUp(session) {
-    this.setState({ session })
-    await dbLogic.openDatabase(session.username, this.handleDbChange)
-    window.location.hash = 'show-seed'
+  async handleSignUp(user) {
+    const { username, key } = user
+    this.setState({ username, key, signedIn: true })
+    await dbLogic.openDatabase(username, this.handleDbChange)
+    window.location.hash = 'show-key'
   }
 
   async handleSignOut() {
@@ -71,11 +77,9 @@ export default class App extends Component {
   // this is called when the user signs out, or when the server says the session has expired
   handleRemoveUserAuthentication(username) {
     this.setState({
-      session: {
-        username: username,
-        seed: undefined,
-        signedIn: false
-      },
+      username,
+      key: undefined,
+      signedIn: false,
       todos: [],
       loadingTodos: true
     })
@@ -83,8 +87,7 @@ export default class App extends Component {
   }
 
   handleReadHash() {
-    const { session } = this.state
-    const { signedIn, username } = session
+    const { username, signedIn } = this.state
 
     const hashRoute = window.location.hash.substring(1)
 
@@ -94,8 +97,8 @@ export default class App extends Component {
         // if user is signed in already, re-route to default
         return signedIn ? window.location.hash = '' : this.setState({ mode: hashRoute })
 
-      case 'show-seed':
-        // only show seed if user is signed in already, otherwise re-route to default
+      case 'show-key':
+        // only show key if user is signed in already, otherwise re-route to default
         return signedIn ? this.setState({ mode: hashRoute }) : window.location.hash = ''
 
       default: {
@@ -115,8 +118,7 @@ export default class App extends Component {
   }
 
   render() {
-    const { session, mode, loadingTodos, todos } = this.state
-    const { seed, username, signedIn } = session
+    const { username, key, signedIn, mode, loadingTodos, todos } = this.state
 
     if (!mode) {
       return <div />
@@ -136,7 +138,7 @@ export default class App extends Component {
               </ul>
               : <ul>
                 <li className='inline-block ml-4 font-light'>{username}</li>
-                <li className='inline-block ml-4'><a className={'fa-key no-underline ' + (mode === 'show-seed' ? 'text-orange-600' : '')} href='#show-seed'></a></li>
+                <li className='inline-block ml-4'><a className={'fa-key no-underline ' + (mode === 'show-key' ? 'text-orange-600' : '')} href='#show-key'></a></li>
                 <li className='inline-block ml-4'><a href='#' onClick={this.handleSignOut}>Sign out</a></li>
               </ul>
             }
@@ -152,8 +154,8 @@ export default class App extends Component {
                 todos={todos}
                 loading={loadingTodos}
               />
-            case 'show-seed':
-              return <ShowSeed seed={seed} />
+            case 'show-key':
+              return <ShowKey keyString={key} />
             case 'sign-in':
               return <UserForm
                 handleSubmit={this.handleSignIn}

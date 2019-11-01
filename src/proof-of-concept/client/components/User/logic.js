@@ -8,8 +8,8 @@ const _errorHandler = (e, operation) => {
 
 const signUp = async (username, password) => {
   try {
-    const session = await userbase.signUp(username, password)
-    return session
+    const user = await userbase.signUp(username, password)
+    return user
   } catch (e) {
     return _errorHandler(e, 'sign up')
   }
@@ -26,8 +26,8 @@ const signOut = async () => {
 
 const signIn = async (username, password) => {
   try {
-    const session = await userbase.signIn(username, password)
-    return session
+    const user = await userbase.signIn(username, password)
+    return user
   } catch (e) {
     return _errorHandler(e, 'sign in')
   }

@@ -111,7 +111,7 @@ const signUp = async (username, password) => {
 
     const signingUp = true
     await _connectWebSocket(appId, sessionId, lowerCaseUsername, seedString, signingUp)
-    return { username: lowerCaseUsername, seed: seedString, signedIn: true, creationDate }
+    return { username: lowerCaseUsername, key: seedString }
   } catch (e) {
 
     switch (e.name) {
@@ -178,7 +178,7 @@ const signIn = async (username, password) => {
     const savedSeedString = localData.getSeedString(lowerCaseUsername) // might be null if does not have seed saved
 
     const seedString = await _connectWebSocket(appId, sessionId, username, savedSeedString)
-    return { username: lowerCaseUsername, seed: seedString, signedIn: true, creationDate }
+    return { username: lowerCaseUsername, key: seedString }
   } catch (e) {
 
     switch (e.name) {
@@ -215,19 +215,18 @@ const signInWithSession = async () => {
     const appId = config.getAppId()
 
     const currentSession = localData.getCurrentSession()
-    if (!currentSession) throw new errors.NoSessionAvailable
+    if (!currentSession) return {}
 
-    const { signedIn, username, sessionId, creationDate } = currentSession
-    if (!signedIn) throw new errors.UserNotSignedIn(username)
+    const { signedIn, username, sessionId } = currentSession
+    if (!signedIn) return { lastUsedUsername: username }
 
-    let extendedDate
     try {
-      extendedDate = await api.auth.signInWithSession(sessionId)
+      await api.auth.signInWithSession(sessionId)
     } catch (e) {
       _parseGenericErrors(e)
 
       if (e.response && e.response.data === 'Session invalid') {
-        throw new errors.SessionInvalid(username)
+        return { lastUsedUsername: username }
       }
 
       throw e
@@ -235,13 +234,10 @@ const signInWithSession = async () => {
 
     const savedSeedString = localData.getSeedString(username) // might be null if does not have seed saved
     const seedString = await _connectWebSocket(appId, sessionId, username, savedSeedString)
-    return { username, seed: seedString, signedIn: true, creationDate, extendedDate }
+    return { user: { username, key: seedString } }
   } catch (e) {
 
     switch (e.name) {
-      case 'NoSessionAvailable':
-      case 'UserNotSignedIn':
-      case 'SessionInvalid':
       case 'AppIdNotSet':
       case 'AppIdNotValid':
       case 'SessionAlreadyExists':

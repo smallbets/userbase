@@ -112,38 +112,6 @@ class SessionAlreadyExists extends Error {
   }
 }
 
-class NoSessionAvailable extends Error {
-  constructor(...params) {
-    super(...params)
-
-    this.name = 'NoSessionAvailable'
-    this.message = 'No session available.'
-    this.status = statusCodes['Bad Request']
-  }
-}
-
-class UserNotSignedIn extends Error {
-  constructor(username, ...params) {
-    super(...params)
-
-    this.name = 'UserNotSignedIn'
-    this.message = 'User is not signed in.'
-    this.status = statusCodes['Bad Request']
-    this.username = username
-  }
-}
-
-class SessionInvalid extends Error {
-  constructor(username, ...params) {
-    super(...params)
-
-    this.name = 'SessionInvalid'
-    this.message = 'Session invalid.'
-    this.status = statusCodes['Unauthorized']
-    this.username = username
-  }
-}
-
 class AppIdNotValid extends Error {
   constructor(status, username, ...params) {
     super(...params)
@@ -167,8 +135,5 @@ export default {
   UsernameOrPasswordMismatch,
   UserCanceledSignIn,
   SessionAlreadyExists,
-  NoSessionAvailable,
-  UserNotSignedIn,
-  SessionInvalid,
   AppIdNotValid
 }
