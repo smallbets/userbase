@@ -106,7 +106,7 @@ class UserAlreadySignedIn extends Error {
     super(...params)
 
     this.name = 'UserAlreadySignedIn'
-    this.message = 'User already signed in.'
+    this.message = 'Already signed in.'
     this.status = statusCodes['Bad Request']
     this.username = username
   }
@@ -128,7 +128,7 @@ class UserNotSignedIn extends Error {
     super(...params)
 
     this.name = 'UserNotSignedIn'
-    this.message = 'User is not signed in.'
+    this.message = 'Not signed in.'
     this.status = statusCodes['Bad Request']
   }
 }

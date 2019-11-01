@@ -4,17 +4,18 @@ import crypto from './Crypto'
 import ws from './ws'
 import errors from './errors'
 import statusCodes from './statusCodes'
+import { byteSizeOfString } from './utils'
 
 const success = 'Success'
-const itemAlreadyExists = 'Item already exists'
-const itemDoesNotExist = 'Item does not exist'
-const itemAlreadyDeleted = 'Item already deleted'
-const versionConflict = 'Version conflict'
 const wsNotOpen = 'Web Socket not open'
-const dbNotOpen = 'Database not open'
 const keyNotFound = 'Key not found'
 
 const MAX_DB_NAME_CHAR_LENGTH = 50
+const MAX_ITEM_ID_CHAR_LENGTH = 100
+
+const MAX_ITEM_KB = 10
+const TEN_KB = MAX_ITEM_KB * 1024
+const MAX_ITEM_BYTES = TEN_KB
 
 const _parseGenericErrors = (e) => {
   if (e.response) {
@@ -78,7 +79,7 @@ class UnverifiedTransaction {
       if (this.transactions[this.txSeqNo] == 'Success') {
         this.promiseResolve()
       } else {
-        this.promiseReject(new Error(this.transactions[this.txSeqNo]))
+        this.promiseReject(this.transactions[this.txSeqNo])
       }
     }
   }
@@ -212,18 +213,18 @@ class Database {
 
   validateInsert(itemId) {
     if (this.items[itemId]) {
-      throw itemAlreadyExists
+      throw new errors.ItemAlreadyExists
     }
   }
 
   validateUpdateOrDelete(itemId, __v) {
     if (!this.items[itemId]) {
-      throw itemAlreadyDeleted
+      throw new errors.ItemDoesNotExist
     }
 
     const currentVersion = this.getItemVersionNumber(itemId)
     if (__v <= currentVersion) {
-      throw versionConflict
+      throw new errors.ItemUpdateConflict
     }
   }
 
@@ -400,13 +401,10 @@ const _createDatabase = async (dbName, dbNameHash) => {
   }
 }
 
-const _validateDbInput = (dbName, changeHandler) => {
+const _validateDbInput = (dbName) => {
   if (!dbName) throw new errors.DatabaseNameCannotBeBlank
   if (typeof dbName !== 'string') throw new errors.DatabaseNameMustBeString
   if (dbName.length > MAX_DB_NAME_CHAR_LENGTH) throw new errors.DatabaseNameTooLong(MAX_DB_NAME_CHAR_LENGTH)
-
-  if (!changeHandler) throw new errors.ChangeHandlerMissing
-  if (typeof changeHandler !== 'function') throw new errors.ChangeHandlerMustBeFunction
 
   if (!ws.connected) throw new errors.UserNotSignedIn
   if (!ws.keys.init) throw new errors.KeyNotFound
@@ -414,7 +412,10 @@ const _validateDbInput = (dbName, changeHandler) => {
 
 const openDatabase = async (dbName, changeHandler) => {
   try {
-    _validateDbInput(dbName, changeHandler)
+    _validateDbInput(dbName)
+
+    if (!changeHandler) throw new errors.ChangeHandlerMissing
+    if (typeof changeHandler !== 'function') throw new errors.ChangeHandlerMustBeFunction
 
     const dbNameHash = ws.state.dbNameToHash[dbName] || await crypto.hmac.signString(ws.keys.hmacKey, dbName)
     ws.state.dbNameToHash[dbName] = dbNameHash // eslint-disable-line require-atomic-updates
@@ -439,8 +440,6 @@ const openDatabase = async (dbName, changeHandler) => {
       case 'ChangeHandlerMustBeFunction':
       case 'UserNotSignedIn':
       case 'KeyNotFound':
-      case 'AppIdNotSet':
-      case 'AppIdNotValid':
       case 'ServiceUnavailable':
         throw e
 
@@ -453,21 +452,57 @@ const openDatabase = async (dbName, changeHandler) => {
 const getOpenDb = (dbName) => {
   const dbNameHash = ws.state.dbNameToHash[dbName]
   const database = ws.state.databases[dbNameHash]
-  if (!dbNameHash || !database || !database.init) throw new Error(dbNotOpen)
+  if (!dbNameHash || !database || !database.init) throw new errors.DatabaseNotOpen
   return database
 }
 
 const insert = async (dbName, item, id) => {
-  const database = getOpenDb(dbName)
+  try {
+    _validateDbInput(dbName)
 
-  const action = 'Insert'
-  const params = await _buildInsertParams(database, item, id)
+    const database = getOpenDb(dbName)
 
-  await postTransaction(database, action, params)
+    const action = 'Insert'
+    const params = await _buildInsertParams(database, item, id)
+
+    try {
+      await postTransaction(database, action, params)
+    } catch (e) {
+      _parseGenericErrors(e)
+      throw e
+    }
+
+  } catch (e) {
+
+    switch (e.name) {
+      case 'DatabaseNotOpen':
+      case 'DatabaseNameCannotBeBlank':
+      case 'DatabaseNameTooLong':
+      case 'DatabaseNameMustBeString':
+      case 'ItemIdTooLong':
+      case 'ItemIdMustBeString':
+      case 'ItemMissing':
+      case 'ItemTooLarge':
+      case 'ItemAlreadyExists':
+      case 'UserNotSignedIn':
+      case 'KeyNotFound':
+      case 'ServiceUnavailable':
+        throw e
+
+      default:
+        throw new errors.ServiceUnavailable
+    }
+
+  }
 }
 
 const _buildInsertParams = async (database, item, id) => {
-  if (!item) throw new Error('Insert missing item')
+  if (!item) throw new errors.ItemMissing
+  if (id && typeof id !== 'string') throw new errors.ItemIdMustBeString
+  if (id && id.length > MAX_ITEM_ID_CHAR_LENGTH) throw new errors.ItemIdTooLong
+
+  const itemString = JSON.stringify(item)
+  if (byteSizeOfString(itemString) > MAX_ITEM_BYTES) throw new errors.ItemTooLarge(MAX_ITEM_KB)
 
   const itemId = id || uuidv4()
 
@@ -479,18 +514,51 @@ const _buildInsertParams = async (database, item, id) => {
 }
 
 const update = async (dbName, item, id) => {
-  const database = getOpenDb(dbName)
+  try {
+    _validateDbInput(dbName)
 
-  const action = 'Update'
-  const params = await _buildUpdateParams(database, item, id)
+    const database = getOpenDb(dbName)
 
-  await postTransaction(database, action, params)
+    const action = 'Update'
+    const params = await _buildUpdateParams(database, item, id)
+
+    await postTransaction(database, action, params)
+  } catch (e) {
+
+    switch (e.name) {
+      case 'DatabaseNotOpen':
+      case 'DatabaseNameCannotBeBlank':
+      case 'DatabaseNameTooLong':
+      case 'DatabaseNameMustBeString':
+      case 'ItemIdCannotBeBlank':
+      case 'ItemIdTooLong':
+      case 'ItemIdMustBeString':
+      case 'ItemMissing':
+      case 'ItemDoesNotExist':
+      case 'ItemTooLarge':
+      case 'ItemUpdateConflict':
+      case 'UserNotSignedIn':
+      case 'KeyNotFound':
+      case 'ServiceUnavailable':
+        throw e
+
+      default:
+        throw new errors.ServiceUnavailable
+    }
+
+  }
 }
 
 const _buildUpdateParams = async (database, item, itemId) => {
-  if (!itemId) throw new Error('Update missing item id')
-  if (!item) throw new Error('Update missing item')
-  if (!database.itemExists(itemId)) throw new Error(itemDoesNotExist)
+  if (!itemId) throw new errors.ItemIdCannotBeBlank
+  if (typeof itemId !== 'string') throw new errors.ItemIdMustBeString
+  if (itemId.length > MAX_ITEM_ID_CHAR_LENGTH) throw new errors.ItemIdTooLong
+
+  if (!item) throw new errors.ItemMissing
+  if (!database.itemExists(itemId)) throw new errors.ItemDoesNotExist
+
+  const itemString = JSON.stringify(item)
+  if (byteSizeOfString(itemString) > MAX_ITEM_BYTES) throw new errors.ItemTooLarge(MAX_ITEM_KB)
 
   const itemKey = await crypto.hmac.signString(ws.keys.hmacKey, itemId)
   const currentVersion = database.getItemVersionNumber(itemId)
@@ -501,17 +569,45 @@ const _buildUpdateParams = async (database, item, itemId) => {
 }
 
 const delete_ = async (dbName, itemId) => {
-  const database = getOpenDb(dbName)
+  try {
+    _validateDbInput(dbName)
 
-  const action = 'Delete'
-  const params = await _buildDeleteParams(database, itemId)
+    const database = getOpenDb(dbName)
 
-  await postTransaction(database, action, params)
+    const action = 'Delete'
+    const params = await _buildDeleteParams(database, itemId)
+
+    await postTransaction(database, action, params)
+  } catch (e) {
+
+    switch (e.name) {
+      case 'DatabaseNotOpen':
+      case 'DatabaseNameCannotBeBlank':
+      case 'DatabaseNameTooLong':
+      case 'DatabaseNameMustBeString':
+      case 'ItemIdCannotBeBlank':
+      case 'ItemIdTooLong':
+      case 'ItemIdMustBeString':
+      case 'ItemDoesNotExist':
+      case 'ItemUpdateConflict':
+      case 'UserNotSignedIn':
+      case 'KeyNotFound':
+      case 'ServiceUnavailable':
+        throw e
+
+      default:
+        throw new errors.ServiceUnavailable
+    }
+
+  }
 }
 
 const _buildDeleteParams = async (database, itemId) => {
-  if (!itemId) throw new Error('Delete missing item id')
-  if (!database.itemExists(itemId)) throw new Error(itemAlreadyDeleted)
+  if (!itemId) throw new errors.ItemIdCannotBeBlank
+  if (typeof itemId !== 'string') throw new errors.ItemIdMustBeString
+  if (itemId.length > MAX_ITEM_ID_CHAR_LENGTH) throw new errors.ItemIdTooLong
+
+  if (!database.itemExists(itemId)) throw new errors.ItemDoesNotExist
 
   const itemKey = await crypto.hmac.signString(ws.keys.hmacKey, itemId)
   const currentVersion = database.getItemVersionNumber(itemId)
