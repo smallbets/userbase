@@ -164,7 +164,7 @@ exports.signUp = async function (req, res) {
 
     // Warning: uses secondary index here. It's possible index won't be up to date and this fails
     const app = await getAppByAppId(appId)
-    if (!app) return res.status(statusCodes['Unauthorized']).send('App ID invalid')
+    if (!app) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
 
     const salts = { encryptionKeySalt, dhKeySalt, hmacKeySalt }
     const params = await _buildSignUpParams(username, password, appId, userId, publicKey, salts, app)
@@ -174,7 +174,7 @@ exports.signUp = async function (req, res) {
       await ddbClient.transactWrite(params).promise()
     } catch (e) {
       if (e.message.includes('[ConditionalCheckFailed')) {
-        return res.status(statusCodes['Unauthorized']).send('App ID invalid')
+        return res.status(statusCodes['Unauthorized']).send('App ID not valid')
       } else if (e.message.includes('ConditionalCheckFailed]')) {
         return res.status(statusCodes['Conflict']).send('Username already exists')
       }
@@ -223,7 +223,7 @@ exports.authenticateUser = async function (req, res, next) {
 
     const appDoesNotMatch = isNotUserSession || session['app-id'] !== appId
     if (appDoesNotMatch) return res
-      .status(statusCodes['Unauthorized']).send('App ID invalid')
+      .status(statusCodes['Unauthorized']).send('App ID not valid')
 
     // Warning: uses secondary indexes here. It's possible index won't be up to date and this fails
     const [user, app] = await Promise.all([
@@ -332,10 +332,29 @@ exports.signIn = async function (req, res) {
     .status(statusCodes['Bad Request'])
     .send('Missing required items')
 
+  if (username.length > MAX_USERNAME_CHAR_LENGTH) return res.status(statusCodes['Bad Request'])
+    .send({
+      error: 'UsernameTooLong',
+      maxLength: MAX_USERNAME_CHAR_LENGTH
+    })
+
+  if (password.length < MIN_PASSWORD_CHAR_LENGTH) return res.status(statusCodes['Bad Request'])
+    .send({
+      error: 'PasswordTooShort',
+      minLength: MIN_PASSWORD_CHAR_LENGTH
+    })
+
+  if (password.length > MAX_PASSWORD_CHAR_LENGTH) return res.status(statusCodes['Bad Request'])
+    .send({
+      error: 'PasswordTooLong',
+      maxLength: MAX_PASSWORD_CHAR_LENGTH
+    })
+
   try {
     // Warning: uses secondary index here. It's possible index won't be up to date and this fails
     const app = await getAppByAppId(appId)
-    if (!app) return res.status(statusCodes['Unauthorized']).send('App ID invalid')
+    logger.warn(appId, app)
+    if (!app) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
 
     const params = {
       TableName: setup.usersTableName,

@@ -144,12 +144,12 @@ class SessionInvalid extends Error {
   }
 }
 
-class AppIdInvalid extends Error {
+class AppIdNotValid extends Error {
   constructor(status, username, ...params) {
     super(...params)
 
-    this.name = 'AppIdInvalid'
-    this.message = 'App ID invalid.'
+    this.name = 'AppIdNotValid'
+    this.message = 'App ID not valid.'
     this.status = status
     this.username = username
   }
@@ -170,5 +170,5 @@ export default {
   NoSessionAvailable,
   UserNotSignedIn,
   SessionInvalid,
-  AppIdInvalid
+  AppIdNotValid
 }

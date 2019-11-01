@@ -438,7 +438,7 @@ const openDatabase = async (dbName, changeHandler = () => { }) => {
       case 'SessionNotConnected':
       case 'KeyNotFound':
       case 'AppIdNotSet':
-      case 'AppIdInvalid':
+      case 'AppIdNotValid':
       case 'ServiceUnavailable':
         throw e
 

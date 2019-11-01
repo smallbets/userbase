@@ -10,8 +10,8 @@ import statusCodes from './statusCodes'
 
 const _parseGenericErrors = (e) => {
   if (e.response) {
-    if (e.response.data === 'App ID invalid') {
-      throw new errors.AppIdInvalid(e.response.status)
+    if (e.response.data === 'App ID not valid') {
+      throw new errors.AppIdNotValid(e.response.status)
     } else if (e.response.status === statusCodes['Internal Server Error']) {
       throw new errors.InternalServerError
     } else if (e.response.status === statusCodes['Gateway Timeout']) {
@@ -36,6 +36,18 @@ const _connectWebSocket = async (appId, sessionId, username, seed, signingUp) =>
     }
 
     throw e
+  }
+}
+
+const _parseGenericUsernamePasswordError = (e) => {
+  if (e.response) {
+    if (e.response.data.error === 'UsernameTooLong') {
+      throw new errors.UsernameTooLong(e.response.data.maxLength)
+    } else if (e.response.data.error === 'PasswordTooShort') {
+      throw new errors.PasswordTooShort(e.response.data.minLength)
+    } else if (e.response.data.error === 'PasswordTooLong') {
+      throw new errors.PasswordTooLong(e.response.data.maxLength)
+    }
   }
 }
 
@@ -69,17 +81,10 @@ const _generateKeysAndSignUp = async (username, password, seed) => {
     return session
   } catch (e) {
     _parseGenericErrors(e)
+    _parseGenericUsernamePasswordError(e)
 
-    if (e.response) {
-      if (e.response.status === statusCodes['Conflict']) {
-        throw new errors.UsernameAlreadyExists(username)
-      } else if (e.response.data.error === 'UsernameTooLong') {
-        throw new errors.UsernameTooLong(e.response.data.maxLength)
-      } else if (e.response.data.error === 'PasswordTooShort') {
-        throw new errors.PasswordTooShort(e.response.data.minLength)
-      } else if (e.response.data.error === 'PasswordTooLong') {
-        throw new errors.PasswordTooLong(e.response.data.maxLength)
-      }
+    if (e.response && e.response.status === statusCodes['Conflict']) {
+      throw new errors.UsernameAlreadyExists(username)
     }
 
     throw e
@@ -112,12 +117,14 @@ const signUp = async (username, password) => {
     switch (e.name) {
       case 'UsernameAlreadyExists':
       case 'UsernameCannotBeBlank':
+      case 'UsernameMustBeString':
       case 'UsernameTooLong':
       case 'PasswordCannotBeBlank':
+      case 'PasswordMustBeString':
       case 'PasswordTooShort':
       case 'PasswordTooLong':
       case 'AppIdNotSet':
-      case 'AppIdInvalid':
+      case 'AppIdNotValid':
       case 'SessionAlreadyExists':
       case 'ServiceUnavailable':
         throw e
@@ -145,6 +152,7 @@ const _signInWrapper = async (username, password) => {
     return session
   } catch (e) {
     _parseGenericErrors(e)
+    _parseGenericUsernamePasswordError(e)
 
     if (e.response && e.response.data === 'Invalid password') {
       throw new errors.UsernameOrPasswordMismatch
@@ -176,9 +184,14 @@ const signIn = async (username, password) => {
     switch (e.name) {
       case 'UsernameOrPasswordMismatch':
       case 'UsernameCannotBeBlank':
+      case 'UsernameTooLong':
+      case 'UsernameMustBeString':
       case 'PasswordCannotBeBlank':
+      case 'PasswordTooShort':
+      case 'PasswordTooLong':
+      case 'PasswordMustBeString':
       case 'AppIdNotSet':
-      case 'AppIdInvalid':
+      case 'AppIdNotValid':
       case 'SessionAlreadyExists':
       case 'UserCanceledSignIn':
       case 'ServiceUnavailable':
@@ -230,7 +243,7 @@ const signInWithSession = async () => {
       case 'UserNotSignedIn':
       case 'SessionInvalid':
       case 'AppIdNotSet':
-      case 'AppIdInvalid':
+      case 'AppIdNotValid':
       case 'SessionAlreadyExists':
       case 'UserCanceledSignIn':
       case 'ServiceUnavailable':
