@@ -60,6 +60,16 @@ class KeyNotFound extends Error {
   }
 }
 
+class ChangeHandlerMissing extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'ChangeHandlerMissing'
+    this.message = 'Change handler must be be provided.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
 class ChangeHandlerMustBeFunction extends Error {
   constructor(...params) {
     super(...params)
@@ -77,5 +87,6 @@ export default {
   DatabaseAlreadyOpen,
   DatabaseAlreadyOpening,
   KeyNotFound,
+  ChangeHandlerMissing,
   ChangeHandlerMustBeFunction
 }

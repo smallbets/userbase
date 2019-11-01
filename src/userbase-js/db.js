@@ -405,13 +405,14 @@ const _validateDbInput = (dbName, changeHandler) => {
   if (typeof dbName !== 'string') throw new errors.DatabaseNameMustBeString
   if (dbName.length > MAX_DB_NAME_CHAR_LENGTH) throw new errors.DatabaseNameTooLong(MAX_DB_NAME_CHAR_LENGTH)
 
-  if (changeHandler && typeof changeHandler !== 'function') throw new errors.ChangeHandlerMustBeFunction
+  if (!changeHandler) throw new errors.ChangeHandlerMissing
+  if (typeof changeHandler !== 'function') throw new errors.ChangeHandlerMustBeFunction
 
   if (!ws.connected) throw new errors.UserNotSignedIn
   if (!ws.keys.init) throw new errors.KeyNotFound
 }
 
-const openDatabase = async (dbName, changeHandler = () => { }) => {
+const openDatabase = async (dbName, changeHandler) => {
   try {
     _validateDbInput(dbName, changeHandler)
 
@@ -434,6 +435,7 @@ const openDatabase = async (dbName, changeHandler = () => { }) => {
       case 'DatabaseNameCannotBeBlank':
       case 'DatabaseNameTooLong':
       case 'DatabaseNameMustBeString':
+      case 'ChangeHandlerMissing':
       case 'ChangeHandlerMustBeFunction':
       case 'UserNotSignedIn':
       case 'KeyNotFound':
