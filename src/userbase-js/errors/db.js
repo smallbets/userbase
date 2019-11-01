@@ -170,6 +170,46 @@ class ItemUpdateConflict extends Error {
   }
 }
 
+class OperationsMissing extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'OperationsMissing'
+    this.message = 'Operations missing.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class OperationsMustBeArray extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'OperationsMustBeArray'
+    this.message = 'Operations provided must be an array.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class CommandUnrecognized extends Error {
+  constructor(command, ...params) {
+    super(command, ...params)
+
+    this.name = 'CommandUnrecognized'
+    this.message = `Command '${command}' unrecognized.`
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class OperationsConflict extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'OperationsConflict'
+    this.message = 'Operations conflict. Only allowed 1 operation per item.'
+    this.status = statusCodes['Conflict']
+  }
+}
+
 export default {
   DatabaseNameCannotBeBlank,
   DatabaseNameMustBeString,
@@ -187,5 +227,9 @@ export default {
   ItemIdCannotBeBlank,
   ItemAlreadyExists,
   ItemDoesNotExist,
-  ItemUpdateConflict
+  ItemUpdateConflict,
+  OperationsMissing,
+  OperationsMustBeArray,
+  OperationsConflict,
+  CommandUnrecognized
 }

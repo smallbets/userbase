@@ -1,7 +1,7 @@
 import userbase from 'userbase-js'
 
 const _errorHandler = (e, operation) => {
-  console.log(`Failed to ${operation} with`, e, e.response && e.response.data)
+  console.log(`Failed to ${operation} with`, e)
 
   return { error: e.message }
 }

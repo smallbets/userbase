@@ -10,15 +10,12 @@ const openDatabase = async (username, onDbChangeHandler) => {
 }
 
 const _errorHandler = (e, operation, handleRemoveUserAuthentication) => {
-  console.log(`Failed to ${operation} with ${e.message}${e.response ? ': ' + e.response.data : ''}`)
+  console.log(`Failed to ${operation} with`, e)
 
-  const unauthorized = e.response && e.response.status === 401
+  const unauthorized = e.status === 401
   if (unauthorized) handleRemoveUserAuthentication()
 
-  const timeout = e.response && e.response.status === 504 || e.message.includes('timeout')
-  if (timeout) throw new Error('Something went wrong, please try again!')
-
-  throw new Error((e.response && e.response.data) || e.message)
+  throw new Error(e.message)
 }
 
 const insertTodo = async (username, todo, handleRemoveUserAuthentication) => {

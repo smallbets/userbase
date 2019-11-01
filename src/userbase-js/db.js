@@ -266,7 +266,7 @@ class Database {
       const itemId = records[i].id
       const __v = records[i].__v
 
-      if (uniqueItemIds[itemId]) throw new Error('Only allowed one operation per item')
+      if (uniqueItemIds[itemId]) throw new errors.OperationsConflict
       uniqueItemIds[itemId] = true
 
       switch (operation.command) {
@@ -348,6 +348,12 @@ const _openDatabase = async (dbNameHash, changeHandler) => {
       receivedMessage()
     }
 
+    if (ws.state.databases[dbNameHash] && ws.state.databases[dbNameHash].init) {
+      throw new errors.DatabaseAlreadyOpen
+    } else if (ws.state.databases[dbNameHash]) {
+      throw new errors.DatabaseAlreadyOpening
+    }
+
     ws.state.databases[dbNameHash] = new Database(handlerWrapper) // eslint-disable-line require-atomic-updates
 
     const action = 'OpenDatabase'
@@ -419,12 +425,6 @@ const openDatabase = async (dbName, changeHandler) => {
 
     const dbNameHash = ws.state.dbNameToHash[dbName] || await crypto.hmac.signString(ws.keys.hmacKey, dbName)
     ws.state.dbNameToHash[dbName] = dbNameHash // eslint-disable-line require-atomic-updates
-
-    if (ws.state.databases[dbNameHash] && ws.state.databases[dbNameHash].init) {
-      throw new errors.DatabaseAlreadyOpen
-    } else if (ws.state.databases[dbNameHash]) {
-      throw new errors.DatabaseAlreadyOpening
-    }
 
     await _createDatabase(dbName, dbNameHash)
     await _openDatabase(dbNameHash, changeHandler)
@@ -618,49 +618,79 @@ const _buildDeleteParams = async (database, itemId) => {
 }
 
 const transaction = async (dbName, operations) => {
-  const database = getOpenDb(dbName)
+  try {
+    _validateDbInput(dbName)
 
-  const action = 'BatchTransaction'
+    if (!operations) throw new errors.OperationsMissing
+    if (!Array.isArray(operations)) throw new errors.OperationsMustBeArray
 
-  const operationParamsPromises = operations.map(operation => {
+    const database = getOpenDb(dbName)
 
-    const command = operation.command
+    const action = 'BatchTransaction'
 
-    switch (command) {
-      case 'Insert': {
-        const id = operation.id
-        const item = operation.item
+    const operationParamsPromises = operations.map(operation => {
+      const command = operation.command
 
-        return _buildInsertParams(database, item, id)
+      switch (command) {
+        case 'Insert': {
+          const id = operation.id
+          const item = operation.item
+
+          return _buildInsertParams(database, item, id)
+        }
+
+        case 'Update': {
+          const id = operation.id
+          const item = operation.item
+
+          return _buildUpdateParams(database, item, id)
+        }
+
+        case 'Delete': {
+          const id = operation.id
+
+          return _buildDeleteParams(database, id)
+        }
+
+        default: throw new errors.CommandUnrecognized(command)
       }
+    })
+    const operationParams = await Promise.all(operationParamsPromises)
 
-      case 'Update': {
-        const id = operation.id
-        const item = operation.item
-
-        return _buildUpdateParams(database, item, id)
-      }
-
-      case 'Delete': {
-        const id = operation.id
-
-        return _buildDeleteParams(database, id)
-      }
-
-      default: throw new Error('Unknown command')
+    const params = {
+      operations: operations.map((operation, i) => ({
+        command: operation.command,
+        ...operationParams[i]
+      }))
     }
-  })
 
-  const operationParams = await Promise.all(operationParamsPromises)
+    await postTransaction(database, action, params)
+  } catch (e) {
 
-  const params = {
-    operations: operations.map((operation, i) => ({
-      command: operation.command,
-      ...operationParams[i]
-    }))
+    switch (e.name) {
+      case 'DatabaseNotOpen':
+      case 'DatabaseNameCannotBeBlank':
+      case 'DatabaseNameTooLong':
+      case 'DatabaseNameMustBeString':
+      case 'OperationsMissing':
+      case 'OperationsMustBeArray':
+      case 'OperationsConflict':
+      case 'ItemIdCannotBeBlank':
+      case 'ItemIdTooLong':
+      case 'ItemIdMustBeString':
+      case 'ItemTooLarge':
+      case 'ItemAlreadyExists':
+      case 'ItemDoesNotExist':
+      case 'ItemUpdateConflict':
+      case 'UserNotSignedIn':
+      case 'KeyNotFound':
+      case 'ServiceUnavailable':
+        throw e
+
+      default:
+        throw new errors.ServiceUnavailable
+    }
   }
-
-  await postTransaction(database, action, params)
 }
 
 const postTransaction = async (database, action, params) => {
