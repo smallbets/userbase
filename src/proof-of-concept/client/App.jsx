@@ -70,12 +70,14 @@ export default class App extends Component {
   }
 
   async handleSignOut() {
-    const session = await userLogic.signOut()
-    this.handleRemoveUserAuthentication(session.username)
+    await userLogic.signOut()
+    this.handleRemoveUserAuthentication()
   }
 
   // this is called when the user signs out, or when the server says the session has expired
-  handleRemoveUserAuthentication(username) {
+  handleRemoveUserAuthentication() {
+    const { username } = this.state
+
     this.setState({
       username,
       key: undefined,

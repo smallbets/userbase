@@ -138,11 +138,25 @@ const signUp = async (username, password) => {
 
 const signOut = async () => {
   try {
-    const session = await ws.signOut()
-    return session
+    if (!ws.connected) throw new errors.UserNotSignedIn
+
+    try {
+      await ws.signOut()
+    } catch (e) {
+      _parseGenericErrors(e)
+      throw e
+    }
+
   } catch (e) {
-    _parseGenericErrors(e)
-    throw new errors.ServiceUnavailable
+
+    switch (e.name) {
+      case 'UserNotSignedIn':
+      case 'ServiceUnavailable':
+        throw e
+
+      default:
+        throw new errors.ServiceUnavailable
+    }
   }
 }
 

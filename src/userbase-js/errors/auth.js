@@ -123,6 +123,16 @@ class AppIdNotValid extends Error {
   }
 }
 
+class UserNotSignedIn extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'UserNotSignedIn'
+    this.message = 'User is not signed in.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
 export default {
   UsernameAlreadyExists,
   UsernameCannotBeBlank,
@@ -135,5 +145,6 @@ export default {
   UsernameOrPasswordMismatch,
   UserCanceledSignIn,
   SessionAlreadyExists,
-  AppIdNotValid
+  AppIdNotValid,
+  UserNotSignedIn
 }

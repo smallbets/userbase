@@ -135,10 +135,10 @@ class Connection {
       }
 
       ws.onerror = () => {
-        this.close()
         if (!this.connected) {
           reject(new WebSocketError('WebSocket error'))
         }
+        this.close()
       }
 
       ws.onclose = () => {
@@ -316,9 +316,7 @@ class Connection {
     const params = { sessionId }
     await this.request(action, params)
 
-    const session = { username: this.username, signedIn: false }
     this.close()
-    return session
   }
 
   async setKeys(seedString) {
