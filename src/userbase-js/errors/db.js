@@ -50,16 +50,6 @@ class DatabaseAlreadyOpening extends Error {
   }
 }
 
-class SessionNotConnected extends Error {
-  constructor(...params) {
-    super(...params)
-
-    this.name = 'SessionNotConnected'
-    this.message = 'Session not connected yet. Please sign in.'
-    this.status = statusCodes['Bad Request']
-  }
-}
-
 class KeyNotFound extends Error {
   constructor(...params) {
     super(...params)
@@ -86,7 +76,6 @@ export default {
   DatabaseNameTooLong,
   DatabaseAlreadyOpen,
   DatabaseAlreadyOpening,
-  SessionNotConnected,
   KeyNotFound,
   ChangeHandlerMustBeFunction
 }

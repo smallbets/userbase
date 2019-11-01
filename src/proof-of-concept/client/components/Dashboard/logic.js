@@ -39,8 +39,8 @@ const deleteTodo = async (username, todo, handleRemoveUserAuthentication) => {
 
 const toggleTodo = async (username, todo, handleRemoveUserAuthentication) => {
   try {
-    const markingComplete = !todo.record.completed
-    await userbase.update(getDbName(username), { todo: todo.record.todo, completed: markingComplete }, todo.itemId)
+    const markingComplete = !todo.item.completed
+    await userbase.update(getDbName(username), { todo: todo.item.todo, completed: markingComplete }, todo.itemId)
   } catch (e) {
     _errorHandler(e, 'toggle todos', handleRemoveUserAuthentication)
   }
@@ -48,7 +48,7 @@ const toggleTodo = async (username, todo, handleRemoveUserAuthentication) => {
 
 const updateTodo = async (username, todo, newTodoInput, handleRemoveUserAuthentication) => {
   try {
-    await userbase.update(getDbName(username), { todo: newTodoInput, completed: todo.record.completed }, todo.itemId)
+    await userbase.update(getDbName(username), { todo: newTodoInput, completed: todo.item.completed }, todo.itemId)
   } catch (e) {
     _errorHandler(e, 'update todo', handleRemoveUserAuthentication)
   }

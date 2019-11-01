@@ -14,7 +14,7 @@ const wsNotOpen = 'Web Socket not open'
 const dbNotOpen = 'Database not open'
 const keyNotFound = 'Key not found'
 
-const MAX_DB_NAME_CHAR_LENGTH = 100
+const MAX_DB_NAME_CHAR_LENGTH = 50
 
 const _parseGenericErrors = (e) => {
   if (e.response) {
@@ -323,7 +323,7 @@ class Database {
     for (let i = 0; i < this.itemsIndex.array.length; i++) {
       const itemId = this.itemsIndex.array[i].itemId
       const record = this.items[itemId].record
-      result.push({ itemId, record })
+      result.push({ itemId, item: record })
     }
     return result
   }
@@ -407,7 +407,7 @@ const _validateDbInput = (dbName, changeHandler) => {
 
   if (changeHandler && typeof changeHandler !== 'function') throw new errors.ChangeHandlerMustBeFunction
 
-  if (!ws.connected) throw new errors.SessionNotConnected
+  if (!ws.connected) throw new errors.UserNotSignedIn
   if (!ws.keys.init) throw new errors.KeyNotFound
 }
 
@@ -432,10 +432,10 @@ const openDatabase = async (dbName, changeHandler = () => { }) => {
       case 'DatabaseAlreadyOpen':
       case 'DatabaseAlreadyOpening':
       case 'DatabaseNameCannotBeBlank':
-      case 'DatabaseNameMustBeString':
       case 'DatabaseNameTooLong':
+      case 'DatabaseNameMustBeString':
       case 'ChangeHandlerMustBeFunction':
-      case 'SessionNotConnected':
+      case 'UserNotSignedIn':
       case 'KeyNotFound':
       case 'AppIdNotSet':
       case 'AppIdNotValid':

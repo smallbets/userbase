@@ -101,12 +101,12 @@ class UserCanceledSignIn extends Error {
   }
 }
 
-class SessionAlreadyExists extends Error {
+class UserAlreadySignedIn extends Error {
   constructor(username, ...params) {
     super(...params)
 
-    this.name = 'SessionAlreadyExists'
-    this.message = 'Session already exists.'
+    this.name = 'UserAlreadySignedIn'
+    this.message = 'User already signed in.'
     this.status = statusCodes['Bad Request']
     this.username = username
   }
@@ -144,7 +144,7 @@ export default {
   PasswordMustBeString,
   UsernameOrPasswordMismatch,
   UserCanceledSignIn,
-  SessionAlreadyExists,
+  UserAlreadySignedIn,
   AppIdNotValid,
   UserNotSignedIn
 }

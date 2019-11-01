@@ -30,7 +30,7 @@ const _connectWebSocket = async (appId, sessionId, username, seed, signingUp) =>
     _parseGenericErrors(e)
 
     if (e.message === 'Web Socket already connected') {
-      throw new errors.SessionAlreadyExists(e.username)
+      throw new errors.UserAlreadySignedIn(e.username)
     } else if (e.message === 'Canceled') {
       throw new errors.UserCanceledSignIn('Canceled', e.username)
     }
@@ -125,7 +125,7 @@ const signUp = async (username, password) => {
       case 'PasswordTooLong':
       case 'AppIdNotSet':
       case 'AppIdNotValid':
-      case 'SessionAlreadyExists':
+      case 'UserAlreadySignedIn':
       case 'ServiceUnavailable':
         throw e
 
@@ -206,7 +206,7 @@ const signIn = async (username, password) => {
       case 'PasswordMustBeString':
       case 'AppIdNotSet':
       case 'AppIdNotValid':
-      case 'SessionAlreadyExists':
+      case 'UserAlreadySignedIn':
       case 'UserCanceledSignIn':
       case 'ServiceUnavailable':
         throw e
@@ -254,7 +254,7 @@ const signInWithSession = async () => {
     switch (e.name) {
       case 'AppIdNotSet':
       case 'AppIdNotValid':
-      case 'SessionAlreadyExists':
+      case 'UserAlreadySignedIn':
       case 'UserCanceledSignIn':
       case 'ServiceUnavailable':
         throw e
