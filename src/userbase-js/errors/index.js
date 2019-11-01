@@ -12,16 +12,6 @@ class AppIdNotSet extends Error {
   }
 }
 
-class InternalServerError extends Error {
-  constructor(...params) {
-    super(...params)
-
-    this.name = 'InternalServerError'
-    this.message = 'Internal server error. Please contact support for help.'
-    this.status = statusCodes['Internal Server Error']
-  }
-}
-
 class ServiceUnavailable extends Error {
   constructor(...params) {
     super(...params)
@@ -32,12 +22,18 @@ class ServiceUnavailable extends Error {
   }
 }
 
-class Timeout extends Error {
+class InternalServerError extends ServiceUnavailable {
   constructor(...params) {
     super(...params)
 
-    this.name = 'Timeout'
-    this.message = 'Request timed out. Please try again.'
+    this.status = statusCodes['Internal Server Error']
+  }
+}
+
+class Timeout extends ServiceUnavailable {
+  constructor(...params) {
+    super(...params)
+
     this.status = statusCodes['Gateway Timeout']
   }
 }

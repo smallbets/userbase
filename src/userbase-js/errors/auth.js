@@ -133,23 +133,23 @@ class UserNotSignedIn extends Error {
   }
 }
 
-class InvalidSession extends Error {
+class SessionInvalid extends Error {
   constructor(username, ...params) {
     super(...params)
 
-    this.name = 'InvalidSession'
-    this.message = 'Invalid session.'
+    this.name = 'SessionInvalid'
+    this.message = 'Session invalid.'
     this.status = statusCodes['Unauthorized']
     this.username = username
   }
 }
 
-class InvalidAppId extends Error {
+class AppIdInvalid extends Error {
   constructor(status, username, ...params) {
     super(...params)
 
-    this.name = 'InvalidAppId'
-    this.message = 'Invalid app ID.'
+    this.name = 'AppIdInvalid'
+    this.message = 'App ID invalid.'
     this.status = status
     this.username = username
   }
@@ -169,6 +169,6 @@ export default {
   SessionAlreadyExists,
   NoSessionAvailable,
   UserNotSignedIn,
-  InvalidSession,
-  InvalidAppId
+  SessionInvalid,
+  AppIdInvalid
 }

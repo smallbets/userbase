@@ -340,8 +340,8 @@ class Connection {
     this.keys.init = true
 
     if (!this.signingUp) {
-      this.getRequestsForSeed()
-      this.getDatabaseAccessGrants()
+      await this.getRequestsForSeed()
+      await this.getDatabaseAccessGrants()
     }
 
     this.resolveConnection(seedString)

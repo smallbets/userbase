@@ -10,8 +10,8 @@ import statusCodes from './statusCodes'
 
 const _parseGenericErrors = (e) => {
   if (e.response) {
-    if (e.response.data === 'Invalid app ID') {
-      throw new errors.InvalidAppId(e.response.status)
+    if (e.response.data === 'App ID invalid') {
+      throw new errors.AppIdInvalid(e.response.status)
     } else if (e.response.status === statusCodes['Internal Server Error']) {
       throw new errors.InternalServerError
     } else if (e.response.status === statusCodes['Gateway Timeout']) {
@@ -47,18 +47,6 @@ const _validateSignUpOrSignInInput = (username, password) => {
   if (typeof password !== 'string') throw new errors.PasswordMustBeString
 }
 
-const _parseGenericUsernameAndPasswordErrors = (e) => {
-  if (e.response) {
-    if (e.response.data.error === 'UsernameTooLong') {
-      throw new errors.UsernameTooLong(e.response.data.maxLength)
-    } else if (e.response.data.error === 'PasswordTooShort') {
-      throw new errors.PasswordTooShort(e.response.data.minLength)
-    } else if (e.response.data.error === 'PasswordTooLong') {
-      throw new errors.PasswordTooLong(e.response.data.maxLength)
-    }
-  }
-}
-
 const _generateKeysAndSignUp = async (username, password, seed) => {
   const masterKey = await crypto.hkdf.importMasterKey(seed)
 
@@ -81,10 +69,17 @@ const _generateKeysAndSignUp = async (username, password, seed) => {
     return session
   } catch (e) {
     _parseGenericErrors(e)
-    _parseGenericUsernameAndPasswordErrors(e)
 
-    if (e.response && e.response.status === statusCodes['Conflict']) {
-      throw new errors.UsernameAlreadyExists(username)
+    if (e.response) {
+      if (e.response.status === statusCodes['Conflict']) {
+        throw new errors.UsernameAlreadyExists(username)
+      } else if (e.response.data.error === 'UsernameTooLong') {
+        throw new errors.UsernameTooLong(e.response.data.maxLength)
+      } else if (e.response.data.error === 'PasswordTooShort') {
+        throw new errors.PasswordTooShort(e.response.data.minLength)
+      } else if (e.response.data.error === 'PasswordTooLong') {
+        throw new errors.PasswordTooLong(e.response.data.maxLength)
+      }
     }
 
     throw e
@@ -92,25 +87,46 @@ const _generateKeysAndSignUp = async (username, password, seed) => {
 }
 
 const signUp = async (username, password) => {
-  _validateSignUpOrSignInInput(username, password)
+  try {
+    _validateSignUpOrSignInInput(username, password)
 
-  const appId = config.getAppId()
-  const lowerCaseUsername = username.toLowerCase()
-  const seed = await crypto.generateSeed()
+    const appId = config.getAppId()
+    const lowerCaseUsername = username.toLowerCase()
+    const seed = await crypto.generateSeed()
 
-  const session = await _generateKeysAndSignUp(lowerCaseUsername, password, seed)
-  const { sessionId, creationDate } = session
+    const session = await _generateKeysAndSignUp(lowerCaseUsername, password, seed)
+    const { sessionId, creationDate } = session
 
-  const seedString = base64.encode(seed)
-  // Warning: if user hits the sign up button twice,
-  // it's possible the seed will be overwritten here and will be lost
-  localData.saveSeedString(lowerCaseUsername, seedString)
+    const seedString = base64.encode(seed)
+    // Warning: if user hits the sign up button twice,
+    // it's possible the seed will be overwritten here and will be lost
+    localData.saveSeedString(lowerCaseUsername, seedString)
 
-  localData.signInSession(lowerCaseUsername, sessionId, creationDate)
+    localData.signInSession(lowerCaseUsername, sessionId, creationDate)
 
-  const signingUp = true
-  await _connectWebSocket(appId, sessionId, lowerCaseUsername, seedString, signingUp)
-  return { username: lowerCaseUsername, seed: seedString, signedIn: true, creationDate }
+    const signingUp = true
+    await _connectWebSocket(appId, sessionId, lowerCaseUsername, seedString, signingUp)
+    return { username: lowerCaseUsername, seed: seedString, signedIn: true, creationDate }
+  } catch (e) {
+
+    switch (e.name) {
+      case 'UsernameAlreadyExists':
+      case 'UsernameCannotBeBlank':
+      case 'UsernameTooLong':
+      case 'PasswordCannotBeBlank':
+      case 'PasswordTooShort':
+      case 'PasswordTooLong':
+      case 'AppIdNotSet':
+      case 'AppIdInvalid':
+      case 'SessionAlreadyExists':
+      case 'ServiceUnavailable':
+        throw e
+
+      default:
+        throw new errors.ServiceUnavailable
+    }
+
+  }
 }
 
 const signOut = async () => {
@@ -119,7 +135,7 @@ const signOut = async () => {
     return session
   } catch (e) {
     _parseGenericErrors(e)
-    throw e
+    throw new errors.ServiceUnavailable
   }
 }
 
@@ -129,7 +145,6 @@ const _signInWrapper = async (username, password) => {
     return session
   } catch (e) {
     _parseGenericErrors(e)
-    _parseGenericUsernameAndPasswordErrors(e)
 
     if (e.response && e.response.data === 'Invalid password') {
       throw new errors.UsernameOrPasswordMismatch
@@ -140,21 +155,40 @@ const _signInWrapper = async (username, password) => {
 }
 
 const signIn = async (username, password) => {
-  _validateSignUpOrSignInInput(username, password)
+  try {
+    _validateSignUpOrSignInInput(username, password)
 
-  const appId = config.getAppId()
+    const appId = config.getAppId()
 
-  const lowerCaseUsername = username.toLowerCase()
+    const lowerCaseUsername = username.toLowerCase()
 
-  const session = await _signInWrapper(lowerCaseUsername, password)
-  const { sessionId, creationDate } = session
+    const session = await _signInWrapper(lowerCaseUsername, password)
+    const { sessionId, creationDate } = session
 
-  localData.signInSession(lowerCaseUsername, sessionId, creationDate)
+    localData.signInSession(lowerCaseUsername, sessionId, creationDate)
 
-  const savedSeedString = localData.getSeedString(lowerCaseUsername) // might be null if does not have seed saved
+    const savedSeedString = localData.getSeedString(lowerCaseUsername) // might be null if does not have seed saved
 
-  const seedString = await _connectWebSocket(appId, sessionId, username, savedSeedString)
-  return { username: lowerCaseUsername, seed: seedString, signedIn: true, creationDate }
+    const seedString = await _connectWebSocket(appId, sessionId, username, savedSeedString)
+    return { username: lowerCaseUsername, seed: seedString, signedIn: true, creationDate }
+  } catch (e) {
+
+    switch (e.name) {
+      case 'UsernameOrPasswordMismatch':
+      case 'UsernameCannotBeBlank':
+      case 'PasswordCannotBeBlank':
+      case 'AppIdNotSet':
+      case 'AppIdInvalid':
+      case 'SessionAlreadyExists':
+      case 'UserCanceledSignIn':
+      case 'ServiceUnavailable':
+        throw e
+
+      default:
+        throw new errors.ServiceUnavailable
+    }
+
+  }
 }
 
 const getLastUsedUsername = () => {
@@ -164,30 +198,49 @@ const getLastUsedUsername = () => {
 }
 
 const signInWithSession = async () => {
-  const appId = config.getAppId()
-
-  const currentSession = localData.getCurrentSession()
-  if (!currentSession) throw new errors.NoSessionAvailable
-
-  const { signedIn, username, sessionId, creationDate } = currentSession
-  if (!signedIn) throw new errors.UserNotSignedIn(username)
-
-  let extendedDate
   try {
-    extendedDate = await api.auth.signInWithSession(sessionId)
-  } catch (e) {
-    _parseGenericErrors(e)
+    const appId = config.getAppId()
 
-    if (e.response && e.response.data === 'Invalid session') {
-      throw new errors.InvalidSession(username)
+    const currentSession = localData.getCurrentSession()
+    if (!currentSession) throw new errors.NoSessionAvailable
+
+    const { signedIn, username, sessionId, creationDate } = currentSession
+    if (!signedIn) throw new errors.UserNotSignedIn(username)
+
+    let extendedDate
+    try {
+      extendedDate = await api.auth.signInWithSession(sessionId)
+    } catch (e) {
+      _parseGenericErrors(e)
+
+      if (e.response && e.response.data === 'Session invalid') {
+        throw new errors.SessionInvalid(username)
+      }
+
+      throw e
     }
 
-    throw e
-  }
+    const savedSeedString = localData.getSeedString(username) // might be null if does not have seed saved
+    const seedString = await _connectWebSocket(appId, sessionId, username, savedSeedString)
+    return { username, seed: seedString, signedIn: true, creationDate, extendedDate }
+  } catch (e) {
 
-  const savedSeedString = localData.getSeedString(username) // might be null if does not have seed saved
-  const seedString = await _connectWebSocket(appId, sessionId, username, savedSeedString)
-  return { username, seed: seedString, signedIn: true, creationDate, extendedDate }
+    switch (e.name) {
+      case 'NoSessionAvailable':
+      case 'UserNotSignedIn':
+      case 'SessionInvalid':
+      case 'AppIdNotSet':
+      case 'AppIdInvalid':
+      case 'SessionAlreadyExists':
+      case 'UserCanceledSignIn':
+      case 'ServiceUnavailable':
+        throw e
+
+      default:
+        throw new errors.ServiceUnavailable
+    }
+
+  }
 }
 
 const grantDatabaseAccess = async (dbName, username, readOnly) => {

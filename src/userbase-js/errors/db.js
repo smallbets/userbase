@@ -40,11 +40,11 @@ class DatabaseAlreadyOpen extends Error {
   }
 }
 
-class AlreadyOpeningDatabase extends Error {
+class DatabaseAlreadyOpening extends Error {
   constructor(...params) {
     super(...params)
 
-    this.name = 'AlreadyOpeningDatabase'
+    this.name = 'DatabaseAlreadyOpening'
     this.message = 'Already attempting to open database.'
     this.status = statusCodes['Bad Request']
   }
@@ -85,7 +85,7 @@ export default {
   DatabaseNameMustBeString,
   DatabaseNameTooLong,
   DatabaseAlreadyOpen,
-  AlreadyOpeningDatabase,
+  DatabaseAlreadyOpening,
   SessionNotConnected,
   KeyNotFound,
   ChangeHandlerMustBeFunction
