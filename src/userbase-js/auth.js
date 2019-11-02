@@ -120,9 +120,9 @@ const signUp = async (username, password) => {
       case 'UsernameMustBeString':
       case 'UsernameTooLong':
       case 'PasswordCannotBeBlank':
-      case 'PasswordMustBeString':
       case 'PasswordTooShort':
       case 'PasswordTooLong':
+      case 'PasswordMustBeString':
       case 'AppIdNotSet':
       case 'AppIdNotValid':
       case 'UserAlreadySignedIn':

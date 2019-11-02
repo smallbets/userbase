@@ -412,8 +412,7 @@ const _validateDbInput = (dbName) => {
   if (typeof dbName !== 'string') throw new errors.DatabaseNameMustBeString
   if (dbName.length > MAX_DB_NAME_CHAR_LENGTH) throw new errors.DatabaseNameTooLong(MAX_DB_NAME_CHAR_LENGTH)
 
-  if (!ws.connected) throw new errors.UserNotSignedIn
-  if (!ws.keys.init) throw new errors.KeyNotFound
+  if (!ws.keys.init) throw new errors.UserNotSignedIn
 }
 
 const openDatabase = async (dbName, changeHandler) => {
@@ -439,7 +438,6 @@ const openDatabase = async (dbName, changeHandler) => {
       case 'ChangeHandlerMissing':
       case 'ChangeHandlerMustBeFunction':
       case 'UserNotSignedIn':
-      case 'KeyNotFound':
       case 'ServiceUnavailable':
         throw e
 
@@ -485,7 +483,6 @@ const insert = async (dbName, item, id) => {
       case 'ItemTooLarge':
       case 'ItemAlreadyExists':
       case 'UserNotSignedIn':
-      case 'KeyNotFound':
       case 'ServiceUnavailable':
         throw e
 
@@ -534,11 +531,10 @@ const update = async (dbName, item, id) => {
       case 'ItemIdTooLong':
       case 'ItemIdMustBeString':
       case 'ItemMissing':
-      case 'ItemDoesNotExist':
       case 'ItemTooLarge':
+      case 'ItemDoesNotExist':
       case 'ItemUpdateConflict':
       case 'UserNotSignedIn':
-      case 'KeyNotFound':
       case 'ServiceUnavailable':
         throw e
 
@@ -591,7 +587,6 @@ const delete_ = async (dbName, itemId) => {
       case 'ItemDoesNotExist':
       case 'ItemUpdateConflict':
       case 'UserNotSignedIn':
-      case 'KeyNotFound':
       case 'ServiceUnavailable':
         throw e
 
@@ -683,7 +678,6 @@ const transaction = async (dbName, operations) => {
       case 'ItemDoesNotExist':
       case 'ItemUpdateConflict':
       case 'UserNotSignedIn':
-      case 'KeyNotFound':
       case 'ServiceUnavailable':
         throw e
 

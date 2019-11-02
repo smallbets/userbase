@@ -50,16 +50,6 @@ class DatabaseAlreadyOpening extends Error {
   }
 }
 
-class KeyNotFound extends Error {
-  constructor(...params) {
-    super(...params)
-
-    this.name = 'KeyNotFound'
-    this.message = 'Key not found.'
-    this.status = statusCodes['Bad Request']
-  }
-}
-
 class ChangeHandlerMissing extends Error {
   constructor(...params) {
     super(...params)
@@ -216,7 +206,6 @@ export default {
   DatabaseNameTooLong,
   DatabaseAlreadyOpen,
   DatabaseAlreadyOpening,
-  KeyNotFound,
   ChangeHandlerMissing,
   ChangeHandlerMustBeFunction,
   DatabaseNotOpen,
