@@ -1,6 +1,9 @@
 const path = require('path')
+const packageJson = require('./package.json')
 
 module.exports = () => {
+
+  const version = packageJson.version
 
   return {
     entry: {
@@ -8,7 +11,7 @@ module.exports = () => {
     },
     output: {
       path: path.join(__dirname, '../../build/script/'),
-      filename: 'userbase.js'
+      filename: `userbase-${version}.js`
     },
     target: 'web',
     devtool: 'source-map',
