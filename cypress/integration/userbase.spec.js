@@ -8,12 +8,12 @@ describe('Configure the env', function () {
   })
   it('Load userbase js', function () {
     cy.window().then((win) => {
-      expect(win.userbase).to.exists
+      expect(win.userbase).to.exist
     })
   })
 
-
   let database = []
+  let sess = {}
   const databaseChange = function (items) {
     // clear the database variable
     database = []
@@ -43,19 +43,33 @@ describe('Configure the env', function () {
   // })
   it('Fill the database', function () {
     let info = {}
+
     cy.getLoginInfo().then( (loginInfo) => {
       info = loginInfo
     })
 
     cy.window().then((win) => {
       cy.signup(win.userbase).then((session) => {
-        cy.log(session)
-        cy.log('loginInfo.password: ', info.password)
+        cy.log('session:', session)
+        sess = session
+        // cy.wait(3000)
         return win.userbase.openDatabase(info.db, databaseChange)
         })
       })
     })
+  it('Sign in', function () {
+    let info = {}
+    cy.getLoginInfo().then((loginInfo) => {
+      info = loginInfo
+    })
+    cy.window().then( (win) => {
+      win.userbase.configure({ appId: info.appId })
+      cy.log('sess: ', sess)
+      cy.wait(2000)
+      win.userbase.signIn(info.username, info.password).then()
+    })
   })
+})
 
   // return win.userbase.signIn(username, password).then( (session) => {
   //   expect(true).to.be.false
