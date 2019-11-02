@@ -23,3 +23,27 @@
 //
 // -- This will overwrite an existing command --
 // Cypress.Commands.overwrite("visit", (originalFn, url, options) => { ... })
+
+const randomString = function () { return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15) }
+const username = randomString() + "-user"
+const password = randomString() + "-pass"
+const appId = 'a43ae910-fc89-43fe-a7a3-a11a53b49325'
+const dbName = 'test'
+
+Cypress.Commands.add("getLoginInfo", () => {
+  const loginInfo = {
+    'username': username,
+    'password': password,
+    'appId': appId,
+    'db': dbName
+  }
+  cy.log('in caommand logininfo:', loginInfo)
+  cy.wrap(loginInfo)
+})
+
+Cypress.Commands.add("signup", (userbase) => {
+  userbase.configure({ appId: appId })
+  cy.log('userbase:', userbase)
+  // let signUpInfo = {}
+  cy.wrap(userbase.signUp(username, password))
+})

@@ -4,7 +4,7 @@ describe('Configure the env', function () {
   beforeEach(() => {
     cy.visit('./cypress/integration/index.html');
     cy.window().should('have.property', 'userbase')
-    cy.wait(200);
+    cy.wait(200)
   })
   it('Load userbase js', function () {
     cy.window().then((win) => {
@@ -12,23 +12,51 @@ describe('Configure the env', function () {
     })
   })
 
-  describe('Configure the datababase', function () {
-    it('reload userbase', function () {
-      cy.window().then((win) => {
-        win.userbase.configure({ appId: 'a43ae910-fc89-43fe-a7a3-a11a53b49325' });
-        cy.log(win.userbase);
-        const randomString = function () { return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15) }
-        const username = randomString() + "-user"
-        const password = randomString() + "-pass"
-        win.userbase.signUp(username, password)
-          .then((session) => {
-            // verify the session
-            expect(session.username).not.to.be.undefined;
-            expect(session.username).to.equal(false);
-            expect(session.signedIn).to.be.true;
-            assert.isString(session.seed, 'seed should not be empty')
-          })
+
+  let database = []
+  const databaseChange = function (items) {
+    // clear the database variable
+    database = []
+
+    // copy all the iterms to the database
+    for (let i = 0; i < items.length; i++) {
+      database.push(items[i])
+    }
+  }
+
+
+
+  // it('Signup the user', function () {
+  //   const loginInfo = cy.getLoginInfo()
+  //   cy.window().then((win) => {
+  //     win.userbase.configure({ appId: 'a43ae910-fc89-43fe-a7a3-a11a53b49325' })
+  //     cy.log(win.userbase)
+  //     return win.userbase.signUp(loginInfo.username, loginInfo.password)
+  //       .then((session) => {
+  //         expect(session.username, 'session.username').not.to.be.undefined
+  //         expect(session.username, 'session.username to be equal to username').to.equal(loginInfo.username)
+  //         expect(session.signedIn, 'user has to be signed in').to.be.true
+  //         expect(session.seed, 'seed should not be empty').not.to.be.empty
+  //         return win.userbase.openDatabase('test', databaseChange)
+  //       })
+  //   })
+  // })
+  it('Fill the database', function () {
+    let info = {}
+    cy.getLoginInfo().then( (loginInfo) => {
+      info = loginInfo
+    })
+
+    cy.window().then((win) => {
+      cy.signup(win.userbase).then((session) => {
+        cy.log(session)
+        cy.log('loginInfo.password: ', info.password)
+        return win.userbase.openDatabase(info.db, databaseChange)
+        })
       })
     })
   })
-})
+
+  // return win.userbase.signIn(username, password).then( (session) => {
+  //   expect(true).to.be.false
+      // return win.userbase.openDatabase('test', databaseChange).then(() => { expect(true).to.be.false } )
