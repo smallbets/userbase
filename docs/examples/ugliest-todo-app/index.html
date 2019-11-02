@@ -2,191 +2,184 @@
 <html lang="en">
 
 <head>
-  <title>Ugliest To-Do App</title>
-  <script type="text/javascript" src="https://userbase-public.s3-us-west-2.amazonaws.com/userbase-js/userbase.js"></script>
-  <script type="text/javascript">
-    userbase.configure({ appId: 'a43ae910-fc89-43fe-a7a3-a11a53b49325' })
-  </script>
+  <meta charset="UTF-8">
+  <title>Ugliest To-Do</title>
+  <script type="text/javascript" src="https://sdk.userbase.dev/userbase-0.0.5.js"></script>
 </head>
 
 <body>
-  <!-- Login / New Account Panel -->
-  <div id="account-form">
-    <div>
-      <h1>Login</h1>
-      <form onsubmit="login(event)">
-        <input id="login-email" type="email" required placeholder="Email">
-        <input id="login-password" type="password" required placeholder="Password">
-        <input type="submit" value="Login">
-      </form>
-      <div id="login-error"></div>
-    </div>
+  <!-- Loading View -->
+  <div id="loading-view">Loading...</div>
 
-    <div>
-      <h1>Create Account</h1>
-      <form onsubmit="createAccount(event)">
-        <input id="create-email" type="email" required placeholder="Email">
-        <input id="create-password" type="password" required placeholder="Password">
-        <input type="submit" value="Create Account">
-      </form>
-      <div id="create-error"></div>
-    </div>
+  <!-- Auth View -->
+  <div id="auth-view">
+    <h1>Login</h1>
+    <form id="login-form">
+      <input id="login-username" type="text" required placeholder="Username">
+      <input id="login-password" type="password" required placeholder="Password">
+      <input type="submit" value="Sign in">
+    </form>
+    <div id="login-error"></div>
+
+    <h1>Create an account</h1>
+    <form id="signup-form">
+      <input id="signup-username" type="text" required placeholder="Username">
+      <input id="signup-password" type="password" required placeholder="Password">
+      <input type="submit" value="Create an account">
+    </form>
+    <div id="signup-error"></div>
   </div>
 
-  <!-- To-do List -->
-  <div id="todo-list">
-    <div>
-      <label id="email"></label>
-      <input type="button" value="Logout" onclick="logout()">
-      <div id="logout-error"></div>
-    </div>
+  <!-- To-dos View -->
+  <div id="todo-view">
+    <span id="username"></span>
+    <input type="button" value="Logout" id="logout-button">
+    <div id="logout-error"></div>
 
-    <h1>To-dos</h1>
-
+    <h1>To-Do List</h1>
     <div id="todos"></div>
+    <div id="db-loading">Loading to-dos...</div>
+    <div id="db-error"></div>
 
-    <form onsubmit="addTodo(event)">
-      <input id="new-todo" type="text" required placeholder="New to-do">
+    <form id="add-todo-form">
+      <input id="add-todo" type="text" required placeholder="To-Do">
       <input type="submit" value="Add">
     </form>
     <div id="add-todo-error"></div>
   </div>
 
+  <!-- application code -->
   <script type="text/javascript">
-    // hide everything initially
-    document.getElementById('account-form').style.display = 'none'
-    document.getElementById('todo-list').style.display = 'none'
+    userbase.configure({ appId: 'c2d2bd2a-1cbe-46e6-aa5c-c768b200b706' })
 
-    // check if there's an existing session cookie, and validate it
-    var placeholderUsername = userbase.getLastUsedUsername()
-    if (placeholderUsername) {
-      document.getElementById('login-email').value = placeholderUsername
-      userbase.signInWithSession()
-        .then((session) => openDatabase(session))
-        .catch((e) => showLoginAndNewAccountForm(e.username))
-    } else {
-      showLoginAndNewAccountForm()
-    }
-
-    function showLoginAndNewAccountForm(username) {
-      if (username) document.getElementById('login-email').value = username
-      document.getElementById('account-form').style.display = 'block'
-      document.getElementById('todo-list').style.display = 'none'
-    }
-
-    // login handler
-    function login(e) {
-      preventFormSubmit(e)
-
-      const username = document.getElementById('login-email').value
-      const password = document.getElementById('login-password').value
-
-      userbase.signIn(username, password)
-        .then((session) => openDatabase(session))
-        .catch((e) => document.getElementById('login-error').innerHTML = e)
-    }
-
-    // new account handler
-    function createAccount(e) {
-      preventFormSubmit(e)
-
-      const username = document.getElementById('create-email').value
-      const password = document.getElementById('create-password').value
-
-      userbase.signUp(username, password)
-        .then((session) => openDatabase(session))
-        .catch((e) => document.getElementById('create-error').innerHTML = e)
-    }
-
-    // logout handler
-    function logout() {
+    function handleLogout() {
       userbase.signOut()
-        .then((session) => showLoginAndNewAccountForm(session.username))
-        .catch((e) => document.getElementById('logout-error').innerHTML = e)
+        .then(() => showAuth())
+        .catch((e) => document.getElementById('logout-error').innerText = e)
     }
 
-    // add a to-do item handler
-    function addTodo(e) {
-      preventFormSubmit(e)
+    function showTodos(username) {
+      document.getElementById('auth-view').style.display = 'none'
+      document.getElementById('todo-view').style.display = 'block'
 
-      const todo = document.getElementById('new-todo').value
+      // reset the todos view
+      document.getElementById('username').innerHTML = username
+      document.getElementById('todos').innerText = ''
+      document.getElementById('db-loading').style.display = 'block'
+      document.getElementById('db-error').innerText = ''
 
-      userbase.insert('todos', { 'todo': todo }, Date.now())
-        .then(() => document.getElementById('new-todo').value = '')
-        .catch((e) => document.getElementById('add-todo-error').innerHTML = e)
+      userbase.openDatabase('todos', handleDatabaseChange)
+        .catch((e) => document.getElementById('db-error').innerText = e)
     }
 
-    // this renders the to-do list whenever the database gets updated
-    function databaseChange(items) {
+    function showAuth() {
+      document.getElementById('todo-view').style.display = 'none'
+      document.getElementById('auth-view').style.display = 'block'
+      document.getElementById('login-username').value = ''
+      document.getElementById('login-password').value = ''
+      document.getElementById('login-error').innerText = ''
+      document.getElementById('signup-username').value = ''
+      document.getElementById('signup-password').value = ''
+      document.getElementById('signup-error').innerText = ''
+    }
+
+    function handleDatabaseChange(items) {
+      document.getElementById('db-loading').style.display = 'none'
+
       const todosList = document.getElementById('todos')
 
-      // clear the list
-      todosList.innerHTML = ''
+      if (items.length === 0) {
+        todosList.innerText = 'Empty'
+      } else {
+        // clear the list
+        todosList.innerHTML = ''
 
-      // render all the to-do items
-      for (let i = 0; i < items.length; i++) {
+        // render all the to-do items
+        for (let i = 0; i < items.length; i++) {
 
-        // build the todo delete button
-        const todoDelete = document.createElement('button')
-        todoDelete.innerHTML = 'X'
-        todoDelete.style.display = 'inline-block'
-        todoDelete.onclick = () => {
-          userbase.delete('todos', items[i].itemId)
-            .catch((e) => document.getElementById('add-todo-error').innerHTML = e)
+          // build the todo delete button
+          const todoDelete = document.createElement('button')
+          todoDelete.innerHTML = 'X'
+          todoDelete.style.display = 'inline-block'
+          todoDelete.onclick = () => {
+            userbase.delete('todos', items[i].itemId)
+              .catch((e) => document.getElementById('add-todo-error').innerHTML = e)
+          }
+
+          // build the todo checkbox
+          const todoBox = document.createElement('input')
+          todoBox.type = 'checkbox'
+          todoBox.id = items[i].itemId
+          todoBox.checked = items[i].item.complete ? true : false
+          todoBox.onclick = (e) => {
+            e.preventDefault()
+            userbase.update('todos', {
+              'todo': items[i].item.todo,
+              'complete': !items[i].item.complete
+            }, items[i].itemId)
+              .catch((e) => document.getElementById('add-todo-error').innerHTML = e)
+          }
+
+          // build the todo label
+          const todoLabel = document.createElement('label')
+          todoLabel.innerHTML = items[i].item.todo
+          todoLabel.style.textDecoration = items[i].item.complete ? 'line-through' : 'none'
+
+          // append the todo item to the list
+          const todoItem = document.createElement('div')
+          todoItem.appendChild(todoDelete)
+          todoItem.appendChild(todoBox)
+          todoItem.appendChild(todoLabel)
+          todosList.appendChild(todoItem)
         }
-
-        // build the todo checkbox
-        const todoBox = document.createElement('input')
-        todoBox.type = 'checkbox'
-        todoBox.id = items[i].itemId
-        todoBox.checked = items[i].record.complete ? true : false
-        todoBox.onclick = (e) => {
-          e.preventDefault()
-
-          userbase.update('todos', { 'todo': items[i].record.todo, 'complete': !items[i].record.complete }, items[i].itemId)
-            .catch((e) => document.getElementById('add-todo-error').innerHTML = e)
-        }
-
-        // build the todo label
-        const todoLabel = document.createElement('label')
-        todoLabel.innerHTML = items[i].record.todo
-        todoLabel.style.textDecoration = items[i].record.complete ? 'line-through' : 'none'
-
-        // append the todo item to the list
-        const todoItem = document.createElement('div')
-        todoItem.appendChild(todoDelete)
-        todoItem.appendChild(todoBox)
-        todoItem.appendChild(todoLabel)
-        todosList.appendChild(todoItem)
       }
     }
 
-    // opens the database and listens to changes
-    function openDatabase(session) {
-      // set the database change listener
-      userbase.openDatabase('todos', databaseChange)
-        .then(() => {
-          // show the todo list once the database is open, and clear everything else
-          document.getElementById('email').innerHTML = session.username
-          document.getElementById('account-form').style.display = 'none'
-          document.getElementById('todo-list').style.display = 'block'
-          document.getElementById('login-email').value = ''
-          document.getElementById('login-password').value = ''
-          document.getElementById('create-email').value = ''
-          document.getElementById('create-password').value = ''
-          document.getElementById('create-error').innerHTML = ''
-          document.getElementById('login-error').innerHTML = ''
-          document.getElementById('new-todo').focus()
-        })
-        .catch((e) => {
-          document.getElementById('create-error').innerHTML = e
-        })
+    function handleLogin(e) {
+      e.preventDefault()
+
+      const username = document.getElementById('login-username').value
+      const password = document.getElementById('login-password').value
+
+      userbase.signIn(username, password)
+        .then((user) => showTodos(user.username))
+        .catch((e) => document.getElementById('login-error').innerHTML = e)
     }
 
-    function preventFormSubmit(e) {
+    function handleSignUp(e) {
       e.preventDefault()
-      if (window.history.replaceState) window.history.replaceState(null, null, window.location.href);
+
+      const username = document.getElementById('signup-username').value
+      const password = document.getElementById('signup-password').value
+
+      userbase.signUp(username, password)
+        .then((user) => showTodos(user.username))
+        .catch((e) => document.getElementById('signup-error').innerHTML = e)
     }
+
+    function addTodoHandler(e) {
+      e.preventDefault()
+
+      const todo = document.getElementById('add-todo').value
+
+      userbase.insert('todos', { 'todo': todo })
+        .then(() => document.getElementById('add-todo').value = '')
+        .catch((e) => document.getElementById('add-todo-error').innerHTML = e)
+    }
+
+    document.getElementById('login-form').addEventListener('submit', handleLogin)
+    document.getElementById('signup-form').addEventListener('submit', handleSignUp)
+    document.getElementById('add-todo-form').addEventListener('submit', addTodoHandler)
+    document.getElementById('logout-button').addEventListener('click', handleLogout)
+    document.getElementById('todo-view').style.display = 'none'
+    document.getElementById('auth-view').style.display = 'none'
+
+    userbase.signInWithSession()
+      .then((session) => session.user ? showTodos(session.user.username) : showAuth())
+      .catch(() => showAuth())
+      .finally(() => document.getElementById('loading-view').style.display = 'none')
 
   </script>
 </body>
+
+</html>
