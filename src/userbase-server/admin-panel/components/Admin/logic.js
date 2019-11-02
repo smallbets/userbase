@@ -21,7 +21,7 @@ const signOutLocalSession = () => {
   localStorage.setItem('adminSession', signedOutSession)
 }
 
-const createAdmin = async (adminName, password, firstName, lastName) => {
+const createAdmin = async (adminName, password, fullName) => {
   try {
     const lowerCaseAdminName = adminName.toLowerCase()
     await axios({
@@ -30,8 +30,7 @@ const createAdmin = async (adminName, password, firstName, lastName) => {
       data: {
         adminName: lowerCaseAdminName,
         password,
-        firstName,
-        lastName
+        fullName
       },
       timeout: TEN_SECONDS_MS
     })
