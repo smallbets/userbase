@@ -47,6 +47,7 @@ describe('Configure the env', function () {
   //   })
   it('Sign in', function () {
       userbase.configure({ appId: info.appId })
+      // user has to be already signed up to login
       cy.log('sess: ', sess)
       userbase.signIn(info.username, info.password).then()
   })
