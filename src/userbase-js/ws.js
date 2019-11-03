@@ -12,10 +12,6 @@ class RequestFailed extends Error {
   constructor(action, response, ...params) {
     super(...params)
 
-    if (Error.captureStackTrace) {
-      Error.captureStackTrace(this, RequestFailed)
-    }
-
     this.name = `RequestFailed: ${action}`
     this.message = response.message || response.data || 'Error'
     this.status = response.status || (response.message === 'timeout' && statusCodes['Gateway Timeout'])
@@ -25,10 +21,6 @@ class RequestFailed extends Error {
 class WebSocketError extends Error {
   constructor(message, username, ...params) {
     super(...params)
-
-    if (Error.captureStackTrace) {
-      Error.captureStackTrace(this, WebSocketError)
-    }
 
     this.name = 'WebSocket error'
     this.message = message
