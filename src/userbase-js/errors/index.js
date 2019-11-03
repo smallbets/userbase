@@ -1,5 +1,6 @@
 import auth from './auth'
 import db from './db'
+import config from './config'
 import statusCodes from '../statusCodes'
 
 class AppIdNotSet extends Error {
@@ -41,6 +42,7 @@ class Timeout extends ServiceUnavailable {
 export default {
   ...auth,
   ...db,
+  ...config,
   AppIdNotSet,
   InternalServerError,
   ServiceUnavailable,
