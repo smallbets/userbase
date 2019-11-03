@@ -396,7 +396,9 @@ const _createDatabase = async (dbName, dbNameHash) => {
     try {
       await ws.request(action, params)
     } catch (e) {
-      if (e.message !== 'Database already exists') {
+      if (e.message === 'Database already creating') {
+        throw new errors.DatabaseAlreadyOpening
+      } else if (e.message !== 'Database already exists') {
         throw e
       }
     }

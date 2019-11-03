@@ -60,6 +60,8 @@ exports.createDatabase = async function (userId, dbNameHash, dbId, encryptedDbNa
   } catch (e) {
     if (e.message && e.message.includes('ConditionalCheckFailed')) {
       return responseBuilder.errorResponse(statusCodes['Conflict'], 'Database already exists')
+    } else if (e.message && e.message.includes('TransactionConflict')) {
+      return responseBuilder.errorResponse(statusCodes['Conflict'], 'Database already creating')
     }
     logger.error(`Failed to create database for user ${userId} with ${e}`)
     return responseBuilder.errorResponse(
@@ -149,7 +151,7 @@ exports.openDatabase = async function (userId, connectionId, dbNameHash) {
       throw new Error(`Unable to open database`)
     }
   } catch (e) {
-    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to create database with ${e}`)
+    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to open database with ${e}`)
   }
 }
 
