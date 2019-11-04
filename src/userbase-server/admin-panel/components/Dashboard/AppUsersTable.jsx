@@ -42,6 +42,7 @@ export default class AppUsersTable extends Component {
                 <thead>
                   <tr>
                     <th className='border border-gray-400 px-4 py-2 text-gray-800'>Username</th>
+                    <th className='border border-gray-400 px-4 py-2 text-gray-800'>Created</th>
                   </tr>
                 </thead>
 
@@ -50,6 +51,7 @@ export default class AppUsersTable extends Component {
                   {appUsers && appUsers.length !== 0 && appUsers.map((user) => (
                     <tr key={user['user-id']}>
                       <td className='border border-gray-400 px-4 py-2 font-light'>{user['username']}</td>
+                      <td className='border border-gray-400 px-4 py-2 font-light'>{user['creation-date']}</td>
                     </tr>
                   ))}
 

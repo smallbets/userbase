@@ -62,16 +62,16 @@ export default class Dashboard extends Component {
                       :
                       <div className='py-2 container flex'>
                         <div
-                          className={todo.record.completed ? 'checkbox-checked fa-check' : 'checkbox fa-check-empty'}
+                          className={todo.item.completed ? 'checkbox-checked fa-check' : 'checkbox fa-check-empty'}
                           onClick={() => this.handleToggleTodo(todo)}
                         />
                         <div
-                          className={todo.record.completed ?
+                          className={todo.item.completed ?
                             'todo-item text-sm xs:text-base line-through text-gray-600' :
                             'todo-item text-sm xs:text-base'}
                           onClick={(e) => this.handleToggleEditTodo(e, todo)}
                         >
-                          {todo.record.todo}
+                          {todo.item.todo}
                         </div>
                       </div>
                     }

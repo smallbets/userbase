@@ -4,18 +4,27 @@ import LZString from 'lz-string'
 import localData from './localData'
 import crypto from './Crypto'
 import { removeProtocolFromEndpoint, getProtocolFromEndpoint } from './utils'
+import statusCodes from './statusCodes'
+
+const wsAlreadyConnected = 'Web Socket already connected'
 
 class RequestFailed extends Error {
-  constructor(action, response, message, ...params) {
+  constructor(action, response, ...params) {
     super(...params)
 
-    if (Error.captureStackTrace) {
-      Error.captureStackTrace(this, RequestFailed)
-    }
+    this.name = `RequestFailed: ${action}`
+    this.message = response.message || response.data || 'Error'
+    this.status = response.status || (response.message === 'timeout' && statusCodes['Gateway Timeout'])
+  }
+}
 
-    this.name = `RequestFailed: ${action} (${response && response.status})`
-    this.message = message || (response && response.data) || 'Error'
-    this.response = response
+class WebSocketError extends Error {
+  constructor(message, username, ...params) {
+    super(...params)
+
+    this.name = 'WebSocket error'
+    this.message = message
+    this.username = username
   }
 }
 
@@ -24,7 +33,7 @@ class Connection {
     this.init()
   }
 
-  init(resolveConnection, username, sessionId, seedString, signingUp) {
+  init(resolveConnection, rejectConnection, username, sessionId, seedString, signingUp) {
     const currentEndpoint = this.endpoint
 
     for (const property of Object.keys(this)) {
@@ -36,6 +45,9 @@ class Connection {
     this.connected = false
 
     this.resolveConnection = resolveConnection
+    this.rejectConnection = rejectConnection
+    this.connectionResolved = false
+
     this.username = username
     this.sessionId = sessionId
     this.seedString = seedString
@@ -58,21 +70,18 @@ class Connection {
     }
   }
 
-  connect(appId, sessionId, username, seedString, signingUp = false) {
-    if (!appId) throw new Error('Missing app ID')
-    if (!sessionId) throw new Error('Missing session ID')
-    if (!username) throw new Error('Missing username')
-    if (this.connected) throw new Error('Web Socket already connected')
+  connect(appId, sessionId, username, seedString = null, signingUp = false) {
+    if (this.connected) throw new WebSocketError(wsAlreadyConnected, this.username)
 
     return new Promise((resolve, reject) => {
-      let connected = false
       let timeout = false
+
       setTimeout(
         () => {
-          if (!connected) {
+          if (!this.connected) {
             timeout = true
             this.close()
-            reject(new Error('timeout'))
+            reject(new WebSocketError('timeout'))
           }
         },
         10000
@@ -86,51 +95,46 @@ class Connection {
       const ws = new WebSocket(url)
 
       ws.onopen = async () => {
-        if (timeout) {
-          this.close()
-          return
-        } else {
-          connected = true
-          this.init(resolve, username, sessionId, seedString, signingUp)
-          this.ws = ws
-          this.connected = connected
+        if (timeout) return
 
-          if (!seedString) {
-            await this.requestSeed(username)
-          }
+        if (this.connected) {
+          this.close()
+          reject(new WebSocketError(wsAlreadyConnected, username))
+          return
+        }
+
+        this.init(resolve, reject, username, sessionId, seedString, signingUp)
+        this.ws = ws
+
+        if (!seedString) {
+          await this.requestSeed(username)
         }
       }
 
       ws.onmessage = async (e) => {
-        if (!connected) return
-        await this.handleMessage(JSON.parse(e.data), resolve)
-      }
+        if (timeout) return
 
-      ws.onerror = () => {
-        if (!connected) {
-          reject(new Error('WebSocket error'))
-        } else {
-          this.close()
+        try {
+          await this.handleMessage(JSON.parse(e.data))
+        } catch (e) {
+          if (!this.connectionResolved) {
+            this.close()
+            reject(new WebSocketError(e.message, username))
+          } else {
+            console.warn('Error handling message: ', e)
+          }
         }
       }
 
-      ws.watch = async (requestId) => {
-        this.requests[requestId] = {}
-
-        const response = await new Promise((resolve, reject) => {
-          this.requests[requestId].promiseResolve = resolve
-          this.requests[requestId].promiseReject = reject
-
-          setTimeout(() => { reject(new Error('timeout')) }, 10000)
-        })
-
-        delete this.requests[requestId]
-
-        return response
+      ws.onerror = () => {
+        if (!this.connected) {
+          reject(new WebSocketError('WebSocket error'))
+        }
+        this.close()
       }
 
       ws.onclose = () => {
-        this.init(this.resolveConnection, this.username, this.sessionId, this.seed, this.signingUp)
+        this.init()
       }
     })
   }
@@ -139,6 +143,8 @@ class Connection {
     const route = message.route
     switch (route) {
       case 'Connection': {
+        this.connected = true
+
         const {
           salts,
           encryptedValidationMessage
@@ -150,6 +156,7 @@ class Connection {
         if (this.seedString) {
           await this.setKeys(this.seedString)
         }
+
         break
       }
 
@@ -253,7 +260,7 @@ class Connection {
       case 'Insert':
       case 'Update':
       case 'Delete':
-      case 'Batch':
+      case 'BatchTransaction':
       case 'Bundle':
       case 'ValidateKey':
       case 'RequestSeed':
@@ -273,7 +280,7 @@ class Connection {
 
         const response = message.response
 
-        const successfulResponse = response && response.status === 200
+        const successfulResponse = response && response.status === statusCodes['Success']
 
         if (!successfulResponse) return request.promiseReject(response)
         else return request.promiseResolve(response)
@@ -289,7 +296,7 @@ class Connection {
   close() {
     this.ws
       ? this.ws.close()
-      : this.init(this.resolveConnection, this.username, this.sessionId, this.seedString, false)
+      : this.init()
   }
 
   async signOut() {
@@ -301,15 +308,13 @@ class Connection {
     const params = { sessionId }
     await this.request(action, params)
 
-    const session = { username: this.username, signedIn: false }
     this.close()
-    return session
   }
 
   async setKeys(seedString) {
     if (this.keys.init) return
-    if (!seedString) throw new Error('Missing seed')
-    if (!this.keys.salts) throw new Error('Missing salts')
+    if (!seedString) throw new WebSocketError('Missing seed', this.username)
+    if (!this.keys.salts) throw new WebSocketError('Missing salts', this.username)
     if (!this.seedString) this.seedString = seedString
 
     const seed = base64.decode(seedString)
@@ -325,11 +330,12 @@ class Connection {
     this.keys.init = true
 
     if (!this.signingUp) {
-      this.getRequestsForSeed()
-      this.getDatabaseAccessGrants()
+      await this.getRequestsForSeed()
+      await this.getDatabaseAccessGrants()
     }
 
-    this.resolveConnection({ username: this.username, seed: seedString, signedIn: true })
+    this.resolveConnection(seedString)
+    this.connectionResolved = true
   }
 
   async validateKey() {
@@ -364,9 +370,9 @@ class Connection {
     try {
       const response = await responseWatcher
       return response
-    } catch (e) {
+    } catch (response) {
       // process any errors and re-throw them
-      throw new RequestFailed(action, e)
+      throw new RequestFailed(action, response)
     }
   }
 
@@ -417,13 +423,13 @@ class Connection {
     const seedString = window.prompt(
       `Welcome, ${username}!`
       + '\n\n'
-      + 'Sign in from a device you used before to send the secret seed to this device.'
+      + 'Sign in from a device you used before to send the secret key to this device.'
       + '\n\n'
       + 'Before sending, please verify the Device ID matches:'
       + '\n\n'
       + seedRequestPublicKeyHash
       + '\n\n'
-      + 'You can also manually enter the secret seed below. You received your secret seed when you created your account.'
+      + 'You can also manually enter the secret key below. You received your secret key when you created your account.'
       + '\n\n'
       + 'Hit cancel to sign out.'
       + '\n'
@@ -435,7 +441,7 @@ class Connection {
       const userHitCancel = seedString === null
       if (userHitCancel) {
         await this.signOut()
-        this.resolveConnection({ username, signedIn: false })
+        this.rejectConnection(new WebSocketError('Canceled', this.username))
       }
     }
   }

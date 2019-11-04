@@ -41,7 +41,7 @@
     "copy:admin-panel:to-npm-build": "mkdir -p ./npm_build/userbase-server/admin-panel/dist && cp -R ./src/userbase-server/admin-panel/dist/ ./npm_build/userbase-server/admin-panel/dist/",
     "patch:server": "cd ./src/userbase-server && printf 'Input patch commit message: ' && read message && npm version patch -m '$message' && cd ../.. && npm run copy:serverfiles",
     "publish:server": "cd ./npm_build/userbase-server && npm publish",
-    "build:sdk-script": "webpack --mode production --config ./src/userbase-js/webpack.config.js"
+    "build:sdk-script": "rm -Rf ./build/script && npm run transpile:sdk && webpack --mode production --config ./src/userbase-js/webpack.config.js"
   },
   "repository": "https://github.com/dvassallo/encrypted.dev",
   "keywords": [],

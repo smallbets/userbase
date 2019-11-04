@@ -8,7 +8,7 @@ export default class AdminForm extends Component {
     this.state = {
       adminName: this.props.placeholderAdminName,
       password: '',
-      appName: '', // only used for sign up form
+      fullName: '',
       error: '',
       loading: false
     }
@@ -46,15 +46,14 @@ export default class AdminForm extends Component {
 
   async handleSubmit(event) {
     const { formType } = this.props
-    const { adminName, password, appName } = this.state
+    const { adminName, password, fullName } = this.state
     event.preventDefault()
 
     await this.setState({ loading: true })
 
     try {
       if (formType === 'Create Admin') {
-        await adminLogic.createAdmin(adminName, password)
-        await adminLogic.createApp(appName)
+        await adminLogic.createAdmin(adminName, password, fullName)
       } else if (formType === 'Sign In') {
         await adminLogic.signIn(adminName, password)
       } else {
@@ -68,10 +67,10 @@ export default class AdminForm extends Component {
   }
 
   render() {
-    const { adminName, password, appName, error, loading } = this.state
+    const { adminName, password, fullName, error, loading } = this.state
     const { formType } = this.props
 
-    const disabled = !adminName || !password || (formType === 'Create Admin' && !appName)
+    const disabled = !adminName || !password || (formType === 'Create Admin' && (!fullName))
 
     return (
       <form onSubmit={this.handleSubmit}>
@@ -85,11 +84,26 @@ export default class AdminForm extends Component {
 
           <div className='table'>
 
+            {formType === 'Create Admin' &&
+              <div className='table-row'>
+                <div className='table-cell p-2 text-right'>Full Name</div>
+                <div className='table-cell p-2'>
+                  <input
+                    className='font-light text-xs xs:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
+                    type='text'
+                    name='fullName'
+                    autoComplete='name'
+                    onChange={this.handleInputChange}
+                  />
+                </div>
+              </div>
+            }
+
             <div className='table-row'>
               <div className='table-cell p-2 text-right'>Email</div>
               <div className='table-cell p-2'>
                 <input
-                  className='font-light text-xs xs:text-sm w-48 sm:w-64 h-8 p-2 border border-gray-500 outline-none'
+                  className='font-light text-xs xs:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
                   type='text'
                   name='adminName'
                   autoComplete='username'
@@ -103,7 +117,7 @@ export default class AdminForm extends Component {
               <div className='table-cell p-2 text-right'>Password</div>
               <div className='table-cell p-2'>
                 <input
-                  className='font-light text-xs xs:text-sm w-48 sm:w-64 h-8 p-2 border border-gray-500 outline-none'
+                  className='font-light text-xs xs:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
                   type='password'
                   name='password'
                   autoComplete='new-password'
@@ -112,19 +126,6 @@ export default class AdminForm extends Component {
               </div>
             </div>
 
-            {formType === 'Create Admin' &&
-              <div className='table-row'>
-                <div className='table-cell p-2 text-right'>App Name</div>
-                <div className='table-cell p-2'>
-                  <input
-                    className='font-light text-xs xs:text-sm w-48 sm:w-64 h-8 p-2 border border-gray-500 outline-none'
-                    type='text'
-                    name='appName'
-                    onChange={this.handleInputChange}
-                  />
-                </div>
-              </div>
-            }
           </div>
 
           <div className='text-center mt-3 h-16'>

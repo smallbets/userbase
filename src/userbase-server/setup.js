@@ -127,12 +127,20 @@ async function setupDdb() {
     BillingMode: 'PAY_PER_REQUEST',
     AttributeDefinitions: [
       { AttributeName: 'admin-id', AttributeType: 'S' },
-      { AttributeName: 'app-name', AttributeType: 'S' }
+      { AttributeName: 'app-name', AttributeType: 'S' },
+      { AttributeName: 'app-id', AttributeType: 'S' }
     ],
     KeySchema: [
       { AttributeName: 'admin-id', KeyType: 'HASH' },
       { AttributeName: 'app-name', KeyType: 'RANGE' }
-    ]
+    ],
+    GlobalSecondaryIndexes: [{
+      IndexName: appIdIndex,
+      KeySchema: [
+        { AttributeName: 'app-id', KeyType: 'HASH' }
+      ],
+      Projection: { ProjectionType: 'ALL' }
+    }]
   }
 
   // the users table holds a record for user per app

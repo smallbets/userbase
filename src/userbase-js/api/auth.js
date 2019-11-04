@@ -19,8 +19,8 @@ const signUp = async (username, password, publicKey, encryptionKeySalt, dhKeySal
     timeout: TEN_SECONDS_MS
   })
 
-  const sessionId = signUpResponse.data
-  return sessionId
+  const session = signUpResponse.data
+  return session
 }
 
 const signIn = async (username, password) => {
@@ -34,8 +34,8 @@ const signIn = async (username, password) => {
     timeout: TEN_SECONDS_MS
   })
 
-  const sessionId = signInResponse.data
-  return sessionId
+  const session = signInResponse.data
+  return session
 }
 
 const signInWithSession = async (sessionId) => {

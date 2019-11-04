@@ -18,6 +18,11 @@ module.exports = {
       screens: {
         // for devices with the ability to hover
         'mouse': { 'raw': '(hover)' },
+      },
+      width: {
+        '72': '18rem',
+        '84': '21rem',
+        '96': '24rem'
       }
     }
   },
