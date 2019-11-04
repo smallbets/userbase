@@ -30,7 +30,6 @@ describe('Configure the env', function () {
     }
   }
 
-
   it('Signup the user', function () {
     cy.signup(userbase).then((session) => {
       sess = session
@@ -46,10 +45,27 @@ describe('Configure the env', function () {
   //   return userbase.openDatabase(info.db, databaseChange)
   //   })
   it('Sign in', function () {
-      userbase.configure({ appId: info.appId })
-      // user has to be already signed up to login
-      cy.log('sess: ', sess)
-      userbase.signIn(info.username, info.password).then()
+    // use the standard appId, already created
+    userbase.configure({ appId: info.appId })
+    // user has to be already signed up to login
+    userbase.signIn(info.username, info.password)
+    // Simulate user input of the seed
+    const seedStub = () => {
+      return info.seed
+    }
+    cy.window().then((win) => {
+      cy.stub(win, 'prompt', seedStub).as('seedStubNotNull')
+      cy.get('@seedStubNotNull').should('be.calledOnce').then(() => {
+        const currentSession = JSON.parse(localStorage.getItem('userbaseCurrentSession'))
+        expect(currentSession.username)
+        .to.be.equal(sess.username)
+        expect(currentSession.signedIn)
+        .to.be.true
+        expect(currentSession.sessionId)
+        .not.to.be.empty
+        .and.to.be.string()
+      })
+    })
   })
 })
 

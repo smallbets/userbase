@@ -1,1 +1,5 @@
-{}
+{
+  "testFiles": "**/*.spec.js",
+  "defaultCommandTimeout": 7000
+
+}

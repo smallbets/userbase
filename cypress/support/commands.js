@@ -37,13 +37,11 @@ Cypress.Commands.add("getLoginInfo", () => {
     'appId': appId,
     'db': dbName
   }
-  cy.log('in caommand logininfo:', loginInfo)
+  cy.log('in command logininfo:', loginInfo)
   cy.wrap(loginInfo)
 })
 
 Cypress.Commands.add("signup", (userbase) => {
   userbase.configure({ appId: appId })
-  cy.log('userbase:', userbase)
-  // let signUpInfo = {}
   cy.wrap(userbase.signUp(username, password))
 })
