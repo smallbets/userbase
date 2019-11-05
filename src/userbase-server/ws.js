@@ -1,7 +1,9 @@
+import connection from './connection'
+import setup from './setup'
 import uuidv4 from 'uuid/v4'
-import memcache from './memcache'
 import db from './db'
 import logger from './logger'
+import { sizeOfDdbItem } from './utils'
 
 const TRANSACTION_SIZE_BUNDLE_TRIGGER = 1024 * 50 // 50 KB
 
@@ -18,7 +20,7 @@ class Connection {
   openDatabase(databaseId, bundleSeqNo) {
     this.databases[databaseId] = {
       bundleSeqNo: bundleSeqNo >= 0 ? bundleSeqNo : -1,
-      lastSeqNo: -1,
+      lastSeqNo: 0,
       transactionLogSize: 0
     }
   }
@@ -51,8 +53,64 @@ class Connection {
       database.lastSeqNo = bundleSeqNo
     }
 
-    const transactions = memcache.getTransactions(databaseId, database.lastSeqNo, false)
-    const transactionLog = transactions.log
+    // get transactions from the last sequence number
+    const params = {
+      TableName: setup.transactionsTableName,
+      KeyConditionExpression: "#dbId = :dbId and #seqNo > :seqNo",
+      ExpressionAttributeNames: {
+        "#dbId": "database-id",
+        "#seqNo": "sequence-no"
+      },
+      ExpressionAttributeValues: {
+        ":dbId": databaseId,
+        ":seqNo": database.lastSeqNo
+      }
+    }
+
+    const transactionLog = []
+    let size = 0
+    try {
+      const ddbClient = connection.ddbClient()
+
+      do {
+        let transactionLogResponse = await ddbClient.query(params).promise()
+
+        let lastSeqNo = database.lastSeqNo
+
+        for (let i = 0; i < transactionLogResponse.Items.length; i++) {
+          size += sizeOfDdbItem(transactionLogResponse.Items[i])
+
+          // if there's a gap in sequence numbers, put a rollback transaction
+          if (transactionLogResponse.Items[i]['sequence-no'] > lastSeqNo + 1) {
+            await this.rollback(lastSeqNo, transactionLogResponse.Items[i]['sequence-no'], databaseId, ddbClient)
+          }
+
+          lastSeqNo = transactionLogResponse.Items[i]['sequence-no']
+
+          // don't add rollback transactions to the result set
+          if (transactionLogResponse.Items[i]['command'] === 'Rollback') {
+            continue
+          }
+
+          // add transaction to the result set
+          transactionLog.push({
+            seqNo: transactionLogResponse.Items[i]['sequence-no'],
+            command: transactionLogResponse.Items[i]['command'],
+            key: transactionLogResponse.Items[i]['key'],
+            record: transactionLogResponse.Items[i]['record'],
+            operations: transactionLogResponse.Items[i]['operations'],
+            dbId: transactionLogResponse.Items[i]['database-id']
+          })
+        }
+
+        // paginate over all results
+        logger.info('EK: ' + transactionLogResponse.LastEvaluatedKey)
+        params.ExclusiveStartKey = transactionLogResponse.LastEvaluatedKey
+      } while (params.ExclusiveStartKey)
+
+    } catch (e) {
+      throw new Error(e)
+    }
 
     if (!transactionLog || transactionLog.length == 0) {
       openingDatabase && this.socket.send(JSON.stringify(payload))
@@ -64,11 +122,31 @@ class Connection {
     this.socket.send(JSON.stringify(payload))
 
     database.lastSeqNo = transactionLog[transactionLog.length - 1]['seqNo']
-    database.transactionLogSize += transactions.size
+    database.transactionLogSize += size
 
     if (database.transactionLogSize >= TRANSACTION_SIZE_BUNDLE_TRIGGER) {
       this.socket.send(JSON.stringify({ dbId: databaseId, route: 'BuildBundle' }))
       database.transactionLogSize = 0
+    }
+  }
+
+  async rollback(lastSeqNo, thisSeqNo, databaseId, ddbClient) {
+    for (let i = lastSeqNo + 1; i <= thisSeqNo - 1; i++) {
+      const rollbackParams = {
+        TableName: setup.transactionsTableName,
+        Item: {
+          'database-id': databaseId,
+          'sequence-no': i,
+          'command': 'Rollback',
+          'creation-date': new Date().toISOString()
+        },
+        ConditionExpression: 'attribute_not_exists(#databaseId)',
+        ExpressionAttributeNames: {
+          '#databaseId': 'database-id'
+        }
+      }
+
+      await ddbClient.put(rollbackParams).promise()
     }
   }
 
