@@ -4,18 +4,28 @@ describe('Configure the env', function () {
   let userbase = {}
   let info = {}
   beforeEach(() => {
-    cy.visit('./cypress/integration/index.html');
-    cy.window().then((win) => {
-      userbase = win.userbase
+    cy.visit('./cypress/integration/index.html', {
+      onLoad: (contentWindow) => {
+        if (contentWindow.userbase) {
+          userbase = contentWindow.userbase
+        }
+      }
     })
-    cy.window().should('have.property', 'userbase')
-    cy.wait(200)
     cy.getLoginInfo().then((loginInfo) => {
       info = loginInfo
     })
   })
-  it('Load userbase js', function () {
-    expect(userbase).to.haveOwnProperty('signIn')
+  it('Check all the endpoints exists', function () {
+    expect(userbase)
+    expect(userbase).to.respondTo('signIn')
+    expect(userbase).to.respondTo('signUp')
+    expect(userbase).to.respondTo('signInWithSession')
+    expect(userbase).to.respondTo('signOut')
+    expect(userbase).to.respondTo('openDatabase')
+    expect(userbase).to.respondTo('insert')
+    expect(userbase).to.respondTo('update')
+    expect(userbase).to.respondTo('delete')
+    expect(userbase).to.respondTo('transaction')
   })
 
   let database = []
@@ -40,10 +50,7 @@ describe('Configure the env', function () {
       return userbase.openDatabase(info.db, databaseChange)
     })
   })
-  // it('Fill the database', function () {
-  //   userbase.configure({ appId: info.appId })
-  //   return userbase.openDatabase(info.db, databaseChange)
-  //   })
+
   it('Sign in', function () {
     // use the standard appId, already created
     userbase.configure({ appId: info.appId })
@@ -68,7 +75,3 @@ describe('Configure the env', function () {
     })
   })
 })
-
-  // return win.userbase.signIn(username, password).then( (session) => {
-  //   expect(true).to.be.false
-      // return win.userbase.openDatabase('test', databaseChange).then(() => { expect(true).to.be.false } )
