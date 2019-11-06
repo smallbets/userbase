@@ -133,6 +133,92 @@ class UserNotSignedIn extends Error {
   }
 }
 
+class EmailNotValid extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'EmailNotValid'
+    this.message = 'Email not valid.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class ProfileMustBeObject extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'ProfileMustBeObject'
+    this.message = 'Profile must be a flat JSON object.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class ProfileCannotBeEmpty extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'ProfileCannotBeEmpty'
+    this.message = 'Profile cannot be empty.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class ProfileHasTooManyKeys extends Error {
+  constructor(maxKeys, ...params) {
+    super(maxKeys, ...params)
+
+    this.name = 'ProfileHasTooManyKeys'
+    this.message = `Profile has too many keys. Must have a max of ${maxKeys} keys.`
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class ProfileKeyMustBeString extends Error {
+  constructor(key, ...params) {
+    super(key, ...params)
+
+    this.name = 'ProfileKeyMustBeString'
+    this.message = 'Profile key must be a string.'
+    this.status = statusCodes['Bad Request']
+    this.key = key
+  }
+}
+
+class ProfileKeyTooLong extends Error {
+  constructor(maxLen, key, ...params) {
+    super(maxLen, key, ...params)
+
+    this.name = 'ProfileKeyTooLong'
+    this.message = `Profile key too long. Must be a max of ${maxLen} characters.`
+    this.status = statusCodes['Bad Request']
+    this.key = key
+  }
+}
+
+class ProfileValueMustBeString extends Error {
+  constructor(key, value, ...params) {
+    super(key, value, ...params)
+
+    this.name = 'ProfileValueMustBeString'
+    this.message = 'Profile value must be a string.'
+    this.status = statusCodes['Bad Request']
+    this.key = key
+    this.value = value
+  }
+}
+
+class ProfileValueTooLong extends Error {
+  constructor(maxLen, key, value, ...params) {
+    super(maxLen, key, value, ...params)
+
+    this.name = 'ProfileValueTooLong'
+    this.message = `Profile value too long. Must be a max of ${maxLen} characters.`
+    this.status = statusCodes['Bad Request']
+    this.key = key
+    this.value = value
+  }
+}
+
 export default {
   UsernameAlreadyExists,
   UsernameCannotBeBlank,
@@ -146,5 +232,13 @@ export default {
   UserCanceledSignIn,
   UserAlreadySignedIn,
   AppIdNotValid,
-  UserNotSignedIn
+  UserNotSignedIn,
+  EmailNotValid,
+  ProfileMustBeObject,
+  ProfileCannotBeEmpty,
+  ProfileHasTooManyKeys,
+  ProfileKeyMustBeString,
+  ProfileKeyTooLong,
+  ProfileValueMustBeString,
+  ProfileValueTooLong
 }

@@ -4,7 +4,7 @@ import config from '../config'
 
 const TEN_SECONDS_MS = 10 * 1000
 
-const signUp = async (username, password, publicKey, encryptionKeySalt, dhKeySalt, hmacKeySalt) => {
+const signUp = async (username, password, publicKey, encryptionKeySalt, dhKeySalt, hmacKeySalt, email, profile) => {
   const signUpResponse = await axios({
     method: 'POST',
     url: `${ws.endpoint}/api/auth/sign-up?appId=${config.getAppId()}`,
@@ -14,13 +14,14 @@ const signUp = async (username, password, publicKey, encryptionKeySalt, dhKeySal
       publicKey,
       encryptionKeySalt,
       dhKeySalt,
-      hmacKeySalt
+      hmacKeySalt,
+      email,
+      profile
     },
     timeout: TEN_SECONDS_MS
   })
 
-  const session = signUpResponse.data
-  return session
+  return signUpResponse.data
 }
 
 const signIn = async (username, password) => {
@@ -34,8 +35,7 @@ const signIn = async (username, password) => {
     timeout: TEN_SECONDS_MS
   })
 
-  const session = signInResponse.data
-  return session
+  return signInResponse.data
 }
 
 const signInWithSession = async (sessionId) => {
@@ -45,8 +45,7 @@ const signInWithSession = async (sessionId) => {
     timeout: TEN_SECONDS_MS
   })
 
-  const extendedDate = signInWithSessionResponse.data
-  return extendedDate
+  return signInWithSessionResponse.data
 }
 
 const getServerPublicKey = async () => {

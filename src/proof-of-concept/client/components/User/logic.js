@@ -17,8 +17,7 @@ const signUp = async (username, password) => {
 
 const signOut = async () => {
   try {
-    const session = await userbase.signOut()
-    return session
+    await userbase.signOut()
   } catch (e) {
     return _errorHandler(e, 'sign out')
   }
@@ -26,8 +25,8 @@ const signOut = async () => {
 
 const signIn = async (username, password) => {
   try {
-    const user = await userbase.signIn(username, password)
-    return user
+    const result = await userbase.signIn(username, password)
+    return result
   } catch (e) {
     return _errorHandler(e, 'sign in')
   }
