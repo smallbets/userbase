@@ -28,12 +28,12 @@ if (process.env.NODE_ENV == 'development') {
 
 async function start(express, app, userbaseConfig = {}) {
   try {
-    await setup.init()
-
     const {
       httpsKey,
       httpsCert
     } = userbaseConfig
+
+    await setup.init(userbaseConfig)
 
     const certExists = httpsKey && httpsCert
     const httpPort = userbaseConfig.httpPort || 8080

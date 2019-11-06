@@ -58,10 +58,14 @@ exports.s3 = getS3Connection
 exports.getDbStatesBucketName = getDbStatesBucketName
 
 let sm
+let emailDomain
 exports.getSecrets = getSecrets
 exports.updateSecrets = updateSecrets
 
-exports.init = async function () {
+let ses
+exports.sendEmail = sendEmail
+
+exports.init = async function (userbaseConfig) {
   // look for AWS credentials under the 'encrypted' profile
   const profile = 'encrypted'
 
@@ -76,6 +80,7 @@ exports.init = async function () {
   ])
 
   logger.info('Loading AWS credentials')
+  // eslint-disable-next-line require-atomic-updates
   aws.config.credentials = await chain.resolvePromise()
 
   const region = await getEC2Region() || defaultRegion
@@ -87,11 +92,15 @@ exports.init = async function () {
   awsAccountId = accountInfo.Account
   logger.info(`Running as Account ID: ${awsAccountId}`)
 
+  // remember the email domain
+  emailDomain = userbaseConfig.emailDomain
+
   initialized = true
 
   await setupDdb()
   await setupS3()
   await setupSM()
+  await setupSes()
 
   logger.info('Eager loading in-memory transaction log cache')
   await memcache.eagerLoad()
@@ -430,5 +439,37 @@ async function getEC2Region() {
   } catch {
     logger.info(`Not running on EC2 - Using default region: ${defaultRegion}`)
     return null
+  }
+}
+
+async function setupSes() {
+  logger.info('Setting up SES')
+  ses = new aws.SES()
+}
+
+const sendEmail = async function (to, subject, body) {
+
+  if (!emailDomain) {
+    throw new Error('Email domain not set')
+  }
+
+  const params = {
+    Source: 'no-reply@' + emailDomain,
+    Destination: { ToAddresses: [to] },
+    Message: {
+      Subject: { Data: subject, Charset: 'UTF-8' },
+      Body: {
+        Text: { Data: body, Charset: 'UTF-8' },
+        Html: { Data: body, Charset: 'UTF-8' }
+      }
+    }
+  }
+
+  try {
+    await ses.sendEmail(params).promise()
+    logger.info('Email sent successfully')
+  } catch (e) {
+    logger.error('Failed to send email')
+    throw e
   }
 }

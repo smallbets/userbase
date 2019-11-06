@@ -20,7 +20,8 @@ const userbaseConfig = {
   httpsKey,
   httpsCert,
   httpsPort,
-  httpPort
+  httpPort,
+  emailDomain: 'encrypted.dev'
 }
 
 const ADMIN_NAME = 'admin'
