@@ -42,11 +42,11 @@ const _connectWebSocket = async (appId, sessionId, username, seed, signingUp) =>
 const _parseGenericUsernamePasswordError = (e) => {
   if (e.response) {
     if (e.response.data.error === 'UsernameTooLong') {
-      throw new errors.UsernameTooLong(e.response.data.maxLength)
+      throw new errors.UsernameTooLong(e.response.data.maxLen)
     } else if (e.response.data.error === 'PasswordTooShort') {
-      throw new errors.PasswordTooShort(e.response.data.minLength)
+      throw new errors.PasswordTooShort(e.response.data.minLen)
     } else if (e.response.data.error === 'PasswordTooLong') {
-      throw new errors.PasswordTooLong(e.response.data.maxLength)
+      throw new errors.PasswordTooLong(e.response.data.maxLen)
     }
   }
 }
@@ -59,7 +59,7 @@ const _validateSignUpOrSignInInput = (username, password) => {
   if (typeof password !== 'string') throw new errors.PasswordMustBeString
 }
 
-const _generateKeysAndSignUp = async (username, password, seed) => {
+const _generateKeysAndSignUp = async (username, password, seed, email, profile) => {
   const masterKey = await crypto.hkdf.importMasterKey(seed)
 
   const encryptionKeySalt = crypto.hkdf.generateSalt()
@@ -76,30 +76,93 @@ const _generateKeysAndSignUp = async (username, password, seed) => {
       base64.encode(publicKey),
       base64.encode(encryptionKeySalt),
       base64.encode(dhKeySalt),
-      base64.encode(hmacKeySalt)
+      base64.encode(hmacKeySalt),
+      email,
+      profile
     )
     return session
   } catch (e) {
     _parseGenericErrors(e)
     _parseGenericUsernamePasswordError(e)
 
-    if (e.response && e.response.status === statusCodes['Conflict']) {
-      throw new errors.UsernameAlreadyExists(username)
+    if (e.response) {
+      const status = e.response.status
+      const data = e.response.data
+
+      if (status === statusCodes['Conflict']) {
+        throw new errors.UsernameAlreadyExists(username)
+      } else {
+        switch (data.error) {
+          case 'EmailNotValid':
+            throw new errors.EmailNotValid
+
+          case 'ProfileMustBeObject':
+            throw new errors.ProfileMustBeObject
+
+          case 'ProfileKeyMustBeString':
+            throw new errors.ProfileKeyMustBeString(data.key)
+
+          case 'ProfileKeyTooLong':
+            throw new errors.ProfileKeyTooLong(data.maxLen, data.key)
+
+          case 'ProfileValueMustBeString':
+            throw new errors.ProfileValueMustBeString(data.key, data.value)
+
+          case 'ProfileValueTooLong':
+            throw new errors.ProfileValueTooLong(data.maxLen, data.key, data.value)
+
+          case 'ProfileHasTooManyKeys':
+            throw new errors.ProfileHasTooManyKeys(data.maxKeys)
+
+          case 'ProfileCannotBeEmpty':
+            throw new errors.ProfileCannotBeEmpty
+        }
+      }
     }
 
     throw e
   }
 }
 
-const signUp = async (username, password) => {
+const _buildUserResult = (username, key, email, profile) => {
+  const result = { username, key }
+
+  if (email) result.email = email
+  if (profile) result.profile = profile
+
+  return result
+}
+
+const _validateProfile = (profile) => {
+  if (typeof profile !== 'object') throw new errors.ProfileMustBeObject
+
+  let keyExists = false
+  for (const key in profile) {
+    keyExists = true
+
+    if (typeof key !== 'string') throw new errors.ProfileKeyMustBeString(key)
+
+    const value = profile[key]
+    if (value) {
+      if (typeof value !== 'string') throw new errors.ProfileValueMustBeString(key, value)
+    }
+  }
+
+  if (!keyExists) throw new errors.ProfileCannotBeEmpty
+}
+
+const signUp = async (username, password, email, profile) => {
   try {
     _validateSignUpOrSignInInput(username, password)
+    if (profile) _validateProfile(profile)
 
     const appId = config.getAppId()
     const lowerCaseUsername = username.toLowerCase()
     const seed = await crypto.generateSeed()
 
-    const session = await _generateKeysAndSignUp(lowerCaseUsername, password, seed)
+    const lowerCaseEmail = email && email.toLowerCase()
+
+    const session = await _generateKeysAndSignUp(lowerCaseUsername, password, seed, lowerCaseEmail, profile)
     const { sessionId, creationDate } = session
 
     const seedString = base64.encode(seed)
@@ -111,7 +174,8 @@ const signUp = async (username, password) => {
 
     const signingUp = true
     await _connectWebSocket(appId, sessionId, lowerCaseUsername, seedString, signingUp)
-    return { username: lowerCaseUsername, key: seedString }
+
+    return _buildUserResult(lowerCaseUsername, seedString, lowerCaseEmail, profile)
   } catch (e) {
 
     switch (e.name) {
@@ -123,6 +187,14 @@ const signUp = async (username, password) => {
       case 'PasswordTooShort':
       case 'PasswordTooLong':
       case 'PasswordMustBeString':
+      case 'EmailNotValid':
+      case 'ProfileMustBeObject':
+      case 'ProfileCannotBeEmpty':
+      case 'ProfileHasTooManyKeys':
+      case 'ProfileKeyMustBeString':
+      case 'ProfileKeyTooLong':
+      case 'ProfileValueMustBeString':
+      case 'ProfileValueTooLong':
       case 'AppIdNotSet':
       case 'AppIdNotValid':
       case 'UserAlreadySignedIn':
@@ -162,8 +234,8 @@ const signOut = async () => {
 
 const _signInWrapper = async (username, password) => {
   try {
-    const session = await api.auth.signIn(username, password)
-    return session
+    const { session, email, profile } = await api.auth.signIn(username, password)
+    return { session, email, profile }
   } catch (e) {
     _parseGenericErrors(e)
     _parseGenericUsernamePasswordError(e)
@@ -184,7 +256,7 @@ const signIn = async (username, password) => {
 
     const lowerCaseUsername = username.toLowerCase()
 
-    const session = await _signInWrapper(lowerCaseUsername, password)
+    const { session, email, profile } = await _signInWrapper(lowerCaseUsername, password)
     const { sessionId, creationDate } = session
 
     localData.signInSession(lowerCaseUsername, sessionId, creationDate)
@@ -192,7 +264,8 @@ const signIn = async (username, password) => {
     const savedSeedString = localData.getSeedString(lowerCaseUsername) // might be null if does not have seed saved
 
     const seedString = await _connectWebSocket(appId, sessionId, username, savedSeedString)
-    return { username: lowerCaseUsername, key: seedString }
+
+    return _buildUserResult(lowerCaseUsername, seedString, email, profile)
   } catch (e) {
 
     switch (e.name) {
@@ -234,8 +307,9 @@ const signInWithSession = async () => {
     const { signedIn, username, sessionId } = currentSession
     if (!signedIn) return { lastUsedUsername: username }
 
+    let apiSignInWithSessionResult
     try {
-      await api.auth.signInWithSession(sessionId)
+      apiSignInWithSessionResult = await api.auth.signInWithSession(sessionId)
     } catch (e) {
       _parseGenericErrors(e)
 
@@ -245,10 +319,11 @@ const signInWithSession = async () => {
 
       throw e
     }
+    const { email, profile } = apiSignInWithSessionResult
 
     const savedSeedString = localData.getSeedString(username) // might be null if does not have seed saved
     const seedString = await _connectWebSocket(appId, sessionId, username, savedSeedString)
-    return { user: { username, key: seedString } }
+    return { user: _buildUserResult(username, seedString, email, profile) }
   } catch (e) {
 
     switch (e.name) {

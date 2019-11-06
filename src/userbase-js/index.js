@@ -14,7 +14,6 @@ export default {
   signOut: auth.signOut,
   getLastUsedUsername: auth.getLastUsedUsername,
   signInWithSession: auth.signInWithSession,
-  importKey: auth.importKey,
 
   openDatabase: db.openDatabase,
 
