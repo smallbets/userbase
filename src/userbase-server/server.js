@@ -165,8 +165,8 @@ async function start(express, app, userbaseConfig = {}) {
                 )
                 break
               }
-              case 'Batch': {
-                response = await db.batch(userId, params.dbNameHash, params.dbId, params.operations)
+              case 'BatchTransaction': {
+                response = await db.batchTransaction(userId, params.dbNameHash, params.dbId, params.operations)
                 break
               }
               case 'Bundle': {

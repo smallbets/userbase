@@ -1,5 +1,6 @@
 import React, { Component } from 'react'
 import dashboardLogic from './logic'
+import adminLogic from '../Admin/logic'
 
 export default class Dashboard extends Component {
   constructor(props) {
@@ -13,6 +14,17 @@ export default class Dashboard extends Component {
 
   async componentDidMount() {
     try {
+      try {
+        await adminLogic.createApp()
+      } catch (err) {
+        const CONFLICT = 409
+        if (err && err.response && err.response.status === CONFLICT) {
+          // do nothing
+        } else {
+          throw err
+        }
+      }
+
       const apps = await dashboardLogic.listApps()
       this.setState({ apps, loading: false })
     } catch (e) {

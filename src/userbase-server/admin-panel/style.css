@@ -37,7 +37,7 @@ a:hover {
 }
 
 .content {
-  @apply max-w-md font-bold bg-white p-8 shadow-md;
+  @apply max-w-lg font-bold bg-white p-8 shadow-md;
 }
 
 .btn:disabled {

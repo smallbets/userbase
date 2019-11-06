@@ -2,7 +2,7 @@ import React, { Component } from 'react'
 import { string } from 'prop-types'
 import copy from 'copy-to-clipboard'
 
-export default class ShowSeed extends Component {
+export default class ShowKey extends Component {
 
   constructor(props) {
     super(props)
@@ -16,14 +16,14 @@ export default class ShowSeed extends Component {
     return (
       <div className='container content text-xs xs:text-base'>
 
-        <div className="font-normal mb-4">Your secret seed:</div>
+        <div className="font-normal mb-4">Your secret key:</div>
 
         <div className='table'>
 
           <div className='table-row'>
             <div className='table-cell p-0'>
               <div className='font-light text-xs xs:text-sm break-all p-0 select-all font-mono text-red-600'>
-                {this.props.seed}
+                {this.props.keyString}
               </div>
             </div>
           </div>
@@ -36,7 +36,7 @@ export default class ShowSeed extends Component {
               type='button'
               value='Copy'
               onClick={() => {
-                copy(this.props.seed)
+                copy(this.props.keyString)
                 this.setState({ showCopiedMessage: true })
               }}
             />
@@ -48,16 +48,16 @@ export default class ShowSeed extends Component {
             />
           </div>
           <div className='text-center mt-0'>
-            {this.state.showCopiedMessage && <div className='message'>Seed copied to clipboard</div>}
+            {this.state.showCopiedMessage && <div className='message'>Key copied to clipboard</div>}
           </div>
         </div>
         <hr className='border border-t-0 border-gray-400 mt-4 mb-4' />
-        <div className="font-normal mb-4 text-xs xs:text-sm">Store this seed somewhere safe. You will need your secret seed to sign in on other devices.</div>
+        <div className="font-normal mb-4 text-xs xs:text-sm">Store this key somewhere safe. You will need your secret key to sign in on other devices.</div>
       </div>
     )
   }
 }
 
-ShowSeed.propTypes = {
-  seed: string
+ShowKey.propTypes = {
+  keyString: string
 }

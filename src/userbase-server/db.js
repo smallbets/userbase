@@ -60,6 +60,8 @@ exports.createDatabase = async function (userId, dbNameHash, dbId, encryptedDbNa
   } catch (e) {
     if (e.message && e.message.includes('ConditionalCheckFailed')) {
       return responseBuilder.errorResponse(statusCodes['Conflict'], 'Database already exists')
+    } else if (e.message && e.message.includes('TransactionConflict')) {
+      return responseBuilder.errorResponse(statusCodes['Conflict'], 'Database already creating')
     }
     logger.error(`Failed to create database for user ${userId} with ${e}`)
     return responseBuilder.errorResponse(
@@ -149,7 +151,7 @@ exports.openDatabase = async function (userId, connectionId, dbNameHash) {
       throw new Error(`Unable to open database`)
     }
   } catch (e) {
-    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to create database with ${e}`)
+    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to open database with ${e}`)
   }
 }
 
@@ -193,7 +195,7 @@ const findOtherUsersGrantedAccessToDb = async function (dbId, userId, otherUsers
   for (const otherUserDb of otherUserDbsGrantedAccess) {
     const otherUserId = otherUserDb['user-id']
     if (!otherUsersByUserId[otherUserId]) {
-      otherUsersByUserId[otherUserId] = userQueries.push(userController.findUserByUserId(otherUserId))
+      otherUsersByUserId[otherUserId] = userQueries.push(userController.getUserByUserId(otherUserId))
     }
   }
   const uniqueUsers = await Promise.all(userQueries)
@@ -400,7 +402,7 @@ exports.doCommand = async function (command, userId, dbNameHash, databaseId, key
   }
 }
 
-exports.batch = async function (userId, dbNameHash, databaseId, operations) {
+exports.batchTransaction = async function (userId, dbNameHash, databaseId, operations) {
   if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
   if (!databaseId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
   if (!operations || !operations.length) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing operations')
@@ -424,7 +426,7 @@ exports.batch = async function (userId, dbNameHash, databaseId, operations) {
   }
 
   try {
-    const command = 'Batch'
+    const command = 'BatchTransaction'
 
     const transaction = {
       'database-id': databaseId,

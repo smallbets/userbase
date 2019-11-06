@@ -10,15 +10,12 @@ const openDatabase = async (username, onDbChangeHandler) => {
 }
 
 const _errorHandler = (e, operation, handleRemoveUserAuthentication) => {
-  console.log(`Failed to ${operation} with ${e.message}${e.response ? ': ' + e.response.data : ''}`)
+  console.log(`Failed to ${operation} with`, e)
 
-  const unauthorized = e.response && e.response.status === 401
+  const unauthorized = e.status === 401
   if (unauthorized) handleRemoveUserAuthentication()
 
-  const timeout = e.response && e.response.status === 504 || e.message.includes('timeout')
-  if (timeout) throw new Error('Something went wrong, please try again!')
-
-  throw new Error((e.response && e.response.data) || e.message)
+  throw new Error(e.message)
 }
 
 const insertTodo = async (username, todo, handleRemoveUserAuthentication) => {
@@ -39,8 +36,8 @@ const deleteTodo = async (username, todo, handleRemoveUserAuthentication) => {
 
 const toggleTodo = async (username, todo, handleRemoveUserAuthentication) => {
   try {
-    const markingComplete = !todo.record.completed
-    await userbase.update(getDbName(username), todo.itemId, { todo: todo.record.todo, completed: markingComplete })
+    const markingComplete = !todo.item.completed
+    await userbase.update(getDbName(username), { todo: todo.item.todo, completed: markingComplete }, todo.itemId)
   } catch (e) {
     _errorHandler(e, 'toggle todos', handleRemoveUserAuthentication)
   }
@@ -48,7 +45,7 @@ const toggleTodo = async (username, todo, handleRemoveUserAuthentication) => {
 
 const updateTodo = async (username, todo, newTodoInput, handleRemoveUserAuthentication) => {
   try {
-    await userbase.update(getDbName(username), todo.itemId, { todo: newTodoInput, completed: todo.record.completed })
+    await userbase.update(getDbName(username), { todo: newTodoInput, completed: todo.item.completed }, todo.itemId)
   } catch (e) {
     _errorHandler(e, 'update todo', handleRemoveUserAuthentication)
   }

@@ -19,16 +19,22 @@ const oneDaySeconds = 60 * 60 * 24
 const oneDayMs = 1000 * oneDaySeconds
 const SESSION_LENGTH = oneDayMs
 
+const MAX_USERNAME_CHAR_LENGTH = 100
+
+const MAX_PASSWORD_CHAR_LENGTH = 1000
+const MIN_PASSWORD_CHAR_LENGTH = 6
+
 const createSession = async function (userId, appId) {
   const sessionId = crypto
     .randomBytes(ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID)
     .toString('hex')
 
+  const creationDate = new Date().toISOString()
   const session = {
     'session-id': sessionId,
     'user-id': userId,
     'app-id': appId,
-    'creation-date': new Date().toISOString()
+    'creation-date': creationDate
   }
 
   const params = {
@@ -39,7 +45,86 @@ const createSession = async function (userId, appId) {
   const ddbClient = connection.ddbClient()
   await ddbClient.put(params).promise()
 
-  return sessionId
+  return { sessionId, creationDate }
+}
+
+const getAppByAppId = async function (appId) {
+  const params = {
+    TableName: setup.appsTableName,
+    IndexName: setup.appIdIndex,
+    KeyConditionExpression: '#appId = :appId',
+    ExpressionAttributeNames: {
+      '#appId': 'app-id'
+    },
+    ExpressionAttributeValues: {
+      ':appId': appId
+    },
+    Select: 'ALL_ATTRIBUTES'
+  }
+
+  const ddbClient = connection.ddbClient()
+  const appResponse = await ddbClient.query(params).promise()
+
+  if (!appResponse || appResponse.Items.length === 0) return null
+
+  if (appResponse.Items.length > 1) {
+    // too sensitive not to throw here. This should never happen
+    const errorMsg = `Too many apps found with app id ${appId}`
+    logger.fatal(errorMsg)
+    throw new Error(errorMsg)
+  }
+
+  return appResponse.Items[0]
+}
+
+const _buildSignUpParams = async (username, password, appId, userId, publicKey, salts, app) => {
+  const passwordHash = await crypto.bcrypt.hash(password)
+  const { encryptionKeySalt, dhKeySalt, hmacKeySalt } = salts
+
+  const user = {
+    username: username.toLowerCase(),
+    'password-hash': passwordHash,
+    'app-id': appId,
+    'user-id': userId,
+    'public-key': publicKey,
+    'encryption-key-salt': encryptionKeySalt,
+    'diffie-hellman-key-salt': dhKeySalt,
+    'hmac-key-salt': hmacKeySalt,
+    'seed-not-saved-yet': true,
+    'creation-date': new Date().toISOString()
+  }
+
+  return {
+    TransactItems: [{
+      // ensure app still exists when creating user
+      ConditionCheck: {
+        TableName: setup.appsTableName,
+        Key: {
+          'admin-id': app['admin-id'],
+          'app-name': app['app-name']
+        },
+        ConditionExpression: '#appId = :appId',
+        ExpressionAttributeNames: {
+          '#appId': 'app-id'
+        },
+        ExpressionAttributeValues: {
+          ':appId': appId,
+        },
+      },
+    }, {
+      Put: {
+        TableName: setup.usersTableName,
+        Item: user,
+        // if username does not exist, insert
+        // if it already exists and user hasn't saved seed yet, overwrite (to allow another sign up attempt)
+        // if it already exists and user has saved seed, fail with ConditionalCheckFailedException
+        ConditionExpression: 'attribute_not_exists(username) or attribute_exists(#seedNotSavedYet)',
+        ExpressionAttributeNames: {
+          '#seedNotSavedYet': 'seed-not-saved-yet'
+        },
+      }
+    }]
+  }
 }
 
 exports.signUp = async function (req, res) {
@@ -52,58 +137,55 @@ exports.signUp = async function (req, res) {
   const dhKeySalt = req.body.dhKeySalt
   const hmacKeySalt = req.body.hmacKeySalt
 
-  if (!appId || !username || !password || !publicKey || !encryptionKeySalt
-    || !dhKeySalt || !hmacKeySalt) return res
-      .status(statusCodes['Bad Request'])
-      .send('Missing required items')
+  if (!appId || !username || !password || !publicKey || !encryptionKeySalt || !dhKeySalt || !hmacKeySalt) {
+    return res.status(statusCodes['Bad Request']).send('Missing required items')
+  }
 
-  const userId = uuidv4()
+  if (username.length > MAX_USERNAME_CHAR_LENGTH) return res.status(statusCodes['Bad Request'])
+    .send({
+      error: 'UsernameTooLong',
+      maxLength: MAX_USERNAME_CHAR_LENGTH
+    })
+
+  if (password.length < MIN_PASSWORD_CHAR_LENGTH) return res.status(statusCodes['Bad Request'])
+    .send({
+      error: 'PasswordTooShort',
+      minLength: MIN_PASSWORD_CHAR_LENGTH
+    })
+
+  if (password.length > MAX_PASSWORD_CHAR_LENGTH) return res.status(statusCodes['Bad Request'])
+    .send({
+      error: 'PasswordTooLong',
+      maxLength: MAX_PASSWORD_CHAR_LENGTH
+    })
 
   try {
-    const passwordHash = await crypto.bcrypt.hash(password)
+    const userId = uuidv4()
 
-    const user = {
-      username: username.toLowerCase(),
-      'password-hash': passwordHash,
-      'app-id': appId,
-      'user-id': userId,
-      'public-key': publicKey,
-      'encryption-key-salt': encryptionKeySalt,
-      'diffie-hellman-key-salt': dhKeySalt,
-      'hmac-key-salt': hmacKeySalt,
-      'seed-not-saved-yet': true
-    }
+    // Warning: uses secondary index here. It's possible index won't be up to date and this fails
+    const app = await getAppByAppId(appId)
+    if (!app) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
 
-    const params = {
-      TableName: setup.usersTableName,
-      Item: user,
-      // if username does not exist, insert
-      // if it already exists and user hasn't saved seed yet, overwrite (to allow another sign up attempt)
-      // if it already exists and user has saved seed, fail with ConditionalCheckFailedException
-      ConditionExpression: 'attribute_not_exists(username) or attribute_exists(#seedNotSavedYet)',
-      ExpressionAttributeNames: {
-        '#seedNotSavedYet': 'seed-not-saved-yet'
-      },
-    }
+    const salts = { encryptionKeySalt, dhKeySalt, hmacKeySalt }
+    const params = await _buildSignUpParams(username, password, appId, userId, publicKey, salts, app)
 
     try {
       const ddbClient = connection.ddbClient()
-      await ddbClient.put(params).promise()
+      await ddbClient.transactWrite(params).promise()
     } catch (e) {
-      if (e.name === 'ConditionalCheckFailedException') {
-        return res
-          .status(statusCodes['Conflict'])
-          .send('Username already exists')
+      if (e.message.includes('[ConditionalCheckFailed')) {
+        return res.status(statusCodes['Unauthorized']).send('App ID not valid')
+      } else if (e.message.includes('ConditionalCheckFailed]')) {
+        return res.status(statusCodes['Conflict']).send('Username already exists')
       }
       throw e
     }
 
-    const sessionId = await createSession(userId, appId)
-    return res.send(sessionId)
+    const session = await createSession(userId, appId)
+    return res.send(session)
   } catch (e) {
-    return res
-      .status(statusCodes['Internal Server Error'])
-      .send('Failed to sign up!')
+    logger.warn(`Failed to sign up user '${username}' of app '${appId}' with ${e}`)
+    return res.status(statusCodes['Internal Server Error']).end()
   }
 }
 
@@ -131,22 +213,26 @@ exports.authenticateUser = async function (req, res, next) {
     const doesNotExist = !session
     const invalidated = doesNotExist || session.invalidated
 
-    const sessionStartDate = new Date(session['extended-date'] || session['creation-date'])
+    const sessionStartDate = invalidated || new Date(session['extended-date'] || session['creation-date'])
     const expired = invalidated || new Date() - sessionStartDate > SESSION_LENGTH
 
     const isNotUserSession = expired || !session['user-id']
 
     if (doesNotExist || invalidated || expired || isNotUserSession) return res
-      .status(statusCodes['Unauthorized']).send('Invalid session')
+      .status(statusCodes['Unauthorized']).send('Session invalid')
 
     const appDoesNotMatch = isNotUserSession || session['app-id'] !== appId
     if (appDoesNotMatch) return res
-      .status(statusCodes['Unauthorized']).send('Invalid app ID')
+      .status(statusCodes['Unauthorized']).send('App ID not valid')
 
-    const user = await findUserByUserId(session['user-id'])
-    if (!user) return res
-      .status(statusCodes['Not Found'])
-      .send('User no longer exists')
+    // Warning: uses secondary indexes here. It's possible index won't be up to date and this fails
+    const [user, app] = await Promise.all([
+      getUserByUserId(session['user-id']),
+      getAppByAppId(session['app-id'])
+    ])
+
+    if (!user) return res.status(statusCodes['Not Found']).send('User not found')
+    if (!app) return res.status(statusCodes['Not Found']).send('App not found')
 
     res.locals.user = user // makes user object available in next route
     next()
@@ -246,15 +332,38 @@ exports.signIn = async function (req, res) {
     .status(statusCodes['Bad Request'])
     .send('Missing required items')
 
-  const params = {
-    TableName: setup.usersTableName,
-    Key: {
-      username: username.toLowerCase(),
-      'app-id': appId
-    },
-  }
+  if (username.length > MAX_USERNAME_CHAR_LENGTH) return res.status(statusCodes['Bad Request'])
+    .send({
+      error: 'UsernameTooLong',
+      maxLength: MAX_USERNAME_CHAR_LENGTH
+    })
+
+  if (password.length < MIN_PASSWORD_CHAR_LENGTH) return res.status(statusCodes['Bad Request'])
+    .send({
+      error: 'PasswordTooShort',
+      minLength: MIN_PASSWORD_CHAR_LENGTH
+    })
+
+  if (password.length > MAX_PASSWORD_CHAR_LENGTH) return res.status(statusCodes['Bad Request'])
+    .send({
+      error: 'PasswordTooLong',
+      maxLength: MAX_PASSWORD_CHAR_LENGTH
+    })
 
   try {
+    // Warning: uses secondary index here. It's possible index won't be up to date and this fails
+    const app = await getAppByAppId(appId)
+    logger.warn(appId, app)
+    if (!app) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
+
+    const params = {
+      TableName: setup.usersTableName,
+      Key: {
+        username: username.toLowerCase(),
+        'app-id': appId
+      },
+    }
+
     const ddbClient = connection.ddbClient()
     const userResponse = await ddbClient.get(params).promise()
 
@@ -266,13 +375,11 @@ exports.signIn = async function (req, res) {
     if (doesNotExist || incorrectPassword) return res
       .status(statusCodes['Unauthorized']).send('Invalid password')
 
-    const sessionId = await createSession(user['user-id'], appId)
-    return res.send(sessionId)
+    const session = await createSession(user['user-id'], appId)
+    return res.send(session)
   } catch (e) {
-    logger.error(`Username ${username} failed to sign in with ${e}`)
-    return res
-      .status(statusCodes['Internal Server Error'])
-      .send('Failed to sign in!')
+    logger.error(`Username '${username}' failed to sign in with ${e}`)
+    return res.status(statusCodes['Internal Server Error']).end()
   }
 }
 
@@ -552,7 +659,7 @@ const getDbOwners = async function (databases) {
     if (!ownerId) continue
 
     if (typeof ownerIndex[ownerId] === 'number') continue
-    ownerIndex[ownerId] = ownerPromises.push(findUserByUserId(ownerId)) - 1
+    ownerIndex[ownerId] = ownerPromises.push(getUserByUserId(ownerId)) - 1
   }
   const owners = await Promise.all(ownerPromises)
   return { ownerIndex, owners }
@@ -743,7 +850,7 @@ exports.acceptDatabaseAccess = async function (granteeId, dbId, dbNameHash, encr
   }
 }
 
-async function findUserByUserId(userId) {
+async function getUserByUserId(userId) {
   const params = {
     TableName: setup.usersTableName,
     IndexName: setup.userIdIndex,
@@ -763,12 +870,14 @@ async function findUserByUserId(userId) {
   if (!userResponse || userResponse.Items.length === 0) return null
 
   if (userResponse.Items.length > 1) {
-    logger.warn(`Too many users found with id ${userId}`)
+    const errorMsg = `Too many users found with id ${userId}`
+    logger.fatal(errorMsg)
+    throw new Error(errorMsg)
   }
 
   return userResponse.Items[0]
 }
-exports.findUserByUserId = findUserByUserId
+exports.getUserByUserId = getUserByUserId
 
 exports.extendSession = async function (req, res) {
   const sessionId = req.query.sessionId
@@ -803,7 +912,6 @@ exports.extendSession = async function (req, res) {
 
 exports.getServerPublicKey = async function (_, res) {
   try {
-    console.log('hello?')
     return res.send(crypto.diffieHellman.getPublicKey())
   } catch (e) {
     logger.error(`Failed to get server public key with ${e}`)

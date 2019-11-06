@@ -26,3 +26,7 @@ export const removeProtocolFromEndpoint = (endpoint) => {
 export const getProtocolFromEndpoint = (endpoint) => {
   return endpoint.split(':')[0]
 }
+
+export const byteSizeOfString = (string) => {
+  return string.length * 2
+}

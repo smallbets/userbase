@@ -1,19 +1,15 @@
 import userbase from 'userbase-js'
 
 const _errorHandler = (e, operation) => {
-  console.log(`Failed to ${operation} with`, e, e.response && e.response.data)
+  console.log(`Failed to ${operation} with`, e)
 
-  const timeout = e.response && e.response.status === 504 || e.message.includes('timeout')
-  if (timeout) return { error: 'Something went wrong, please try again!' }
-
-  const errorMsg = (e.response && e.response.data) || e.message
-  return { error: errorMsg }
+  return { error: e.message }
 }
 
 const signUp = async (username, password) => {
   try {
-    const session = await userbase.signUp(username, password)
-    return session
+    const user = await userbase.signUp(username, password)
+    return user
   } catch (e) {
     return _errorHandler(e, 'sign up')
   }
@@ -30,19 +26,19 @@ const signOut = async () => {
 
 const signIn = async (username, password) => {
   try {
-    const session = await userbase.signIn(username, password)
-    return session
+    const user = await userbase.signIn(username, password)
+    return user
   } catch (e) {
     return _errorHandler(e, 'sign in')
   }
 }
 
-const init = async () => {
+const signInWithSession = async () => {
   try {
-    const session = await userbase.init()
+    const session = await userbase.signInWithSession()
     return session
   } catch (e) {
-    return _errorHandler(e, 'init')
+    return _errorHandler(e, 'sign in with session')
   }
 }
 
@@ -50,5 +46,5 @@ export default {
   signUp,
   signOut,
   signIn,
-  init
+  signInWithSession
 }

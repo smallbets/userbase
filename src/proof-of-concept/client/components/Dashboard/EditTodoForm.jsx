@@ -6,7 +6,7 @@ export default class EditTodoForm extends Component {
   constructor(props) {
     super(props)
     this.state = {
-      todoInput: this.props.todo.record.todo,
+      todoInput: this.props.todo.item.todo,
       error: '',
       loading: false
     }

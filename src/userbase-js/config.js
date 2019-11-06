@@ -1,11 +1,15 @@
 import ws from './ws'
 import api from './api'
+import errors from './errors'
 
-const DEFAULT_SERVICE_ENDPOINT = 'https://demo.encrypted.dev'
+const DEFAULT_SERVICE_ENDPOINT = 'https://preview.userbase.dev'
 ws.endpoint = DEFAULT_SERVICE_ENDPOINT
 
 let userbaseAppId = null
-const getAppId = () => userbaseAppId
+const getAppId = () => {
+  if (!userbaseAppId) throw new errors.AppIdNotSet
+  return userbaseAppId
+}
 
 let serverPublicKey = null
 const getServerPublicKey = async () => {
@@ -18,14 +22,15 @@ const getServerPublicKey = async () => {
 }
 
 const configure = ({ appId, endpoint }) => {
-  if (ws.connected) throw new Error('WebSocket already open')
+  if (!appId && !endpoint) throw new errors.ConfigParametersMissing
 
-  if (appId) {
-    if (userbaseAppId) throw new Error('App ID already set')
+  if (appId && appId !== userbaseAppId) {
+    if (ws.connected) throw new errors.UserAlreadySignedIn
     userbaseAppId = appId
   }
 
-  if (endpoint) {
+  if (endpoint && endpoint !== ws.endpoint) {
+    if (ws.connected) throw new errors.UserAlreadySignedIn
     ws.endpoint = endpoint
   }
 }
