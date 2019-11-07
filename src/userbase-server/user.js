@@ -7,6 +7,7 @@ import crypto from './crypto'
 import connections from './ws'
 import logger from './logger'
 import db from './db'
+import { validateEmail } from './utils'
 
 const getTtl = secondsToLive => Math.floor(Date.now() / 1000) + secondsToLive
 
@@ -23,6 +24,10 @@ const MAX_USERNAME_CHAR_LENGTH = 100
 
 const MAX_PASSWORD_CHAR_LENGTH = 1000
 const MIN_PASSWORD_CHAR_LENGTH = 6
+
+const MAX_PROFILE_OBJECT_KEY_CHAR_LENGTH = 20
+const MAX_PROFILE_OBJECT_VALUE_CHAR_LENGTH = 1000
+const MAX_PROFILE_OBJECT_KEYS = 100
 
 const createSession = async function (userId, appId) {
   const sessionId = crypto
@@ -77,7 +82,7 @@ const getAppByAppId = async function (appId) {
   return appResponse.Items[0]
 }
 
-const _buildSignUpParams = async (username, password, appId, userId, publicKey, salts, app) => {
+const _buildSignUpParams = async (username, password, appId, userId, publicKey, salts, app, email, profile) => {
   const passwordHash = await crypto.bcrypt.hash(password)
   const { encryptionKeySalt, dhKeySalt, hmacKeySalt } = salts
 
@@ -91,7 +96,9 @@ const _buildSignUpParams = async (username, password, appId, userId, publicKey, 
     'diffie-hellman-key-salt': dhKeySalt,
     'hmac-key-salt': hmacKeySalt,
     'seed-not-saved-yet': true,
-    'creation-date': new Date().toISOString()
+    'creation-date': new Date().toISOString(),
+    email: email ? email.toLowerCase() : undefined,
+    profile: profile || undefined
   }
 
   return {
@@ -127,6 +134,50 @@ const _buildSignUpParams = async (username, password, appId, userId, publicKey, 
   }
 }
 
+const _validateProfile = (profile) => {
+  if (typeof profile !== 'object') throw { error: 'ProfileMustBeObject' }
+
+  let counter = 0
+  for (const key in profile) {
+    if (typeof key !== 'string') throw { error: 'ProfileKeyMustBeString', key }
+    if (key.length > MAX_PROFILE_OBJECT_KEY_CHAR_LENGTH) {
+      throw { error: 'ProfileKeyTooLong', key, maxLen: MAX_PROFILE_OBJECT_KEY_CHAR_LENGTH }
+    }
+
+    const value = profile[key]
+    if (value) {
+      if (typeof value !== 'string') throw { error: 'ProfileValueMustBeString', key, value }
+      if (value.length > MAX_PROFILE_OBJECT_VALUE_CHAR_LENGTH) {
+        throw { error: 'ProfileValueTooLong', key, value, maxLen: MAX_PROFILE_OBJECT_VALUE_CHAR_LENGTH }
+      }
+    }
+
+    counter += 1
+    if (counter > MAX_PROFILE_OBJECT_KEYS) {
+      throw { error: 'ProfileHasTooManyKeys', maxKeys: MAX_PROFILE_OBJECT_KEYS }
+    }
+  }
+
+  if (!counter) throw { error: 'ProfileCannotBeEmpty' }
+}
+
+const _validateUsernameAndPassword = (username, password) => {
+  if (username.length > MAX_USERNAME_CHAR_LENGTH) throw {
+    error: 'UsernameTooLong',
+    maxLen: MAX_USERNAME_CHAR_LENGTH
+  }
+
+  if (password.length < MIN_PASSWORD_CHAR_LENGTH) throw {
+    error: 'PasswordTooShort',
+    minLen: MIN_PASSWORD_CHAR_LENGTH
+  }
+
+  if (password.length > MAX_PASSWORD_CHAR_LENGTH) throw {
+    error: 'PasswordTooLong',
+    maxLen: MAX_PASSWORD_CHAR_LENGTH
+  }
+}
+
 exports.signUp = async function (req, res) {
   const appId = req.query.appId
 
@@ -136,28 +187,23 @@ exports.signUp = async function (req, res) {
   const encryptionKeySalt = req.body.encryptionKeySalt
   const dhKeySalt = req.body.dhKeySalt
   const hmacKeySalt = req.body.hmacKeySalt
+  const email = req.body.email
+  const profile = req.body.profile
 
   if (!appId || !username || !password || !publicKey || !encryptionKeySalt || !dhKeySalt || !hmacKeySalt) {
     return res.status(statusCodes['Bad Request']).send('Missing required items')
   }
 
-  if (username.length > MAX_USERNAME_CHAR_LENGTH) return res.status(statusCodes['Bad Request'])
-    .send({
-      error: 'UsernameTooLong',
-      maxLength: MAX_USERNAME_CHAR_LENGTH
-    })
+  try {
+    _validateUsernameAndPassword(username, password)
 
-  if (password.length < MIN_PASSWORD_CHAR_LENGTH) return res.status(statusCodes['Bad Request'])
-    .send({
-      error: 'PasswordTooShort',
-      minLength: MIN_PASSWORD_CHAR_LENGTH
-    })
+    if (email && !validateEmail(email)) return res.status(statusCodes['Bad Request'])
+      .send({ error: 'EmailNotValid' })
 
-  if (password.length > MAX_PASSWORD_CHAR_LENGTH) return res.status(statusCodes['Bad Request'])
-    .send({
-      error: 'PasswordTooLong',
-      maxLength: MAX_PASSWORD_CHAR_LENGTH
-    })
+    if (profile) _validateProfile(profile)
+  } catch (e) {
+    return res.status(statusCodes['Bad Request']).send(e)
+  }
 
   try {
     const userId = uuidv4()
@@ -167,7 +213,7 @@ exports.signUp = async function (req, res) {
     if (!app) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
 
     const salts = { encryptionKeySalt, dhKeySalt, hmacKeySalt }
-    const params = await _buildSignUpParams(username, password, appId, userId, publicKey, salts, app)
+    const params = await _buildSignUpParams(username, password, appId, userId, publicKey, salts, app, email, profile)
 
     try {
       const ddbClient = connection.ddbClient()
@@ -332,28 +378,15 @@ exports.signIn = async function (req, res) {
     .status(statusCodes['Bad Request'])
     .send('Missing required items')
 
-  if (username.length > MAX_USERNAME_CHAR_LENGTH) return res.status(statusCodes['Bad Request'])
-    .send({
-      error: 'UsernameTooLong',
-      maxLength: MAX_USERNAME_CHAR_LENGTH
-    })
-
-  if (password.length < MIN_PASSWORD_CHAR_LENGTH) return res.status(statusCodes['Bad Request'])
-    .send({
-      error: 'PasswordTooShort',
-      minLength: MIN_PASSWORD_CHAR_LENGTH
-    })
-
-  if (password.length > MAX_PASSWORD_CHAR_LENGTH) return res.status(statusCodes['Bad Request'])
-    .send({
-      error: 'PasswordTooLong',
-      maxLength: MAX_PASSWORD_CHAR_LENGTH
-    })
+  try {
+    _validateUsernameAndPassword(username, password)
+  } catch (e) {
+    return res.status(statusCodes['Bad Request']).send(e)
+  }
 
   try {
     // Warning: uses secondary index here. It's possible index won't be up to date and this fails
     const app = await getAppByAppId(appId)
-    logger.warn(appId, app)
     if (!app) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
 
     const params = {
@@ -376,7 +409,14 @@ exports.signIn = async function (req, res) {
       .status(statusCodes['Unauthorized']).send('Invalid password')
 
     const session = await createSession(user['user-id'], appId)
-    return res.send(session)
+
+    const result = { session }
+
+    const { email, profile } = user
+    if (email) result.email = email
+    if (profile) result.profile = profile
+
+    return res.send(result)
   } catch (e) {
     logger.error(`Username '${username}' failed to sign in with ${e}`)
     return res.status(statusCodes['Internal Server Error']).end()
@@ -880,6 +920,9 @@ async function getUserByUserId(userId) {
 exports.getUserByUserId = getUserByUserId
 
 exports.extendSession = async function (req, res) {
+  const user = res.locals.user
+  const { email, profile } = user
+
   const sessionId = req.query.sessionId
 
   const extendedDate = new Date().toISOString()
@@ -901,7 +944,12 @@ exports.extendSession = async function (req, res) {
   try {
     const ddbClient = connection.ddbClient()
     await ddbClient.update(params).promise()
-    return res.send(extendedDate)
+
+    const result = { extendedDate }
+    if (email) result.email = email
+    if (profile) result.profile = profile
+
+    return res.send(result)
   } catch (e) {
     logger.error(`Unable to extend session ${sessionId} with: ${e}`)
     return res

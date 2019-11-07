@@ -58,7 +58,7 @@
     "@babel/preset-env": "^7.4.5",
     "babel-eslint": "^10.0.1",
     "babel-loader": "^8.0.6",
-    "cypress": "^3.5.0",
+    "cypress": "^3.6.0",
     "eslint": "^6.5.1",
     "eslint-loader": "^3.0.2",
     "eslint-plugin-react": "^7.16.0",
