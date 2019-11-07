@@ -350,7 +350,7 @@ exports.validateKey = async function (validationMessage, userProvidedValidationM
       } else {
         // must be validating after requesting the seed. Clean up for safety --
         // no need to keep storing this seed request in DDB
-        if (conn.requesterPublicKey) deleteSeedRequest(userId, conn)
+        if (conn.requesterPublicKey) await deleteSeedRequest(userId, conn)
       }
 
       conn.validateKey()

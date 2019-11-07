@@ -421,7 +421,6 @@ class Connection {
 
   async inputSeedManually(username, seedRequestPublicKey) {
     const seedRequestPublicKeyHash = await crypto.sha256.hashString(seedRequestPublicKey)
-    this.seedRequestPublicKeyHash = seedRequestPublicKeyHash
     this.displaySeedRequestModal(username, seedRequestPublicKeyHash)
   }
 
@@ -482,11 +481,15 @@ class Connection {
           </div>
 
           <div id='userbase-submit-wrapper'>
-            <input
-              class='userbase-button'
-              type='submit'
-              value='Save'
-            />
+            <div id='userbase-submit-inner-wrapper'>
+              <input
+                class='userbase-button'
+                type='submit'
+                value='Save'
+              />
+              <div id='userbase-request-key-form-error' class='userbase-error'>
+              </div>
+            </div>
           </div>
 
         </form>
@@ -498,6 +501,7 @@ class Connection {
     const closeButton = document.getElementById('userbase-request-key-modal-close-button')
     const keyInput = document.getElementById('userbase-secret-key-input')
     const keyInputForm = document.getElementById('userbase-request-key-form')
+    const keyFormError = document.getElementById('userbase-request-key-form-error')
 
     async function inputSeed(e) {
       e.preventDefault()
@@ -505,19 +509,26 @@ class Connection {
       const seedString = keyInput.value
       if (!seedString) return
 
-      await this.saveSeed(username, seedString)
-
-      hideSeedRequestModal()
+      try {
+        await this.saveSeed(username, seedString)
+        hideSeedRequestModal()
+      } catch (e) {
+        keyFormError.innerText = e.message
+      }
     }
 
     async function closeModal() {
-      await this.signOut()
-      this.rejectConnection(new WebSocketError('Canceled', username))
-      hideSeedRequestModal()
+      try {
+        await this.signOut()
+        this.rejectConnection(new WebSocketError('Canceled', username))
+        hideSeedRequestModal()
+      } catch (e) {
+        keyFormError.innerText = e.message
+      }
     }
 
     function hideSeedRequestModal() {
-      seedRequestModal.style.display = 'none'
+      document.body.removeChild(seedRequestModal)
     }
 
     keyInputForm.onsubmit = inputSeed.bind(this)
@@ -607,9 +618,7 @@ class Connection {
     const requesterPublicKeyArrayBuffer = new Uint8Array(base64.decode(requesterPublicKey))
     const requesterPublicKeyHash = base64.encode(await crypto.sha256.hash(requesterPublicKeyArrayBuffer))
 
-    if (this.sentSeedTo[requesterPublicKeyHash]
-      || this.processingSeedRequest[requesterPublicKeyHash]
-      || this.seedRequestPublicKeyHash === requesterPublicKeyHash) return
+    if (this.sentSeedTo[requesterPublicKeyHash] || this.processingSeedRequest[requesterPublicKeyHash]) return
 
     this.processingSeedRequest[requesterPublicKeyHash] = true
 
@@ -647,7 +656,12 @@ class Connection {
 
   async saveSeed(username, seedString) {
     localData.saveSeedString(username, seedString)
-    await this.setKeys(seedString)
+    try {
+      await this.setKeys(seedString)
+    } catch (e) {
+      localData.removeSeedString(username)
+      throw new Error('Invalid key.')
+    }
     localData.removeSeedRequest(username)
   }
 }
