@@ -104,12 +104,7 @@ Go to http://localhost:3000 and you should see the sign in screen.
 We use [Cypress](https://www.cypress.io/) to run tests, all the test files are under the ./cypress dir.
 
 ```
-$(npm bin)/cypress open
-```
-or
-
-```
-node_modules/.bin/cypress open
+npm run test
 ```
 
 ## Who's behind this?
