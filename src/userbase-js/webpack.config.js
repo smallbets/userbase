@@ -1,4 +1,6 @@
 const path = require('path')
+const TerserPlugin = require('terser-webpack-plugin')
+const OptimizeCSSAssetsPlugin = require('optimize-css-assets-webpack-plugin')
 const packageJson = require('./package.json')
 
 module.exports = () => {
@@ -21,6 +23,10 @@ module.exports = () => {
     module: {
       rules: [
         {
+          test: /\.css$/,
+          use: ['style-loader', 'css-loader'],
+        },
+        {
           enforce: 'pre',
           test: /\.js$/,
           use: ['source-map-loader'],
@@ -35,7 +41,23 @@ module.exports = () => {
               plugins: ['@babel/transform-runtime']
             }
           }
+        },
+        {
+          test: /\.(woff|woff2|eot|ttf|otf|png|svg|jpg|gif)$/,
+          use: {
+            loader: 'url-loader'
+          }
         }
+      ]
+    },
+    optimization: {
+      minimizer: [
+        new TerserPlugin({
+          cache: true,
+          parallel: true,
+          sourceMap: true
+        }),
+        new OptimizeCSSAssetsPlugin({})
       ]
     }
   }

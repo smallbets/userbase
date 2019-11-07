@@ -5,6 +5,7 @@ import localData from './localData'
 import crypto from './Crypto'
 import { removeProtocolFromEndpoint, getProtocolFromEndpoint } from './utils'
 import statusCodes from './statusCodes'
+import './style.css'
 
 const wsAlreadyConnected = 'Web Socket already connected'
 
@@ -336,6 +337,7 @@ class Connection {
 
     this.resolveConnection(seedString)
     this.connectionResolved = true
+    if (this.hideSeedRequestModal) this.hideSeedRequestModal()
   }
 
   async validateKey() {
@@ -419,31 +421,108 @@ class Connection {
 
   async inputSeedManually(username, seedRequestPublicKey) {
     const seedRequestPublicKeyHash = await crypto.sha256.hashString(seedRequestPublicKey)
+    this.seedRequestPublicKeyHash = seedRequestPublicKeyHash
+    this.displaySeedRequestModal(username, seedRequestPublicKeyHash)
+  }
 
-    const seedString = window.prompt(
-      `Welcome, ${username}!`
-      + '\n\n'
-      + 'Sign in from a device you used before to send the secret key to this device.'
-      + '\n\n'
-      + 'Before sending, please verify the Device ID matches:'
-      + '\n\n'
-      + seedRequestPublicKeyHash
-      + '\n\n'
-      + 'You can also manually enter the secret key below. You received your secret key when you created your account.'
-      + '\n\n'
-      + 'Hit cancel to sign out.'
-      + '\n'
-    )
+  displaySeedRequestModal(username, seedRequestPublicKeyHash) {
+    const seedRequestModal = document.createElement('div')
+    seedRequestModal.className = 'userbase-modal'
 
-    if (seedString) {
+    seedRequestModal.innerHTML = `
+      <div class='userbase-container'>
+
+        <div>
+          <div
+            id='userbase-request-key-modal-close-button'
+            class='fas userbase-fa-times-circle'
+          />
+        </div>
+
+        <form id='userbase-request-key-form'>
+
+          <p id='userbase-request-key-form-first-line'>
+            Whoops! We need your secret key to sign in.
+          </p>
+
+          <div class='userbase-text-line'>
+            Sign in from a device you used before to send the secret key to this device.
+          </div>
+
+          <div class='userbase-text-line'>
+            Before sending, please verify the Device ID matches:
+          </div>
+
+          <div class='userbase-display-key'>
+            ${seedRequestPublicKeyHash}
+          </div>
+
+          <div>
+            <div class='userbase-loader-wrapper'>
+              <div class='userbase-loader' />
+            </div>
+          </div>
+
+          <div class='userbase-text-line'>
+            You can also manually enter the secret key below. You received your secret key when you created your account.
+          </div>
+
+          <div id='userbase-manual-input-key-form'>
+
+            <div id='userbase-manual-input-key-outer-wrapper'>
+              <div class='userbase-manual-input-key-inner-wrapper'>
+                <input
+                  id='userbase-secret-key-input'
+                  type='text'
+                  autoComplete='off'
+                  placeholder='Paste your secret key here'
+                />
+              </div>
+            </div>
+          </div>
+
+          <div id='userbase-submit-wrapper'>
+            <input
+              class='userbase-button'
+              type='submit'
+              value='Save'
+            />
+          </div>
+
+        </form>
+      </div>
+    `
+
+    document.body.appendChild(seedRequestModal)
+
+    const closeButton = document.getElementById('userbase-request-key-modal-close-button')
+    const keyInput = document.getElementById('userbase-secret-key-input')
+    const keyInputForm = document.getElementById('userbase-request-key-form')
+
+    async function inputSeed(e) {
+      e.preventDefault()
+
+      const seedString = keyInput.value
+      if (!seedString) return
+
       await this.saveSeed(username, seedString)
-    } else {
-      const userHitCancel = seedString === null
-      if (userHitCancel) {
-        await this.signOut()
-        this.rejectConnection(new WebSocketError('Canceled', this.username))
-      }
+
+      hideSeedRequestModal()
     }
+
+    async function closeModal() {
+      await this.signOut()
+      this.rejectConnection(new WebSocketError('Canceled', username))
+      hideSeedRequestModal()
+    }
+
+    function hideSeedRequestModal() {
+      seedRequestModal.style.display = 'none'
+    }
+
+    keyInputForm.onsubmit = inputSeed.bind(this)
+    closeButton.onclick = closeModal.bind(this)
+    this.hideSeedRequestModal = hideSeedRequestModal
   }
 
   async getRequestsForSeed() {
@@ -528,10 +607,13 @@ class Connection {
     const requesterPublicKeyArrayBuffer = new Uint8Array(base64.decode(requesterPublicKey))
     const requesterPublicKeyHash = base64.encode(await crypto.sha256.hash(requesterPublicKeyArrayBuffer))
 
-    if (this.sentSeedTo[requesterPublicKeyHash] || this.processingSeedRequest[requesterPublicKeyHash]) return
+    if (this.sentSeedTo[requesterPublicKeyHash]
+      || this.processingSeedRequest[requesterPublicKeyHash]
+      || this.seedRequestPublicKeyHash === requesterPublicKeyHash) return
+
     this.processingSeedRequest[requesterPublicKeyHash] = true
 
-    if (window.confirm(`Send the seed to device: \n\n${requesterPublicKeyHash}\n`)) {
+    if (window.confirm(`Send the secret key to device with Device ID: \n\n${requesterPublicKeyHash}\n`)) {
       try {
         const sharedKey = await crypto.diffieHellman.getSharedKey(
           this.keys.dhPrivateKey,

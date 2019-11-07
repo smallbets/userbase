@@ -27,7 +27,16 @@ module.exports = (env, argv) => {
         {
           test: /\.css$/,
           use: [
-            'style-loader', 'css-loader', 'postcss-loader',
+            'style-loader',
+            'css-loader',
+            {
+              loader: 'postcss-loader',
+              options: {
+                config: {
+                  path: './postcss.config.js'
+                }
+              }
+            },
           ],
         },
         {
