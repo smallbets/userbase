@@ -62,6 +62,7 @@
     "cypress": "^3.6.0",
     "eslint": "^6.5.1",
     "eslint-loader": "^3.0.2",
+    "eslint-plugin-cypress": "^2.7.0",
     "eslint-plugin-react": "^7.16.0",
     "forever": "^1.0.0",
     "nodemon": "^1.19.1",
