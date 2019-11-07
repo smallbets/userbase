@@ -9,20 +9,23 @@
 // ***********************************************
 
 const randomString = function () { return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15) }
-const username = randomString() + "-user"
-const password = randomString() + "-pass"
-// const appId = 'a43ae910-fc89-43fe-a7a3-a11a53b49325'
-const appId = '5bbf9019-c5c7-4d38-95de-cefcb653f00f'
-const dbName = 'test'
+const randomUsername = randomString() + "-user"
+const randomPassword = randomString() + "-pass"
+const username = "n12hp7bacobv9p5t1vxvbn-user"
+const password = "z7ld6m0r18cqs1pjbycw9-pass"
 
-Cypress.Commands.add("getLoginInfo", () => {
+const appId = 'e249839a-03e3-4f42-b7c5-898f3ba10071'
+const dbName = 'test'
+const endpoint = 'http://localhost:3000'
+
+Cypress.Commands.add("getLoginInfo", (existing=false) => {
   const loginInfo = {
-    'username': username,
-    'password': password,
+    'username': existing ? username : randomUsername,
+    'password': existing ? password : randomPassword,
     'appId': appId,
-    'db': dbName
+    'db': dbName,
+    'endpoint': endpoint
   }
-  cy.log('in command logininfo:', loginInfo)
+  cy.log('getting new login info:', loginInfo)
   cy.wrap(loginInfo)
 })
-

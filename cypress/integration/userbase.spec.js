@@ -2,13 +2,16 @@
 
 describe('Configure the env', function () {
   let info = {}
+  let infoExistingUser = {}
   beforeEach(() => {
     cy.visit('./cypress/integration/index.html').then((win) => {
       expect(win).to.have.property('userbase')
     })
-
-    return cy.getLoginInfo().then((loginInfo) => {
+    cy.getLoginInfo().then((loginInfo) => {
       info = loginInfo
+    })
+    cy.getLoginInfo(true).then((loginInfo) => {
+      infoExistingUser = loginInfo
     })
   })
 
@@ -27,30 +30,16 @@ describe('Configure the env', function () {
     })
   })
 
-  let database = []
-  let sess = {}
-  const databaseChange = function (items) {
-    // clear the database variable
-    database = []
-
-    // copy all the iterms to the database
-    for (let i = 0; i < items.length; i++) {
-      database.push(items[i])
-    }
-  }
-
-  it('Signup/Signin the user', function () {
+  it('Signup/Logout/Signin a new user', function () {
     cy.window().then(({ userbase }) => {
-      userbase.configure({ appId: info.appId })
+      userbase.configure({ appId: info.appId, endpoint: info.endpoint })
       return userbase.signUp(info.username, info.password).then((user) => {
         cy.log(user)
-        // sess = session
         expect(user.username, 'user.username').to.exists
         expect(user.username, 'user.username to be the one signed up').to.equal(info.username)
         expect(user.key, 'user has to be signed in').not.to.be.empty
         const currentSession = JSON.parse(localStorage.getItem('userbaseCurrentSession'))
         cy.log('session current user', localStorage.getItem('userbaseCurrentSession'))
-        // expect(currentSession.username).to.equal(info.username)
         expect(currentSession.signedIn, 'signedIn should be true').to.be.true
         expect(currentSession.sessionId, 'sessionId should exists').to.be.not.null
         expect(currentSession.creationDate, 'creationDate should exists').to.be.not.null
@@ -64,7 +53,6 @@ describe('Configure the env', function () {
 
           expect(loggedOutSession.signedIn, 'session should have signedIn set to false').to.be.false
           expect(loggedOutSession.username, 'username should be the same after signout').to.equal(info.username)
-          // userbase.configure({ appId: info.appId })
 
           cy.clearLocalStorage()
           return userbase.signIn(info.username, info.password).then((user) => {
@@ -76,34 +64,24 @@ describe('Configure the env', function () {
       })
     })
   })
-  it('send data to the db', function () {
+  it('Login without configure', function () {
     cy.window().then(({ userbase }) => {
-      return userbase.signIn(info.username, info.password).then((user) => {
+      return userbase.signIn(infoExistingUser.username, infoExistingUser.password).then((user) => {
         cy.log('user', user)
       }).catch((err) => {
         cy.log(err)
+        expect(err.name).to.equal('AppIdNotSet')
+        expect(err.status).to.equal(400)
       })
     })
   })
-
-
-  //   // use the standard appId, already created
-  //   // user has to be already signed up to login
-  //   // Simulate user input of the seed
-  //   // const seedStub = () => {
-  //   //   return info.seed
-  //   // }
-  //   // cy.window().then((win) => {
-  //   //   cy.stub(win, 'prompt', seedStub).as('seedStubNotNull')
-  //   //   cy.get('@seedStubNotNull').should('be.calledOnce').then(() => {
-  //   //     const currentSession = JSON.parse(localStorage.getItem('userbaseCurrentSession'))
-  //   //     expect(currentSession.username)
-  //   //     .to.be.equal(sess.username)
-  //   //     expect(currentSession.signedIn)
-  //   //     .to.be.true
-  //   //     expect(currentSession.sessionId)
-  //   //     .not.to.be.empty
-  //   //     .and.to.be.string()
-  //   //   })
-  //   // })
+  it.only('Login', function () {
+    cy.window().then(({ userbase }) => {
+      userbase.configure({ appId: infoExistingUser.appId, endpoint: infoExistingUser.endpoint })
+      return userbase.signIn(infoExistingUser.username, infoExistingUser.password)
+      .then((user) => {
+        cy.log('user', user)
+      })
+    })
+  })
 })
