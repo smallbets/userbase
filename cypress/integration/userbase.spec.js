@@ -75,8 +75,9 @@ describe('Configure the env', function () {
       })
     })
   })
-  it.only('Login', function () {
+  it('Login', function () {
     cy.window().then(({ userbase }) => {
+      cy.log(userbase)
       userbase.configure({ appId: infoExistingUser.appId, endpoint: infoExistingUser.endpoint })
       return userbase.signIn(infoExistingUser.username, infoExistingUser.password)
       .then((user) => {
