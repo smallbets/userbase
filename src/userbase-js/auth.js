@@ -297,37 +297,17 @@ const getLastUsedUsername = () => {
   else return lastUsedSession.username
 }
 
-const signInWithSession = async () => {
+const init = async ({ appId, endpoint }) => {
   try {
-    const appId = config.getAppId()
+    if (ws.connected) throw new errors.UserAlreadySignedIn(ws.username)
+    config.configure({ appId, endpoint })
 
-    const currentSession = localData.getCurrentSession()
-    if (!currentSession) return {}
-
-    const { signedIn, username, sessionId } = currentSession
-    if (!signedIn) return { lastUsedUsername: username }
-
-    let apiSignInWithSessionResult
-    try {
-      apiSignInWithSessionResult = await api.auth.signInWithSession(sessionId)
-    } catch (e) {
-      _parseGenericErrors(e)
-
-      if (e.response && e.response.data === 'Session invalid') {
-        return { lastUsedUsername: username }
-      }
-
-      throw e
-    }
-    const { email, profile } = apiSignInWithSessionResult
-
-    const savedSeedString = localData.getSeedString(username) // might be null if does not have seed saved
-    const seedString = await _connectWebSocket(appId, sessionId, username, savedSeedString)
-    return { user: _buildUserResult(username, seedString, email, profile) }
+    const session = await signInWithSession(appId)
+    return session
   } catch (e) {
 
     switch (e.name) {
-      case 'AppIdNotSet':
+      case 'AppIdMissing':
       case 'AppIdNotValid':
       case 'UserAlreadySignedIn':
       case 'UserCanceledSignIn':
@@ -339,6 +319,32 @@ const signInWithSession = async () => {
     }
 
   }
+}
+
+const signInWithSession = async (appId) => {
+  const currentSession = localData.getCurrentSession()
+  if (!currentSession) return {}
+
+  const { signedIn, username, sessionId } = currentSession
+  if (!signedIn) return { lastUsedUsername: username }
+
+  let apiSignInWithSessionResult
+  try {
+    apiSignInWithSessionResult = await api.auth.signInWithSession(sessionId)
+  } catch (e) {
+    _parseGenericErrors(e)
+
+    if (e.response && e.response.data === 'Session invalid') {
+      return { lastUsedUsername: username }
+    }
+
+    throw e
+  }
+  const { email, profile } = apiSignInWithSessionResult
+
+  const savedSeedString = localData.getSeedString(username) // might be null if does not have seed saved
+  const seedString = await _connectWebSocket(appId, sessionId, username, savedSeedString)
+  return { user: _buildUserResult(username, seedString, email, profile) }
 }
 
 const grantDatabaseAccess = async (dbName, username, readOnly) => {
@@ -361,6 +367,6 @@ export default {
   signOut,
   signIn,
   getLastUsedUsername,
-  signInWithSession,
+  init,
   grantDatabaseAccess,
 }

@@ -1,4 +1,3 @@
-import config from './config'
 import auth from './auth'
 import db from './db'
 
@@ -7,13 +6,12 @@ if (!global._babelPolyfill) {
 }
 
 export default {
-  configure: config.configure,
+  init: auth.init,
 
   signUp: auth.signUp,
   signIn: auth.signIn,
   signOut: auth.signOut,
   getLastUsedUsername: auth.getLastUsedUsername,
-  signInWithSession: auth.signInWithSession,
 
   openDatabase: db.openDatabase,
 

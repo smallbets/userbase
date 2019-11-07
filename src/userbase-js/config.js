@@ -1,42 +1,32 @@
-import ws from './ws'
-import api from './api'
 import errors from './errors'
 
-const DEFAULT_SERVICE_ENDPOINT = 'https://preview.userbase.dev'
-ws.endpoint = DEFAULT_SERVICE_ENDPOINT
+let userbaseEndpoint = 'https://preview.userbase.dev'
+const getEndpoint = () => userbaseEndpoint
+const setEndpoint = (newEndpoint) => {
+  if (!newEndpoint) return
+  userbaseEndpoint = newEndpoint
+}
 
 let userbaseAppId = null
 const getAppId = () => {
   if (!userbaseAppId) throw new errors.AppIdNotSet
   return userbaseAppId
 }
+const setAppId = (appId) => {
+  if (!appId) throw new errors.AppIdMissing
 
-let serverPublicKey = null
-const getServerPublicKey = async () => {
-  if (serverPublicKey) {
-    return serverPublicKey
-  } else {
-    serverPublicKey = await api.auth.getServerPublicKey() // eslint-disable-line require-atomic-updates
-    return serverPublicKey
+  if (appId !== userbaseAppId) {
+    userbaseAppId = appId
   }
 }
 
 const configure = ({ appId, endpoint }) => {
-  if (!appId && !endpoint) throw new errors.ConfigParametersMissing
-
-  if (appId && appId !== userbaseAppId) {
-    if (ws.connected) throw new errors.UserAlreadySignedIn
-    userbaseAppId = appId
-  }
-
-  if (endpoint && endpoint !== ws.endpoint) {
-    if (ws.connected) throw new errors.UserAlreadySignedIn
-    ws.endpoint = endpoint
-  }
+  setAppId(appId)
+  setEndpoint(endpoint)
 }
 
 export default {
-  configure,
+  getEndpoint,
   getAppId,
-  getServerPublicKey
+  configure
 }

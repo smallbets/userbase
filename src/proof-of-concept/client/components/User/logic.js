@@ -32,12 +32,12 @@ const signIn = async (username, password) => {
   }
 }
 
-const signInWithSession = async () => {
+const init = async (appId, endpoint) => {
   try {
-    const session = await userbase.signInWithSession()
+    const session = await userbase.init({ appId, endpoint })
     return session
   } catch (e) {
-    return _errorHandler(e, 'sign in with session')
+    return _errorHandler(e, 'init')
   }
 }
 
@@ -45,5 +45,5 @@ export default {
   signUp,
   signOut,
   signIn,
-  signInWithSession
+  init
 }

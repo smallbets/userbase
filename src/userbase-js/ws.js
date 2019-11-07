@@ -5,6 +5,7 @@ import localData from './localData'
 import crypto from './Crypto'
 import { removeProtocolFromEndpoint, getProtocolFromEndpoint } from './utils'
 import statusCodes from './statusCodes'
+import config from './config'
 import './style.css'
 
 const wsAlreadyConnected = 'Web Socket already connected'
@@ -35,14 +36,11 @@ class Connection {
   }
 
   init(resolveConnection, rejectConnection, username, sessionId, seedString, signingUp) {
-    const currentEndpoint = this.endpoint
-
     for (const property of Object.keys(this)) {
       delete this[property]
     }
 
     this.ws = null
-    this.endpoint = currentEndpoint
     this.connected = false
 
     this.resolveConnection = resolveConnection
@@ -88,8 +86,8 @@ class Connection {
         10000
       )
 
-      const host = removeProtocolFromEndpoint(this.endpoint)
-      const protocol = getProtocolFromEndpoint(this.endpoint)
+      const host = removeProtocolFromEndpoint(config.getEndpoint())
+      const protocol = getProtocolFromEndpoint(config.getEndpoint())
       const url = ((protocol === 'https') ?
         'wss://' : 'ws://') + `${host}/api?appId=${appId}&sessionId=${sessionId}`
 

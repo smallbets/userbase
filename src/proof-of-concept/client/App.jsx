@@ -5,6 +5,8 @@ import Dashboard from './components/Dashboard/Dashboard'
 import UserForm from './components/User/UserForm'
 import ShowKey from './components/User/ShowKey'
 
+const APP_ID = 'poc-id'
+
 export default class App extends Component {
   constructor(props) {
     super(props)
@@ -29,7 +31,13 @@ export default class App extends Component {
   async componentDidMount() {
     window.addEventListener('hashchange', this.handleReadHash, false)
 
-    const session = await userLogic.signInWithSession()
+    let endpoint
+    // use our own server for development
+    if (window.location.host === 'localhost:3000') endpoint = 'http://localhost:3000'
+    else if (window.location.host === 'staging.encrypted.dev') endpoint = 'https://staging.encrypted.dev'
+
+    const session = await userLogic.init(APP_ID, endpoint)
+
     if (session.user) {
       const { username, key } = session.user
       this.setState({ username, key, signedIn: true })
