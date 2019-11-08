@@ -42,7 +42,8 @@
     "patch:server": "cd ./src/userbase-server && printf 'Input patch commit message: ' && read message && npm version patch -m '$message' && cd ../.. && npm run copy:serverfiles",
     "publish:server": "cd ./npm_build/userbase-server && npm publish",
     "build:sdk-script": "rm -Rf ./build/script && npm run transpile:sdk && webpack --mode production --config ./src/userbase-js/webpack.config.js",
-    "test": "npm run build:sdk-script && cp ./build/script/userbase-*.js ./build/script/userbase-latest.js && npx cypress open; npm start"
+    "test:setup": "npm run build:sdk-script && cp ./build/script/userbase-*.js ./build/script/userbase-latest.js && npm start &",
+    "test:start": "npm run test:setup && npx cypress open"
   },
   "repository": "https://github.com/dvassallo/encrypted.dev",
   "keywords": [],

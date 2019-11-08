@@ -11,10 +11,10 @@
 const randomString = function () { return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15) }
 const randomUsername = randomString() + "-user"
 const randomPassword = randomString() + "-pass"
-const username = "n12hp7bacobv9p5t1vxvbn-user"
-const password = "z7ld6m0r18cqs1pjbycw9-pass"
+const username = "cwe2jo26sbss59c5bjw7a-user"
+const password = "wbgrd2jifcfwvinslb4g8-pass"
 
-const appId = 'e249839a-03e3-4f42-b7c5-898f3ba10071'
+const appId = '7d51fec4-4bc4-4650-a3da-bffa7a5786ce'
 const dbName = 'test'
 const endpoint = 'http://localhost:3000'
 
