@@ -80,9 +80,9 @@ describe('Configure the env', function () {
       cy.log(userbase)
       userbase.configure({ appId: infoExistingUser.appId, endpoint: infoExistingUser.endpoint })
       return userbase.signIn(infoExistingUser.username, infoExistingUser.password)
-      .then((user) => {
-        cy.log('user', user)
-      })
+        .then((user) => {
+          cy.log('user', user)
+        })
     })
   })
 })
