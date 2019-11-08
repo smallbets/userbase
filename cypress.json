@@ -1,5 +1,6 @@
 {
   "testFiles": "**/*.spec.js",
   "defaultCommandTimeout": 15000,
-  "chromeWebSecurity": false
+  "chromeWebSecurity": false,
+  "projectId": "uokg4h"
 }
