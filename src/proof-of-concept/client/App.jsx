@@ -4,6 +4,7 @@ import dbLogic from './components/Dashboard/logic'
 import Dashboard from './components/Dashboard/Dashboard'
 import UserForm from './components/User/UserForm'
 import ShowKey from './components/User/ShowKey'
+import SaveKey from './components/User/SaveKey'
 
 const APP_ID = 'poc-id'
 
@@ -17,7 +18,9 @@ export default class App extends Component {
       signedIn: false,
       mode: undefined,
       loadingTodos: true,
-      todos: []
+      todos: [],
+      deviceId: undefined,
+      signInError: undefined
     }
 
     this.handleSignIn = this.handleSignIn.bind(this)
@@ -26,6 +29,8 @@ export default class App extends Component {
     this.handleRemoveUserAuthentication = this.handleRemoveUserAuthentication.bind(this)
     this.handleReadHash = this.handleReadHash.bind(this)
     this.handleDbChange = this.handleDbChange.bind(this)
+    this.handleKeyNotFound = this.handleKeyNotFound.bind(this)
+    this.handleSetSignInError = this.handleSetSignInError.bind(this)
   }
 
   async componentDidMount() {
@@ -36,7 +41,13 @@ export default class App extends Component {
     if (window.location.host === 'localhost:3000') endpoint = 'http://localhost:3000'
     else if (window.location.host === 'staging.encrypted.dev') endpoint = 'https://staging.encrypted.dev'
 
-    const session = await userLogic.init(APP_ID, endpoint)
+    const session = await userLogic.init({
+      appId: APP_ID,
+      endpoint,
+
+      // uncomment to test overriding keyNotFoundHandler
+      // keyNotFoundHandler: this.handleKeyNotFound
+    })
 
     if (session.user) {
       const { username, key } = session.user
@@ -63,9 +74,14 @@ export default class App extends Component {
     this.setState({ todos, loadingTodos: false })
   }
 
+  handleKeyNotFound(username, deviceId) {
+    this.setState({ username, deviceId })
+    window.location.hash = 'save-key'
+  }
+
   async handleSignIn(user) {
     const { username, key } = user
-    this.setState({ username, key, signedIn: true })
+    this.setState({ username, key, signedIn: true, signInError: undefined })
     await dbLogic.openDatabase(username, this.handleDbChange)
     window.location.hash = ''
   }
@@ -91,13 +107,14 @@ export default class App extends Component {
       key: undefined,
       signedIn: false,
       todos: [],
-      loadingTodos: true
+      loadingTodos: true,
+      deviceId: undefined
     })
     window.location.hash = 'sign-in'
   }
 
   handleReadHash() {
-    const { username, signedIn } = this.state
+    const { username, signedIn, deviceId } = this.state
 
     const hashRoute = window.location.hash.substring(1)
 
@@ -110,6 +127,9 @@ export default class App extends Component {
       case 'show-key':
         // only show key if user is signed in already, otherwise re-route to default
         return signedIn ? this.setState({ mode: hashRoute }) : window.location.hash = ''
+
+      case 'save-key':
+        return deviceId && !signedIn ? this.setState({ mode: hashRoute }) : window.location.hash = ''
 
       default: {
         if (signedIn && hashRoute === '') {
@@ -127,8 +147,12 @@ export default class App extends Component {
     }
   }
 
+  handleSetSignInError(signInError) {
+    this.setState({ signInError })
+  }
+
   render() {
-    const { username, key, signedIn, mode, loadingTodos, todos } = this.state
+    const { username, key, signedIn, mode, loadingTodos, todos, deviceId, signInError } = this.state
 
     if (!mode) {
       return <div />
@@ -141,14 +165,14 @@ export default class App extends Component {
             <a href='#'><img src={require('./img/icon.png')} className='h-10 sm:h-12' /></a>
           </div>
           <div className='flex-1 text-right tracking-tight mr-5'>
-            {!signedIn
+            {!signedIn && !deviceId
               ? <ul>
                 <li className='inline-block ml-4'><a className={mode === 'sign-in' ? 'text-orange-600' : ''} href='#sign-in'>Sign in</a></li>
                 <li className='inline-block ml-4'><a className={mode === 'sign-up' ? 'text-orange-600' : ''} href='#sign-up'>New account</a></li>
               </ul>
               : <ul>
                 <li className='inline-block ml-4 font-light'>{username}</li>
-                <li className='inline-block ml-4'><a className={'fa-key no-underline ' + (mode === 'show-key' ? 'text-orange-600' : '')} href='#show-key'></a></li>
+                {signedIn && <li className='inline-block ml-4'><a className={'fa-key no-underline ' + (mode === 'show-key' ? 'text-orange-600' : '')} href='#show-key'></a></li>}
                 <li className='inline-block ml-4'><a href='#' onClick={this.handleSignOut}>Sign out</a></li>
               </ul>
             }
@@ -166,12 +190,16 @@ export default class App extends Component {
               />
             case 'show-key':
               return <ShowKey keyString={key} />
+            case 'save-key':
+              return <SaveKey deviceId={deviceId} />
             case 'sign-in':
               return <UserForm
                 handleSubmit={this.handleSignIn}
                 formType='Sign In'
                 key='sign-in'
                 placeholderUsername={username}
+                handleSetSignInError={this.handleSetSignInError}
+                error={signInError}
               />
             case 'sign-up':
               return <UserForm

@@ -11,6 +11,9 @@ export default {
   signUp: auth.signUp,
   signIn: auth.signIn,
   signOut: auth.signOut,
+
+  importKey: auth.importKey,
+
   getLastUsedUsername: auth.getLastUsedUsername,
 
   openDatabase: db.openDatabase,

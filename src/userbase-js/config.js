@@ -14,19 +14,27 @@ const getAppId = () => {
 }
 const setAppId = (appId) => {
   if (!appId) throw new errors.AppIdMissing
-
-  if (appId !== userbaseAppId) {
-    userbaseAppId = appId
-  }
+  userbaseAppId = appId
 }
 
-const configure = ({ appId, endpoint }) => {
+let userbaseKeyNotFoundHandler = null
+const getKeyNotFoundHandler = () => userbaseKeyNotFoundHandler
+const setKeyNotFoundHandler = (keyNotFoundHandler) => {
+  if (keyNotFoundHandler && typeof keyNotFoundHandler !== 'function') {
+    throw new errors.KeyNotFoundHandlerMustBeFunction
+  }
+  userbaseKeyNotFoundHandler = keyNotFoundHandler
+}
+
+const configure = ({ appId, endpoint, keyNotFoundHandler }) => {
   setAppId(appId)
   setEndpoint(endpoint)
+  setKeyNotFoundHandler(keyNotFoundHandler)
 }
 
 export default {
   getEndpoint,
   getAppId,
+  getKeyNotFoundHandler,
   configure
 }

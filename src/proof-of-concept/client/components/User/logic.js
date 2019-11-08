@@ -32,12 +32,20 @@ const signIn = async (username, password) => {
   }
 }
 
-const init = async (appId, endpoint) => {
+const init = async (settings) => {
   try {
-    const session = await userbase.init({ appId, endpoint })
+    const session = await userbase.init(settings)
     return session
   } catch (e) {
     return _errorHandler(e, 'init')
+  }
+}
+
+const importKey = async (keyString) => {
+  try {
+    await userbase.importKey(keyString)
+  } catch (e) {
+    return _errorHandler(e, 'import key')
   }
 }
 
@@ -45,5 +53,6 @@ export default {
   signUp,
   signOut,
   signIn,
-  init
+  init,
+  importKey
 }
