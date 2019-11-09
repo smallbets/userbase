@@ -373,7 +373,6 @@ exports.signIn = async function (req, res) {
 
   const username = req.body.username
   const password = req.body.password
-  const tempPassword = req.body.tempPassword
 
   if (!appId || !username || !password) return res
     .status(statusCodes['Bad Request'])
@@ -404,17 +403,9 @@ exports.signIn = async function (req, res) {
     const user = userResponse.Item
 
     const doesNotExist = !user
-    const incorrectPassword = doesNotExist || !(await crypto.bcrypt.compare(
-      password,
-      tempPassword
-        ? user['temp-password']
-        : user['password-hash'])
-    )
+    const incorrectPassword = doesNotExist || !(await crypto.bcrypt.compare(password, user['password-hash']))
 
-    const tempPasswordExpired = incorrectPassword || (tempPassword
-      && new Date() - new Date(user['temp-password-creation-date']) > oneDayMs)
-
-    if (doesNotExist || incorrectPassword || tempPasswordExpired) return res
+    if (doesNotExist || incorrectPassword) return res
       .status(statusCodes['Unauthorized']).send('Invalid password')
 
     const session = await createSession(user['user-id'], appId)
@@ -973,84 +964,5 @@ exports.getServerPublicKey = async function (_, res) {
   } catch (e) {
     logger.error(`Failed to get server public key with ${e}`)
     return res.status(statusCodes['Internal Server Error']).send('Failed to get server public key')
-  }
-}
-
-const setTempPassword = async (username, appId, tempPassword) => {
-  const params = {
-    TableName: setup.usersTableName,
-    Key: {
-      username,
-      'app-id': appId
-    },
-    UpdateExpression: 'set #tempPassword = :tempPassword, #tempPasswordCreationDate = :tempPasswordCreationDate',
-    ConditionExpression: 'attribute_exists(username)',
-    ExpressionAttributeNames: {
-      '#tempPassword': 'temp-password',
-      '#tempPasswordCreationDate': 'temp-password-creation-date'
-    },
-    ExpressionAttributeValues: {
-      ':tempPassword': await crypto.bcrypt.hash(tempPassword),
-      ':tempPasswordCreationDate': new Date().toISOString()
-    },
-    ReturnValues: 'ALL_NEW'
-  }
-
-  const ddbClient = connection.ddbClient()
-
-  try {
-    const userResponse = await ddbClient.update(params).promise()
-    return userResponse.Attributes
-  } catch (e) {
-    if (e.name === 'ConditionalCheckFailedException') {
-      return null
-    }
-    throw e
-  }
-}
-
-exports.forgotPassword = async function (req, res) {
-  const appId = req.query.appId
-  const username = req.body.username && req.body.username.toLowerCase()
-  const origin = req.body.origin
-
-  if (!appId || !username || !origin) return res
-    .status(statusCodes['Bad Request'])
-    .send('Missing required items')
-
-  try {
-    // Warning: uses secondary index here. It's possible index won't be up to date and this fails
-    const app = await getAppByAppId(appId)
-    if (!app) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
-
-    const tempPassword = crypto
-      .randomBytes(ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID)
-      .toString('base64')
-
-    const user = await setTempPassword(username, appId, tempPassword)
-    if (!user) return res.status(statusCodes['Not Found']).send('UserNotFound')
-
-    const email = user['email']
-    if (!email) return res.status(statusCodes['Not Found']).send('UserEmailNotFound')
-
-    const subject = `Forgot password - ${app['app-name']}`
-    const body = `Hello, ${username}!`
-      + '<br />'
-      + '<br />'
-      + `Someone has requested you forgot your password to ${app['app-name']}!`
-      + '<br />'
-      + '<br />'
-      + 'If you did not make this request, you can safely ignore this email.'
-      + '<br />'
-      + '<br />'
-      + `Click <a href='${origin}#userbase-username=${encodeURIComponent(username)}&userbase-tempPassword=${encodeURIComponent(tempPassword)}'>here</a>`
-      + ' to log in and change your password.'
-
-    await setup.sendEmail(email, subject, body)
-
-    return res.end()
-  } catch (e) {
-    logger.error(`Failed to forget password for user '${username}' of app '${appId}' with ${e}`)
-    return res.status(statusCodes['Internal Server Error']).send('Failed to forget password')
   }
 }

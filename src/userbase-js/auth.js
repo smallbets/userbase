@@ -232,9 +232,9 @@ const signOut = async () => {
   }
 }
 
-const _signInWrapper = async (username, password, tempPassword) => {
+const _signInWrapper = async (username, password) => {
   try {
-    const { session, email, profile } = await api.auth.signIn(username, password, tempPassword)
+    const { session, email, profile } = await api.auth.signIn(username, password)
     return { session, email, profile }
   } catch (e) {
     _parseGenericErrors(e)
@@ -248,7 +248,7 @@ const _signInWrapper = async (username, password, tempPassword) => {
   }
 }
 
-const signIn = async (username, password, tempPassword = false) => {
+const signIn = async (username, password) => {
   try {
     _validateSignUpOrSignInInput(username, password)
 
@@ -256,7 +256,7 @@ const signIn = async (username, password, tempPassword = false) => {
 
     const lowerCaseUsername = username.toLowerCase()
 
-    const { session, email, profile } = await _signInWrapper(lowerCaseUsername, password, tempPassword)
+    const { session, email, profile } = await _signInWrapper(lowerCaseUsername, password)
     const { sessionId, creationDate } = session
 
     localData.signInSession(lowerCaseUsername, sessionId, creationDate)
@@ -298,13 +298,6 @@ const getLastUsedUsername = () => {
 }
 
 const signInWithSession = async () => {
-  const startingHash = config.getUsernameAndTempPasswordFromStartingHash()
-  if (startingHash) {
-    const { username, tempPassword } = startingHash
-    const user = await signIn(username, tempPassword, true)
-    return { user }
-  }
-
   try {
     const appId = config.getAppId()
 
@@ -363,41 +356,6 @@ const grantDatabaseAccess = async (dbName, username, readOnly) => {
   await ws.grantDatabaseAccess(database, username, granteePublicKey, readOnly)
 }
 
-const forgotPassword = async (username, origin = window.location.origin) => {
-  try {
-    try {
-      await api.auth.forgotPassword(username, origin)
-    } catch (e) {
-      _parseGenericErrors(e)
-
-      if (e.response) {
-        if (e.response.data === 'UserNotFound') {
-          throw new errors.UserNotFound
-        } else if (e.response.data === 'UserEmailNotFound') {
-          throw new errors.UserEmailNotFound
-        }
-      }
-
-      throw e
-    }
-
-  } catch (e) {
-
-    switch (e.name) {
-      case 'AppIdNotSet':
-      case 'AppIdNotValid':
-      case 'UserNotFound':
-      case 'UserEmailNotFound':
-      case 'ServiceUnavailable':
-        throw e
-
-      default:
-        throw new errors.ServiceUnavailable
-
-    }
-  }
-}
-
 export default {
   signUp,
   signOut,
@@ -405,5 +363,4 @@ export default {
   getLastUsedUsername,
   signInWithSession,
   grantDatabaseAccess,
-  forgotPassword
 }

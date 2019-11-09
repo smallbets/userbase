@@ -447,7 +447,7 @@ async function setupSes() {
   ses = new aws.SES()
 }
 
-async function sendEmail(to, subject, body) {
+const sendEmail = async function (to, subject, body) {
 
   if (!emailDomain) {
     throw new Error('Email domain not set')
