@@ -133,6 +133,26 @@ class UserNotSignedIn extends Error {
   }
 }
 
+class UserNotFound extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'UserNotFound'
+    this.message = 'User not found.'
+    this.status = statusCodes['Not Found']
+  }
+}
+
+class UserEmailNotFound extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'UserEmailNotFound'
+    this.message = 'Email not found.'
+    this.status = statusCodes['Not Found']
+  }
+}
+
 class EmailNotValid extends Error {
   constructor(...params) {
     super(...params)
@@ -233,6 +253,8 @@ export default {
   UserAlreadySignedIn,
   AppIdNotValid,
   UserNotSignedIn,
+  UserNotFound,
+  UserEmailNotFound,
   EmailNotValid,
   ProfileMustBeObject,
   ProfileCannotBeEmpty,

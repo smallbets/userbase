@@ -1,6 +1,16 @@
 import ws from './ws'
 import api from './api'
 import errors from './errors'
+import { parseQueryStringWithoutArrayElems } from './utils'
+
+const startingHash = window.location.hash
+const getUsernameAndTempPasswordFromStartingHash = () => {
+  if (startingHash.includes('userbase-username') && startingHash.includes('userbase-tempPassword')) {
+    const { username, tempPassword } = parseQueryStringWithoutArrayElems(startingHash.substring(1))
+    return { username, tempPassword }
+  }
+  return null
+}
 
 const DEFAULT_SERVICE_ENDPOINT = 'https://preview.userbase.dev'
 ws.endpoint = DEFAULT_SERVICE_ENDPOINT
@@ -38,5 +48,6 @@ const configure = ({ appId, endpoint }) => {
 export default {
   configure,
   getAppId,
-  getServerPublicKey
+  getServerPublicKey,
+  getUsernameAndTempPasswordFromStartingHash
 }

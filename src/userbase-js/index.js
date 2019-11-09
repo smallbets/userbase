@@ -12,6 +12,8 @@ export default {
   signUp: auth.signUp,
   signIn: auth.signIn,
   signOut: auth.signOut,
+  forgotPassword: auth.forgotPassword,
+
   getLastUsedUsername: auth.getLastUsedUsername,
   signInWithSession: auth.signInWithSession,
 
