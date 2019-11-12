@@ -5,6 +5,9 @@ import localData from './localData'
 import crypto from './Crypto'
 import { removeProtocolFromEndpoint, getProtocolFromEndpoint } from './utils'
 import statusCodes from './statusCodes'
+import config from './config'
+import errors from './errors'
+import './style.css'
 
 const wsAlreadyConnected = 'Web Socket already connected'
 
@@ -33,15 +36,12 @@ class Connection {
     this.init()
   }
 
-  init(resolveConnection, rejectConnection, username, sessionId, seedString, signingUp) {
-    const currentEndpoint = this.endpoint
-
+  init(resolveConnection, rejectConnection, username, sessionId, seedString) {
     for (const property of Object.keys(this)) {
       delete this[property]
     }
 
     this.ws = null
-    this.endpoint = currentEndpoint
     this.connected = false
 
     this.resolveConnection = resolveConnection
@@ -50,13 +50,12 @@ class Connection {
 
     this.username = username
     this.sessionId = sessionId
+
     this.seedString = seedString
     this.keys = {
       init: false,
       salts: {}
     }
-
-    this.signingUp = signingUp
 
     this.requests = {}
 
@@ -70,7 +69,7 @@ class Connection {
     }
   }
 
-  connect(appId, sessionId, username, seedString = null, signingUp = false) {
+  connect(appId, sessionId, username, seedString = null) {
     if (this.connected) throw new WebSocketError(wsAlreadyConnected, this.username)
 
     return new Promise((resolve, reject) => {
@@ -87,8 +86,8 @@ class Connection {
         10000
       )
 
-      const host = removeProtocolFromEndpoint(this.endpoint)
-      const protocol = getProtocolFromEndpoint(this.endpoint)
+      const host = removeProtocolFromEndpoint(config.getEndpoint())
+      const protocol = getProtocolFromEndpoint(config.getEndpoint())
       const url = ((protocol === 'https') ?
         'wss://' : 'ws://') + `${host}/api?appId=${appId}&sessionId=${sessionId}`
 
@@ -103,7 +102,7 @@ class Connection {
           return
         }
 
-        this.init(resolve, reject, username, sessionId, seedString, signingUp)
+        this.init(resolve, reject, username, sessionId, seedString)
         this.ws = ws
 
         if (!seedString) {
@@ -300,15 +299,32 @@ class Connection {
   }
 
   async signOut() {
-    localData.signOutSession(this.username)
+    const username = this.username
+    const connectionResolved = this.connectionResolved
+    const rejectConnection = this.rejectConnection
 
-    const sessionId = this.sessionId
+    try {
+      localData.signOutSession(username)
 
-    const action = 'SignOut'
-    const params = { sessionId }
-    await this.request(action, params)
+      const sessionId = this.sessionId
 
-    this.close()
+      const action = 'SignOut'
+      const params = { sessionId }
+      await this.request(action, params)
+
+      this.close()
+
+      if (!connectionResolved && rejectConnection) {
+        rejectConnection(new WebSocketError('Canceled', username))
+      }
+
+    } catch (e) {
+      if (!connectionResolved && rejectConnection) {
+        rejectConnection(new WebSocketError('Canceled', username))
+      }
+
+      throw e
+    }
   }
 
   async setKeys(seedString) {
@@ -329,13 +345,9 @@ class Connection {
 
     this.keys.init = true
 
-    if (!this.signingUp) {
-      await this.getRequestsForSeed()
-      await this.getDatabaseAccessGrants()
-    }
-
     this.resolveConnection(seedString)
     this.connectionResolved = true
+    if (this.hideSeedRequestModal) this.hideSeedRequestModal()
   }
 
   async validateKey() {
@@ -418,32 +430,125 @@ class Connection {
   }
 
   async inputSeedManually(username, seedRequestPublicKey) {
-    const seedRequestPublicKeyHash = await crypto.sha256.hashString(seedRequestPublicKey)
+    const deviceId = await crypto.sha256.hashString(seedRequestPublicKey)
 
-    const seedString = window.prompt(
-      `Welcome, ${username}!`
-      + '\n\n'
-      + 'Sign in from a device you used before to send the secret key to this device.'
-      + '\n\n'
-      + 'Before sending, please verify the Device ID matches:'
-      + '\n\n'
-      + seedRequestPublicKeyHash
-      + '\n\n'
-      + 'You can also manually enter the secret key below. You received your secret key when you created your account.'
-      + '\n\n'
-      + 'Hit cancel to sign out.'
-      + '\n'
-    )
-
-    if (seedString) {
-      await this.saveSeed(username, seedString)
+    const keyNotFoundHandler = config.getKeyNotFoundHandler()
+    if (keyNotFoundHandler) {
+      keyNotFoundHandler(username, deviceId)
     } else {
-      const userHitCancel = seedString === null
-      if (userHitCancel) {
-        await this.signOut()
-        this.rejectConnection(new WebSocketError('Canceled', this.username))
+      this.displaySeedRequestModal(username, deviceId)
+    }
+  }
+
+  displaySeedRequestModal(username, deviceId) {
+    const seedRequestModal = document.createElement('div')
+    seedRequestModal.className = 'userbase-modal'
+
+    seedRequestModal.innerHTML = `
+      <div class='userbase-container'>
+
+        <div>
+          <div
+            id='userbase-request-key-modal-close-button'
+            class='fas userbase-fa-times-circle'
+          />
+        </div>
+
+        <form id='userbase-request-key-form'>
+
+          <p id='userbase-request-key-form-first-line'>
+            Whoops! We need your secret key to sign in.
+          </p>
+
+          <div class='userbase-text-line'>
+            Sign in from a device you used before to send the secret key to this device.
+          </div>
+
+          <div class='userbase-text-line'>
+            Before sending, please verify the Device ID matches:
+          </div>
+
+          <div class='userbase-display-key'>
+            ${deviceId}
+          </div>
+
+          <div>
+            <div class='userbase-loader-wrapper'>
+              <div class='userbase-loader' />
+            </div>
+          </div>
+
+          <div class='userbase-text-line'>
+            You can also manually enter the secret key below. You received your secret key when you created your account.
+          </div>
+
+          <div id='userbase-manual-input-key-form'>
+
+            <div id='userbase-manual-input-key-outer-wrapper'>
+              <div class='userbase-manual-input-key-inner-wrapper'>
+                <input
+                  id='userbase-secret-key-input'
+                  type='text'
+                  autoComplete='off'
+                  placeholder='Paste your secret key here'
+                />
+              </div>
+            </div>
+          </div>
+
+          <div id='userbase-submit-wrapper'>
+            <div id='userbase-submit-inner-wrapper'>
+              <input
+                class='userbase-button'
+                type='submit'
+                value='Save'
+              />
+              <div id='userbase-request-key-form-error' class='userbase-error'>
+              </div>
+            </div>
+          </div>
+
+        </form>
+      </div>
+    `
+
+    document.body.appendChild(seedRequestModal)
+
+    const closeButton = document.getElementById('userbase-request-key-modal-close-button')
+    const keyInput = document.getElementById('userbase-secret-key-input')
+    const keyInputForm = document.getElementById('userbase-request-key-form')
+    const keyFormError = document.getElementById('userbase-request-key-form-error')
+
+    async function inputSeed(e) {
+      e.preventDefault()
+
+      const seedString = keyInput.value
+      if (!seedString) return
+
+      try {
+        await this.saveSeed(seedString)
+        hideSeedRequestModal()
+      } catch (e) {
+        keyFormError.innerText = e.message
       }
     }
+
+    async function closeModal() {
+      try {
+        await this.signOut()
+        hideSeedRequestModal()
+      } catch (e) {
+        keyFormError.innerText = e.message
+      }
+    }
+
+    function hideSeedRequestModal() {
+      document.body.removeChild(seedRequestModal)
+    }
+
+    keyInputForm.onsubmit = inputSeed.bind(this)
+    closeButton.onclick = closeModal.bind(this)
+    this.hideSeedRequestModal = hideSeedRequestModal
   }
 
   async getRequestsForSeed() {
@@ -526,12 +631,13 @@ class Connection {
 
   async sendSeed(requesterPublicKey) {
     const requesterPublicKeyArrayBuffer = new Uint8Array(base64.decode(requesterPublicKey))
-    const requesterPublicKeyHash = base64.encode(await crypto.sha256.hash(requesterPublicKeyArrayBuffer))
+    const requesterDeviceId = base64.encode(await crypto.sha256.hash(requesterPublicKeyArrayBuffer))
 
-    if (this.sentSeedTo[requesterPublicKeyHash] || this.processingSeedRequest[requesterPublicKeyHash]) return
-    this.processingSeedRequest[requesterPublicKeyHash] = true
+    if (this.sentSeedTo[requesterDeviceId] || this.processingSeedRequest[requesterDeviceId]) return
 
-    if (window.confirm(`Send the seed to device: \n\n${requesterPublicKeyHash}\n`)) {
+    this.processingSeedRequest[requesterDeviceId] = true
+
+    if (window.confirm(`Send the secret key to device with Device ID: \n\n${requesterDeviceId}\n`)) {
       try {
         const sharedKey = await crypto.diffieHellman.getSharedKey(
           this.keys.dhPrivateKey,
@@ -544,12 +650,12 @@ class Connection {
         const params = { requesterPublicKey, encryptedSeed }
 
         await this.request(action, params)
-        this.sentSeedTo[requesterPublicKeyHash] = true
+        this.sentSeedTo[requesterDeviceId] = true
       } catch (e) {
         console.warn(e)
       }
     }
-    delete this.processingSeedRequest[requesterPublicKeyHash]
+    delete this.processingSeedRequest[requesterDeviceId]
   }
 
   async receiveSeed(encryptedSeed, senderPublicKey, seedRequestPrivateKey) {
@@ -560,12 +666,18 @@ class Connection {
 
     const seedString = await crypto.aesGcm.decryptString(sharedKey, encryptedSeed)
 
-    await this.saveSeed(this.username, seedString)
+    await this.saveSeed(seedString)
   }
 
-  async saveSeed(username, seedString) {
+  async saveSeed(seedString) {
+    const username = this.username
     localData.saveSeedString(username, seedString)
-    await this.setKeys(seedString)
+    try {
+      await this.setKeys(seedString)
+    } catch (e) {
+      localData.removeSeedString(username)
+      throw new errors.KeyNotValid(username)
+    }
     localData.removeSeedRequest(username)
   }
 }

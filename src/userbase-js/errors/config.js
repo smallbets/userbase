@@ -1,15 +1,15 @@
 import statusCodes from '../statusCodes'
 
-class ConfigParametersMissing extends Error {
+class AppIdMissing extends Error {
   constructor(...params) {
     super(...params)
 
-    this.name = 'ConfigParametersMissing'
-    this.message = 'Configure parameters missing.'
+    this.name = 'AppIdMissing'
+    this.message = 'Application ID missing.'
     this.status = statusCodes['Bad Request']
   }
 }
 
 export default {
-  ConfigParametersMissing,
+  AppIdMissing,
 }

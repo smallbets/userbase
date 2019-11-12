@@ -22,9 +22,9 @@ const _parseGenericErrors = (e) => {
   }
 }
 
-const _connectWebSocket = async (appId, sessionId, username, seed, signingUp) => {
+const _connectWebSocket = async (appId, sessionId, username, seed) => {
   try {
-    const seedString = await ws.connect(appId, sessionId, username, seed, signingUp)
+    const seedString = await ws.connect(appId, sessionId, username, seed)
     return seedString
   } catch (e) {
     _parseGenericErrors(e)
@@ -172,8 +172,7 @@ const signUp = async (username, password, email, profile) => {
 
     localData.signInSession(lowerCaseUsername, sessionId, creationDate)
 
-    const signingUp = true
-    await _connectWebSocket(appId, sessionId, lowerCaseUsername, seedString, signingUp)
+    await _connectWebSocket(appId, sessionId, lowerCaseUsername, seedString)
 
     return _buildUserResult(lowerCaseUsername, seedString, lowerCaseEmail, profile)
   } catch (e) {
@@ -235,6 +234,10 @@ const signOut = async () => {
 const _signInWrapper = async (username, password) => {
   try {
     const { session, email, profile } = await api.auth.signIn(username, password)
+
+    await ws.getRequestsForSeed()
+    await ws.getDatabaseAccessGrants()
+
     return { session, email, profile }
   } catch (e) {
     _parseGenericErrors(e)
@@ -297,10 +300,33 @@ const getLastUsedUsername = () => {
   else return lastUsedSession.username
 }
 
-const signInWithSession = async () => {
+const init = async ({ appId, endpoint, keyNotFoundHandler }) => {
   try {
-    const appId = config.getAppId()
+    if (ws.connected) throw new errors.UserAlreadySignedIn(ws.username)
+    config.configure({ appId, endpoint, keyNotFoundHandler })
 
+    const session = await signInWithSession(appId)
+    return session
+  } catch (e) {
+
+    switch (e.name) {
+      case 'AppIdMissing':
+      case 'AppIdNotValid':
+      case 'KeyNotFoundHandlerMustBeFunction':
+      case 'UserAlreadySignedIn':
+      case 'UserCanceledSignIn':
+      case 'ServiceUnavailable':
+        throw e
+
+      default:
+        throw new errors.ServiceUnavailable
+    }
+
+  }
+}
+
+const signInWithSession = async (appId) => {
+  try {
     const currentSession = localData.getCurrentSession()
     if (!currentSession) return {}
 
@@ -323,21 +349,14 @@ const signInWithSession = async () => {
 
     const savedSeedString = localData.getSeedString(username) // might be null if does not have seed saved
     const seedString = await _connectWebSocket(appId, sessionId, username, savedSeedString)
+
+    await ws.getRequestsForSeed()
+    await ws.getDatabaseAccessGrants()
+
     return { user: _buildUserResult(username, seedString, email, profile) }
   } catch (e) {
-
-    switch (e.name) {
-      case 'AppIdNotSet':
-      case 'AppIdNotValid':
-      case 'UserAlreadySignedIn':
-      case 'UserCanceledSignIn':
-      case 'ServiceUnavailable':
-        throw e
-
-      default:
-        throw new errors.ServiceUnavailable
-    }
-
+    _parseGenericErrors(e)
+    throw e
   }
 }
 
@@ -356,11 +375,42 @@ const grantDatabaseAccess = async (dbName, username, readOnly) => {
   await ws.grantDatabaseAccess(database, username, granteePublicKey, readOnly)
 }
 
+const importKey = async (keyString) => {
+  try {
+    if (!keyString) throw new errors.KeyCannotBeBlank
+    if (typeof keyString !== 'string') throw new errors.KeyMustBeString
+
+    if (!ws.connected) throw new errors.UserNotSignedIn
+
+    try {
+      await ws.saveSeed(keyString)
+    } catch (e) {
+      _parseGenericErrors(e)
+      throw e
+    }
+
+  } catch (e) {
+
+    switch (e.name) {
+      case 'KeyCannotBeBlank':
+      case 'KeyMustBeString':
+      case 'KeyNotValid':
+      case 'UserNotSignedIn':
+      case 'ServiceUnavailable':
+        throw e
+
+      default:
+        throw new errors.ServiceUnavailable
+    }
+  }
+}
+
 export default {
   signUp,
   signOut,
   signIn,
   getLastUsedUsername,
-  signInWithSession,
+  init,
   grantDatabaseAccess,
+  importKey,
 }

@@ -219,6 +219,47 @@ class ProfileValueTooLong extends Error {
   }
 }
 
+class KeyNotFoundHandlerMustBeFunction extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'KeyNotFoundHandlerMustBeFunction'
+    this.message = 'Key not found handler must be a function.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class KeyNotValid extends Error {
+  constructor(username, ...params) {
+    super(username, ...params)
+
+    this.name = 'KeyNotValid'
+    this.message = 'Key not valid.'
+    this.status = statusCodes['Unauthorized']
+    this.username = username
+  }
+}
+
+class KeyCannotBeBlank extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'KeyCannotBeBlank'
+    this.message = 'Key cannot be blank.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class KeyMustBeString extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'KeyMustBeString'
+    this.message = 'Key must be a string.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
 export default {
   UsernameAlreadyExists,
   UsernameCannotBeBlank,
@@ -240,5 +281,9 @@ export default {
   ProfileKeyMustBeString,
   ProfileKeyTooLong,
   ProfileValueMustBeString,
-  ProfileValueTooLong
+  ProfileValueTooLong,
+  KeyNotFoundHandlerMustBeFunction,
+  KeyNotValid,
+  KeyCannotBeBlank,
+  KeyMustBeString
 }
