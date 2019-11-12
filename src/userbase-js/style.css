@@ -154,6 +154,7 @@
   font-weight: 300;
   font-family: Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   border: 1px solid #a0aec0;
+  box-sizing: border-box;
 }
 
 #userbase-submit-wrapper {

@@ -31,5 +31,13 @@
     "type": "git",
     "url": "git+https://github.com/encrypted-dev/userbase.git"
   },
-  "version": "0.0.6"
+  "version": "0.0.6",
+  "devDependencies": {
+    "css-loader": "^3.2.0",
+    "optimize-css-assets-webpack-plugin": "^5.0.3",
+    "style-loader": "^1.0.0",
+    "terser-webpack-plugin": "^2.2.1",
+    "url-loader": "^2.2.0",
+    "webpack-node-externals": "^1.7.2"
+  }
 }
