@@ -30,6 +30,7 @@
     "@babel/runtime": "^7.4.5",
     "autoprefixer": "^9.6.0",
     "babel-loader": "^8.0.6",
+    "circular-dependency-plugin": "^5.2.0",
     "css-loader": "^2.1.1",
     "file-loader": "^3.0.1",
     "html-loader": "^0.5.5",
@@ -54,6 +55,9 @@
     "build:server": "babel ./server -d build --presets=@babel/preset-env && npm run build:userbase-server && npm run install:userbase-server",
     "build:userbase-server": "babel ../userbase-server -d build/node_modules/userbase-server --ignore ../userbase-server/node_modules,../userbase-server/admin-panel --presets=@babel/preset-env --plugins=@babel/transform-runtime",
     "install:userbase-server": "cp ../userbase-server/package.json build/node_modules/userbase-server/ && cd ./build/node_modules/userbase-server && npm install",
-    "watch:client": "webpack-dev-server --mode development --config webpack.config.js"
+    "watch:client": "webpack-dev-server --mode development --config webpack.config.js",
+    "build:userbase-js:npm": "webpack --env.BUILD_TYPE=npm-package --mode production --config ../userbase-js/webpack.config.js",
+    "copy:userbase-js:files": "rsync -am --exclude='*.js' --exclude='node_modules' --exclude='*.css' --exclude='fonts' ../userbase-js/ ../../npm_build/userbase-js",
+    "build:userbase-js:script": "webpack --env.BUILD_TYPE=sdk-script --mode production --config ../userbase-js/webpack.config.js"
   }
 }

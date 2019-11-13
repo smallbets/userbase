@@ -4,6 +4,7 @@ const TerserPlugin = require('terser-webpack-plugin')
 const OptimizeCSSAssetsPlugin = require('optimize-css-assets-webpack-plugin')
 const HtmlWebPackPlugin = require('html-webpack-plugin')
 const OpenBrowserPlugin = require('opn-browser-webpack-plugin')
+const CircularDependencyPlugin = require('circular-dependency-plugin')
 
 module.exports = (env, argv) => {
 
@@ -27,7 +28,16 @@ module.exports = (env, argv) => {
         {
           test: /\.css$/,
           use: [
-            'style-loader', 'css-loader', 'postcss-loader',
+            'style-loader',
+            'css-loader',
+            {
+              loader: 'postcss-loader',
+              options: {
+                config: {
+                  path: './postcss.config.js'
+                }
+              }
+            },
           ],
         },
         {
@@ -80,7 +90,13 @@ module.exports = (env, argv) => {
         excludeChunks: ['server']
       }),
       new webpack.NoEmitOnErrorsPlugin(),
-      new webpack.WatchIgnorePlugin(['./dist', './build'])
+      new webpack.WatchIgnorePlugin(['./dist', './build']),
+      new CircularDependencyPlugin({
+        include: /userbase-js/,
+        failOnError: true,
+        allowAsyncCycles: false,
+        cwd: process.cwd(),
+      })
     ]
   }
 
