@@ -7,7 +7,6 @@ import { removeProtocolFromEndpoint, getProtocolFromEndpoint } from './utils'
 import statusCodes from './statusCodes'
 import config from './config'
 import errors from './errors'
-import './style.css'
 
 const wsAlreadyConnected = 'Web Socket already connected'
 

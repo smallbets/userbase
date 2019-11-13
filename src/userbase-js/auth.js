@@ -1,4 +1,5 @@
 import base64 from 'base64-arraybuffer'
+import copy from 'copy-to-clipboard'
 import api from './api'
 import ws from './ws'
 import db from './db'
@@ -151,6 +152,81 @@ const _validateProfile = (profile) => {
   if (!keyExists) throw new errors.ProfileCannotBeEmpty
 }
 
+const displayShowKeyModal = (seedString) => new Promise(resolve => {
+  const showKeyModal = document.createElement('div')
+  showKeyModal.className = 'userbase-modal'
+
+  showKeyModal.innerHTML = `
+    <div class='userbase-container'>
+
+      <div class='userbase-text-line'>
+        Your secret key:
+      </div>
+
+      <div class='userbase-table'>
+        <div class='userbase-table-row'>
+          <div class='userbase-table-cell'>
+            <div class='userbase-display-key'>
+              ${seedString}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id='userbase-secret-key-button-outer-wrapper'>
+        <div id='userbase-secret-key-button-input-wrapper'>
+          <input
+            id='userbase-show-key-modal-copy-button'
+            class='userbase-button'
+            type='button'
+            value='Copy'
+          />
+
+          <input
+            id='userbase-show-key-modal-close-button'
+            class='userbase-button-cancel'
+            type='button'
+            value='Close'
+          />
+        </div>
+
+        <div id='userbase-show-key-modal-copied-key-message' class='userbase-message'>
+          Key copied to clipboard
+        </div>
+      </div>
+
+      <div>
+        <hr class='userbase-divider'>
+        </hr>
+      </div>
+
+      <div class='userbase-text-line'>
+        Store this key somewhere safe. You will need your secret key to sign in on other devices.
+      </div>
+
+    </div>
+  `
+
+  document.body.appendChild(showKeyModal)
+
+  const copyButton = document.getElementById('userbase-show-key-modal-copy-button')
+  const copiedKeyMessage = document.getElementById('userbase-show-key-modal-copied-key-message')
+  const closeButton = document.getElementById('userbase-show-key-modal-close-button')
+
+  function copyKey() {
+    copy(seedString)
+    copiedKeyMessage.style.display = 'block'
+  }
+
+  function hideShowKeyModal() {
+    document.body.removeChild(showKeyModal)
+    resolve()
+  }
+
+  copyButton.onclick = copyKey
+  closeButton.onclick = hideShowKeyModal
+})
+
 const signUp = async (username, password, email, profile) => {
   try {
     _validateSignUpOrSignInInput(username, password)
@@ -169,6 +245,7 @@ const signUp = async (username, password, email, profile) => {
     // Warning: if user hits the sign up button twice,
     // it's possible the seed will be overwritten here and will be lost
     localData.saveSeedString(lowerCaseUsername, seedString)
+    await displayShowKeyModal(seedString)
 
     localData.signInSession(lowerCaseUsername, sessionId, creationDate)
 
