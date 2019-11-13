@@ -80,6 +80,19 @@
   animation: userbase-spin 1s linear infinite;
 }
 
+.userbase-table {
+  display: table;
+}
+
+.userbase-table-row {
+  display: table-row;
+}
+
+.userbase-table-cell {
+  display: table-cell;
+  padding: 0;
+}
+
 @-webkit-keyframes userbase-spin {
   0% { -webkit-transform: rotate(0deg); }
   100% { -webkit-transform: rotate(360deg); }
@@ -103,6 +116,21 @@
   height: 2rem;
 }
 
+.userbase-button-cancel {
+  font-size: .875rem;
+  border-radius: 0.5rem;
+  width: 6rem;
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+  margin-left: 1rem;
+  background-color: transparent;
+  font-weight: 400;
+  cursor: pointer;
+  border-width: 1px;
+  border-color: #718096;
+  height: 2rem;
+}
+
 .userbase-error {
   color: #e53e3e;
   font-size: 0.75rem;
@@ -110,6 +138,26 @@
   margin-top: 1.5rem;
   font-weight: 500;
   text-align: center;
+}
+
+.userbase-message {
+  color: #718096;
+  font-size: 0.75rem;
+  font-style: italic;
+  margin-top: 1.5rem;
+  font-weight: 500;
+}
+
+.userbase-divider {
+  margin: 0;
+  box-sizing: content-box;
+  height: 0;
+  overflow: visible;
+  margin-bottom: 1rem;
+  margin-top: 1rem;
+  border-top-width: 0;
+  border-width: 1px;
+  border-color: #cbd5e0;
 }
 
 #userbase-request-key-modal-close-button {
@@ -164,6 +212,20 @@
 
 #userbase-submit-inner-wrapper {
   height: 3rem;
+}
+
+#userbase-secret-key-button-outer-wrapper {
+  text-align: center;
+  margin-top: 1.5rem;
+  height: 4rem;
+}
+
+#userbase-secret-key-button-input-wrapper {
+  height: 1.5rem;
+}
+
+#userbase-show-key-modal-copied-key-message {
+  display: none;
 }
 
 @media (min-width: 350px) {

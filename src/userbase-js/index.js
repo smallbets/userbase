@@ -1,6 +1,8 @@
 import auth from './auth'
 import db from './db'
 
+import './style.css'
+
 if (!global._babelPolyfill) {
   require('babel-polyfill')
 }

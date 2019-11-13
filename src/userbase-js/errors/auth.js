@@ -280,6 +280,16 @@ class KeyMustBeString extends Error {
   }
 }
 
+class ShowKeyHandlerMustBeFunction extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'ShowKeyHandlerMustBeFunction'
+    this.message = 'Show key handler must be a function.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
 export default {
   UsernameAlreadyExists,
   UsernameCannotBeBlank,
@@ -307,5 +317,6 @@ export default {
   KeyNotFoundHandlerMustBeFunction,
   KeyNotValid,
   KeyCannotBeBlank,
-  KeyMustBeString
+  KeyMustBeString,
+  ShowKeyHandlerMustBeFunction,
 }
