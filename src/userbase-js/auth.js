@@ -227,10 +227,11 @@ const displayShowKeyModal = (seedString) => new Promise(resolve => {
   closeButton.onclick = hideShowKeyModal
 })
 
-const signUp = async (username, password, email, profile) => {
+const signUp = async (username, password, email, profile, showKeyHandler) => {
   try {
     _validateSignUpOrSignInInput(username, password)
     if (profile) _validateProfile(profile)
+    if (showKeyHandler && typeof showKeyHandler !== 'function') throw new errors.ShowKeyHandlerMustBeFunction
 
     const appId = config.getAppId()
     const lowerCaseUsername = username.toLowerCase()
@@ -242,11 +243,14 @@ const signUp = async (username, password, email, profile) => {
     const { sessionId, creationDate } = session
 
     const seedString = base64.encode(seed)
-    // Warning: if user hits the sign up button twice,
-    // it's possible the seed will be overwritten here and will be lost
-    localData.saveSeedString(lowerCaseUsername, seedString)
-    await displayShowKeyModal(seedString)
 
+    if (showKeyHandler) {
+      await showKeyHandler(seedString)
+    } else {
+      await displayShowKeyModal(seedString)
+    }
+
+    localData.saveSeedString(lowerCaseUsername, seedString)
     localData.signInSession(lowerCaseUsername, sessionId, creationDate)
 
     await _connectWebSocket(appId, sessionId, lowerCaseUsername, seedString)
@@ -274,6 +278,7 @@ const signUp = async (username, password, email, profile) => {
       case 'AppIdNotSet':
       case 'AppIdNotValid':
       case 'UserAlreadySignedIn':
+      case 'ShowKeyHandlerMustBeFunction':
       case 'ServiceUnavailable':
         throw e
 
