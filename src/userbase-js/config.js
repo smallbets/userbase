@@ -1,10 +1,8 @@
 import errors from './errors'
-import { parseQueryStringWithoutArrayElems } from './utils'
 
 let userbaseAppId = null
 let userbaseEndpoint = 'https://preview.userbase.dev'
 let userbaseKeyNotFoundHandler = null
-const startingHash = window.location.hash
 
 const getAppId = () => {
   if (!userbaseAppId) throw new errors.AppIdNotSet
@@ -14,14 +12,6 @@ const getAppId = () => {
 const getEndpoint = () => userbaseEndpoint
 
 const getKeyNotFoundHandler = () => userbaseKeyNotFoundHandler
-
-const getUsernameAndTempPasswordFromStartingHash = () => {
-  if (startingHash.includes('userbase-username') && startingHash.includes('userbase-tempPassword')) {
-    const { username, tempPassword } = parseQueryStringWithoutArrayElems(startingHash.substring(1))
-    return { username, tempPassword }
-  }
-  return null
-}
 
 const setAppId = (appId) => {
   if (!appId) throw new errors.AppIdMissing
@@ -50,6 +40,5 @@ export default {
   getAppId,
   getEndpoint,
   getKeyNotFoundHandler,
-  getUsernameAndTempPasswordFromStartingHash,
   configure,
 }

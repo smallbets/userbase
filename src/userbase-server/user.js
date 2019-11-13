@@ -16,9 +16,10 @@ const ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID = 16
 
 const VALIDATION_MESSAGE_LENGTH = 16
 
-const oneDaySeconds = 60 * 60 * 24
-const oneDayMs = 1000 * oneDaySeconds
-const SESSION_LENGTH = oneDayMs
+const HOURS_IN_A_DAY = 24
+const SECONDS_IN_A_DAY = 60 * 60 * HOURS_IN_A_DAY
+const MS_IN_A_DAY = 1000 * SECONDS_IN_A_DAY
+const SESSION_LENGTH = MS_IN_A_DAY
 
 const MAX_USERNAME_CHAR_LENGTH = 100
 
@@ -134,6 +135,26 @@ const _buildSignUpParams = async (username, password, appId, userId, publicKey, 
   }
 }
 
+const _validatePassword = async (password, user) => {
+  if (!user) throw new Error('User does not exist')
+
+  const passwordIsCorrect = await crypto.bcrypt.compare(password, user['password-hash'])
+
+  if (!passwordIsCorrect && !user['temp-password']) {
+    throw new Error('Incorrect password')
+  } else if (!passwordIsCorrect && user['temp-password']) {
+    const tempPasswordIsCorrect = await crypto.bcrypt.compare(password, user['temp-password'])
+
+    if (!tempPasswordIsCorrect) {
+      throw new Error('Incorrect password or temp password')
+    } else {
+      if (new Date() - new Date(user['temp-password-creation-date']) > MS_IN_A_DAY) {
+        throw new Error('Temp password expired')
+      }
+    }
+  }
+}
+
 const _validateProfile = (profile) => {
   if (typeof profile !== 'object') throw { error: 'ProfileMustBeObject' }
 
@@ -161,7 +182,7 @@ const _validateProfile = (profile) => {
   if (!counter) throw { error: 'ProfileCannotBeEmpty' }
 }
 
-const _validateUsernameAndPassword = (username, password) => {
+const _validateUsernameAndPasswordInput = (username, password) => {
   if (username.length > MAX_USERNAME_CHAR_LENGTH) throw {
     error: 'UsernameTooLong',
     maxLen: MAX_USERNAME_CHAR_LENGTH
@@ -195,7 +216,7 @@ exports.signUp = async function (req, res) {
   }
 
   try {
-    _validateUsernameAndPassword(username, password)
+    _validateUsernameAndPasswordInput(username, password)
 
     if (email && !validateEmail(email)) return res.status(statusCodes['Bad Request'])
       .send({ error: 'EmailNotValid' })
@@ -373,14 +394,13 @@ exports.signIn = async function (req, res) {
 
   const username = req.body.username
   const password = req.body.password
-  const tempPassword = req.body.tempPassword
 
   if (!appId || !username || !password) return res
     .status(statusCodes['Bad Request'])
     .send('Missing required items')
 
   try {
-    _validateUsernameAndPassword(username, password)
+    _validateUsernameAndPasswordInput(username, password)
   } catch (e) {
     return res.status(statusCodes['Bad Request']).send(e)
   }
@@ -403,19 +423,11 @@ exports.signIn = async function (req, res) {
 
     const user = userResponse.Item
 
-    const doesNotExist = !user
-    const incorrectPassword = doesNotExist || !(await crypto.bcrypt.compare(
-      password,
-      tempPassword
-        ? user['temp-password']
-        : user['password-hash'])
-    )
-
-    const tempPasswordExpired = incorrectPassword || (tempPassword
-      && new Date() - new Date(user['temp-password-creation-date']) > oneDayMs)
-
-    if (doesNotExist || incorrectPassword || tempPasswordExpired) return res
-      .status(statusCodes['Unauthorized']).send('Invalid password')
+    try {
+      await _validatePassword(password, user)
+    } catch (e) {
+      return res.status(statusCodes['Unauthorized']).send('Invalid password')
+    }
 
     const session = await createSession(user['user-id'], appId)
 
@@ -478,7 +490,7 @@ exports.requestSeed = async function (userId, senderPublicKey, connectionId, req
     TableName: setup.seedExchangeTableName,
     Item: {
       ...seedExchangeKey,
-      ttl: getTtl(oneDaySeconds)
+      ttl: getTtl(SECONDS_IN_A_DAY)
     },
     // do not overwrite if already exists. especially important if encrypted-seed already exists,
     // but no need to overwrite ever
@@ -670,7 +682,7 @@ exports.grantDatabaseAccess = async function (grantorId, granteeUsername, dbId, 
       'database-id': dbId,
       'encrypted-access-key': encryptedAccessKey,
       'read-only': readOnly,
-      ttl: getTtl(oneDaySeconds)
+      ttl: getTtl(SECONDS_IN_A_DAY)
     }
 
     const params = {
@@ -1012,9 +1024,8 @@ const setTempPassword = async (username, appId, tempPassword) => {
 exports.forgotPassword = async function (req, res) {
   const appId = req.query.appId
   const username = req.body.username && req.body.username.toLowerCase()
-  const origin = req.body.origin
 
-  if (!appId || !username || !origin) return res
+  if (!appId || !username) return res
     .status(statusCodes['Bad Request'])
     .send('Missing required items')
 
@@ -1043,8 +1054,10 @@ exports.forgotPassword = async function (req, res) {
       + 'If you did not make this request, you can safely ignore this email.'
       + '<br />'
       + '<br />'
-      + `Click <a href='${origin}#userbase-username=${encodeURIComponent(username)}&userbase-tempPassword=${encodeURIComponent(tempPassword)}'>here</a>`
-      + ' to log in and change your password.'
+      + `Here is your temporary password you can use to log in: ${tempPassword}`
+      + '<br />'
+      + '<br />'
+      + `This password will expire in ${HOURS_IN_A_DAY} hours.`
 
     await setup.sendEmail(email, subject, body)
 

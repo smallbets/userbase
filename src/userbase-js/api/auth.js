@@ -23,14 +23,13 @@ const signUp = async (username, password, publicKey, encryptionKeySalt, dhKeySal
   return signUpResponse.data
 }
 
-const signIn = async (username, password, tempPassword) => {
+const signIn = async (username, password) => {
   const signInResponse = await axios({
     method: 'POST',
     url: `${config.getEndpoint()}/api/auth/sign-in?appId=${config.getAppId()}`,
     data: {
       username,
       password,
-      tempPassword
     },
     timeout: TEN_SECONDS_MS
   })
@@ -60,13 +59,12 @@ const getServerPublicKey = async () => {
   return serverPublicKey
 }
 
-const forgotPassword = async (username, origin) => {
+const forgotPassword = async (username) => {
   await axios({
     method: 'POST',
-    url: `${ws.endpoint}/api/auth/forgot-password?appId=${config.getAppId()}`,
+    url: `${config.getEndpoint()}/api/auth/forgot-password?appId=${config.getAppId()}`,
     data: {
-      username,
-      origin
+      username
     },
     timeout: TEN_SECONDS_MS
   })

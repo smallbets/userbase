@@ -231,7 +231,7 @@ const signOut = async () => {
   }
 }
 
-const _signInWrapper = async (username, password, tempPassword) => {
+const _signInWrapper = async (username, password) => {
   try {
     const { session, email, profile } = await api.auth.signIn(username, password)
 
@@ -251,7 +251,7 @@ const _signInWrapper = async (username, password, tempPassword) => {
   }
 }
 
-const signIn = async (username, password, tempPassword = false) => {
+const signIn = async (username, password) => {
   try {
     _validateSignUpOrSignInInput(username, password)
 
@@ -259,7 +259,7 @@ const signIn = async (username, password, tempPassword = false) => {
 
     const lowerCaseUsername = username.toLowerCase()
 
-    const { session, email, profile } = await _signInWrapper(lowerCaseUsername, password, tempPassword)
+    const { session, email, profile } = await _signInWrapper(lowerCaseUsername, password)
     const { sessionId, creationDate } = session
 
     localData.signInSession(lowerCaseUsername, sessionId, creationDate)
@@ -301,13 +301,6 @@ const getLastUsedUsername = () => {
 }
 
 const init = async ({ appId, endpoint, keyNotFoundHandler }) => {
-  const startingHash = config.getUsernameAndTempPasswordFromStartingHash()
-  if (startingHash) {
-    const { username, tempPassword } = startingHash
-    const user = await signIn(username, tempPassword, true)
-    return { user }
-  }
-
   try {
     if (ws.connected) throw new errors.UserAlreadySignedIn(ws.username)
     config.configure({ appId, endpoint, keyNotFoundHandler })
@@ -412,10 +405,10 @@ const importKey = async (keyString) => {
   }
 }
 
-const forgotPassword = async (username, origin = window.location.origin) => {
+const forgotPassword = async (username) => {
   try {
     try {
-      await api.auth.forgotPassword(username, origin)
+      await api.auth.forgotPassword(username)
     } catch (e) {
       _parseGenericErrors(e)
 
