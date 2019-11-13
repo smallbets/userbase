@@ -1,24 +1,38 @@
 import errors from './errors'
-
-let userbaseEndpoint = 'https://preview.userbase.dev'
-const getEndpoint = () => userbaseEndpoint
-const setEndpoint = (newEndpoint) => {
-  if (!newEndpoint) return
-  userbaseEndpoint = newEndpoint
-}
+import { parseQueryStringWithoutArrayElems } from './utils'
 
 let userbaseAppId = null
+let userbaseEndpoint = 'https://preview.userbase.dev'
+let userbaseKeyNotFoundHandler = null
+const startingHash = window.location.hash
+
 const getAppId = () => {
   if (!userbaseAppId) throw new errors.AppIdNotSet
   return userbaseAppId
 }
+
+const getEndpoint = () => userbaseEndpoint
+
+const getKeyNotFoundHandler = () => userbaseKeyNotFoundHandler
+
+const getUsernameAndTempPasswordFromStartingHash = () => {
+  if (startingHash.includes('userbase-username') && startingHash.includes('userbase-tempPassword')) {
+    const { username, tempPassword } = parseQueryStringWithoutArrayElems(startingHash.substring(1))
+    return { username, tempPassword }
+  }
+  return null
+}
+
 const setAppId = (appId) => {
   if (!appId) throw new errors.AppIdMissing
   userbaseAppId = appId
 }
 
-let userbaseKeyNotFoundHandler = null
-const getKeyNotFoundHandler = () => userbaseKeyNotFoundHandler
+const setEndpoint = (newEndpoint) => {
+  if (!newEndpoint) return
+  userbaseEndpoint = newEndpoint
+}
+
 const setKeyNotFoundHandler = (keyNotFoundHandler) => {
   if (keyNotFoundHandler && typeof keyNotFoundHandler !== 'function') {
     throw new errors.KeyNotFoundHandlerMustBeFunction
@@ -33,8 +47,9 @@ const configure = ({ appId, endpoint, keyNotFoundHandler }) => {
 }
 
 export default {
-  getEndpoint,
   getAppId,
+  getEndpoint,
   getKeyNotFoundHandler,
-  configure
+  getUsernameAndTempPasswordFromStartingHash,
+  configure,
 }

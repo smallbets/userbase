@@ -30,3 +30,15 @@ export const getProtocolFromEndpoint = (endpoint) => {
 export const byteSizeOfString = (string) => {
   return string.length * 2
 }
+
+export const parseQueryStringWithoutArrayElems = (queryString) => {
+  const query = {}
+  const keyValuePairsArray = queryString.split('&')
+  for (const keyValuePair of keyValuePairsArray) {
+    const keyValueArray = keyValuePair.split('=')
+    const key = decodeURIComponent(keyValueArray[0]).replace('userbase-', '')
+    const value = decodeURIComponent(keyValueArray[1])
+    query[key] = value
+  }
+  return query
+}
