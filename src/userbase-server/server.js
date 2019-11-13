@@ -256,6 +256,7 @@ async function start(express, app, userbaseConfig = {}) {
     app.post('/api/auth/sign-in', user.signIn)
     app.post('/api/auth/sign-in-with-session', user.authenticateUser, user.extendSession)
     app.get('/api/auth/server-public-key', user.getServerPublicKey)
+    app.post('/api/auth/forgot-password', user.forgotPassword)
 
     app.use('/admin', express.static(path.join(__dirname + adminPanelDir)))
 

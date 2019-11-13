@@ -29,7 +29,7 @@ const signIn = async (username, password) => {
     url: `${config.getEndpoint()}/api/auth/sign-in?appId=${config.getAppId()}`,
     data: {
       username,
-      password
+      password,
     },
     timeout: TEN_SECONDS_MS
   })
@@ -59,9 +59,21 @@ const getServerPublicKey = async () => {
   return serverPublicKey
 }
 
+const forgotPassword = async (username) => {
+  await axios({
+    method: 'POST',
+    url: `${config.getEndpoint()}/api/auth/forgot-password?appId=${config.getAppId()}`,
+    data: {
+      username
+    },
+    timeout: TEN_SECONDS_MS
+  })
+}
+
 export default {
   signUp,
   signIn,
   signInWithSession,
-  getServerPublicKey
+  getServerPublicKey,
+  forgotPassword
 }

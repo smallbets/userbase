@@ -6,9 +6,9 @@ const _errorHandler = (e, operation) => {
   return { error: e.message }
 }
 
-const signUp = async (username, password) => {
+const signUp = async (username, password, email) => {
   try {
-    const user = await userbase.signUp(username, password)
+    const user = await userbase.signUp(username, password, email)
     return user
   } catch (e) {
     return _errorHandler(e, 'sign up')
@@ -49,10 +49,20 @@ const importKey = async (keyString) => {
   }
 }
 
+const forgotPassword = async (username) => {
+  try {
+    await userbase.forgotPassword(username)
+  } catch (e) {
+    _errorHandler(e, 'forgot password')
+    throw e
+  }
+}
+
 export default {
   signUp,
   signOut,
   signIn,
   init,
-  importKey
+  importKey,
+  forgotPassword
 }

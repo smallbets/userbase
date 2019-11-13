@@ -405,6 +405,41 @@ const importKey = async (keyString) => {
   }
 }
 
+const forgotPassword = async (username) => {
+  try {
+    try {
+      await api.auth.forgotPassword(username)
+    } catch (e) {
+      _parseGenericErrors(e)
+
+      if (e.response) {
+        if (e.response.data === 'UserNotFound') {
+          throw new errors.UserNotFound
+        } else if (e.response.data === 'UserEmailNotFound') {
+          throw new errors.UserEmailNotFound
+        }
+      }
+
+      throw e
+    }
+
+  } catch (e) {
+
+    switch (e.name) {
+      case 'AppIdNotSet':
+      case 'AppIdNotValid':
+      case 'UserNotFound':
+      case 'UserEmailNotFound':
+      case 'ServiceUnavailable':
+        throw e
+
+      default:
+        throw new errors.ServiceUnavailable
+
+    }
+  }
+}
+
 export default {
   signUp,
   signOut,
@@ -413,4 +448,5 @@ export default {
   init,
   grantDatabaseAccess,
   importKey,
+  forgotPassword
 }

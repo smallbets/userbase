@@ -16,9 +16,10 @@ const ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID = 16
 
 const VALIDATION_MESSAGE_LENGTH = 16
 
-const oneDaySeconds = 60 * 60 * 24
-const oneDayMs = 1000 * oneDaySeconds
-const SESSION_LENGTH = oneDayMs
+const HOURS_IN_A_DAY = 24
+const SECONDS_IN_A_DAY = 60 * 60 * HOURS_IN_A_DAY
+const MS_IN_A_DAY = 1000 * SECONDS_IN_A_DAY
+const SESSION_LENGTH = MS_IN_A_DAY
 
 const MAX_USERNAME_CHAR_LENGTH = 100
 
@@ -134,6 +135,26 @@ const _buildSignUpParams = async (username, password, appId, userId, publicKey, 
   }
 }
 
+const _validatePassword = async (password, user) => {
+  if (!user) throw new Error('User does not exist')
+
+  const passwordIsCorrect = await crypto.bcrypt.compare(password, user['password-hash'])
+
+  if (!passwordIsCorrect && !user['temp-password']) {
+    throw new Error('Incorrect password')
+  } else if (!passwordIsCorrect && user['temp-password']) {
+    const tempPasswordIsCorrect = await crypto.bcrypt.compare(password, user['temp-password'])
+
+    if (!tempPasswordIsCorrect) {
+      throw new Error('Incorrect password or temp password')
+    } else {
+      if (new Date() - new Date(user['temp-password-creation-date']) > MS_IN_A_DAY) {
+        throw new Error('Temp password expired')
+      }
+    }
+  }
+}
+
 const _validateProfile = (profile) => {
   if (typeof profile !== 'object') throw { error: 'ProfileMustBeObject' }
 
@@ -161,7 +182,7 @@ const _validateProfile = (profile) => {
   if (!counter) throw { error: 'ProfileCannotBeEmpty' }
 }
 
-const _validateUsernameAndPassword = (username, password) => {
+const _validateUsernameAndPasswordInput = (username, password) => {
   if (username.length > MAX_USERNAME_CHAR_LENGTH) throw {
     error: 'UsernameTooLong',
     maxLen: MAX_USERNAME_CHAR_LENGTH
@@ -195,7 +216,7 @@ exports.signUp = async function (req, res) {
   }
 
   try {
-    _validateUsernameAndPassword(username, password)
+    _validateUsernameAndPasswordInput(username, password)
 
     if (email && !validateEmail(email)) return res.status(statusCodes['Bad Request'])
       .send({ error: 'EmailNotValid' })
@@ -379,7 +400,7 @@ exports.signIn = async function (req, res) {
     .send('Missing required items')
 
   try {
-    _validateUsernameAndPassword(username, password)
+    _validateUsernameAndPasswordInput(username, password)
   } catch (e) {
     return res.status(statusCodes['Bad Request']).send(e)
   }
@@ -402,11 +423,11 @@ exports.signIn = async function (req, res) {
 
     const user = userResponse.Item
 
-    const doesNotExist = !user
-    const incorrectPassword = doesNotExist || !(await crypto.bcrypt.compare(password, user['password-hash']))
-
-    if (doesNotExist || incorrectPassword) return res
-      .status(statusCodes['Unauthorized']).send('Invalid password')
+    try {
+      await _validatePassword(password, user)
+    } catch (e) {
+      return res.status(statusCodes['Unauthorized']).send('Invalid password')
+    }
 
     const session = await createSession(user['user-id'], appId)
 
@@ -469,7 +490,7 @@ exports.requestSeed = async function (userId, senderPublicKey, connectionId, req
     TableName: setup.seedExchangeTableName,
     Item: {
       ...seedExchangeKey,
-      ttl: getTtl(oneDaySeconds)
+      ttl: getTtl(SECONDS_IN_A_DAY)
     },
     // do not overwrite if already exists. especially important if encrypted-seed already exists,
     // but no need to overwrite ever
@@ -661,7 +682,7 @@ exports.grantDatabaseAccess = async function (grantorId, granteeUsername, dbId, 
       'database-id': dbId,
       'encrypted-access-key': encryptedAccessKey,
       'read-only': readOnly,
-      ttl: getTtl(oneDaySeconds)
+      ttl: getTtl(SECONDS_IN_A_DAY)
     }
 
     const params = {
@@ -964,5 +985,85 @@ exports.getServerPublicKey = async function (_, res) {
   } catch (e) {
     logger.error(`Failed to get server public key with ${e}`)
     return res.status(statusCodes['Internal Server Error']).send('Failed to get server public key')
+  }
+}
+
+const setTempPassword = async (username, appId, tempPassword) => {
+  const params = {
+    TableName: setup.usersTableName,
+    Key: {
+      username,
+      'app-id': appId
+    },
+    UpdateExpression: 'set #tempPassword = :tempPassword, #tempPasswordCreationDate = :tempPasswordCreationDate',
+    ConditionExpression: 'attribute_exists(username)',
+    ExpressionAttributeNames: {
+      '#tempPassword': 'temp-password',
+      '#tempPasswordCreationDate': 'temp-password-creation-date'
+    },
+    ExpressionAttributeValues: {
+      ':tempPassword': await crypto.bcrypt.hash(tempPassword),
+      ':tempPasswordCreationDate': new Date().toISOString()
+    },
+    ReturnValues: 'ALL_NEW'
+  }
+
+  const ddbClient = connection.ddbClient()
+
+  try {
+    const userResponse = await ddbClient.update(params).promise()
+    return userResponse.Attributes
+  } catch (e) {
+    if (e.name === 'ConditionalCheckFailedException') {
+      return null
+    }
+    throw e
+  }
+}
+
+exports.forgotPassword = async function (req, res) {
+  const appId = req.query.appId
+  const username = req.body.username && req.body.username.toLowerCase()
+
+  if (!appId || !username) return res
+    .status(statusCodes['Bad Request'])
+    .send('Missing required items')
+
+  try {
+    // Warning: uses secondary index here. It's possible index won't be up to date and this fails
+    const app = await getAppByAppId(appId)
+    if (!app) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
+
+    const tempPassword = crypto
+      .randomBytes(ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID)
+      .toString('base64')
+
+    const user = await setTempPassword(username, appId, tempPassword)
+    if (!user) return res.status(statusCodes['Not Found']).send('UserNotFound')
+
+    const email = user['email']
+    if (!email) return res.status(statusCodes['Not Found']).send('UserEmailNotFound')
+
+    const subject = `Forgot password - ${app['app-name']}`
+    const body = `Hello, ${username}!`
+      + '<br />'
+      + '<br />'
+      + `Someone has requested you forgot your password to ${app['app-name']}!`
+      + '<br />'
+      + '<br />'
+      + 'If you did not make this request, you can safely ignore this email.'
+      + '<br />'
+      + '<br />'
+      + `Here is your temporary password you can use to log in: ${tempPassword}`
+      + '<br />'
+      + '<br />'
+      + `This password will expire in ${HOURS_IN_A_DAY} hours.`
+
+    await setup.sendEmail(email, subject, body)
+
+    return res.end()
+  } catch (e) {
+    logger.error(`Failed to forget password for user '${username}' of app '${appId}' with ${e}`)
+    return res.status(statusCodes['Internal Server Error']).send('Failed to forget password')
   }
 }
