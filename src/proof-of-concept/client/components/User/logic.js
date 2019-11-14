@@ -6,9 +6,9 @@ const _errorHandler = (e, operation) => {
   return { error: e.message }
 }
 
-const signUp = async (username, password, email) => {
+const signUp = async (username, password, email, rememberMe) => {
   try {
-    const user = await userbase.signUp(username, password, email)
+    const user = await userbase.signUp(username, password, email, null, null, rememberMe)
     return user
   } catch (e) {
     return _errorHandler(e, 'sign up')
@@ -23,9 +23,9 @@ const signOut = async () => {
   }
 }
 
-const signIn = async (username, password) => {
+const signIn = async (username, password, rememberMe) => {
   try {
-    const result = await userbase.signIn(username, password)
+    const result = await userbase.signIn(username, password, rememberMe)
     return result
   } catch (e) {
     return _errorHandler(e, 'sign in')

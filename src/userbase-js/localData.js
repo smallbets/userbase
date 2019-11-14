@@ -31,8 +31,8 @@ const signOutSession = (username) => {
   setCurrentSession(username, signedIn)
 }
 
-const setSeedRequest = (username, seedRequestPublicKey, seedRequestPrivateKey) => {
-  const seedRequest = seedRequestPublicKey + '|' + seedRequestPrivateKey
+const setSeedRequest = (username, seedRequestPrivateKey, seedRequestPublicKey) => {
+  const seedRequest = seedRequestPrivateKey + '|' + seedRequestPublicKey
   localStorage.setItem(`userbaseSeedRequest.${username}`, seedRequest)
 }
 
@@ -41,10 +41,10 @@ const getSeedRequest = (username) => {
   if (!seedRequest) return null
 
   const seedRequestArray = seedRequest.split('|')
-  const seedRequestPublicKey = seedRequestArray[0]
-  const seedRequestPrivateKey = seedRequestArray[1]
+  const seedRequestPrivateKey = seedRequestArray[0]
+  const seedRequestPublicKey = seedRequestArray[1]
 
-  return { seedRequestPublicKey, seedRequestPrivateKey }
+  return { seedRequestPrivateKey, seedRequestPublicKey }
 }
 
 const removeSeedRequest = (username) => {

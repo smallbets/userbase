@@ -23,9 +23,9 @@ const _parseGenericErrors = (e) => {
   }
 }
 
-const _connectWebSocket = async (appId, sessionId, username, seed) => {
+const _connectWebSocket = async (appId, sessionId, username, seed, rememberMe) => {
   try {
-    const seedString = await ws.connect(appId, sessionId, username, seed)
+    const seedString = await ws.connect(appId, sessionId, username, seed, rememberMe)
     return seedString
   } catch (e) {
     _parseGenericErrors(e)
@@ -227,7 +227,7 @@ const displayShowKeyModal = (seedString) => new Promise(resolve => {
   closeButton.onclick = hideShowKeyModal
 })
 
-const signUp = async (username, password, email, profile, showKeyHandler) => {
+const signUp = async (username, password, email, profile, showKeyHandler, rememberMe = false) => {
   try {
     _validateSignUpOrSignInInput(username, password)
     if (profile) _validateProfile(profile)
@@ -250,10 +250,12 @@ const signUp = async (username, password, email, profile, showKeyHandler) => {
       await displayShowKeyModal(seedString)
     }
 
-    localData.saveSeedString(lowerCaseUsername, seedString)
-    localData.signInSession(lowerCaseUsername, sessionId, creationDate)
+    if (rememberMe) {
+      localData.saveSeedString(lowerCaseUsername, seedString)
+      localData.signInSession(lowerCaseUsername, sessionId, creationDate)
+    }
 
-    await _connectWebSocket(appId, sessionId, lowerCaseUsername, seedString)
+    await _connectWebSocket(appId, sessionId, lowerCaseUsername, seedString, rememberMe)
 
     return _buildUserResult(lowerCaseUsername, seedString, lowerCaseEmail, profile)
   } catch (e) {
@@ -316,10 +318,6 @@ const signOut = async () => {
 const _signInWrapper = async (username, password) => {
   try {
     const { session, email, profile } = await api.auth.signIn(username, password)
-
-    await ws.getRequestsForSeed()
-    await ws.getDatabaseAccessGrants()
-
     return { session, email, profile }
   } catch (e) {
     _parseGenericErrors(e)
@@ -333,7 +331,7 @@ const _signInWrapper = async (username, password) => {
   }
 }
 
-const signIn = async (username, password) => {
+const signIn = async (username, password, rememberMe = false) => {
   try {
     _validateSignUpOrSignInInput(username, password)
 
@@ -344,11 +342,14 @@ const signIn = async (username, password) => {
     const { session, email, profile } = await _signInWrapper(lowerCaseUsername, password)
     const { sessionId, creationDate } = session
 
-    localData.signInSession(lowerCaseUsername, sessionId, creationDate)
+    if (rememberMe) localData.signInSession(lowerCaseUsername, sessionId, creationDate)
 
     const savedSeedString = localData.getSeedString(lowerCaseUsername) // might be null if does not have seed saved
 
-    const seedString = await _connectWebSocket(appId, sessionId, username, savedSeedString)
+    const seedString = await _connectWebSocket(appId, sessionId, username, savedSeedString, rememberMe)
+
+    await ws.getRequestsForSeed()
+    await ws.getDatabaseAccessGrants()
 
     return _buildUserResult(lowerCaseUsername, seedString, email, profile)
   } catch (e) {
