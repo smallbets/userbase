@@ -5,11 +5,13 @@ import userLogic from './logic'
 export default class UserForm extends Component {
   constructor(props) {
     super(props)
+
     this.state = {
       username: this.props.placeholderUsername,
       password: '',
-      error: '',
-      loading: false
+      error: this.props.error,
+      loading: false,
+      updated: false
     }
 
     this.handleInputChange = this.handleInputChange.bind(this)
@@ -31,6 +33,14 @@ export default class UserForm extends Component {
     }
   }
 
+  shouldComponentUpdate(nextProps) {
+    if (nextProps.error && !this.state.error && !this.state.updated) {
+      this.setState({ error: nextProps.error, updated: true, loading: false })
+    }
+
+    return true
+  }
+
   handleInputChange(event) {
     if (this.state.error) this.setState({ error: undefined })
 
@@ -44,7 +54,7 @@ export default class UserForm extends Component {
   }
 
   async handleSubmitForm(event) {
-    const { formType, handleSubmit } = this.props
+    const { formType, handleSubmit, handleSetSignInError } = this.props
     const { username, password } = this.state
     event.preventDefault()
 
@@ -55,8 +65,12 @@ export default class UserForm extends Component {
     else if (formType === 'Sign In') user = await userLogic.signIn(username, password)
     else return console.error('Unknown form type')
 
-    if (user && user.error) this.setState({ error: user.error, loading: false })
-    else handleSubmit(user)
+    if (user && user.error) {
+      if (user.error !== 'Canceled.') this.setState({ error: user.error, loading: false })
+      else handleSetSignInError(user.error)
+    } else {
+      handleSubmit(user)
+    }
   }
 
   render() {
@@ -136,5 +150,7 @@ export default class UserForm extends Component {
 UserForm.propTypes = {
   handleSubmit: func,
   formType: string,
-  placeholderUsername: string
+  placeholderUsername: string,
+  error: string,
+  handleSetSignInError: func
 }

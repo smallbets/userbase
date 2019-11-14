@@ -13,6 +13,10 @@ const saveSeedString = (username, seedString) => {
   localStorage.setItem('userbaseSeed.' + username, seedString)
 }
 
+const removeSeedString = (username) => {
+  localStorage.removeItem('userbaseSeed.' + username)
+}
+
 const getSeedString = (username) => {
   return localStorage.getItem('userbaseSeed.' + username)
 }
@@ -52,6 +56,7 @@ export default {
   signOutSession,
   getCurrentSession,
   saveSeedString,
+  removeSeedString,
   getSeedString,
   setSeedRequest,
   getSeedRequest,
