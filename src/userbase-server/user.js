@@ -182,10 +182,9 @@ const _validateProfile = (profile) => {
   if (!counter) throw { error: 'ProfileCannotBeEmpty' }
 }
 
-const _validateUsernameAndPasswordInput = (username, password) => {
-  if (username.length > MAX_USERNAME_CHAR_LENGTH) throw {
-    error: 'UsernameTooLong',
-    maxLen: MAX_USERNAME_CHAR_LENGTH
+const _validatePasswordInput = (password) => {
+  if (typeof password !== 'string') throw {
+    error: 'PasswordMustBeString'
   }
 
   if (password.length < MIN_PASSWORD_CHAR_LENGTH) throw {
@@ -197,6 +196,22 @@ const _validateUsernameAndPasswordInput = (username, password) => {
     error: 'PasswordTooLong',
     maxLen: MAX_PASSWORD_CHAR_LENGTH
   }
+}
+
+const _validateUsernameInput = (username) => {
+  if (typeof username !== 'string') throw {
+    error: 'UsernameMustBeString'
+  }
+
+  if (username.length > MAX_USERNAME_CHAR_LENGTH) throw {
+    error: 'UsernameTooLong',
+    maxLen: MAX_USERNAME_CHAR_LENGTH
+  }
+}
+
+const _validateUsernameAndPasswordInput = (username, password) => {
+  _validateUsernameInput(username)
+  _validatePasswordInput(password)
 }
 
 exports.signUp = async function (req, res) {
@@ -243,7 +258,7 @@ exports.signUp = async function (req, res) {
       if (e.message.includes('[ConditionalCheckFailed')) {
         return res.status(statusCodes['Unauthorized']).send('App ID not valid')
       } else if (e.message.includes('ConditionalCheckFailed]')) {
-        return res.status(statusCodes['Conflict']).send('Username already exists')
+        return res.status(statusCodes['Conflict']).send('UsernameAlreadyExists')
       }
       throw e
     }
@@ -1065,5 +1080,152 @@ exports.forgotPassword = async function (req, res) {
   } catch (e) {
     logger.error(`Failed to forget password for user '${username}' of app '${appId}' with ${e}`)
     return res.status(statusCodes['Internal Server Error']).send('Failed to forget password')
+  }
+}
+
+const _updateUserExcludingUsernameUpdate = async (username, appId, userId, password, email, profile) => {
+  const updateUserParams = {
+    TableName: setup.usersTableName,
+    Key: {
+      'username': username,
+      'app-id': appId
+    },
+    ConditionExpression: 'attribute_exists(username) and #userId = :userId',
+  }
+
+  let UpdateExpression = ''
+  const ExpressionAttributeNames = { '#userId': 'user-id' }
+  const ExpressionAttributeValues = { ':userId': userId }
+
+  if (password || email || profile) {
+    UpdateExpression = 'SET '
+
+    if (password) {
+      UpdateExpression = UpdateExpression + '#passwordHash = :passwordHash'
+      ExpressionAttributeNames['#passwordHash'] = 'password-hash'
+      ExpressionAttributeValues[':passwordHash'] = await crypto.bcrypt.hash(password)
+    }
+
+    if (email) {
+      UpdateExpression = UpdateExpression + (password ? ', ' : '') + 'email = :email'
+      ExpressionAttributeValues[':email'] = email.toLowerCase()
+    }
+
+    if (profile) {
+      UpdateExpression = UpdateExpression + ((password || email) ? ', ' : '') + 'profile = :profile'
+      ExpressionAttributeValues[':profile'] = profile
+    }
+  }
+
+  if (email === false || profile === false) {
+    UpdateExpression = UpdateExpression + ' REMOVE '
+
+    if (email === false) {
+      UpdateExpression = UpdateExpression + 'email'
+    }
+
+    if (profile === false) {
+      UpdateExpression = UpdateExpression + (email === false ? ', ' : '') + 'profile'
+    }
+  }
+
+  updateUserParams.UpdateExpression = UpdateExpression
+  updateUserParams.ExpressionAttributeNames = ExpressionAttributeNames
+  updateUserParams.ExpressionAttributeValues = ExpressionAttributeValues
+
+  const ddbClient = connection.ddbClient()
+  await ddbClient.update(updateUserParams).promise()
+}
+
+const _updateUserIncludingUsernameUpdate = async (oldUser, appId, userId, username, password, email, profile) => {
+  // if updating username, need to Delete existing DDB item and Put new one because username is partition key
+  const deleteUserParams = {
+    TableName: setup.usersTableName,
+    Key: {
+      'username': oldUser['username'],
+      'app-id': appId
+    },
+    ConditionExpression: 'attribute_exists(username) and #userId = :userId',
+    ExpressionAttributeNames: {
+      '#userId': 'user-id'
+    },
+    ExpressionAttributeValues: {
+      ':userId': userId
+    }
+  }
+
+  const updatedUser = {
+    ...oldUser,
+    username: username.toLowerCase()
+  }
+
+  if (password) updatedUser['password-hash'] = await crypto.bcrypt.hash(password)
+
+  if (email) updatedUser.email = email.toLowerCase()
+  else if (email === false) delete updatedUser.email
+
+  if (profile) updatedUser.profile = profile
+  else if (profile === false) delete updatedUser.profile
+
+  const updateUserParams = {
+    TableName: setup.usersTableName,
+    Item: updatedUser,
+    // if username does not exist, insert
+    // if it already exists and user hasn't saved seed yet, overwrite
+    // if it already exists and user has saved seed, fail with ConditionalCheckFailedException
+    ConditionExpression: 'attribute_not_exists(username) or attribute_exists(#seedNotSavedYet)',
+    ExpressionAttributeNames: {
+      '#seedNotSavedYet': 'seed-not-saved-yet'
+    }
+  }
+
+  const params = {
+    TransactItems: [
+      { Delete: deleteUserParams },
+      { Put: updateUserParams }
+    ]
+  }
+
+  const ddbClient = connection.ddbClient()
+  await ddbClient.transactWrite(params).promise()
+}
+
+exports.updateUser = async function (userId, appId, username, password, email, profile) {
+  if (!username && !password && !email && !profile && email !== false && profile !== false) {
+    return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing all params')
+  }
+
+  try {
+    if (username) _validateUsernameInput(username)
+    if (password) _validatePasswordInput(password)
+    if (email && !validateEmail(email)) throw { error: 'EmailNotValid' }
+    if (profile) _validateProfile(profile)
+  } catch (e) {
+    return responseBuilder.errorResponse(statusCodes['Bad Request'], e)
+  }
+
+  try {
+    const user = await getUserByUserId(userId)
+
+    if (username && username.toLowerCase() !== user['username']) {
+      try {
+        await _updateUserIncludingUsernameUpdate(user, appId, userId, username, password, email, profile)
+      } catch (e) {
+
+        if (e.message.includes('ConditionalCheckFailed]')) {
+          return responseBuilder.errorResponse(statusCodes['Conflict'], 'UsernameAlreadyExists')
+        }
+
+        throw e
+      }
+
+    } else {
+      await _updateUserExcludingUsernameUpdate(user['username'], appId, userId, password, email, profile)
+    }
+
+    return responseBuilder.successResponse()
+  } catch (e) {
+    logger.error(`Failed to update user '${userId}' with ${e}`)
+    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to update user')
   }
 }

@@ -66,6 +66,8 @@ async function start(express, app, userbaseConfig = {}) {
       const userId = res.locals.user['user-id']
       const username = res.locals.user['username']
       const userPublicKey = res.locals.user['public-key']
+      const appId = res.locals.user['app-id']
+
       const conn = connections.register(userId, ws)
       const connectionId = conn.id
 
@@ -132,6 +134,10 @@ async function start(express, app, userbaseConfig = {}) {
               case 'ValidateKey':
               case 'RequestSeed': {
                 response = responseBuilder.errorResponse(statusCodes['Bad Request'], 'Already validated key')
+                break
+              }
+              case 'UpdateUser': {
+                response = await user.updateUser(userId, appId, params.username, params.password, params.email, params.profile)
                 break
               }
               case 'CreateDatabase': {
