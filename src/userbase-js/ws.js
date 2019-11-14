@@ -35,7 +35,7 @@ class Connection {
     this.init()
   }
 
-  init(resolveConnection, rejectConnection, username, sessionId, seedString) {
+  init(resolveConnection, rejectConnection, username, sessionId, seedString, rememberMe) {
     for (const property of Object.keys(this)) {
       delete this[property]
     }
@@ -56,7 +56,11 @@ class Connection {
       salts: {}
     }
 
+    this.rememberMe = rememberMe
+
     this.requests = {}
+
+    this.seedRequest = null
 
     this.processingSeedRequest = {}
     this.sentSeedTo = {}
@@ -68,7 +72,7 @@ class Connection {
     }
   }
 
-  connect(appId, sessionId, username, seedString = null) {
+  connect(appId, sessionId, username, seedString = null, rememberMe = false) {
     if (this.connected) throw new WebSocketError(wsAlreadyConnected, this.username)
 
     return new Promise((resolve, reject) => {
@@ -101,7 +105,7 @@ class Connection {
           return
         }
 
-        this.init(resolve, reject, username, sessionId, seedString)
+        this.init(resolve, reject, username, sessionId, seedString, rememberMe)
         this.ws = ws
 
         if (!seedString) {
@@ -239,7 +243,7 @@ class Connection {
 
       case 'ReceiveSeed': {
         const { encryptedSeed, senderPublicKey } = message
-        const { seedRequestPrivateKey } = localData.getSeedRequest(this.username)
+        const { seedRequestPrivateKey } = this.seedRequest
 
         await this.receiveSeed(
           encryptedSeed,
@@ -304,7 +308,7 @@ class Connection {
     const rejectConnection = this.rejectConnection
 
     try {
-      localData.signOutSession(username)
+      if (this.rememberMe) localData.signOutSession(username)
 
       const sessionId = this.sessionId
 
@@ -402,6 +406,8 @@ class Connection {
 
   async requestSeed(username) {
     const seedRequest = localData.getSeedRequest(username) || await this.buildSeedRequest(username)
+    this.seedRequest = seedRequest
+
     const {
       seedRequestPrivateKey,
       seedRequestPublicKey
@@ -425,7 +431,8 @@ class Connection {
     const publicKey = crypto.diffieHellman.getPublicKey(seedRequestPrivateKey)
     const seedRequestPublicKey = base64.encode(publicKey)
 
-    localData.setSeedRequest(username, seedRequestPublicKey, seedRequestPrivateKey)
+    if (this.rememberMe) localData.setSeedRequest(username, seedRequestPrivateKey, seedRequestPublicKey)
+
     return { seedRequestPrivateKey, seedRequestPublicKey }
   }
 
@@ -671,7 +678,9 @@ class Connection {
 
   async saveSeed(seedString) {
     const username = this.username
-    localData.saveSeedString(username, seedString)
+
+    if (this.rememberMe) localData.saveSeedString(username, seedString)
+
     try {
       await this.setKeys(seedString)
     } catch (e) {
