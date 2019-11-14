@@ -2,7 +2,6 @@
 
 describe('Configure the env', function () {
   let info = {}
-  let infoExistingUser = {}
   let globalSession = {}
   beforeEach(() => {
     cy.visit('./cypress/integration/index.html').then((win) => {
@@ -10,9 +9,6 @@ describe('Configure the env', function () {
     })
     cy.getLoginInfo().then((loginInfo) => {
       info = loginInfo
-    })
-    cy.getLoginInfo(true).then((loginInfo) => {
-      infoExistingUser = loginInfo
     })
   })
 
