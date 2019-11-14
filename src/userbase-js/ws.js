@@ -251,6 +251,7 @@ class Connection {
       }
 
       case 'SignOut':
+      case 'UpdateUser':
       case 'CreateDatabase':
       case 'GetDatabase':
       case 'OpenDatabase':

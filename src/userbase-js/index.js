@@ -14,6 +14,7 @@ export default {
   signIn: auth.signIn,
   signOut: auth.signOut,
   forgotPassword: auth.forgotPassword,
+  updateUser: auth.updateUser,
 
   importKey: auth.importKey,
 

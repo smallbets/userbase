@@ -8,6 +8,7 @@ import localData from './localData'
 import config from './config'
 import errors from './errors'
 import statusCodes from './statusCodes'
+import { objectHasOwnProperty } from './utils'
 
 const _parseGenericErrors = (e) => {
   if (e.response) {
@@ -52,6 +53,47 @@ const _parseGenericUsernamePasswordError = (e) => {
   }
 }
 
+const _parseUserResponseError = (e, username) => {
+  _parseGenericErrors(e)
+  _parseGenericUsernamePasswordError(e)
+
+  if (e.response) {
+    const data = e.response.data
+
+    if (data === 'UsernameAlreadyExists') {
+      throw new errors.UsernameAlreadyExists(username)
+    }
+
+    switch (data.error) {
+      case 'EmailNotValid':
+        throw new errors.EmailNotValid
+
+      case 'ProfileMustBeObject':
+        throw new errors.ProfileMustBeObject
+
+      case 'ProfileKeyMustBeString':
+        throw new errors.ProfileKeyMustBeString(data.key)
+
+      case 'ProfileKeyTooLong':
+        throw new errors.ProfileKeyTooLong(data.maxLen, data.key)
+
+      case 'ProfileValueMustBeString':
+        throw new errors.ProfileValueMustBeString(data.key, data.value)
+
+      case 'ProfileValueTooLong':
+        throw new errors.ProfileValueTooLong(data.maxLen, data.key, data.value)
+
+      case 'ProfileHasTooManyKeys':
+        throw new errors.ProfileHasTooManyKeys(data.maxKeys)
+
+      case 'ProfileCannotBeEmpty':
+        throw new errors.ProfileCannotBeEmpty
+    }
+  }
+
+  throw e
+}
+
 const _validateSignUpOrSignInInput = (username, password) => {
   if (!username) throw new errors.UsernameCannotBeBlank
   if (!password) throw new errors.PasswordCannotBeBlank
@@ -83,45 +125,7 @@ const _generateKeysAndSignUp = async (username, password, seed, email, profile) 
     )
     return session
   } catch (e) {
-    _parseGenericErrors(e)
-    _parseGenericUsernamePasswordError(e)
-
-    if (e.response) {
-      const status = e.response.status
-      const data = e.response.data
-
-      if (status === statusCodes['Conflict']) {
-        throw new errors.UsernameAlreadyExists(username)
-      } else {
-        switch (data.error) {
-          case 'EmailNotValid':
-            throw new errors.EmailNotValid
-
-          case 'ProfileMustBeObject':
-            throw new errors.ProfileMustBeObject
-
-          case 'ProfileKeyMustBeString':
-            throw new errors.ProfileKeyMustBeString(data.key)
-
-          case 'ProfileKeyTooLong':
-            throw new errors.ProfileKeyTooLong(data.maxLen, data.key)
-
-          case 'ProfileValueMustBeString':
-            throw new errors.ProfileValueMustBeString(data.key, data.value)
-
-          case 'ProfileValueTooLong':
-            throw new errors.ProfileValueTooLong(data.maxLen, data.key, data.value)
-
-          case 'ProfileHasTooManyKeys':
-            throw new errors.ProfileHasTooManyKeys(data.maxKeys)
-
-          case 'ProfileCannotBeEmpty':
-            throw new errors.ProfileCannotBeEmpty
-        }
-      }
-    }
-
-    throw e
+    _parseUserResponseError(e, username)
   }
 }
 
@@ -522,6 +526,78 @@ const forgotPassword = async (username) => {
   }
 }
 
+const _validateUpdatedUserInput = (user) => {
+  if (!user) throw new errors.UserMissing
+  if (typeof user !== 'object') throw new errors.UserMustBeObject
+
+  const { username, password, profile } = user
+
+  if (!username && !password
+    && !objectHasOwnProperty(user, 'email')
+    && !objectHasOwnProperty(user, 'profile')
+  ) {
+    throw new errors.UserMissingExpectedProperties
+  }
+
+  if (username && typeof username !== 'string') throw new errors.UsernameMustBeString
+  if (password && typeof password !== 'string') throw new errors.PasswordMustBeString
+  if (profile) _validateProfile(profile)
+}
+
+const updateUser = async (user) => {
+  try {
+    _validateUpdatedUserInput(user)
+
+    const action = 'UpdateUser'
+    const params = { ...user }
+    if (params.username) params.username = params.username.toLowerCase()
+
+    if (params.email) params.email = params.email.toLowerCase()
+    else if (objectHasOwnProperty(params, 'email')) params.email = false // marks email for deletion
+
+    if (!params.profile && objectHasOwnProperty(params, 'profile')) params.profile = false // marks profile for deletion
+
+    if (!ws.keys.init) throw new errors.UserNotSignedIn
+    try {
+      if (params.username) localData.saveSeedString(params.username, ws.seedString)
+      await ws.request(action, params)
+      if (params.username) ws.username = params.username // eslint-disable-line require-atomic-updates
+    } catch (e) {
+      _parseUserResponseError(e, params.username)
+    }
+  } catch (e) {
+
+    switch (e.name) {
+      case 'UserMissing':
+      case 'UserMustBeObject':
+      case 'UserMissingExpectedProperties':
+      case 'UsernameAlreadyExists':
+      case 'UsernameMustBeString':
+      case 'UsernameTooLong':
+      case 'PasswordTooShort':
+      case 'PasswordTooLong':
+      case 'PasswordMustBeString':
+      case 'EmailNotValid':
+      case 'ProfileMustBeObject':
+      case 'ProfileCannotBeEmpty':
+      case 'ProfileHasTooManyKeys':
+      case 'ProfileKeyMustBeString':
+      case 'ProfileKeyTooLong':
+      case 'ProfileValueMustBeString':
+      case 'ProfileValueTooLong':
+      case 'AppIdNotSet':
+      case 'AppIdNotValid':
+      case 'UserNotSignedIn':
+      case 'ServiceUnavailable':
+        throw e
+
+      default:
+        throw new errors.ServiceUnavailable
+    }
+
+  }
+}
+
 export default {
   signUp,
   signOut,
@@ -530,5 +606,6 @@ export default {
   init,
   grantDatabaseAccess,
   importKey,
-  forgotPassword
+  forgotPassword,
+  updateUser
 }

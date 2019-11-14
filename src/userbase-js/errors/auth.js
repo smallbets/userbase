@@ -290,6 +290,36 @@ class ShowKeyHandlerMustBeFunction extends Error {
   }
 }
 
+class UserMissing extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'UserMissing'
+    this.message = 'User missing.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class UserMustBeObject extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'UserMustBeObject'
+    this.message = 'User must be an object.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class UserMissingExpectedProperties extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'UserMissingExpectedProperties'
+    this.message = 'User missing expected properties.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
 export default {
   UsernameAlreadyExists,
   UsernameCannotBeBlank,
@@ -319,4 +349,7 @@ export default {
   KeyCannotBeBlank,
   KeyMustBeString,
   ShowKeyHandlerMustBeFunction,
+  UserMissing,
+  UserMustBeObject,
+  UserMissingExpectedProperties,
 }

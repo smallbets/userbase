@@ -30,3 +30,7 @@ export const getProtocolFromEndpoint = (endpoint) => {
 export const byteSizeOfString = (string) => {
   return string.length * 2
 }
+
+export const objectHasOwnProperty = (object, property) => {
+  return Object.prototype.hasOwnProperty.call(object, property)
+}
