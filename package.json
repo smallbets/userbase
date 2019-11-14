@@ -40,7 +40,9 @@
     "copy:admin-panel:to-npm-build": "mkdir -p ./npm_build/userbase-server/admin-panel/dist && cp -R ./src/userbase-server/admin-panel/dist/ ./npm_build/userbase-server/admin-panel/dist/",
     "patch:userbase-server:npm": "cd ./src/userbase-server && printf 'Input patch commit message: ' && read message && npm version patch -m '$message' && cd ../.. && npm run copy:userbase-server:files",
     "publish:userbase-server:npm": "cd ./npm_build/userbase-server && npm publish",
-    "build:userbase-js:script": "rm -Rf ./build/script && cd ./src/proof-of-concept && npm run build:userbase-js:script"
+    "build:userbase-js:script": "rm -Rf ./build/script && cd ./src/proof-of-concept && npm run build:userbase-js:script",
+    "test:setup": "npm run build:userbase-js:script && cp ./build/script/userbase-*.js ./build/script/userbase-latest.js && npm start &",
+    "test": "npm run test:setup && npx cypress open"
   },
   "repository": "https://github.com/dvassallo/encrypted.dev",
   "keywords": [],
@@ -57,8 +59,10 @@
     "@babel/preset-env": "^7.4.5",
     "babel-eslint": "^10.0.1",
     "babel-loader": "^8.0.6",
+    "cypress": "^3.6.0",
     "eslint": "^6.5.1",
     "eslint-loader": "^3.0.2",
+    "eslint-plugin-cypress": "^2.7.0",
     "eslint-plugin-react": "^7.16.0",
     "forever": "^1.0.0",
     "nodemon": "^1.19.1",

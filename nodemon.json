@@ -1,0 +1,6 @@
+{
+  "ignore": [
+    "*.spec.js",
+    "cypress/*"
+  ]
+}

@@ -6,10 +6,11 @@ module.exports = {
     "jest": true,
     "es6": true
   },
-  "plugins": ["react"],
+  "plugins": ["react", "cypress"],
   "extends": [
     "eslint:recommended",
-    "plugin:react/recommended"
+    "plugin:react/recommended",
+    "plugin:cypress/recommended"
   ],
   "rules": {
     "no-console": "off",
