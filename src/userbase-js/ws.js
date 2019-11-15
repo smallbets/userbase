@@ -437,7 +437,7 @@ class Connection {
   }
 
   async inputSeedManually(username, seedRequestPublicKey) {
-    const deviceId = await crypto.sha256.hashString(seedRequestPublicKey)
+    const deviceId = await crypto.sha256.hashBase64String(seedRequestPublicKey)
 
     const keyNotFoundHandler = config.getKeyNotFoundHandler()
     if (keyNotFoundHandler) {

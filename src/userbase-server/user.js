@@ -7,7 +7,7 @@ import crypto from './crypto'
 import connections from './ws'
 import logger from './logger'
 import db from './db'
-import { validateEmail } from './utils'
+import { validateEmail, stringToArrayBuffer } from './utils'
 
 const getTtl = secondsToLive => Math.floor(Date.now() / 1000) + secondsToLive
 
@@ -23,8 +23,7 @@ const SESSION_LENGTH = MS_IN_A_DAY
 
 const MAX_USERNAME_CHAR_LENGTH = 100
 
-const MAX_PASSWORD_CHAR_LENGTH = 1000
-const MIN_PASSWORD_CHAR_LENGTH = 6
+const PASSWORD_HASH_CHAR_LENGTH = 44
 
 const MAX_PROFILE_OBJECT_KEY_CHAR_LENGTH = 20
 const MAX_PROFILE_OBJECT_VALUE_CHAR_LENGTH = 1000
@@ -83,8 +82,8 @@ const getAppByAppId = async function (appId) {
   return appResponse.Items[0]
 }
 
-const _buildSignUpParams = async (username, password, appId, userId, publicKey, salts, app, email, profile) => {
-  const passwordHash = await crypto.bcrypt.hash(password)
+const _buildSignUpParams = async (username, passwordSecureHash, appId, userId, publicKey, salts, app, email, profile) => {
+  const passwordHash = await crypto.bcrypt.hash(passwordSecureHash)
   const { encryptionKeySalt, dhKeySalt, hmacKeySalt } = salts
 
   const user = {
@@ -135,15 +134,15 @@ const _buildSignUpParams = async (username, password, appId, userId, publicKey, 
   }
 }
 
-const _validatePassword = async (password, user) => {
+const _validatePassword = async (passwordSecureHash, user) => {
   if (!user) throw new Error('User does not exist')
 
-  const passwordIsCorrect = await crypto.bcrypt.compare(password, user['password-hash'])
+  const passwordIsCorrect = await crypto.bcrypt.compare(passwordSecureHash, user['password-hash'])
 
   if (!passwordIsCorrect && !user['temp-password']) {
     throw new Error('Incorrect password')
   } else if (!passwordIsCorrect && user['temp-password']) {
-    const tempPasswordIsCorrect = await crypto.bcrypt.compare(password, user['temp-password'])
+    const tempPasswordIsCorrect = await crypto.bcrypt.compare(passwordSecureHash, user['temp-password'])
 
     if (!tempPasswordIsCorrect) {
       throw new Error('Incorrect password or temp password')
@@ -182,19 +181,14 @@ const _validateProfile = (profile) => {
   if (!counter) throw { error: 'ProfileCannotBeEmpty' }
 }
 
-const _validatePasswordInput = (password) => {
-  if (typeof password !== 'string') throw {
-    error: 'PasswordMustBeString'
+const _validatePasswordInput = (passwordSecureHash) => {
+  if (typeof passwordSecureHash !== 'string') throw {
+    error: 'PasswordHashMustBeString'
   }
 
-  if (password.length < MIN_PASSWORD_CHAR_LENGTH) throw {
-    error: 'PasswordTooShort',
-    minLen: MIN_PASSWORD_CHAR_LENGTH
-  }
-
-  if (password.length > MAX_PASSWORD_CHAR_LENGTH) throw {
-    error: 'PasswordTooLong',
-    maxLen: MAX_PASSWORD_CHAR_LENGTH
+  if (passwordSecureHash.length !== PASSWORD_HASH_CHAR_LENGTH) throw {
+    error: 'PasswordHashMustBeCorrectLength',
+    len: PASSWORD_HASH_CHAR_LENGTH
   }
 }
 
@@ -209,16 +203,16 @@ const _validateUsernameInput = (username) => {
   }
 }
 
-const _validateUsernameAndPasswordInput = (username, password) => {
+const _validateUsernameAndPasswordInput = (username, passwordSecureHash) => {
   _validateUsernameInput(username)
-  _validatePasswordInput(password)
+  _validatePasswordInput(passwordSecureHash)
 }
 
 exports.signUp = async function (req, res) {
   const appId = req.query.appId
 
   const username = req.body.username
-  const password = req.body.password
+  const passwordSecureHash = req.body.passwordSecureHash
   const publicKey = req.body.publicKey
   const encryptionKeySalt = req.body.encryptionKeySalt
   const dhKeySalt = req.body.dhKeySalt
@@ -226,12 +220,12 @@ exports.signUp = async function (req, res) {
   const email = req.body.email
   const profile = req.body.profile
 
-  if (!appId || !username || !password || !publicKey || !encryptionKeySalt || !dhKeySalt || !hmacKeySalt) {
+  if (!appId || !username || !passwordSecureHash || !publicKey || !encryptionKeySalt || !dhKeySalt || !hmacKeySalt) {
     return res.status(statusCodes['Bad Request']).send('Missing required items')
   }
 
   try {
-    _validateUsernameAndPasswordInput(username, password)
+    _validateUsernameAndPasswordInput(username, passwordSecureHash)
 
     if (email && !validateEmail(email)) return res.status(statusCodes['Bad Request'])
       .send({ error: 'EmailNotValid' })
@@ -249,7 +243,7 @@ exports.signUp = async function (req, res) {
     if (!app) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
 
     const salts = { encryptionKeySalt, dhKeySalt, hmacKeySalt }
-    const params = await _buildSignUpParams(username, password, appId, userId, publicKey, salts, app, email, profile)
+    const params = await _buildSignUpParams(username, passwordSecureHash, appId, userId, publicKey, salts, app, email, profile)
 
     try {
       const ddbClient = connection.ddbClient()
@@ -408,14 +402,14 @@ exports.signIn = async function (req, res) {
   const appId = req.query.appId
 
   const username = req.body.username
-  const password = req.body.password
+  const passwordSecureHash = req.body.passwordSecureHash
 
-  if (!appId || !username || !password) return res
+  if (!appId || !username || !passwordSecureHash) return res
     .status(statusCodes['Bad Request'])
     .send('Missing required items')
 
   try {
-    _validateUsernameAndPasswordInput(username, password)
+    _validateUsernameAndPasswordInput(username, passwordSecureHash)
   } catch (e) {
     return res.status(statusCodes['Bad Request']).send(e)
   }
@@ -439,7 +433,7 @@ exports.signIn = async function (req, res) {
     const user = userResponse.Item
 
     try {
-      await _validatePassword(password, user)
+      await _validatePassword(passwordSecureHash, user)
     } catch (e) {
       return res.status(statusCodes['Unauthorized']).send('Invalid password')
     }
@@ -1003,6 +997,13 @@ exports.getServerPublicKey = async function (_, res) {
   }
 }
 
+const _getPasswordHashFromString = async (password) => {
+  const passwordArrayBuffer = stringToArrayBuffer(password)
+  const passwordSecureHash = crypto.sha256.hash(passwordArrayBuffer).toString('base64')
+  const passwordHash = await crypto.bcrypt.hash(passwordSecureHash)
+  return passwordHash
+}
+
 const setTempPassword = async (username, appId, tempPassword) => {
   const params = {
     TableName: setup.usersTableName,
@@ -1017,7 +1018,7 @@ const setTempPassword = async (username, appId, tempPassword) => {
       '#tempPasswordCreationDate': 'temp-password-creation-date'
     },
     ExpressionAttributeValues: {
-      ':tempPassword': await crypto.bcrypt.hash(tempPassword),
+      ':tempPassword': await _getPasswordHashFromString(tempPassword),
       ':tempPasswordCreationDate': new Date().toISOString()
     },
     ReturnValues: 'ALL_NEW'
@@ -1083,7 +1084,7 @@ exports.forgotPassword = async function (req, res) {
   }
 }
 
-const _updateUserExcludingUsernameUpdate = async (username, appId, userId, password, email, profile) => {
+const _updateUserExcludingUsernameUpdate = async (username, appId, userId, passwordSecureHash, email, profile) => {
   const updateUserParams = {
     TableName: setup.usersTableName,
     Key: {
@@ -1097,35 +1098,35 @@ const _updateUserExcludingUsernameUpdate = async (username, appId, userId, passw
   const ExpressionAttributeNames = { '#userId': 'user-id' }
   const ExpressionAttributeValues = { ':userId': userId }
 
-  if (password || email || profile) {
+  if (passwordSecureHash || email || profile) {
     UpdateExpression = 'SET '
 
-    if (password) {
-      UpdateExpression = UpdateExpression + '#passwordHash = :passwordHash'
+    if (passwordSecureHash) {
+      UpdateExpression += '#passwordHash = :passwordHash'
       ExpressionAttributeNames['#passwordHash'] = 'password-hash'
-      ExpressionAttributeValues[':passwordHash'] = await crypto.bcrypt.hash(password)
+      ExpressionAttributeValues[':passwordHash'] = await crypto.bcrypt.hash(passwordSecureHash)
     }
 
     if (email) {
-      UpdateExpression = UpdateExpression + (password ? ', ' : '') + 'email = :email'
+      UpdateExpression += (passwordSecureHash ? ', ' : '') + 'email = :email'
       ExpressionAttributeValues[':email'] = email.toLowerCase()
     }
 
     if (profile) {
-      UpdateExpression = UpdateExpression + ((password || email) ? ', ' : '') + 'profile = :profile'
+      UpdateExpression += ((passwordSecureHash || email) ? ', ' : '') + 'profile = :profile'
       ExpressionAttributeValues[':profile'] = profile
     }
   }
 
   if (email === false || profile === false) {
-    UpdateExpression = UpdateExpression + ' REMOVE '
+    UpdateExpression += ' REMOVE '
 
     if (email === false) {
-      UpdateExpression = UpdateExpression + 'email'
+      UpdateExpression += 'email'
     }
 
     if (profile === false) {
-      UpdateExpression = UpdateExpression + (email === false ? ', ' : '') + 'profile'
+      UpdateExpression += (email === false ? ', ' : '') + 'profile'
     }
   }
 
@@ -1137,7 +1138,7 @@ const _updateUserExcludingUsernameUpdate = async (username, appId, userId, passw
   await ddbClient.update(updateUserParams).promise()
 }
 
-const _updateUserIncludingUsernameUpdate = async (oldUser, appId, userId, username, password, email, profile) => {
+const _updateUserIncludingUsernameUpdate = async (oldUser, appId, userId, username, passwordSecureHash, email, profile) => {
   // if updating username, need to Delete existing DDB item and Put new one because username is partition key
   const deleteUserParams = {
     TableName: setup.usersTableName,
@@ -1159,7 +1160,7 @@ const _updateUserIncludingUsernameUpdate = async (oldUser, appId, userId, userna
     username: username.toLowerCase()
   }
 
-  if (password) updatedUser['password-hash'] = await crypto.bcrypt.hash(password)
+  if (passwordSecureHash) updatedUser['password-hash'] = await crypto.bcrypt.hash(passwordSecureHash)
 
   if (email) updatedUser.email = email.toLowerCase()
   else if (email === false) delete updatedUser.email
@@ -1190,14 +1191,14 @@ const _updateUserIncludingUsernameUpdate = async (oldUser, appId, userId, userna
   await ddbClient.transactWrite(params).promise()
 }
 
-exports.updateUser = async function (userId, appId, username, password, email, profile) {
-  if (!username && !password && !email && !profile && email !== false && profile !== false) {
+exports.updateUser = async function (userId, appId, username, passwordSecureHash, email, profile) {
+  if (!username && !passwordSecureHash && !email && !profile && email !== false && profile !== false) {
     return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing all params')
   }
 
   try {
     if (username) _validateUsernameInput(username)
-    if (password) _validatePasswordInput(password)
+    if (passwordSecureHash) _validatePasswordInput(passwordSecureHash)
     if (email && !validateEmail(email)) throw { error: 'EmailNotValid' }
     if (profile) _validateProfile(profile)
   } catch (e) {
@@ -1209,7 +1210,7 @@ exports.updateUser = async function (userId, appId, username, password, email, p
 
     if (username && username.toLowerCase() !== user['username']) {
       try {
-        await _updateUserIncludingUsernameUpdate(user, appId, userId, username, password, email, profile)
+        await _updateUserIncludingUsernameUpdate(user, appId, userId, username, passwordSecureHash, email, profile)
       } catch (e) {
 
         if (e.message.includes('ConditionalCheckFailed]')) {
@@ -1220,7 +1221,7 @@ exports.updateUser = async function (userId, appId, username, password, email, p
       }
 
     } else {
-      await _updateUserExcludingUsernameUpdate(user['username'], appId, userId, password, email, profile)
+      await _updateUserExcludingUsernameUpdate(user['username'], appId, userId, passwordSecureHash, email, profile)
     }
 
     return responseBuilder.successResponse()

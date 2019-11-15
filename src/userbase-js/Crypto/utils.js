@@ -26,7 +26,7 @@ export const stringToArrayBuffer = (str) => {
   for (let i = 0, strLen = str.length; i < strLen; i++) {
     bufView[i] = str.charCodeAt(i)
   }
-  return buf
+  return new Uint16Array(buf)
 }
 
 /**

@@ -137,7 +137,14 @@ async function start(express, app, userbaseConfig = {}) {
                 break
               }
               case 'UpdateUser': {
-                response = await user.updateUser(userId, appId, params.username, params.password, params.email, params.profile)
+                response = await user.updateUser(
+                  userId,
+                  appId,
+                  params.username,
+                  params.passwordSecureHash,
+                  params.email,
+                  params.profile
+                )
                 break
               }
               case 'CreateDatabase': {
