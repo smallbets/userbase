@@ -27,16 +27,21 @@
   ],
   "license": "MIT",
   "main": "./index.js",
+  "typings": "./types/index.d.ts",
   "name": "userbase-js",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/encrypted-dev/userbase.git"
   },
   "version": "0.0.6",
+  "scripts": {
+    "test:types": "dtslint types"
+  },
   "devDependencies": {
     "@fortawesome/fontawesome-svg-core": "^1.2.25",
     "@fortawesome/free-solid-svg-icons": "^5.11.2",
     "css-loader": "^3.2.0",
+    "dtslint": "^2.0.2",
     "optimize-css-assets-webpack-plugin": "^5.0.3",
     "style-loader": "^1.0.0",
     "terser-webpack-plugin": "^2.2.1",
