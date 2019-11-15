@@ -242,3 +242,9 @@
   font-family: 'Font Awesome 5 Free';
   content: '\f057';
 }
+
+.userbase-fa-exclamation-triangle:before {
+  font-family: 'Font Awesome 5 Free';
+  content: '\f071';
+  color: #e53e3e;
+}
