@@ -156,7 +156,7 @@ const _validateProfile = (profile) => {
   if (!keyExists) throw new errors.ProfileCannotBeEmpty
 }
 
-const displayShowKeyModal = (seedString) => new Promise(resolve => {
+const displayShowKeyModal = (seedString, rememberMe) => new Promise(resolve => {
   const showKeyModal = document.createElement('div')
   showKeyModal.className = 'userbase-modal'
 
@@ -204,9 +204,18 @@ const displayShowKeyModal = (seedString) => new Promise(resolve => {
         </hr>
       </div>
 
-      <div class='userbase-text-line'>
-        Store this key somewhere safe. You will need your secret key to sign in on other devices.
-      </div>
+
+    <div>
+    <span class='fas userbase-fa-exclamation-triangle' />
+    <span class='userbase-text-line'>
+
+    Store this key somewhere safe. ${rememberMe
+      ? ' You will need your secret key to sign in on other devices.'
+      : ' Without it, you will not be able to log in to your account.'
+    }
+
+    </span>
+    </div>
 
     </div>
   `
@@ -249,9 +258,9 @@ const signUp = async (username, password, email, profile, showKeyHandler, rememb
     const seedString = base64.encode(seed)
 
     if (showKeyHandler) {
-      await showKeyHandler(seedString)
+      await showKeyHandler(seedString, rememberMe)
     } else {
-      await displayShowKeyModal(seedString)
+      await displayShowKeyModal(seedString, rememberMe)
     }
 
     if (rememberMe) {
@@ -494,6 +503,9 @@ const importKey = async (keyString) => {
 
 const forgotPassword = async (username) => {
   try {
+    if (!username) throw new errors.UsernameCannotBeBlank
+    if (typeof username !== 'string') throw new errors.UsernameMustBeString
+
     try {
       await api.auth.forgotPassword(username)
     } catch (e) {
@@ -513,6 +525,8 @@ const forgotPassword = async (username) => {
   } catch (e) {
 
     switch (e.name) {
+      case 'UsernameCannotBeBlank':
+      case 'UsernameMustBeString':
       case 'AppIdNotSet':
       case 'AppIdNotValid':
       case 'UserNotFound':
