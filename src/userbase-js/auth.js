@@ -10,6 +10,9 @@ import errors from './errors'
 import statusCodes from './statusCodes'
 import { objectHasOwnProperty } from './utils'
 
+const MAX_PASSWORD_CHAR_LENGTH = 1000
+const MIN_PASSWORD_CHAR_LENGTH = 6
+
 const _parseGenericErrors = (e) => {
   if (e.response) {
     if (e.response.data === 'App ID not valid') {
@@ -42,14 +45,8 @@ const _connectWebSocket = async (appId, sessionId, username, seed, rememberMe) =
 }
 
 const _parseGenericUsernamePasswordError = (e) => {
-  if (e.response) {
-    if (e.response.data.error === 'UsernameTooLong') {
-      throw new errors.UsernameTooLong(e.response.data.maxLen)
-    } else if (e.response.data.error === 'PasswordTooShort') {
-      throw new errors.PasswordTooShort(e.response.data.minLen)
-    } else if (e.response.data.error === 'PasswordTooLong') {
-      throw new errors.PasswordTooLong(e.response.data.maxLen)
-    }
+  if (e.response && e.response.data.error === 'UsernameTooLong') {
+    throw new errors.UsernameTooLong(e.response.data.maxLen)
   }
 }
 
@@ -94,15 +91,25 @@ const _parseUserResponseError = (e, username) => {
   throw e
 }
 
-const _validateSignUpOrSignInInput = (username, password) => {
+const _validateUsername = (username) => {
   if (!username) throw new errors.UsernameCannotBeBlank
-  if (!password) throw new errors.PasswordCannotBeBlank
-
   if (typeof username !== 'string') throw new errors.UsernameMustBeString
-  if (typeof password !== 'string') throw new errors.PasswordMustBeString
 }
 
-const _generateKeysAndSignUp = async (username, password, seed, email, profile) => {
+const _validatePassword = (password) => {
+  if (!password) throw new errors.PasswordCannotBeBlank
+  if (typeof password !== 'string') throw new errors.PasswordMustBeString
+
+  if (password.length < MIN_PASSWORD_CHAR_LENGTH) throw new errors.PasswordTooShort(MIN_PASSWORD_CHAR_LENGTH)
+  if (password.length > MAX_PASSWORD_CHAR_LENGTH) throw new errors.PasswordTooLong(MAX_PASSWORD_CHAR_LENGTH)
+}
+
+const _validateSignUpOrSignInInput = (username, password) => {
+  _validateUsername(username)
+  _validatePassword(password)
+}
+
+const _generateKeysAndSignUp = async (username, passwordSecureHash, seed, email, profile) => {
   const masterKey = await crypto.hkdf.importMasterKey(seed)
 
   const encryptionKeySalt = crypto.hkdf.generateSalt()
@@ -115,7 +122,7 @@ const _generateKeysAndSignUp = async (username, password, seed, email, profile) 
   try {
     const session = await api.auth.signUp(
       username,
-      password,
+      passwordSecureHash,
       base64.encode(publicKey),
       base64.encode(encryptionKeySalt),
       base64.encode(dhKeySalt),
@@ -248,11 +255,13 @@ const signUp = async (username, password, email, profile, showKeyHandler, rememb
 
     const appId = config.getAppId()
     const lowerCaseUsername = username.toLowerCase()
+    const passwordSecureHash = await crypto.sha256.hashString(password)
+
     const seed = await crypto.generateSeed()
 
     const lowerCaseEmail = email && email.toLowerCase()
 
-    const session = await _generateKeysAndSignUp(lowerCaseUsername, password, seed, lowerCaseEmail, profile)
+    const session = await _generateKeysAndSignUp(lowerCaseUsername, passwordSecureHash, seed, lowerCaseEmail, profile)
     const { sessionId, creationDate } = session
 
     const seedString = base64.encode(seed)
@@ -328,9 +337,9 @@ const signOut = async () => {
   }
 }
 
-const _signInWrapper = async (username, password) => {
+const _signInWrapper = async (username, passwordSecureHash) => {
   try {
-    const { session, email, profile } = await api.auth.signIn(username, password)
+    const { session, email, profile } = await api.auth.signIn(username, passwordSecureHash)
     return { session, email, profile }
   } catch (e) {
     _parseGenericErrors(e)
@@ -352,7 +361,9 @@ const signIn = async (username, password, rememberMe = false) => {
 
     const lowerCaseUsername = username.toLowerCase()
 
-    const { session, email, profile } = await _signInWrapper(lowerCaseUsername, password)
+    const passwordSecureHash = await crypto.sha256.hashString(password)
+
+    const { session, email, profile } = await _signInWrapper(lowerCaseUsername, passwordSecureHash)
     const { sessionId, creationDate } = session
 
     if (rememberMe) localData.signInSession(lowerCaseUsername, sessionId, creationDate)
@@ -503,8 +514,7 @@ const importKey = async (keyString) => {
 
 const forgotPassword = async (username) => {
   try {
-    if (!username) throw new errors.UsernameCannotBeBlank
-    if (typeof username !== 'string') throw new errors.UsernameMustBeString
+    _validateUsername(username)
 
     try {
       await api.auth.forgotPassword(username)
@@ -554,9 +564,26 @@ const _validateUpdatedUserInput = (user) => {
     throw new errors.UserMissingExpectedProperties
   }
 
-  if (username && typeof username !== 'string') throw new errors.UsernameMustBeString
-  if (password && typeof password !== 'string') throw new errors.PasswordMustBeString
+  if (username) _validateUsername(username)
+  if (password) _validatePassword(password)
   if (profile) _validateProfile(profile)
+}
+
+const _buildUpdateUserParams = async (user) => {
+  const params = { ...user }
+  if (params.username) params.username = params.username.toLowerCase()
+
+  if (params.password) {
+    params.passwordSecureHash = await crypto.sha256.hashString(params.password)
+    delete params.password
+  }
+
+  if (params.email) params.email = params.email.toLowerCase()
+  else if (objectHasOwnProperty(params, 'email')) params.email = false // marks email for deletion
+
+  if (!params.profile && objectHasOwnProperty(params, 'profile')) params.profile = false // marks profile for deletion
+
+  return params
 }
 
 const updateUser = async (user) => {
@@ -564,18 +591,14 @@ const updateUser = async (user) => {
     _validateUpdatedUserInput(user)
 
     const action = 'UpdateUser'
-    const params = { ...user }
-    if (params.username) params.username = params.username.toLowerCase()
-
-    if (params.email) params.email = params.email.toLowerCase()
-    else if (objectHasOwnProperty(params, 'email')) params.email = false // marks email for deletion
-
-    if (!params.profile && objectHasOwnProperty(params, 'profile')) params.profile = false // marks profile for deletion
+    const params = await _buildUpdateUserParams(user)
 
     if (!ws.keys.init) throw new errors.UserNotSignedIn
     try {
-      if (params.username) localData.saveSeedString(params.username, ws.seedString)
+      if (ws.rememberMe && params.username) localData.saveSeedString(params.username, ws.seedString)
+
       await ws.request(action, params)
+
       if (params.username) ws.username = params.username // eslint-disable-line require-atomic-updates
     } catch (e) {
       _parseUserResponseError(e, params.username)

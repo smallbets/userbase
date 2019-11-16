@@ -3,13 +3,13 @@ import config from '../config'
 
 const TEN_SECONDS_MS = 10 * 1000
 
-const signUp = async (username, password, publicKey, encryptionKeySalt, dhKeySalt, hmacKeySalt, email, profile) => {
+const signUp = async (username, passwordSecureHash, publicKey, encryptionKeySalt, dhKeySalt, hmacKeySalt, email, profile) => {
   const signUpResponse = await axios({
     method: 'POST',
     url: `${config.getEndpoint()}/api/auth/sign-up?appId=${config.getAppId()}`,
     data: {
       username,
-      password,
+      passwordSecureHash,
       publicKey,
       encryptionKeySalt,
       dhKeySalt,
@@ -23,13 +23,13 @@ const signUp = async (username, password, publicKey, encryptionKeySalt, dhKeySal
   return signUpResponse.data
 }
 
-const signIn = async (username, password) => {
+const signIn = async (username, passwordSecureHash) => {
   const signInResponse = await axios({
     method: 'POST',
     url: `${config.getEndpoint()}/api/auth/sign-in?appId=${config.getAppId()}`,
     data: {
       username,
-      password,
+      passwordSecureHash,
     },
     timeout: TEN_SECONDS_MS
   })
