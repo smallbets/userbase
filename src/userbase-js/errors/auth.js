@@ -290,16 +290,6 @@ class ShowKeyHandlerMustBeFunction extends Error {
   }
 }
 
-class UserMissing extends Error {
-  constructor(...params) {
-    super(...params)
-
-    this.name = 'UserMissing'
-    this.message = 'User missing.'
-    this.status = statusCodes['Bad Request']
-  }
-}
-
 class UserMustBeObject extends Error {
   constructor(...params) {
     super(...params)
@@ -349,7 +339,6 @@ export default {
   KeyCannotBeBlank,
   KeyMustBeString,
   ShowKeyHandlerMustBeFunction,
-  UserMissing,
   UserMustBeObject,
   UserMissingExpectedProperties,
 }

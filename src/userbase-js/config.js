@@ -14,7 +14,8 @@ const getEndpoint = () => userbaseEndpoint
 const getKeyNotFoundHandler = () => userbaseKeyNotFoundHandler
 
 const setAppId = (appId) => {
-  if (!appId) throw new errors.AppIdMissing
+  if (typeof appId !== 'string') throw new errors.AppIdMustBeString
+  if (appId.length === 0) throw new errors.AppIdCannotBeBlank
   userbaseAppId = appId
 }
 
