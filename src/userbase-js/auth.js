@@ -92,14 +92,13 @@ const _parseUserResponseError = (e, username) => {
 }
 
 const _validateUsername = (username) => {
-  if (!username) throw new errors.UsernameCannotBeBlank
   if (typeof username !== 'string') throw new errors.UsernameMustBeString
+  if (username.length === 0) throw new errors.UsernameCannotBeBlank
 }
 
 const _validatePassword = (password) => {
-  if (!password) throw new errors.PasswordCannotBeBlank
   if (typeof password !== 'string') throw new errors.PasswordMustBeString
-
+  if (password.length === 0) throw new errors.PasswordCannotBeBlank
   if (password.length < MIN_PASSWORD_CHAR_LENGTH) throw new errors.PasswordTooShort(MIN_PASSWORD_CHAR_LENGTH)
   if (password.length > MAX_PASSWORD_CHAR_LENGTH) throw new errors.PasswordTooLong(MAX_PASSWORD_CHAR_LENGTH)
 }
