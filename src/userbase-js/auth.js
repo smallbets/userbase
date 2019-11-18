@@ -92,14 +92,13 @@ const _parseUserResponseError = (e, username) => {
 }
 
 const _validateUsername = (username) => {
-  if (!username) throw new errors.UsernameCannotBeBlank
   if (typeof username !== 'string') throw new errors.UsernameMustBeString
+  if (username.length === 0) throw new errors.UsernameCannotBeBlank
 }
 
 const _validatePassword = (password) => {
-  if (!password) throw new errors.PasswordCannotBeBlank
   if (typeof password !== 'string') throw new errors.PasswordMustBeString
-
+  if (password.length === 0) throw new errors.PasswordCannotBeBlank
   if (password.length < MIN_PASSWORD_CHAR_LENGTH) throw new errors.PasswordTooShort(MIN_PASSWORD_CHAR_LENGTH)
   if (password.length > MAX_PASSWORD_CHAR_LENGTH) throw new errors.PasswordTooLong(MAX_PASSWORD_CHAR_LENGTH)
 }
@@ -417,7 +416,8 @@ const init = async ({ appId, endpoint, keyNotFoundHandler }) => {
   } catch (e) {
 
     switch (e.name) {
-      case 'AppIdMissing':
+      case 'AppIdMustBeString':
+      case 'AppIdCannotBeBlank':
       case 'AppIdNotValid':
       case 'KeyNotFoundHandlerMustBeFunction':
       case 'UserAlreadySignedIn':
@@ -484,8 +484,8 @@ const grantDatabaseAccess = async (dbName, username, readOnly) => {
 
 const importKey = async (keyString) => {
   try {
-    if (!keyString) throw new errors.KeyCannotBeBlank
     if (typeof keyString !== 'string') throw new errors.KeyMustBeString
+    if (keyString.length === 0) throw new errors.KeyCannotBeBlank
 
     if (!ws.connected) throw new errors.UserNotSignedIn
 
@@ -499,8 +499,8 @@ const importKey = async (keyString) => {
   } catch (e) {
 
     switch (e.name) {
-      case 'KeyCannotBeBlank':
       case 'KeyMustBeString':
+      case 'KeyCannotBeBlank':
       case 'KeyNotValid':
       case 'UserNotSignedIn':
       case 'ServiceUnavailable':
@@ -552,21 +552,21 @@ const forgotPassword = async (username) => {
 }
 
 const _validateUpdatedUserInput = (user) => {
-  if (!user) throw new errors.UserMissing
   if (typeof user !== 'object') throw new errors.UserMustBeObject
 
   const { username, password, profile } = user
 
-  if (!username && !password
+  if (!objectHasOwnProperty(user, 'username')
+    && !objectHasOwnProperty(user, 'password')
     && !objectHasOwnProperty(user, 'email')
     && !objectHasOwnProperty(user, 'profile')
   ) {
     throw new errors.UserMissingExpectedProperties
   }
 
-  if (username) _validateUsername(username)
-  if (password) _validatePassword(password)
-  if (profile) _validateProfile(profile)
+  if (objectHasOwnProperty(user, 'username')) _validateUsername(username)
+  if (objectHasOwnProperty(user, 'password')) _validatePassword(password)
+  if (objectHasOwnProperty(user, 'profile')) _validateProfile(profile)
 }
 
 const _buildUpdateUserParams = async (user) => {
@@ -606,15 +606,16 @@ const updateUser = async (user) => {
   } catch (e) {
 
     switch (e.name) {
-      case 'UserMissing':
       case 'UserMustBeObject':
       case 'UserMissingExpectedProperties':
       case 'UsernameAlreadyExists':
       case 'UsernameMustBeString':
+      case 'UsernameCannotBeBlank':
       case 'UsernameTooLong':
+      case 'PasswordMustBeString':
+      case 'PasswordCannotBeBlank':
       case 'PasswordTooShort':
       case 'PasswordTooLong':
-      case 'PasswordMustBeString':
       case 'EmailNotValid':
       case 'ProfileMustBeObject':
       case 'ProfileCannotBeEmpty':

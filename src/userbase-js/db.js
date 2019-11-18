@@ -410,8 +410,8 @@ const _createDatabase = async (dbName, dbNameHash) => {
 }
 
 const _validateDbInput = (dbName) => {
-  if (!dbName) throw new errors.DatabaseNameCannotBeBlank
   if (typeof dbName !== 'string') throw new errors.DatabaseNameMustBeString
+  if (dbName.length === 0) throw new errors.DatabaseNameCannotBeBlank
   if (dbName.length > MAX_DB_NAME_CHAR_LENGTH) throw new errors.DatabaseNameTooLong(MAX_DB_NAME_CHAR_LENGTH)
 
   if (!ws.keys.init) throw new errors.UserNotSignedIn
@@ -421,7 +421,6 @@ const openDatabase = async (dbName, changeHandler) => {
   try {
     _validateDbInput(dbName)
 
-    if (!changeHandler) throw new errors.ChangeHandlerMissing
     if (typeof changeHandler !== 'function') throw new errors.ChangeHandlerMustBeFunction
 
     const dbNameHash = ws.state.dbNameToHash[dbName] || await crypto.hmac.signString(ws.keys.hmacKey, dbName)
@@ -434,10 +433,9 @@ const openDatabase = async (dbName, changeHandler) => {
     switch (e.name) {
       case 'DatabaseAlreadyOpen':
       case 'DatabaseAlreadyOpening':
+      case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
       case 'DatabaseNameTooLong':
-      case 'DatabaseNameMustBeString':
-      case 'ChangeHandlerMissing':
       case 'ChangeHandlerMustBeFunction':
       case 'UserNotSignedIn':
       case 'ServiceUnavailable':
@@ -476,11 +474,12 @@ const insert = async (dbName, item, id) => {
 
     switch (e.name) {
       case 'DatabaseNotOpen':
+      case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
       case 'DatabaseNameTooLong':
-      case 'DatabaseNameMustBeString':
-      case 'ItemIdTooLong':
       case 'ItemIdMustBeString':
+      case 'ItemIdCannotBeBlank':
+      case 'ItemIdTooLong':
       case 'ItemMissing':
       case 'ItemTooLarge':
       case 'ItemAlreadyExists':
@@ -498,6 +497,7 @@ const insert = async (dbName, item, id) => {
 const _buildInsertParams = async (database, item, id) => {
   if (!item) throw new errors.ItemMissing
   if (id && typeof id !== 'string') throw new errors.ItemIdMustBeString
+  if (typeof id === 'string' && id.length === 0) throw new errors.ItemIdCannotBeBlank
   if (id && id.length > MAX_ITEM_ID_CHAR_LENGTH) throw new errors.ItemIdTooLong
 
   const itemString = JSON.stringify(item)
@@ -526,12 +526,12 @@ const update = async (dbName, item, id) => {
 
     switch (e.name) {
       case 'DatabaseNotOpen':
+      case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
       case 'DatabaseNameTooLong':
-      case 'DatabaseNameMustBeString':
+      case 'ItemIdMustBeString':
       case 'ItemIdCannotBeBlank':
       case 'ItemIdTooLong':
-      case 'ItemIdMustBeString':
       case 'ItemMissing':
       case 'ItemTooLarge':
       case 'ItemDoesNotExist':
@@ -548,8 +548,8 @@ const update = async (dbName, item, id) => {
 }
 
 const _buildUpdateParams = async (database, item, itemId) => {
-  if (!itemId) throw new errors.ItemIdCannotBeBlank
   if (typeof itemId !== 'string') throw new errors.ItemIdMustBeString
+  if (itemId.length === 0) throw new errors.ItemIdCannotBeBlank
   if (itemId.length > MAX_ITEM_ID_CHAR_LENGTH) throw new errors.ItemIdTooLong
 
   if (!item) throw new errors.ItemMissing
@@ -580,12 +580,12 @@ const delete_ = async (dbName, itemId) => {
 
     switch (e.name) {
       case 'DatabaseNotOpen':
+      case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
       case 'DatabaseNameTooLong':
-      case 'DatabaseNameMustBeString':
+      case 'ItemIdMustBeString':
       case 'ItemIdCannotBeBlank':
       case 'ItemIdTooLong':
-      case 'ItemIdMustBeString':
       case 'ItemDoesNotExist':
       case 'ItemUpdateConflict':
       case 'UserNotSignedIn':
@@ -600,8 +600,8 @@ const delete_ = async (dbName, itemId) => {
 }
 
 const _buildDeleteParams = async (database, itemId) => {
-  if (!itemId) throw new errors.ItemIdCannotBeBlank
   if (typeof itemId !== 'string') throw new errors.ItemIdMustBeString
+  if (!itemId.length === 0) throw new errors.ItemIdCannotBeBlank
   if (itemId.length > MAX_ITEM_ID_CHAR_LENGTH) throw new errors.ItemIdTooLong
 
   if (!database.itemExists(itemId)) throw new errors.ItemDoesNotExist
@@ -666,15 +666,15 @@ const transaction = async (dbName, operations) => {
 
     switch (e.name) {
       case 'DatabaseNotOpen':
+      case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
       case 'DatabaseNameTooLong':
-      case 'DatabaseNameMustBeString':
       case 'OperationsMissing':
       case 'OperationsMustBeArray':
       case 'OperationsConflict':
+      case 'ItemIdMustBeString':
       case 'ItemIdCannotBeBlank':
       case 'ItemIdTooLong':
-      case 'ItemIdMustBeString':
       case 'ItemTooLarge':
       case 'ItemAlreadyExists':
       case 'ItemDoesNotExist':
