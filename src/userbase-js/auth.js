@@ -566,7 +566,7 @@ const _validateUpdatedUserInput = (user) => {
 
   if (objectHasOwnProperty(user, 'username')) _validateUsername(username)
   if (objectHasOwnProperty(user, 'password')) _validatePassword(password)
-  if (objectHasOwnProperty(user, 'profile')) _validateProfile(profile)
+  if (profile) _validateProfile(profile) // if profile is falsey, gets set to false
 }
 
 const _buildUpdateUserParams = async (user) => {
