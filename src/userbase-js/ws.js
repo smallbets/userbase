@@ -10,6 +10,11 @@ import errors from './errors'
 
 const wsAlreadyConnected = 'Web Socket already connected'
 
+const BACKOFF_RETRY_DELAY = 1000
+const MAX_RETRY_DELAY = 1000 * 30
+
+const SERVICE_RESTART = 1012
+
 class RequestFailed extends Error {
   constructor(action, response, ...params) {
     super(...params)
@@ -72,7 +77,7 @@ class Connection {
     }
   }
 
-  connect(appId, sessionId, username, seedString = null, rememberMe = false) {
+  connect(appId, sessionId, username, seedString = null, rememberMe = false, reconnectDelay) {
     if (this.connected) throw new WebSocketError(wsAlreadyConnected, this.username)
 
     return new Promise((resolve, reject) => {
@@ -82,7 +87,6 @@ class Connection {
         () => {
           if (!this.connected) {
             timeout = true
-            this.close()
             reject(new WebSocketError('timeout'))
           }
         },
@@ -100,7 +104,6 @@ class Connection {
         if (timeout) return
 
         if (this.connected) {
-          this.close()
           reject(new WebSocketError(wsAlreadyConnected, username))
           return
         }
@@ -128,19 +131,94 @@ class Connection {
         }
       }
 
-      ws.onerror = () => {
-        if (!this.connected) {
-          reject(new WebSocketError('WebSocket error'))
-        }
-        this.close()
-      }
+      ws.onclose = async (e) => {
+        if (timeout) return
 
-      ws.onclose = () => {
-        this.init()
+        const serviceRestart = e.code === SERVICE_RESTART
+        const attemptToReconnect = serviceRestart || !e.wasClean // closed without explicit call to ws.close()
+
+        if (attemptToReconnect) {
+          const delay = (serviceRestart && !reconnectDelay)
+            ? 0
+            : (reconnectDelay ? reconnectDelay + BACKOFF_RETRY_DELAY : 1000)
+
+          await this.reconnect(delay, appId, resolve, reject, username, sessionId, seedString, rememberMe)
+        } else {
+          this.init()
+        }
       }
     })
   }
 
+  async reconnect(reconnectDelay, appId, resolveConnection, rejectConnection, username, sessionId, seedString, rememberMe) {
+    try {
+      const retryDelay = Math.min(reconnectDelay, MAX_RETRY_DELAY)
+      console.log(`Connection to server lost. Attempting to reconnect in ${retryDelay / 1000} second${retryDelay !== 1000 ? 's' : ''}...`)
+
+      resolveConnection(await new Promise((resolve, reject) => setTimeout(
+        async () => {
+          try {
+            const state = {
+              databases: { ...this.state.databases },
+              dbIdToHash: { ...this.state.dbIdToHash },
+              dbNameToHash: { ...this.state.dbNameToHash }
+            }
+
+            for (const dbNameHash in state.databases) {
+              state.databases[dbNameHash].init = false
+            }
+
+            this.init()
+
+            // setting this.state = state here and after connect() maintains memory references
+            this.state = state
+            const result = await this.connect(appId, sessionId, username, seedString, rememberMe, reconnectDelay)
+            this.state = state
+
+            resolve(result)
+          } catch (e) {
+            reject(e)
+          }
+        },
+        retryDelay
+      )))
+
+      await this.reopenDatabases(1000)
+    } catch (e) {
+      rejectConnection(e)
+    }
+  }
+
+  async reopenDatabases(retryDelay) {
+    try {
+      const openDatabasePromises = []
+
+      for (const dbNameHash in this.state.databases) {
+        if (!this.state.databases[dbNameHash].reopening) {
+          this.state.databases[dbNameHash].reopening = true
+          const action = 'OpenDatabase'
+          const params = { dbNameHash }
+          openDatabasePromises.push(this.request(action, params))
+        }
+      }
+
+      await Promise.all(openDatabasePromises)
+
+    } catch (e) {
+      for (const dbNameHash in this.state.databases) {
+        this.state.databases[dbNameHash].reopening = false
+      }
+
+      // keep attempting to reopen on failure
+      await new Promise(resolve => setTimeout(
+        async () => {
+          await this.reopenDatabases(retryDelay + BACKOFF_RETRY_DELAY)
+          resolve()
+        },
+        Math.min(retryDelay, MAX_RETRY_DELAY)
+      ))
+    }
+  }
   async handleMessage(message) {
     const route = message.route
     switch (route) {
