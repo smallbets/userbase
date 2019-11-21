@@ -350,7 +350,10 @@ class Connection {
 
     this.keys.init = true
 
-    this.resolveConnection(seedString)
+    const publicKeyArrayBuffer = crypto.diffieHellman.getPublicKey(this.keys.dhPrivateKey)
+    const publicKeyHash = base64.encode(await crypto.sha256.hash(publicKeyArrayBuffer))
+
+    this.resolveConnection({ seedString, publicKeyHash })
     this.connectionResolved = true
     if (this.hideSeedRequestModal) this.hideSeedRequestModal()
   }

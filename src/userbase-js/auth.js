@@ -29,8 +29,8 @@ const _parseGenericErrors = (e) => {
 
 const _connectWebSocket = async (appId, sessionId, username, seed, rememberMe, passwordBasedKeyRecoveryEnabled) => {
   try {
-    const seedString = await ws.connect(appId, sessionId, username, seed, rememberMe, passwordBasedKeyRecoveryEnabled)
-    return seedString
+    const { seedString, publicKeyHash } = await ws.connect(appId, sessionId, username, seed, rememberMe, passwordBasedKeyRecoveryEnabled)
+    return { seedString, publicKeyHash }
   } catch (e) {
     _parseGenericErrors(e)
 
@@ -146,8 +146,8 @@ const _generateKeysAndSignUp = async (username, password, seed, email, profile, 
   }
 }
 
-const _buildUserResult = (username, key, email, profile) => {
-  const result = { username, key }
+const _buildUserResult = (username, key, publicKey, email, profile) => {
+  const result = { username, key, publicKey }
 
   if (email) result.email = email
   if (profile) result.profile = profile
@@ -294,9 +294,9 @@ const signUp = async (username, password, email, profile, showKeyHandler, rememb
       localData.signInSession(lowerCaseUsername, sessionId, creationDate)
     }
 
-    await _connectWebSocket(appId, sessionId, lowerCaseUsername, seedString, rememberMe, passwordBasedKeyRecoveryEnabled)
+    const { publicKeyHash } = await _connectWebSocket(appId, sessionId, lowerCaseUsername, seedString, rememberMe, passwordBasedKeyRecoveryEnabled)
 
-    return _buildUserResult(lowerCaseUsername, seedString, lowerCaseEmail, profile)
+    return _buildUserResult(lowerCaseUsername, seedString, publicKeyHash, lowerCaseEmail, profile)
   } catch (e) {
 
     switch (e.name) {
@@ -407,14 +407,17 @@ const signIn = async (username, password, rememberMe = false) => {
 
     const passwordBasedKeyRecoveryEnabled = passwordBasedBackup ? true : false
 
-    const seedString = await _connectWebSocket(appId, sessionId, username, savedSeedString || seedStringFromBackup, rememberMe, passwordBasedKeyRecoveryEnabled)
+    const {
+      seedString,
+      publicKeyHash
+    } = await _connectWebSocket(appId, sessionId, username, savedSeedString || seedStringFromBackup, rememberMe, passwordBasedKeyRecoveryEnabled)
 
     if (rememberMe && !savedSeedString) localData.saveSeedString(lowerCaseUsername, seedString)
 
     await ws.getRequestsForSeed()
     await ws.getDatabaseAccessGrants()
 
-    return _buildUserResult(lowerCaseUsername, seedString, email, profile)
+    return _buildUserResult(lowerCaseUsername, seedString, publicKeyHash, email, profile)
   } catch (e) {
 
     switch (e.name) {
@@ -498,12 +501,15 @@ const signInWithSession = async (appId) => {
 
     const passwordBasedKeyRecoveryEnabled = passwordBasedBackup ? true : false
 
-    const seedString = await _connectWebSocket(appId, sessionId, username, savedSeedString, false, passwordBasedKeyRecoveryEnabled)
+    const {
+      seedString,
+      publicKeyHash
+    } = await _connectWebSocket(appId, sessionId, username, savedSeedString, false, passwordBasedKeyRecoveryEnabled)
 
     await ws.getRequestsForSeed()
     await ws.getDatabaseAccessGrants()
 
-    return { user: _buildUserResult(username, seedString, email, profile) }
+    return { user: _buildUserResult(username, seedString, publicKeyHash, email, profile) }
   } catch (e) {
     _parseGenericErrors(e)
     throw e
