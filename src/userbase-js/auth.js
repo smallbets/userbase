@@ -27,9 +27,9 @@ const _parseGenericErrors = (e) => {
   }
 }
 
-const _connectWebSocket = async (appId, sessionId, username, seed, rememberMe) => {
+const _connectWebSocket = async (appId, sessionId, username, seed, rememberMe, passwordBasedKeyRecoveryEnabled) => {
   try {
-    const seedString = await ws.connect(appId, sessionId, username, seed, rememberMe)
+    const seedString = await ws.connect(appId, sessionId, username, seed, rememberMe, passwordBasedKeyRecoveryEnabled)
     return seedString
   } catch (e) {
     _parseGenericErrors(e)
@@ -108,7 +108,16 @@ const _validateSignUpOrSignInInput = (username, password) => {
   _validatePassword(password)
 }
 
-const _generateKeysAndSignUp = async (username, passwordSecureHash, seed, email, profile) => {
+const _generateKeysAndSignUp = async (username, password, seed, email, profile, passwordBasedKeyRecoveryEnabled) => {
+  const passwordSecureHash = await crypto.sha256.hashString(password)
+
+  let pbkdfKeySalt, passwordEncryptedSeed
+  if (passwordBasedKeyRecoveryEnabled) {
+    pbkdfKeySalt = await crypto.pbkdf.generateSalt()
+    const passwordBasedEncryptionKey = await crypto.pbkdf.importKey(password, pbkdfKeySalt)
+    passwordEncryptedSeed = await crypto.aesGcm.encrypt(passwordBasedEncryptionKey, seed)
+  }
+
   const masterKey = await crypto.hkdf.importMasterKey(seed)
 
   const encryptionKeySalt = crypto.hkdf.generateSalt()
@@ -127,7 +136,9 @@ const _generateKeysAndSignUp = async (username, passwordSecureHash, seed, email,
       base64.encode(dhKeySalt),
       base64.encode(hmacKeySalt),
       email,
-      profile
+      profile,
+      pbkdfKeySalt && base64.encode(pbkdfKeySalt),
+      passwordEncryptedSeed && base64.encode(passwordEncryptedSeed)
     )
     return session
   } catch (e) {
@@ -246,21 +257,23 @@ const displayShowKeyModal = (seedString, rememberMe) => new Promise(resolve => {
   closeButton.onclick = hideShowKeyModal
 })
 
-const signUp = async (username, password, email, profile, showKeyHandler, rememberMe = false) => {
+const signUp = async (username, password, email, profile, showKeyHandler, rememberMe = false, passwordBasedKeyRecoveryEnabled = true) => {
   try {
+    console.log(passwordBasedKeyRecoveryEnabled)
+
+
     _validateSignUpOrSignInInput(username, password)
     if (profile) _validateProfile(profile)
     if (showKeyHandler && typeof showKeyHandler !== 'function') throw new errors.ShowKeyHandlerMustBeFunction
 
     const appId = config.getAppId()
     const lowerCaseUsername = username.toLowerCase()
-    const passwordSecureHash = await crypto.sha256.hashString(password)
 
     const seed = await crypto.generateSeed()
 
     const lowerCaseEmail = email && email.toLowerCase()
 
-    const session = await _generateKeysAndSignUp(lowerCaseUsername, passwordSecureHash, seed, lowerCaseEmail, profile)
+    const session = await _generateKeysAndSignUp(lowerCaseUsername, password, seed, lowerCaseEmail, profile, passwordBasedKeyRecoveryEnabled)
     const { sessionId, creationDate } = session
 
     const seedString = base64.encode(seed)
@@ -276,7 +289,7 @@ const signUp = async (username, password, email, profile, showKeyHandler, rememb
       localData.signInSession(lowerCaseUsername, sessionId, creationDate)
     }
 
-    await _connectWebSocket(appId, sessionId, lowerCaseUsername, seedString, rememberMe)
+    await _connectWebSocket(appId, sessionId, lowerCaseUsername, seedString, rememberMe, passwordBasedKeyRecoveryEnabled)
 
     return _buildUserResult(lowerCaseUsername, seedString, lowerCaseEmail, profile)
   } catch (e) {
@@ -336,10 +349,25 @@ const signOut = async () => {
   }
 }
 
+const _getSeedStringFromPasswordBasedBackup = async (password, passwordBasedBackup) => {
+  try {
+    const { pbkdfKeySalt, passwordEncryptedSeed } = passwordBasedBackup
+
+    const passwordBasedEncryptionKey = await crypto.pbkdf.importKey(password, base64.decode(pbkdfKeySalt))
+    const seedFromBackup = await crypto.aesGcm.decrypt(passwordBasedEncryptionKey, base64.decode(passwordEncryptedSeed))
+    const seedStringFromBackup = base64.encode(seedFromBackup)
+
+    return seedStringFromBackup
+  } catch (e) {
+    // possible it fails because user provides temp password rather than actual password. Allow failure
+    return null
+  }
+}
+
 const _signInWrapper = async (username, passwordSecureHash) => {
   try {
-    const { session, email, profile } = await api.auth.signIn(username, passwordSecureHash)
-    return { session, email, profile }
+    const { session, email, profile, passwordBasedBackup } = await api.auth.signIn(username, passwordSecureHash)
+    return { session, email, profile, passwordBasedBackup }
   } catch (e) {
     _parseGenericErrors(e)
     _parseGenericUsernamePasswordError(e)
@@ -357,19 +385,26 @@ const signIn = async (username, password, rememberMe = false) => {
     _validateSignUpOrSignInInput(username, password)
 
     const appId = config.getAppId()
-
     const lowerCaseUsername = username.toLowerCase()
-
     const passwordSecureHash = await crypto.sha256.hashString(password)
 
-    const { session, email, profile } = await _signInWrapper(lowerCaseUsername, passwordSecureHash)
+    const { session, email, profile, passwordBasedBackup } = await _signInWrapper(lowerCaseUsername, passwordSecureHash)
     const { sessionId, creationDate } = session
-
-    if (rememberMe) localData.signInSession(lowerCaseUsername, sessionId, creationDate)
 
     const savedSeedString = localData.getSeedString(lowerCaseUsername) // might be null if does not have seed saved
 
-    const seedString = await _connectWebSocket(appId, sessionId, username, savedSeedString, rememberMe)
+    let seedStringFromBackup
+    if (!savedSeedString && passwordBasedBackup) {
+      seedStringFromBackup = await _getSeedStringFromPasswordBasedBackup(password, passwordBasedBackup)
+    }
+
+    if (rememberMe) localData.signInSession(lowerCaseUsername, sessionId, creationDate)
+
+    const passwordBasedKeyRecoveryEnabled = passwordBasedBackup ? true : false
+
+    const seedString = await _connectWebSocket(appId, sessionId, username, savedSeedString || seedStringFromBackup, rememberMe, passwordBasedKeyRecoveryEnabled)
+
+    if (rememberMe && !savedSeedString) localData.saveSeedString(lowerCaseUsername, seedString)
 
     await ws.getRequestsForSeed()
     await ws.getDatabaseAccessGrants()
@@ -452,10 +487,13 @@ const signInWithSession = async (appId) => {
 
       throw e
     }
-    const { email, profile } = apiSignInWithSessionResult
+    const { email, profile, passwordBasedBackup } = apiSignInWithSessionResult
 
     const savedSeedString = localData.getSeedString(username) // might be null if does not have seed saved
-    const seedString = await _connectWebSocket(appId, sessionId, username, savedSeedString)
+
+    const passwordBasedKeyRecoveryEnabled = passwordBasedBackup ? true : false
+
+    const seedString = await _connectWebSocket(appId, sessionId, username, savedSeedString, false, passwordBasedKeyRecoveryEnabled)
 
     await ws.getRequestsForSeed()
     await ws.getDatabaseAccessGrants()
@@ -575,6 +613,16 @@ const _buildUpdateUserParams = async (user) => {
 
   if (params.password) {
     params.passwordSecureHash = await crypto.sha256.hashString(params.password)
+
+    if (ws.passwordBasedKeyRecoveryEnabled) {
+      const pbkdfKeySalt = await crypto.pbkdf.generateSalt()
+      const passwordBasedEncryptionKey = await crypto.pbkdf.importKey(params.password, pbkdfKeySalt)
+      const passwordEncryptedSeed = await crypto.aesGcm.encrypt(passwordBasedEncryptionKey, base64.decode(ws.seedString))
+
+      params.pbkdfKeySalt = base64.encode(pbkdfKeySalt)
+      params.passwordEncryptedSeed = base64.encode(passwordEncryptedSeed)
+    }
+
     delete params.password
   }
 

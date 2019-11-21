@@ -143,7 +143,9 @@ async function start(express, app, userbaseConfig = {}) {
                   params.username,
                   params.passwordSecureHash,
                   params.email,
-                  params.profile
+                  params.profile,
+                  params.pbkdfKeySalt,
+                  params.passwordEncryptedSeed
                 )
                 break
               }

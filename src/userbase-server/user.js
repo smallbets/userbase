@@ -82,9 +82,12 @@ const getAppByAppId = async function (appId) {
   return appResponse.Items[0]
 }
 
-const _buildSignUpParams = async (username, passwordSecureHash, appId, userId, publicKey, salts, app, email, profile) => {
+const _buildSignUpParams = async (username, passwordSecureHash, appId, userId,
+  publicKey, salts, app, email, profile, passwordBasedBackup) => {
   const passwordHash = await crypto.bcrypt.hash(passwordSecureHash)
+
   const { encryptionKeySalt, dhKeySalt, hmacKeySalt } = salts
+  const { pbkdfKeySalt, passwordEncryptedSeed } = passwordBasedBackup
 
   const user = {
     username: username.toLowerCase(),
@@ -98,7 +101,9 @@ const _buildSignUpParams = async (username, passwordSecureHash, appId, userId, p
     'seed-not-saved-yet': true,
     'creation-date': new Date().toISOString(),
     email: email ? email.toLowerCase() : undefined,
-    profile: profile || undefined
+    profile: profile || undefined,
+    'pbkdf-key-salt': pbkdfKeySalt || undefined,
+    'password-encrypted-seed': passwordEncryptedSeed || undefined
   }
 
   return {
@@ -213,12 +218,17 @@ exports.signUp = async function (req, res) {
 
   const username = req.body.username
   const passwordSecureHash = req.body.passwordSecureHash
+
   const publicKey = req.body.publicKey
   const encryptionKeySalt = req.body.encryptionKeySalt
   const dhKeySalt = req.body.dhKeySalt
   const hmacKeySalt = req.body.hmacKeySalt
+
   const email = req.body.email
   const profile = req.body.profile
+
+  const pbkdfKeySalt = req.body.pbkdfKeySalt
+  const passwordEncryptedSeed = req.body.passwordEncryptedSeed
 
   if (!appId || !username || !passwordSecureHash || !publicKey || !encryptionKeySalt || !dhKeySalt || !hmacKeySalt) {
     return res.status(statusCodes['Bad Request']).send('Missing required items')
@@ -243,7 +253,10 @@ exports.signUp = async function (req, res) {
     if (!app) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
 
     const salts = { encryptionKeySalt, dhKeySalt, hmacKeySalt }
-    const params = await _buildSignUpParams(username, passwordSecureHash, appId, userId, publicKey, salts, app, email, profile)
+    const passwordBasedBackup = { pbkdfKeySalt, passwordEncryptedSeed }
+
+    const params = await _buildSignUpParams(username, passwordSecureHash, appId, userId,
+      publicKey, salts, app, email, profile, passwordBasedBackup)
 
     try {
       const ddbClient = connection.ddbClient()
@@ -442,9 +455,12 @@ exports.signIn = async function (req, res) {
 
     const result = { session }
 
-    const { email, profile } = user
-    if (email) result.email = email
-    if (profile) result.profile = profile
+    if (user['email']) result.email = user['email']
+    if (user['profile']) result.profile = user['profile']
+    if (user['pbkdf-key-salt'] && user['password-encrypted-seed']) result.passwordBasedBackup = {
+      pbkdfKeySalt: user['pbkdf-key-salt'],
+      passwordEncryptedSeed: user['password-encrypted-seed']
+    }
 
     return res.send(result)
   } catch (e) {
@@ -951,7 +967,6 @@ exports.getUserByUserId = getUserByUserId
 
 exports.extendSession = async function (req, res) {
   const user = res.locals.user
-  const { email, profile } = user
 
   const sessionId = req.query.sessionId
 
@@ -976,8 +991,13 @@ exports.extendSession = async function (req, res) {
     await ddbClient.update(params).promise()
 
     const result = { extendedDate }
-    if (email) result.email = email
-    if (profile) result.profile = profile
+
+    if (user['email']) result.email = user['email']
+    if (user['profile']) result.profile = user['profile']
+    if (user['pbkdf-key-salt'] && user['password-encrypted-seed']) result.passwordBasedBackup = {
+      pbkdfKeySalt: user['pbkdf-key-salt'],
+      passwordEncryptedSeed: user['password-encrypted-seed']
+    }
 
     return res.send(result)
   } catch (e) {
@@ -1084,7 +1104,7 @@ exports.forgotPassword = async function (req, res) {
   }
 }
 
-const _updateUserExcludingUsernameUpdate = async (username, appId, userId, passwordSecureHash, email, profile) => {
+const _updateUserExcludingUsernameUpdate = async (username, appId, userId, passwordSecureHash, email, profile, passwordBasedBackup) => {
   const updateUserParams = {
     TableName: setup.usersTableName,
     Key: {
@@ -1116,6 +1136,16 @@ const _updateUserExcludingUsernameUpdate = async (username, appId, userId, passw
       UpdateExpression += ((passwordSecureHash || email) ? ', ' : '') + 'profile = :profile'
       ExpressionAttributeValues[':profile'] = profile
     }
+
+    if (passwordBasedBackup) {
+      UpdateExpression += ', #pbkdfKeySalt = :pbkdfKeySalt, #passwordEncryptedSeed = :passwordEncryptedSeed'
+
+      ExpressionAttributeNames['#pbkdfKeySalt'] = 'pbkdf-key-salt'
+      ExpressionAttributeNames['#passwordEncryptedSeed'] = 'password-encrypted-seed'
+
+      ExpressionAttributeValues[':pbkdfKeySalt'] = passwordBasedBackup.pbkdfKeySalt
+      ExpressionAttributeValues[':passwordEncryptedSeed'] = passwordBasedBackup.passwordEncryptedSeed
+    }
   }
 
   if (email === false || profile === false) {
@@ -1138,7 +1168,7 @@ const _updateUserExcludingUsernameUpdate = async (username, appId, userId, passw
   await ddbClient.update(updateUserParams).promise()
 }
 
-const _updateUserIncludingUsernameUpdate = async (oldUser, appId, userId, username, passwordSecureHash, email, profile) => {
+const _updateUserIncludingUsernameUpdate = async (oldUser, appId, userId, username, passwordSecureHash, email, profile, passwordBasedBackup) => {
   // if updating username, need to Delete existing DDB item and Put new one because username is partition key
   const deleteUserParams = {
     TableName: setup.usersTableName,
@@ -1168,6 +1198,11 @@ const _updateUserIncludingUsernameUpdate = async (oldUser, appId, userId, userna
   if (profile) updatedUser.profile = profile
   else if (profile === false) delete updatedUser.profile
 
+  if (passwordBasedBackup) {
+    updatedUser['pbkdf-key-salt'] = passwordBasedBackup.pbkdfKeySalt
+    updatedUser['password-encrypted-seed'] = passwordBasedBackup.passwordEncryptedSeed
+  }
+
   const updateUserParams = {
     TableName: setup.usersTableName,
     Item: updatedUser,
@@ -1191,7 +1226,7 @@ const _updateUserIncludingUsernameUpdate = async (oldUser, appId, userId, userna
   await ddbClient.transactWrite(params).promise()
 }
 
-exports.updateUser = async function (userId, appId, username, passwordSecureHash, email, profile) {
+exports.updateUser = async function (userId, appId, username, passwordSecureHash, email, profile, pbkdfKeySalt, passwordEncryptedSeed) {
   if (!username && !passwordSecureHash && !email && !profile && email !== false && profile !== false) {
     return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing all params')
   }
@@ -1208,9 +1243,15 @@ exports.updateUser = async function (userId, appId, username, passwordSecureHash
   try {
     const user = await getUserByUserId(userId)
 
+    const passwordBasedBackup = user['pbkdf-key-salt'] // password-based key recovery must be enabled
+      && pbkdfKeySalt && passwordEncryptedSeed && { pbkdfKeySalt, passwordEncryptedSeed }
+
+    if (!passwordBasedBackup && passwordSecureHash) return responseBuilder
+      .errorResponse(statusCodes['Bad Request'], 'Missing password-based key recovery items')
+
     if (username && username.toLowerCase() !== user['username']) {
       try {
-        await _updateUserIncludingUsernameUpdate(user, appId, userId, username, passwordSecureHash, email, profile)
+        await _updateUserIncludingUsernameUpdate(user, appId, userId, username, passwordSecureHash, email, profile, passwordBasedBackup)
       } catch (e) {
 
         if (e.message.includes('ConditionalCheckFailed]')) {
@@ -1221,7 +1262,7 @@ exports.updateUser = async function (userId, appId, username, passwordSecureHash
       }
 
     } else {
-      await _updateUserExcludingUsernameUpdate(user['username'], appId, userId, passwordSecureHash, email, profile)
+      await _updateUserExcludingUsernameUpdate(user['username'], appId, userId, passwordSecureHash, email, profile, passwordBasedBackup)
     }
 
     return responseBuilder.successResponse()
