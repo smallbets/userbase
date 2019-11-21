@@ -27,9 +27,9 @@ const _parseGenericErrors = (e) => {
   }
 }
 
-const _connectWebSocket = async (appId, sessionId, username, seed, rememberMe, passwordBasedKeyRecoveryEnabled) => {
+const _connectWebSocket = async (appId, sessionId, username, seed, rememberMe, backUpKey) => {
   try {
-    const { seedString, publicKeyHash } = await ws.connect(appId, sessionId, username, seed, rememberMe, passwordBasedKeyRecoveryEnabled)
+    const { seedString, publicKeyHash } = await ws.connect(appId, sessionId, username, seed, rememberMe, backUpKey)
     return { seedString, publicKeyHash }
   } catch (e) {
     _parseGenericErrors(e)
@@ -108,11 +108,11 @@ const _validateSignUpOrSignInInput = (username, password) => {
   _validatePassword(password)
 }
 
-const _generateKeysAndSignUp = async (username, password, seed, email, profile, passwordBasedKeyRecoveryEnabled) => {
+const _generateKeysAndSignUp = async (username, password, seed, email, profile, backUpKey) => {
   const passwordSecureHash = await crypto.sha256.hashString(password)
 
   let pbkdfKeySalt, passwordEncryptedSeed
-  if (passwordBasedKeyRecoveryEnabled) {
+  if (backUpKey) {
     pbkdfKeySalt = await crypto.pbkdf.generateSalt()
     const passwordBasedEncryptionKey = await crypto.pbkdf.importKey(password, pbkdfKeySalt)
     passwordEncryptedSeed = await crypto.aesGcm.encrypt(passwordBasedEncryptionKey, seed)
@@ -173,18 +173,18 @@ const _validateProfile = (profile) => {
   if (!keyExists) throw new errors.ProfileCannotBeEmpty
 }
 
-const displayShowKeyModal = (seedString, rememberMe, passwordBasedKeyRecoveryEnabled) => new Promise(resolve => {
+const displayShowKeyModal = (seedString, rememberMe, backUpKey) => new Promise(resolve => {
   const showKeyModal = document.createElement('div')
   showKeyModal.className = 'userbase-modal'
 
   let message = ' '
-  if (rememberMe && !passwordBasedKeyRecoveryEnabled) {
+  if (rememberMe && !backUpKey) {
     message += 'You will need your secret key to sign in on other devices.'
-  } else if (rememberMe && passwordBasedKeyRecoveryEnabled) {
+  } else if (rememberMe && backUpKey) {
     message += 'If you forget your password, you will need your secret key to sign in on other devices.'
-  } else if (!rememberMe && !passwordBasedKeyRecoveryEnabled) {
+  } else if (!rememberMe && !backUpKey) {
     message += 'Without your secret key, you will not be able to log in to your account.'
-  } else if (!rememberMe && passwordBasedKeyRecoveryEnabled) {
+  } else if (!rememberMe && backUpKey) {
     message += 'If you forget your password, you will not be able to log in to your account without your secret key.'
   }
 
@@ -265,7 +265,7 @@ const displayShowKeyModal = (seedString, rememberMe, passwordBasedKeyRecoveryEna
   closeButton.onclick = hideShowKeyModal
 })
 
-const signUp = async (username, password, email, profile, showKeyHandler, rememberMe = false, passwordBasedKeyRecoveryEnabled = true) => {
+const signUp = async (username, password, email, profile, showKeyHandler, rememberMe = false, backUpKey = true) => {
   try {
     _validateSignUpOrSignInInput(username, password)
     if (profile) _validateProfile(profile)
@@ -278,15 +278,15 @@ const signUp = async (username, password, email, profile, showKeyHandler, rememb
 
     const lowerCaseEmail = email && email.toLowerCase()
 
-    const session = await _generateKeysAndSignUp(lowerCaseUsername, password, seed, lowerCaseEmail, profile, passwordBasedKeyRecoveryEnabled)
+    const session = await _generateKeysAndSignUp(lowerCaseUsername, password, seed, lowerCaseEmail, profile, backUpKey)
     const { sessionId, creationDate } = session
 
     const seedString = base64.encode(seed)
 
     if (showKeyHandler) {
-      await showKeyHandler(seedString, rememberMe, passwordBasedKeyRecoveryEnabled)
+      await showKeyHandler(seedString, rememberMe, backUpKey)
     } else {
-      await displayShowKeyModal(seedString, rememberMe, passwordBasedKeyRecoveryEnabled)
+      await displayShowKeyModal(seedString, rememberMe, backUpKey)
     }
 
     if (rememberMe) {
@@ -294,7 +294,7 @@ const signUp = async (username, password, email, profile, showKeyHandler, rememb
       localData.signInSession(lowerCaseUsername, sessionId, creationDate)
     }
 
-    const { publicKeyHash } = await _connectWebSocket(appId, sessionId, lowerCaseUsername, seedString, rememberMe, passwordBasedKeyRecoveryEnabled)
+    const { publicKeyHash } = await _connectWebSocket(appId, sessionId, lowerCaseUsername, seedString, rememberMe, backUpKey)
 
     return _buildUserResult(lowerCaseUsername, seedString, publicKeyHash, lowerCaseEmail, profile)
   } catch (e) {
@@ -405,12 +405,12 @@ const signIn = async (username, password, rememberMe = false) => {
 
     if (rememberMe) localData.signInSession(lowerCaseUsername, sessionId, creationDate)
 
-    const passwordBasedKeyRecoveryEnabled = passwordBasedBackup ? true : false
+    const backUpKey = passwordBasedBackup ? true : false
 
     const {
       seedString,
       publicKeyHash
-    } = await _connectWebSocket(appId, sessionId, username, savedSeedString || seedStringFromBackup, rememberMe, passwordBasedKeyRecoveryEnabled)
+    } = await _connectWebSocket(appId, sessionId, username, savedSeedString || seedStringFromBackup, rememberMe, backUpKey)
 
     if (rememberMe && !savedSeedString) localData.saveSeedString(lowerCaseUsername, seedString)
 
@@ -499,12 +499,12 @@ const signInWithSession = async (appId) => {
 
     const savedSeedString = localData.getSeedString(username) // might be null if does not have seed saved
 
-    const passwordBasedKeyRecoveryEnabled = passwordBasedBackup ? true : false
+    const backUpKey = passwordBasedBackup ? true : false
 
     const {
       seedString,
       publicKeyHash
-    } = await _connectWebSocket(appId, sessionId, username, savedSeedString, false, passwordBasedKeyRecoveryEnabled)
+    } = await _connectWebSocket(appId, sessionId, username, savedSeedString, false, backUpKey)
 
     await ws.getRequestsForSeed()
     await ws.getDatabaseAccessGrants()
@@ -660,7 +660,7 @@ const _buildUpdateUserParams = async (user) => {
   if (params.password) {
     params.passwordSecureHash = await crypto.sha256.hashString(params.password)
 
-    if (ws.passwordBasedKeyRecoveryEnabled) {
+    if (ws.backUpKey) {
       const pbkdfKeySalt = await crypto.pbkdf.generateSalt()
       const passwordBasedEncryptionKey = await crypto.pbkdf.importKey(params.password, pbkdfKeySalt)
       const passwordEncryptedSeed = await crypto.aesGcm.encrypt(passwordBasedEncryptionKey, base64.decode(ws.seedString))

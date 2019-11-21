@@ -35,7 +35,7 @@ class Connection {
     this.init()
   }
 
-  init(resolveConnection, rejectConnection, username, sessionId, seedString, rememberMe, passwordBasedKeyRecoveryEnabled) {
+  init(resolveConnection, rejectConnection, username, sessionId, seedString, rememberMe, backUpKey) {
     for (const property of Object.keys(this)) {
       delete this[property]
     }
@@ -57,7 +57,7 @@ class Connection {
     }
 
     this.rememberMe = rememberMe
-    this.passwordBasedKeyRecoveryEnabled = passwordBasedKeyRecoveryEnabled
+    this.backUpKey = backUpKey
 
     this.requests = {}
 
@@ -73,7 +73,7 @@ class Connection {
     }
   }
 
-  connect(appId, sessionId, username, seedString = null, rememberMe = false, passwordBasedKeyRecoveryEnabled = true) {
+  connect(appId, sessionId, username, seedString = null, rememberMe = false, backUpKey = true) {
     if (this.connected) throw new WebSocketError(wsAlreadyConnected, this.username)
 
     return new Promise((resolve, reject) => {
@@ -106,7 +106,7 @@ class Connection {
           return
         }
 
-        this.init(resolve, reject, username, sessionId, seedString, rememberMe, passwordBasedKeyRecoveryEnabled)
+        this.init(resolve, reject, username, sessionId, seedString, rememberMe, backUpKey)
         this.ws = ws
 
         if (!seedString) {
