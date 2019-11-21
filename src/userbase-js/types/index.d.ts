@@ -1,5 +1,3 @@
-export as namespace Userbase;
-
 /* auth */
 
 export interface Session {
@@ -18,13 +16,22 @@ export interface UserResult {
   profile?: UserProfile
 }
 
+export type ShowKeyHandler = (seedString: string, rememberMe: boolean, backUpKey: string) => void | Promise<void>
+
 export function init(options: { appId: string, endpoint?: string, keyNotFoundHandler?: () => void }): Promise<Session>
-export function signUp(username: string, password: string, email?: string, profile?: UserProfile, showKeyHandler?: () => void | Promise<void>, rememberMe?: boolean, backUpKey?: boolean): Promise<UserResult>
+
+export function signUp(username: string, password: string, email?: string, profile?: UserProfile, showKeyHandler?: ShowKeyHandler, rememberMe?: boolean, backUpKey?: boolean): Promise<UserResult>
+
 export function signIn(username: string, password: string, rememberMe?: boolean): Promise<UserResult>
+
 export function signOut(): Promise<void>
+
 export function forgotPassword(username: string): Promise<void>
+
 export function updateUser(user: { username?: string, password?: string, email?: string | null, profile?: UserProfile | null }): Promise<void>
+
 export function importKey(keyString: string): Promise<void>
+
 export function getLastUsedUsername(): string | undefined
 
 /* db */
@@ -49,6 +56,9 @@ export interface DeleteOperation {
 }
 
 export function openDatabase(dbName: string, changeHandler: (items: any[]) => void): Promise<void>
+
 export function insert(dbName: string, item: any, id?: string): Promise<void>
+
 export function update(dbName: string, item: any, id: string): Promise<void>
+
 export function transaction(dbName: string, operations: DatabaseOperation[]): Promise<void>
