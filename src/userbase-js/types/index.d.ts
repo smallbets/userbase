@@ -19,7 +19,7 @@ export interface UserResult {
 }
 
 export function init(options: { appId: string, endpoint?: string, keyNotFoundHandler?: () => void }): Promise<Session>
-export function signUp(username: string, password: string, email?: string, profile?: UserProfile, showKeyHandler?: () => void | Promise<void>, rememberMe?: boolean): Promise<UserResult>
+export function signUp(username: string, password: string, email?: string, profile?: UserProfile, showKeyHandler?: () => void | Promise<void>, rememberMe?: boolean, backUpKey?: boolean): Promise<UserResult>
 export function signIn(username: string, password: string, rememberMe?: boolean): Promise<UserResult>
 export function signOut(): Promise<void>
 export function forgotPassword(username: string): Promise<void>

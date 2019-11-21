@@ -51,6 +51,12 @@ signUp('tuser', 'tpass', 'test@test.com', { tkey: 'tval' }, () => new Promise(()
 // $ExpectError
 signUp('tuser', 'tpass', 'test@test.com', { tkey: 'tval' }, () => Promise.resolve(0))
 
+// $ExpectType Promise<UserResult>
+signUp('tuser', 'tpass', 'test@test.com', { tkey: 'tval' }, () => {}, true)
+
+// $ExpectType Promise<UserResult>
+signUp('tuser', 'tpass', 'test@test.com', { tkey: 'tval' }, () => {}, true, true)
+
 // $ExpectError
 signUp('tuser')
 
