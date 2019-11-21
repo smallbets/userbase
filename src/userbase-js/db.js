@@ -702,26 +702,43 @@ const postTransaction = async (database, action, params) => {
 }
 
 const findDatabases = async () => {
-  if (!ws.connected) throw new Error(wsNotOpen)
-  if (!ws.keys.init) throw new Error(keyNotFound)
+  try {
+    if (!ws.keys.init) throw new errors.UserNotSignedIn
 
-  const action = 'FindDatabases'
-  const databasesResponse = await ws.request(action)
+    let databasesResponse
+    try {
+      const action = 'FindDatabases'
+      databasesResponse = await ws.request(action)
+    } catch (e) {
+      _parseGenericErrors(e)
+      throw e
+    }
 
-  const result = []
-  for (const db of databasesResponse.data) {
-    const dbKeyString = await crypto.aesGcm.decryptString(ws.keys.encryptionKey, db.encryptedDbKey)
-    const dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
+    const result = []
+    for (const db of databasesResponse.data) {
+      const dbKeyString = await crypto.aesGcm.decryptString(ws.keys.encryptionKey, db.encryptedDbKey)
+      const dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
 
-    const dbName = await crypto.aesGcm.decryptString(dbKey, db.dbName)
+      const dbName = await crypto.aesGcm.decryptString(dbKey, db.dbName)
 
-    result.push({
-      dbName,
-      owner: db.owner,
-      access: db.access
-    })
+      result.push({
+        dbName,
+        owner: db.owner,
+        otherUsersGrantedAccess: db.otherUsersGrantedAccess
+      })
+    }
+    return result
+  } catch (e) {
+
+    switch (e.name) {
+      case 'UserNotSignedIn':
+      case 'ServiceUnavailable':
+        throw e
+
+      default:
+        throw new errors.ServiceUnavailable
+    }
   }
-  return result
 }
 
 export default {

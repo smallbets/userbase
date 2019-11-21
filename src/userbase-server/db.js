@@ -208,44 +208,61 @@ const findOtherUsersGrantedAccessToDb = async function (dbId, userId, otherUsers
   return otherUserDbsGrantedAccess
 }
 
-exports.findDatabases = async function (userId, username) {
-  try {
-    const userDatabasesParams = {
-      TableName: setup.userDatabaseTableName,
-      KeyConditionExpression: '#userId = :userId',
-      ExpressionAttributeNames: {
-        '#userId': 'user-id',
-      },
-      ExpressionAttributeValues: {
-        ':userId': userId
-      }
+const getDatabasesAndRelatedItems = async (userId, userDbs) => {
+  const otherUsersByUserId = {}
+  const databaseQueries = []
+  const otherUsersGrantedDbAccessQueries = []
+  for (const userDb of userDbs) {
+    const dbId = userDb['database-id']
+
+    databaseQueries.push(findDatabaseByDatabaseId(dbId))
+    otherUsersGrantedDbAccessQueries.push(findOtherUsersGrantedAccessToDb(dbId, userId, otherUsersByUserId))
+  }
+
+  const [databases, otherUserDbsGrantedAccess] = await Promise.all([
+    Promise.all(databaseQueries),
+    Promise.all(otherUsersGrantedDbAccessQueries)
+  ])
+
+  return { databases, otherUserDbsGrantedAccess, otherUsersByUserId }
+}
+
+const queryUserDatabases = async (userId) => {
+  const userDatabasesParams = {
+    TableName: setup.userDatabaseTableName,
+    KeyConditionExpression: '#userId = :userId',
+    ExpressionAttributeNames: {
+      '#userId': 'user-id',
+    },
+    ExpressionAttributeValues: {
+      ':userId': userId
     }
+  }
 
-    const ddbClient = connection.ddbClient()
-    const userDbsResponse = await ddbClient.query(userDatabasesParams).promise()
+  const ddbClient = connection.ddbClient()
+  const userDbsResponse = await ddbClient.query(userDatabasesParams).promise()
 
-    const userDbs = userDbsResponse && userDbsResponse.Items
+  return userDbsResponse && userDbsResponse.Items
+}
+
+exports.findDatabases = async function (userId) {
+  try {
+    const userDbs = await queryUserDatabases(userId)
     if (!userDbs || !userDbs.length) return responseBuilder.successResponse([])
 
-    const databaseQueries = []
-    const otherUsersByUserId = {}
-    const otherUsersGrantedDbAccessQueries = []
-    for (const userDb of userDbs) {
-      const dbId = userDb['database-id']
-
-      databaseQueries.push(findDatabaseByDatabaseId(dbId))
-      otherUsersGrantedDbAccessQueries.push(findOtherUsersGrantedAccessToDb(dbId, userId, otherUsersByUserId))
-    }
-
-    const [databases, otherUserDbsGrantedAccess] = await Promise.all([
-      Promise.all(databaseQueries),
-      Promise.all(otherUsersGrantedDbAccessQueries)
-    ])
+    const {
+      databases,
+      otherUserDbsGrantedAccess,
+      otherUsersByUserId
+    } = await getDatabasesAndRelatedItems(userId, userDbs)
 
     if (!databases) {
       logger.error(`User ${userId} is missing databases in database table`)
       throw new Error('Missing databases')
     }
+
+    const user = await userController.getUserByUserId(userId)
+    if (!user) return responseBuilder.errorResponse(statusCodes['Not Found'], 'User not found')
 
     const finalResult = databases.map((db, i) => {
       const ownerId = db['owner-id']
@@ -253,11 +270,11 @@ exports.findDatabases = async function (userId, username) {
       return {
         encryptedDbKey: userDbs[i]['encrypted-db-key'],
         dbName: db['database-name'],
-        owner: ownerId === userId ? username : otherUsersByUserId[ownerId].username,
-        access: otherUserDbsGrantedAccess[i].map(otherUserDb => {
+        owner: ownerId === userId ? user['username'] : otherUsersByUserId[ownerId].username,
+        otherUsersGrantedAccess: otherUserDbsGrantedAccess[i].map(otherUserDb => {
           const otherUserId = otherUserDb['user-id']
           return {
-            readOnly: otherUserDb['read-only'],
+            readOnly: otherUserDb['read-only'] ? true : false,
             username: otherUsersByUserId[otherUserId].username
           }
         })
@@ -266,7 +283,11 @@ exports.findDatabases = async function (userId, username) {
 
     return responseBuilder.successResponse(finalResult)
   } catch (e) {
-    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to find databases with ${e}`)
+    logger.error(`Failed to find databases for user '${userId}' with ${e}`)
+    return responseBuilder.errorResponse(
+      statusCodes['Internal Server Error'],
+      'Failed to find databases'
+    )
   }
 }
 

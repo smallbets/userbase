@@ -64,7 +64,6 @@ async function start(express, app, userbaseConfig = {}) {
       ws.isAlive = true
 
       const userId = res.locals.user['user-id']
-      const username = res.locals.user['username']
       const userPublicKey = res.locals.user['public-key']
       const appId = res.locals.user['app-id']
 
@@ -164,7 +163,7 @@ async function start(express, app, userbaseConfig = {}) {
                 break
               }
               case 'FindDatabases': {
-                response = await db.findDatabases(userId, username)
+                response = await db.findDatabases(userId)
                 break
               }
               case 'Insert':
