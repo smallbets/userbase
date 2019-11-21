@@ -650,10 +650,11 @@ const deleteSeedRequest = async function (userId, conn) {
   }
 }
 
-const getUser = async function (username) {
+const getUser = async function (appId, username) {
   const userParams = {
     TableName: setup.usersTableName,
     Key: {
+      'app-id': appId,
       username
     }
   }
@@ -664,32 +665,32 @@ const getUser = async function (username) {
   return userResponse && userResponse.Item
 }
 
-exports.getPublicKey = async function (username) {
+exports.getPublicKey = async function (appId, username) {
   if (!username) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing username')
 
   try {
-    const user = await getUser(username)
-
+    const user = await getUser(appId, username)
     if (!user) return responseBuilder.errorResponse(statusCodes['Not Found'], 'User not found')
 
     const publicKey = user['public-key']
     return responseBuilder.successResponse(publicKey)
   } catch (e) {
+    logger.warn(`Failed to get public key for username '${username}' with ${e}`)
     return responseBuilder.errorResponse(
       statusCodes['Internal Server Error'],
-      `Failed to get public key with ${e}`
+      'Failed to get public key'
     )
   }
 }
 
-exports.grantDatabaseAccess = async function (grantorId, granteeUsername, dbId, encryptedAccessKey, readOnly) {
+exports.grantDatabaseAccess = async function (appId, grantorId, granteeUsername, dbId, encryptedAccessKey, readOnly) {
   if (!granteeUsername) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing grantee username')
   if (!dbId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
   if (!encryptedAccessKey) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing access key')
 
   try {
     const [grantee, database] = await Promise.all([
-      getUser(granteeUsername),
+      getUser(appId, granteeUsername),
       db.findDatabaseByDatabaseId(dbId)
     ])
 
@@ -702,20 +703,19 @@ exports.grantDatabaseAccess = async function (grantorId, granteeUsername, dbId, 
 
     const granteeId = grantee['user-id']
 
-    const databaseAccess = {
-      'grantee-id': granteeId,
-      'database-id': dbId,
-      'encrypted-access-key': encryptedAccessKey,
-      'read-only': readOnly,
-      ttl: getTtl(SECONDS_IN_A_DAY)
-    }
+    if (grantorId === grantorId) return responseBuilder.errorResponse(
+      statusCodes['Conflict'],
+      'UserCannotBeYou'
+    )
 
     const params = {
       TableName: setup.databaseAccessGrantsTableName,
-      Item: databaseAccess,
-      ConditionExpression: 'attribute_not_exists(#granteeId)',
-      ExpressionAttributeNames: {
-        '#granteeId': 'grantee-id'
+      Item: {
+        'grantee-id': granteeId,
+        'database-id': dbId,
+        'encrypted-access-key': encryptedAccessKey,
+        'read-only': readOnly,
+        ttl: getTtl(SECONDS_IN_A_DAY)
       },
     }
 
@@ -724,17 +724,19 @@ exports.grantDatabaseAccess = async function (grantorId, granteeUsername, dbId, 
 
     // TO-DO: notify grantee clients via WebSocket
 
-    return responseBuilder.successResponse('Success!')
+    return responseBuilder.successResponse()
   } catch (e) {
+    logger.warn(`Failed to grant access to database '${dbId}' from grantor '${grantorId}'`
+      + ` to grantee '${granteeUsername}' with ${e}`)
     return responseBuilder.errorResponse(
       statusCodes['Internal Server Error'],
-      `Failed to grant db access key with ${e}`
+      'Failed to grant access to database'
     )
   }
 }
 
 const getDbOwners = async function (databases) {
-  const ownerIndex = {}
+  const ownerIdToOwnerIndex = {}
   const ownerPromises = []
   for (let i = 0; i < databases.length; i++) {
     const database = databases[i]
@@ -743,15 +745,15 @@ const getDbOwners = async function (databases) {
     const ownerId = database['owner-id']
 
     if (!ownerId) continue
+    if (typeof ownerIdToOwnerIndex[ownerId] === 'number') continue
 
-    if (typeof ownerIndex[ownerId] === 'number') continue
-    ownerIndex[ownerId] = ownerPromises.push(getUserByUserId(ownerId)) - 1
+    ownerIdToOwnerIndex[ownerId] = ownerPromises.push(getUserByUserId(ownerId)) - 1
   }
   const owners = await Promise.all(ownerPromises)
-  return { ownerIndex, owners }
+  return { ownerIdToOwnerIndex, owners }
 }
 
-const buildDatabaseAccessGrantsResponse = (databases, databaseAccessGrants, owners, ownerIndex) => {
+const buildDatabaseAccessGrantsResponse = (databases, databaseAccessGrants, owners, ownerIdToOwnerIndex) => {
   const response = []
   for (let i = 0; i < databases.length; i++) {
     const database = databases[i]
@@ -761,7 +763,7 @@ const buildDatabaseAccessGrantsResponse = (databases, databaseAccessGrants, owne
     }
 
     const ownerId = database['owner-id']
-    const owner = owners[ownerIndex[ownerId]]
+    const owner = owners[ownerIdToOwnerIndex[ownerId]]
     if (!owner) {
       logger.warn(`Unable to find user with id ${databaseAccessGrants[i]['owner-id']}`)
       continue
@@ -780,7 +782,7 @@ const buildDatabaseAccessGrantsResponse = (databases, databaseAccessGrants, owne
   return response
 }
 
-const deleteGrantsAlreadyAccepted = async function (databaseAccessGrants) {
+const getGrantsPendingAcceptanceAndDeleteRemaining = async function (databaseAccessGrants) {
   const existingUserDatabases = await Promise.all(databaseAccessGrants.map(grant => {
     const granteeId = grant['grantee-id']
     const dbId = grant['database-id']
@@ -838,22 +840,23 @@ exports.queryDatabaseAccessGrants = async function (granteeId) {
     }
 
     // more efficient to clean up this way as opposed to enforcing when inserting grant
-    const grantsPendingAcceptance = await deleteGrantsAlreadyAccepted(databaseAccessGrants)
+    const grantsPendingAcceptance = await getGrantsPendingAcceptanceAndDeleteRemaining(databaseAccessGrants)
 
     const databases = await Promise.all(grantsPendingAcceptance.map(grant => {
       const dbId = grant['database-id']
       return db.findDatabaseByDatabaseId(dbId)
     }))
 
-    const { ownerIndex, owners } = await getDbOwners(databases)
+    const { ownerIdToOwnerIndex, owners } = await getDbOwners(databases)
 
-    const response = buildDatabaseAccessGrantsResponse(databases, grantsPendingAcceptance, owners, ownerIndex)
+    const response = buildDatabaseAccessGrantsResponse(databases, grantsPendingAcceptance, owners, ownerIdToOwnerIndex)
 
     return responseBuilder.successResponse(response)
   } catch (e) {
+    logger.warn(`Failed to get database access grants for user '${granteeId}' with ${e}`)
     return responseBuilder.errorResponse(
       statusCodes['Internal Server Error'],
-      `Failed to get database access grants with ${e}`
+      'Failed to get database access grants'
     )
   }
 }

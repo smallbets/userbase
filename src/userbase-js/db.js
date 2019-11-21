@@ -409,17 +409,17 @@ const _createDatabase = async (dbName, dbNameHash) => {
   }
 }
 
-const _validateDbInput = (dbName) => {
+const _validateDbNameInput = (dbName) => {
+  if (!ws.keys.init) throw new errors.UserNotSignedIn
+
   if (typeof dbName !== 'string') throw new errors.DatabaseNameMustBeString
   if (dbName.length === 0) throw new errors.DatabaseNameCannotBeBlank
   if (dbName.length > MAX_DB_NAME_CHAR_LENGTH) throw new errors.DatabaseNameTooLong(MAX_DB_NAME_CHAR_LENGTH)
-
-  if (!ws.keys.init) throw new errors.UserNotSignedIn
 }
 
 const openDatabase = async (dbName, changeHandler) => {
   try {
-    _validateDbInput(dbName)
+    _validateDbNameInput(dbName)
 
     if (typeof changeHandler !== 'function') throw new errors.ChangeHandlerMustBeFunction
 
@@ -448,6 +448,7 @@ const openDatabase = async (dbName, changeHandler) => {
 }
 
 const getOpenDb = (dbName) => {
+  _validateDbNameInput(dbName)
   const dbNameHash = ws.state.dbNameToHash[dbName]
   const database = ws.state.databases[dbNameHash]
   if (!dbNameHash || !database || !database.init) throw new errors.DatabaseNotOpen
@@ -456,8 +457,6 @@ const getOpenDb = (dbName) => {
 
 const insert = async (dbName, item, id) => {
   try {
-    _validateDbInput(dbName)
-
     const database = getOpenDb(dbName)
 
     const action = 'Insert'
@@ -514,8 +513,6 @@ const _buildInsertParams = async (database, item, id) => {
 
 const update = async (dbName, item, id) => {
   try {
-    _validateDbInput(dbName)
-
     const database = getOpenDb(dbName)
 
     const action = 'Update'
@@ -568,8 +565,6 @@ const _buildUpdateParams = async (database, item, itemId) => {
 
 const delete_ = async (dbName, itemId) => {
   try {
-    _validateDbInput(dbName)
-
     const database = getOpenDb(dbName)
 
     const action = 'Delete'
@@ -616,8 +611,6 @@ const _buildDeleteParams = async (database, itemId) => {
 
 const transaction = async (dbName, operations) => {
   try {
-    _validateDbInput(dbName)
-
     if (!operations) throw new errors.OperationsMissing
     if (!Array.isArray(operations)) throw new errors.OperationsMustBeArray
 

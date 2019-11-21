@@ -202,11 +202,12 @@ async function start(express, app, userbaseConfig = {}) {
                 break
               }
               case 'GetPublicKey': {
-                response = await user.getPublicKey(params.username)
+                response = await user.getPublicKey(appId, params.username)
                 break
               }
               case 'GrantDatabaseAccess': {
                 response = await user.grantDatabaseAccess(
+                  appId,
                   userId,
                   params.username,
                   params.dbId,

@@ -21,6 +21,7 @@ export default {
   getLastUsedUsername: auth.getLastUsedUsername,
 
   openDatabase: db.openDatabase,
+  grantDatabaseAccess: auth.grantDatabaseAccess,
 
   insert: db.insert,
   update: db.update,

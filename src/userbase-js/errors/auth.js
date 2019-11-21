@@ -153,6 +153,16 @@ class UserEmailNotFound extends Error {
   }
 }
 
+class UserCannotBeYou extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'UserCannotBeYou'
+    this.message = 'User cannot be you.'
+    this.status = statusCodes['Conflict']
+  }
+}
+
 class EmailNotValid extends Error {
   constructor(...params) {
     super(...params)
@@ -326,6 +336,7 @@ export default {
   UserNotSignedIn,
   UserNotFound,
   UserEmailNotFound,
+  UserCannotBeYou,
   EmailNotValid,
   ProfileMustBeObject,
   ProfileCannotBeEmpty,

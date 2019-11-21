@@ -511,18 +511,53 @@ const signInWithSession = async (appId) => {
 }
 
 const grantDatabaseAccess = async (dbName, username, readOnly) => {
-  if (!ws.keys.init) return
+  try {
+    const database = db.getOpenDb(dbName)
+    _validateUsername(username)
 
-  const database = db.getOpenDb(dbName)
+    const lowerCaseUsername = username.toLowerCase()
 
-  const lowerCaseUsername = username.toLowerCase()
+    let action = 'GetPublicKey'
+    let params = { username: lowerCaseUsername }
 
-  let action = 'GetPublicKey'
-  let params = { username: lowerCaseUsername }
-  const granteePublicKeyResponse = await ws.request(action, params)
-  const granteePublicKey = granteePublicKeyResponse.data
+    try {
+      const granteePublicKeyResponse = await ws.request(action, params)
+      const granteePublicKey = granteePublicKeyResponse.data
 
-  await ws.grantDatabaseAccess(database, username, granteePublicKey, readOnly)
+      await ws.grantDatabaseAccess(database, username, granteePublicKey, readOnly)
+    } catch (e) {
+      _parseGenericErrors(e)
+
+      if (e.message === 'User not found') {
+        throw new errors.UserNotFound
+      } else if (e.message === 'UserCannotBeYou') {
+        throw new errors.UserCannotBeYou
+      }
+
+      throw e
+    }
+  } catch (e) {
+
+    switch (e.name) {
+      case 'UserNotSignedIn':
+      case 'UserNotFound':
+      case 'UserCannotBeYou':
+      case 'DatabaseNameMustBeString':
+      case 'DatabaseNameCannotBeBlank':
+      case 'DatabaseNameTooLong':
+      case 'DatabaseNotOpen':
+      case 'UsernameCannotBeBlank':
+      case 'UsernameMustBeString':
+      case 'UsernameTooLong':
+      case 'AppIdNotValid':
+      case 'ServiceUnavailable':
+        throw e
+
+      default:
+        throw new errors.ServiceUnavailable
+    }
+
+  }
 }
 
 const importKey = async (keyString) => {

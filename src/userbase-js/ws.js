@@ -592,7 +592,7 @@ class Connection {
   }
 
   async getDatabaseAccessGrants() {
-    if (!this.keys.init) return
+    if (!this.keys.init) throw new errors.UserNotSignedIn
 
     const response = await this.request('GetDatabaseAccessGrants')
     const databaseAccessGrants = response.data

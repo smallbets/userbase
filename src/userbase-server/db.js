@@ -90,7 +90,7 @@ exports.findUserDatabaseByDatabaseId = async function (dbId, userId) {
   const userDbResponse = await ddbClient.query(userDatabaseParams).promise()
 
   if (userDbResponse.Items.length > 1) {
-    logger.warn(`Found too many user databases with db id ${dbId} and user id ${userId}`)
+    throw new Error(`Found too many user databases with db id ${dbId} and user id ${userId}`)
   }
 
   return userDbResponse.Items[0]
