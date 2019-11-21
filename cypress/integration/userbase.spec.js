@@ -10,6 +10,7 @@ describe('Configure the env', function () {
     cy.getLoginInfo().then((loginInfo) => {
       info = loginInfo
     })
+    cy.fixture('example.json').as('existingInfo')
   })
 
   it('Check all the endpoints exists', function () {
@@ -17,7 +18,7 @@ describe('Configure the env', function () {
       expect(userbase)
       expect(userbase).to.respondTo('signIn')
       expect(userbase).to.respondTo('signUp')
-      expect(userbase).to.respondTo('signInWithSession')
+      // expect(userbase).to.respondTo('signInWithSession')
       expect(userbase).to.respondTo('signOut')
       expect(userbase).to.respondTo('openDatabase')
       expect(userbase).to.respondTo('insert')
@@ -29,8 +30,9 @@ describe('Configure the env', function () {
 
   it('Signup/Logout/Signin a new user in same browser', function () {
     cy.window().then(({ userbase }) => {
-      userbase.configure({ appId: info.appId, endpoint: info.endpoint })
-      return userbase.signUp(info.username, info.password).then((user) => {
+      userbase.init({ appId: info.appId, endpoint: info.endpoint })
+
+      return userbase.signUp(info.username, info.password, null, null, null, true).then((user) => {
         cy.log(user)
         expect(user.username, 'user.username').to.exists
         expect(user.username, 'user.username to be the one signed up').to.equal(info.username)
@@ -63,26 +65,13 @@ describe('Configure the env', function () {
       })
     })
   })
-  it('Login existing user in fresh browser', function () {
+  it.only('Login existing user in fresh browser', function () {
     cy.window().then(({ userbase }) => {
-      userbase.configure({ appId: info.appId, endpoint: info.endpoint })
-      userbase.signIn(info.username, info.password)
-      const seedStub = () => {
-        return globalSession.key
-      }
-      cy.window().then((win) => {
-        cy.stub(win, 'prompt', seedStub).as('seedStubNotNull')
-        cy.get('@seedStubNotNull').should('be.calledOnce').then(() => {
-          const currentSession = JSON.parse(localStorage.getItem('userbaseCurrentSession'))
-          expect(currentSession.username)
-          .to.be.equal(info.username)
-          expect(currentSession.signedIn)
-          .to.be.true
-          expect(currentSession.sessionId)
-          .not.to.be.empty
-          .and.to.be.string()
-        })
-      })
+      userbase.init({ appId: this.existingInfo.appId, endpoint: this.existingInfo.endpoint })
+      userbase.signIn(this.existingInfo.username, this.existingInfo.password)
+      cy.get('#userbase-secret-key-input').should('exist')
+      cy.get('#userbase-secret-key-input').type(this.existingInfo.key)
+      cy.get('.userbase-button').click()
     })
   })
 

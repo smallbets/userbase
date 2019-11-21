@@ -24,7 +24,7 @@
     "start:prod": "npm stop && node ./node_modules/forever/bin/forever --minUptime 5000 --spinSleepTime 1000 -l ../logs/encd.log -p $(pwd) -a start ./src/proof-of-concept/build/app.js",
     "stop": "node ./node_modules/forever/bin/forever stopall",
     "watch:client": "cd ./src/proof-of-concept && npm run watch:client",
-    "watch:server": "NODE_ENV=development nodemon --ignore 'src/userbase-js/' --ignore 'src/proof-of-concept/client/' --exec 'babel-node ./src/proof-of-concept/server/app.js --presets @babel/preset-env' | pino-pretty",
+    "watch:server": "NODE_ENV=development nodemon --exec 'babel-node ./src/proof-of-concept/server/app.js --presets @babel/preset-env' | pino-pretty",
     "watch:admin-panel": "cd ./src/userbase-server/admin-panel && npm run start",
     "deploy:infra": "./deploy/deploy-infra.sh",
     "rm:sdk": "cd ./src/userbase-js && rm -rf node_modules",
