@@ -703,7 +703,7 @@ exports.grantDatabaseAccess = async function (appId, grantorId, granteeUsername,
 
     const granteeId = grantee['user-id']
 
-    if (grantorId === grantorId) return responseBuilder.errorResponse(
+    if (grantorId === granteeId) return responseBuilder.errorResponse(
       statusCodes['Conflict'],
       'UserCannotBeYou'
     )
