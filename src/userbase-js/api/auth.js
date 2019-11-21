@@ -3,7 +3,8 @@ import config from '../config'
 
 const TEN_SECONDS_MS = 10 * 1000
 
-const signUp = async (username, passwordSecureHash, publicKey, encryptionKeySalt, dhKeySalt, hmacKeySalt, email, profile) => {
+const signUp = async (username, passwordSecureHash, publicKey, encryptionKeySalt,
+  dhKeySalt, hmacKeySalt, email, profile, pbkdfKeySalt, passwordEncryptedSeed) => {
   const signUpResponse = await axios({
     method: 'POST',
     url: `${config.getEndpoint()}/api/auth/sign-up?appId=${config.getAppId()}`,
@@ -15,7 +16,9 @@ const signUp = async (username, passwordSecureHash, publicKey, encryptionKeySalt
       dhKeySalt,
       hmacKeySalt,
       email,
-      profile
+      profile,
+      pbkdfKeySalt,
+      passwordEncryptedSeed
     },
     timeout: TEN_SECONDS_MS
   })
