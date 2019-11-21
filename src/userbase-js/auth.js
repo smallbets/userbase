@@ -173,9 +173,20 @@ const _validateProfile = (profile) => {
   if (!keyExists) throw new errors.ProfileCannotBeEmpty
 }
 
-const displayShowKeyModal = (seedString, rememberMe) => new Promise(resolve => {
+const displayShowKeyModal = (seedString, rememberMe, passwordBasedKeyRecoveryEnabled) => new Promise(resolve => {
   const showKeyModal = document.createElement('div')
   showKeyModal.className = 'userbase-modal'
+
+  let message = ' '
+  if (rememberMe && !passwordBasedKeyRecoveryEnabled) {
+    message += 'You will need your secret key to sign in on other devices.'
+  } else if (rememberMe && passwordBasedKeyRecoveryEnabled) {
+    message += 'If you forget your password, you will need your secret key to sign in on other devices.'
+  } else if (!rememberMe && !passwordBasedKeyRecoveryEnabled) {
+    message += 'Without your secret key, you will not be able to log in to your account.'
+  } else if (!rememberMe && passwordBasedKeyRecoveryEnabled) {
+    message += 'If you forget your password, you will not be able to log in to your account without your secret key.'
+  }
 
   showKeyModal.innerHTML = `
     <div class='userbase-container'>
@@ -226,10 +237,7 @@ const displayShowKeyModal = (seedString, rememberMe) => new Promise(resolve => {
     <span class='fas userbase-fa-exclamation-triangle' />
     <span class='userbase-text-line'>
 
-    Store this key somewhere safe. ${rememberMe
-      ? ' You will need your secret key to sign in on other devices.'
-      : ' Without it, you will not be able to log in to your account.'
-    }
+    Store this key somewhere safe.${message}
 
     </span>
     </div>
@@ -259,9 +267,6 @@ const displayShowKeyModal = (seedString, rememberMe) => new Promise(resolve => {
 
 const signUp = async (username, password, email, profile, showKeyHandler, rememberMe = false, passwordBasedKeyRecoveryEnabled = true) => {
   try {
-    console.log(passwordBasedKeyRecoveryEnabled)
-
-
     _validateSignUpOrSignInInput(username, password)
     if (profile) _validateProfile(profile)
     if (showKeyHandler && typeof showKeyHandler !== 'function') throw new errors.ShowKeyHandlerMustBeFunction
@@ -279,9 +284,9 @@ const signUp = async (username, password, email, profile, showKeyHandler, rememb
     const seedString = base64.encode(seed)
 
     if (showKeyHandler) {
-      await showKeyHandler(seedString, rememberMe)
+      await showKeyHandler(seedString, rememberMe, passwordBasedKeyRecoveryEnabled)
     } else {
-      await displayShowKeyModal(seedString, rememberMe)
+      await displayShowKeyModal(seedString, rememberMe, passwordBasedKeyRecoveryEnabled)
     }
 
     if (rememberMe) {
