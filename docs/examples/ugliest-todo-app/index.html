@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Ugliest To-Do</title>
-  <script type="text/javascript" src="https://sdk.userbase.dev/userbase-0.0.5.js"></script>
+  <script type="text/javascript" src="./script/userbase-0.0.6.js"></script>
 </head>
 
 <body>
@@ -28,29 +28,64 @@
       <input type="submit" value="Create an account">
     </form>
     <div id="signup-error"></div>
+
+    <div>
+      <br />
+      <br />
+      Remember Me
+      <input id="remember-me" type="checkbox" />
+    </div>
   </div>
 
-  <!-- To-dos View -->
-  <div id="todo-view">
-    <span id="username"></span>
+  <!-- View after signing in -->
+  <div id="signed-in-view">
+    <div>Username: <span id="username"></span></div>
+    <div>Public Key: <span id="public-key"></span></div>
     <input type="button" value="Logout" id="logout-button">
     <div id="logout-error"></div>
 
-    <h1>To-Do List</h1>
-    <div id="todos"></div>
-    <div id="db-loading">Loading to-dos...</div>
-    <div id="db-error"></div>
+    <!-- To-dos View -->
+    <div id="todo-lists-view">
 
-    <form id="add-todo-form">
-      <input id="add-todo" type="text" required placeholder="To-Do">
-      <input type="submit" value="Add">
-    </form>
-    <div id="add-todo-error"></div>
+      <h1>To-Do Lists</h1>
+      <div id="todo-lists"></div>
+      <div id="todo-lists-loading">Loading to-do lists...</div>
+      <div id="todo-lists-error"></div>
+
+      <form id="add-todo-list-form">
+        <input id="add-todo-list" type="text" required placeholder="New To-Do List">
+        <input type="submit" value="Add">
+      </form>
+      <div id="add-todo-list-error"></div>
+    </div>
+
+    <!-- To-dos View -->
+    <div id="todo-view">
+
+      <h3 id="todo-list-header"></h3>
+      <div id="todos"></div>
+      <div id="db-loading">Loading to-dos...</div>
+      <div id="db-error"></div>
+
+      <form id="add-todo-form">
+        <input id="add-todo" type="text" required placeholder="To-Do">
+        <input type="submit" value="Add">
+      </form>
+      <div id="add-todo-error"></div>
+
+      <br />
+      <form id="share-todo-list-form">
+        <input id="share-todo-list" type="text" required placeholder="Username">
+        <input type="submit" value="Share">
+      </form>
+      <div id="share-todo-list-error"></div>
+    </div>
   </div>
 
   <!-- application code -->
   <script type="text/javascript">
-    userbase.configure({ appId: 'c2d2bd2a-1cbe-46e6-aa5c-c768b200b706' })
+    let todoListTitles = {}
+    let openTodoLists = {}
 
     function handleLogout() {
       userbase.signOut()
@@ -58,22 +93,98 @@
         .catch((e) => document.getElementById('logout-error').innerText = e)
     }
 
-    function showTodos(username) {
+    function showTodoLists(username, publicKey) {
       document.getElementById('auth-view').style.display = 'none'
-      document.getElementById('todo-view').style.display = 'block'
+      document.getElementById('todo-view').style.display = 'none'
 
-      // reset the todos view
+      // set signed-in-view
+      document.getElementById('signed-in-view').style.display = 'block'
       document.getElementById('username').innerHTML = username
-      document.getElementById('todos').innerText = ''
-      document.getElementById('db-loading').style.display = 'block'
-      document.getElementById('db-error').innerText = ''
+      document.getElementById('public-key').innerHTML = publicKey
 
-      userbase.openDatabase('todos', handleDatabaseChange)
-        .catch((e) => document.getElementById('db-error').innerText = e)
+      // reset the todo lists view
+      document.getElementById('todo-lists-view').style.display = 'block'
+      document.getElementById('todo-lists').innerText = ''
+      document.getElementById('todo-lists-loading').style.display = 'block'
+      document.getElementById('todo-lists-error').innerText = ''
+
+      userbase.findDatabases()
+        .then((databases) => displayTodoLists(databases, username))
+        .catch((e) => document.getElementById('todo-lists-error').innerText = e)
+    }
+
+    function displayTodoLists(databases, username) {
+      document.getElementById('todo-lists-loading').style.display = 'none'
+
+      const todoLists = document.getElementById('todo-lists')
+
+      todoLists.innerHTML = ''
+
+      for (let i = 0; i < databases.length; i++) {
+        const todoListName = databases[i].dbName
+        const isOwner = databases[i].owner === username
+        renderTodoListTitle(todoLists, todoListName, isOwner)
+      }
+    }
+
+    function renderTodoListTitle(todoLists, todoListName, isOwner) {
+      todoListTitles[todoListName] = true
+
+      // build the todo list name
+      const todoListNameLink = document.createElement('a')
+      todoListNameLink.innerHTML = todoListName
+      todoListNameLink.style.display = 'inline-block'
+      todoListNameLink.style.color = 'blue'
+      todoListNameLink.style.textDecoration = 'underline'
+      todoListNameLink.style.cursor = 'pointer'
+      todoListNameLink.onclick = (e) => {
+        e.preventDefault()
+
+        const currentTodoListName = document.getElementById('todo-list-header').innerText
+
+        // todo list already in the DOM and rendered
+        if (todoListName === currentTodoListName) return
+
+        document.getElementById('todo-list-header').innerText = todoListName
+        document.getElementById('add-todo-error').innerHTML = ''
+        document.getElementById('share-todo-list-error').innerHTML = ''
+
+        document.getElementById('share-todo-list-form').style.display = isOwner ? 'block' : 'none'
+
+        const currentTodoListState = openTodoLists[todoListName]
+        if (!currentTodoListState) {
+          // open for first time
+          openTodoList(todoListName)
+        } else {
+          const todos = document.getElementById('todos')
+
+          document.getElementById('db-error').innerText = ''
+          document.getElementById('db-loading').style.display = 'none'
+
+          if (currentTodoListState.innerHTML) {
+            todos.innerHTML = currentTodoListState.innerHTML
+          } else {
+            // clear the todo list
+            todos.innerHTML = ''
+            for (const todoItem of currentTodoListState.todoItems) {
+              todos.appendChild(todoItem)
+            }
+          }
+        }
+      }
+
+      // append the todo list title to the list of all todo lists
+      const todoListTitle = document.createElement('div')
+      todoListTitle.appendChild(todoListNameLink)
+      todoLists.appendChild(todoListTitle)
+      document.getElementById('share-todo-list-form').style.display = isOwner ? 'block' : 'none'
     }
 
     function showAuth() {
-      document.getElementById('todo-view').style.display = 'none'
+      todoListTitles = {}
+      openTodoLists = {}
+
+      document.getElementById('signed-in-view').style.display = 'none'
       document.getElementById('auth-view').style.display = 'block'
       document.getElementById('login-username').value = ''
       document.getElementById('login-password').value = ''
@@ -84,15 +195,31 @@
     }
 
     function handleDatabaseChange(items) {
+      const todoListName = this.todoListName
+
+      // if not already in the list of todo-list titles, add it to the list
+      if (!todoListTitles[todoListName]) {
+        // can only be called if user attempted to create the to-do list
+        const isOwner = true
+        renderTodoListTitle(document.getElementById('todo-lists'), todoListName, isOwner)
+      }
+
       document.getElementById('db-loading').style.display = 'none'
 
-      const todosList = document.getElementById('todos')
+      const todos = document.getElementById('todos')
+      const currentTodoListState = {
+        todoItems: [],
+        innerHTML: ''
+      }
+
+      const currentTodoListIsOpen = document.getElementById('todo-list-header').innerText === todoListName
 
       if (items.length === 0) {
-        todosList.innerText = 'Empty'
+        currentTodoListState.innerHTML = 'Empty'
+        if (currentTodoListIsOpen) todos.innerHTML = 'Empty'
       } else {
         // clear the list
-        todosList.innerHTML = ''
+        if (currentTodoListIsOpen) todos.innerHTML = ''
 
         // render all the to-do items
         for (let i = 0; i < items.length; i++) {
@@ -102,7 +229,7 @@
           todoDelete.innerHTML = 'X'
           todoDelete.style.display = 'inline-block'
           todoDelete.onclick = () => {
-            userbase.delete('todos', items[i].itemId)
+            userbase.delete(todoListName, items[i].itemId)
               .catch((e) => document.getElementById('add-todo-error').innerHTML = e)
           }
 
@@ -113,7 +240,7 @@
           todoBox.checked = items[i].item.complete ? true : false
           todoBox.onclick = (e) => {
             e.preventDefault()
-            userbase.update('todos', {
+            userbase.update(todoListName, {
               'todo': items[i].item.todo,
               'complete': !items[i].item.complete
             }, items[i].itemId)
@@ -130,9 +257,13 @@
           todoItem.appendChild(todoDelete)
           todoItem.appendChild(todoBox)
           todoItem.appendChild(todoLabel)
-          todosList.appendChild(todoItem)
+
+          currentTodoListState.todoItems.push(todoItem)
+          if (currentTodoListIsOpen) todos.appendChild(todoItem)
         }
       }
+
+      openTodoLists[todoListName] = currentTodoListState
     }
 
     function handleLogin(e) {
@@ -141,8 +272,10 @@
       const username = document.getElementById('login-username').value
       const password = document.getElementById('login-password').value
 
-      userbase.signIn(username, password)
-        .then((user) => showTodos(user.username))
+      const rememberMe = document.getElementById('remember-me').checked
+
+      userbase.signIn(username, password, rememberMe)
+        .then((user) => showTodoLists(user.username, user.publicKey))
         .catch((e) => document.getElementById('login-error').innerHTML = e)
     }
 
@@ -152,30 +285,69 @@
       const username = document.getElementById('signup-username').value
       const password = document.getElementById('signup-password').value
 
-      userbase.signUp(username, password)
-        .then((user) => showTodos(user.username))
+      const rememberMe = document.getElementById('remember-me').checked
+
+      userbase.signUp(username, password, null, null, null, rememberMe)
+        .then((user) => showTodoLists(user.username, user.publicKey))
         .catch((e) => document.getElementById('signup-error').innerHTML = e)
+    }
+
+    function addToDoListHandler(e) {
+      e.preventDefault()
+
+      const todoListName = document.getElementById('add-todo-list').value
+      openTodoList(todoListName)
+    }
+
+    function openTodoList(todoListName) {
+      document.getElementById('todo-list-header').innerText = todoListName
+
+      document.getElementById('todo-view').style.display = 'block'
+      document.getElementById('todos').innerText = ''
+      document.getElementById('db-error').innerText = ''
+
+      document.getElementById('db-loading').style.display = 'block'
+
+      userbase.openDatabase(todoListName, handleDatabaseChange.bind({ todoListName }))
+        .then((e) => document.getElementById('add-todo-list').value = '')
+        .catch((e) => document.getElementById('db-error').innerText = e)
     }
 
     function addTodoHandler(e) {
       e.preventDefault()
 
+      const todoListName = document.getElementById('todo-list-header').innerText
       const todo = document.getElementById('add-todo').value
 
-      userbase.insert('todos', { 'todo': todo })
+      userbase.insert(todoListName, { 'todo': todo })
         .then(() => document.getElementById('add-todo').value = '')
         .catch((e) => document.getElementById('add-todo-error').innerHTML = e)
     }
 
+    function shareTodoListHandler(e) {
+      e.preventDefault()
+
+      const todoListName = document.getElementById('todo-list-header').innerText
+      const usernameToShareWith = document.getElementById('share-todo-list').value
+
+      document.getElementById('share-todo-list-error').innerHTML = ''
+
+      userbase.grantDatabaseAccess(todoListName, usernameToShareWith)
+        .then(() => document.getElementById('share-todo-list').value = '')
+        .catch((e) => document.getElementById('share-todo-list-error').innerHTML = e)
+    }
+
     document.getElementById('login-form').addEventListener('submit', handleLogin)
     document.getElementById('signup-form').addEventListener('submit', handleSignUp)
+    document.getElementById('add-todo-list-form').addEventListener('submit', addToDoListHandler)
     document.getElementById('add-todo-form').addEventListener('submit', addTodoHandler)
+    document.getElementById('share-todo-list-form').addEventListener('submit', shareTodoListHandler)
     document.getElementById('logout-button').addEventListener('click', handleLogout)
     document.getElementById('todo-view').style.display = 'none'
     document.getElementById('auth-view').style.display = 'none'
 
-    userbase.signInWithSession()
-      .then((session) => session.user ? showTodos(session.user.username) : showAuth())
+    userbase.init({ appId: 'poc-id', endpoint: 'http://localhost:8080' })
+      .then((session) => session.user ? showTodoLists(session.user.username, session.user.publicKey) : showAuth())
       .catch(() => showAuth())
       .finally(() => document.getElementById('loading-view').style.display = 'none')
 
