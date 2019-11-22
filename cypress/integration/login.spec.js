@@ -1,6 +1,6 @@
 /// <reference types="Cypress" />
 
-describe('Configure the env', function () {
+describe('Login - Signup Testing', function () {
   let ephemeralLoginInfo = {}
   let info = {}
 
@@ -28,12 +28,18 @@ describe('Configure the env', function () {
     })
   })
 
-  it.only('Signup/Logout/Signin a new user in same browser', function () {
+  it('Signup/Logout/Signin a new user in same browser', function () {
+    function showKeyHandler(seedString, rememberMe) {
+      cy.log('seedString is:', seedString)
+      cy.log('rememberMe is:', rememberMe)
+      return
+    }
+
     cy.window().then(({ userbase }) => {
       userbase.init({ appId: info.appId, endpoint: info.endpoint })
-      cy.get('#userbase-show-key-modal-close-button').click()
 
-      return userbase.signUp(ephemeralLoginInfo.username, ephemeralLoginInfo.password, null, null, null, true).then((user) => {
+
+      return userbase.signUp(ephemeralLoginInfo.username, ephemeralLoginInfo.password, null, null, showKeyHandler, true).then((user) => {
         cy.log(user)
         expect(user.username, 'user.username').to.exists
         expect(user.username, 'user.username to be the one signed up').to.equal(ephemeralLoginInfo.username)
@@ -59,6 +65,7 @@ describe('Configure the env', function () {
             expect(user.username, 'login should set the username').to.exist.and.to.equal(ephemeralLoginInfo.username)
             expect(user.key, 'user key should be the same as before').to.be.not.null
           })
+
         })
       })
     })
