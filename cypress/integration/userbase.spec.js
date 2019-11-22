@@ -67,10 +67,17 @@ describe('Configure the env', function () {
   })
   it.only('Login existing user in fresh browser', function () {
     cy.window().then(({ userbase }) => {
-      userbase.init({ appId: this.existingInfo.appId, endpoint: this.existingInfo.endpoint })
-      userbase.signIn(this.existingInfo.username, this.existingInfo.password)
+      const existingInfo = this.existingInfo
+      userbase.init({ appId: existingInfo.appId, endpoint: existingInfo.endpoint })
+      userbase.signIn(existingInfo.username, existingInfo.password).then( (user) => {
+        cy.log('user content is:', user)
+        expect(user).to.exist
+        expect(user).to.haveOwnProperty('username')
+        expect(user.username).to.equal(existingInfo.username)
+       expect(user.key).to.equal(existingInfo.key)
+      })
       cy.get('#userbase-secret-key-input').should('exist')
-      cy.get('#userbase-secret-key-input').type(this.existingInfo.key)
+      cy.get('#userbase-secret-key-input').type(existingInfo.key)
       cy.get('.userbase-button').click()
     })
   })
