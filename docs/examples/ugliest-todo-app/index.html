@@ -39,7 +39,21 @@
 
   <!-- View after signing in -->
   <div id="signed-in-view">
-    <div>Username: <span id="username"></span></div>
+
+    <span>
+      Username: <span id="username-value"></span>
+
+      <input type="button" value="Update User" id="update-user-button">
+      <form id="update-user-form">
+        <input id="update-username" type="text" placeholder="Username">
+        <input id="update-password" type="password" placeholder="Password">
+        <input id="update-email" type="email" placeholder="Email">
+        <input id="update-user-save" type="submit" value="Save">
+        <input id="update-user-cancel" type="button" value="Cancel">
+      </form>
+      <span id="update-user-error"></span>
+    </span>
+
     <div>Public Key: <span id="public-key"></span></div>
     <input type="button" value="Logout" id="logout-button">
     <div id="logout-error"></div>
@@ -99,7 +113,7 @@
 
       // set signed-in-view
       document.getElementById('signed-in-view').style.display = 'block'
-      document.getElementById('username').innerHTML = username
+      document.getElementById('username-value').innerHTML = username
       document.getElementById('public-key').innerHTML = publicKey
 
       // reset the todo lists view
@@ -107,6 +121,9 @@
       document.getElementById('todo-lists').innerText = ''
       document.getElementById('todo-lists-loading').style.display = 'block'
       document.getElementById('todo-lists-error').innerText = ''
+
+      // reset todos
+      document.getElementById('todo-list-header').innerText = ''
 
       userbase.findDatabases()
         .then((databases) => displayTodoLists(databases, username))
@@ -192,6 +209,7 @@
       document.getElementById('signup-password').value = ''
       document.getElementById('signup-email').value = ''
       document.getElementById('signup-error').innerText = ''
+      handleHideUpdateUserForm()
     }
 
     function handleDatabaseChange(items) {
@@ -279,9 +297,7 @@
         .catch((e) => document.getElementById('login-error').innerHTML = e)
     }
 
-    function handleForgotPassword(e) {
-      e.preventDefault()
-
+    function handleForgotPassword() {
       const username = document.getElementById('login-username').value
       document.getElementById('login-error').innerHTML = ''
 
@@ -349,6 +365,40 @@
         .catch((e) => document.getElementById('share-todo-list-error').innerHTML = e)
     }
 
+    function handleShowUpdateUserForm() {
+      document.getElementById('update-user-form').style.display = 'inline-block'
+      document.getElementById('update-user-button').style.display = 'none'
+    }
+
+    function handleHideUpdateUserForm() {
+      document.getElementById('update-user-form').style.display = 'none'
+      document.getElementById('update-user-button').style.display = 'inline-block'
+      document.getElementById('update-username').value = ''
+      document.getElementById('update-password').value = ''
+      document.getElementById('update-email').value = ''
+      document.getElementById('update-user-error').innerText = ''
+    }
+
+    function handleUpdateUser(e) {
+      e.preventDefault()
+
+      const username = document.getElementById('update-username').value
+      const password = document.getElementById('update-password').value
+      const email = document.getElementById('update-email').value
+
+      const user = {}
+      if (username) user.username = username
+      if (password) user.password = password
+      if (email) user.email = email
+
+      userbase.updateUser(user)
+        .then(() => {
+          handleHideUpdateUserForm()
+          if (username) document.getElementById('username-value').innerHTML = username
+        })
+        .catch((e) => document.getElementById('update-user-error').innerText = e)
+    }
+
     document.getElementById('login-form').addEventListener('submit', handleLogin)
     document.getElementById('forgot-password').addEventListener('click', handleForgotPassword)
     document.getElementById('signup-form').addEventListener('submit', handleSignUp)
@@ -356,6 +406,10 @@
     document.getElementById('add-todo-form').addEventListener('submit', addTodoHandler)
     document.getElementById('share-todo-list-form').addEventListener('submit', shareTodoListHandler)
     document.getElementById('logout-button').addEventListener('click', handleLogout)
+    document.getElementById('update-user-button').addEventListener('click', handleShowUpdateUserForm)
+    document.getElementById('update-user-cancel').addEventListener('click', handleHideUpdateUserForm)
+    document.getElementById('update-user-form').addEventListener('submit', handleUpdateUser)
+    document.getElementById('update-user-form').style.display = 'none'
     document.getElementById('todo-view').style.display = 'none'
     document.getElementById('auth-view').style.display = 'none'
 
