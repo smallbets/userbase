@@ -18,6 +18,7 @@
       <input id="login-username" type="text" required placeholder="Username">
       <input id="login-password" type="password" required placeholder="Password">
       <input type="submit" value="Sign in">
+      <div>Remember Me: <input id="login-remember-me" type="checkbox" /></div>
     </form>
     <div id="login-error"></div>
 
@@ -26,15 +27,10 @@
       <input id="signup-username" type="text" required placeholder="Username">
       <input id="signup-password" type="password" required placeholder="Password">
       <input type="submit" value="Create an account">
+      <div>Remember Me: <input id="signup-remember-me" type="checkbox" /></div>
+      <div>Back Up Key: <input id="back-up-key" type="checkbox" checked /></div>
     </form>
     <div id="signup-error"></div>
-
-    <div>
-      <br />
-      <br />
-      Remember Me
-      <input id="remember-me" type="checkbox" />
-    </div>
   </div>
 
   <!-- View after signing in -->
@@ -147,13 +143,12 @@
 
         document.getElementById('todo-list-header').innerText = todoListName
         document.getElementById('add-todo-error').innerHTML = ''
-        document.getElementById('share-todo-list-error').innerHTML = ''
-
         document.getElementById('share-todo-list-form').style.display = isOwner ? 'block' : 'none'
+        document.getElementById('share-todo-list-error').innerHTML = ''
 
         const currentTodoListState = openTodoLists[todoListName]
         if (!currentTodoListState) {
-          // open for first time
+          // open To-do list for first time
           openTodoList(todoListName)
         } else {
           const todos = document.getElementById('todos')
@@ -272,7 +267,7 @@
       const username = document.getElementById('login-username').value
       const password = document.getElementById('login-password').value
 
-      const rememberMe = document.getElementById('remember-me').checked
+      const rememberMe = document.getElementById('login-remember-me').checked
 
       userbase.signIn(username, password, rememberMe)
         .then((user) => showTodoLists(user.username, user.publicKey))
@@ -285,9 +280,10 @@
       const username = document.getElementById('signup-username').value
       const password = document.getElementById('signup-password').value
 
-      const rememberMe = document.getElementById('remember-me').checked
+      const rememberMe = document.getElementById('signup-remember-me').checked
+      const backUpKey = document.getElementById('back-up-key').checked
 
-      userbase.signUp(username, password, null, null, null, rememberMe)
+      userbase.signUp(username, password, null, null, null, rememberMe, backUpKey)
         .then((user) => showTodoLists(user.username, user.publicKey))
         .catch((e) => document.getElementById('signup-error').innerHTML = e)
     }
@@ -305,7 +301,6 @@
       document.getElementById('todo-view').style.display = 'block'
       document.getElementById('todos').innerText = ''
       document.getElementById('db-error').innerText = ''
-
       document.getElementById('db-loading').style.display = 'block'
 
       userbase.openDatabase(todoListName, handleDatabaseChange.bind({ todoListName }))
