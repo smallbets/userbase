@@ -19,6 +19,9 @@
       <input id="login-password" type="password" required placeholder="Password">
       <input type="submit" value="Sign in">
       <div>Remember Me: <input id="login-remember-me" type="checkbox" /></div>
+      <a id="forgot-password" style="cursor: pointer; font-style: italic; text-decoration: underline; color: blue;">
+        Forgot Password
+      </a>
     </form>
     <div id="login-error"></div>
 
@@ -26,6 +29,7 @@
     <form id="signup-form">
       <input id="signup-username" type="text" required placeholder="Username">
       <input id="signup-password" type="password" required placeholder="Password">
+      <input id="signup-email" type="email" placeholder="Email">
       <input type="submit" value="Create an account">
       <div>Remember Me: <input id="signup-remember-me" type="checkbox" /></div>
       <div>Back Up Key: <input id="back-up-key" type="checkbox" checked /></div>
@@ -186,6 +190,7 @@
       document.getElementById('login-error').innerText = ''
       document.getElementById('signup-username').value = ''
       document.getElementById('signup-password').value = ''
+      document.getElementById('signup-email').value = ''
       document.getElementById('signup-error').innerText = ''
     }
 
@@ -274,16 +279,28 @@
         .catch((e) => document.getElementById('login-error').innerHTML = e)
     }
 
+    function handleForgotPassword(e) {
+      e.preventDefault()
+
+      const username = document.getElementById('login-username').value
+      document.getElementById('login-error').innerHTML = ''
+
+      userbase.forgotPassword(username)
+        .then(() => window.alert('Check your email!'))
+        .catch((e) => document.getElementById('login-error').innerHTML = e)
+    }
+
     function handleSignUp(e) {
       e.preventDefault()
 
       const username = document.getElementById('signup-username').value
       const password = document.getElementById('signup-password').value
+      const email = document.getElementById('signup-email').value
 
       const rememberMe = document.getElementById('signup-remember-me').checked
       const backUpKey = document.getElementById('back-up-key').checked
 
-      userbase.signUp(username, password, null, null, null, rememberMe, backUpKey)
+      userbase.signUp(username, password, email, null, null, rememberMe, backUpKey)
         .then((user) => showTodoLists(user.username, user.publicKey))
         .catch((e) => document.getElementById('signup-error').innerHTML = e)
     }
@@ -333,6 +350,7 @@
     }
 
     document.getElementById('login-form').addEventListener('submit', handleLogin)
+    document.getElementById('forgot-password').addEventListener('click', handleForgotPassword)
     document.getElementById('signup-form').addEventListener('submit', handleSignUp)
     document.getElementById('add-todo-list-form').addEventListener('submit', addToDoListHandler)
     document.getElementById('add-todo-form').addEventListener('submit', addTodoHandler)
