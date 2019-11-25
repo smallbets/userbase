@@ -95,7 +95,7 @@ const _buildSignUpParams = async (username, passwordToken, appId, userId,
 
   const user = {
     username: username.toLowerCase(),
-    'password-token': passwordToken,
+    'password-token': await crypto.sha256.hash(passwordToken),
     'password-salt': passwordSalt,
     'password-token-salt': passwordTokenSalt,
     'app-id': appId,
@@ -148,12 +148,14 @@ const _buildSignUpParams = async (username, passwordToken, appId, userId,
 const _validatePassword = async (passwordToken, user) => {
   if (!user) throw new Error('User does not exist')
 
-  const passwordIsCorrect = passwordToken === user['password-token']
+  const passwordTokenHash = await crypto.sha256.hash(passwordToken)
+
+  const passwordIsCorrect = passwordTokenHash.equals(user['password-token'])
 
   if (!passwordIsCorrect && !user['temp-password-token']) {
     throw new Error('Incorrect password')
   } else if (!passwordIsCorrect && user['temp-password-token']) {
-    const tempPasswordIsCorrect = passwordToken === user['temp-password-token']
+    const tempPasswordIsCorrect = passwordTokenHash.equals(user['temp-password-token'])
 
     if (!tempPasswordIsCorrect) {
       throw new Error('Incorrect password or temp password')
@@ -1073,7 +1075,7 @@ const setTempPasswordToken = async (username, appId, tempPasswordToken) => {
       '#tempPasswordCreationDate': 'temp-password-creation-date'
     },
     ExpressionAttributeValues: {
-      ':tempPasswordToken': tempPasswordToken,
+      ':tempPasswordToken': await crypto.sha256.hash(tempPasswordToken),
       ':tempPasswordCreationDate': new Date().toISOString()
     },
     ReturnValues: 'ALL_NEW'
