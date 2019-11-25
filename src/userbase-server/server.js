@@ -140,11 +140,11 @@ async function start(express, app, userbaseConfig = {}) {
                   userId,
                   appId,
                   params.username,
-                  params.passwordSecureHash,
+                  params.passwordToken,
+                  params.passwordSalts,
                   params.email,
                   params.profile,
-                  params.pbkdfKeySalt,
-                  params.passwordEncryptedSeed
+                  params.passwordBasedBackup
                 )
                 break
               }
@@ -268,6 +268,7 @@ async function start(express, app, userbaseConfig = {}) {
     )
 
     app.post('/api/auth/sign-up', user.signUp)
+    app.get('/api/auth/get-password-salts', user.getPasswordSalts)
     app.post('/api/auth/sign-in', user.signIn)
     app.post('/api/auth/sign-in-with-session', user.authenticateUser, user.extendSession)
     app.get('/api/auth/server-public-key', user.getServerPublicKey)
