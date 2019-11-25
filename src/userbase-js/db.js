@@ -7,8 +7,6 @@ import statusCodes from './statusCodes'
 import { byteSizeOfString } from './utils'
 
 const success = 'Success'
-const wsNotOpen = 'Web Socket not open'
-const keyNotFound = 'Key not found'
 
 const MAX_DB_NAME_CHAR_LENGTH = 50
 const MAX_ITEM_ID_CHAR_LENGTH = 100

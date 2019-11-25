@@ -108,37 +108,73 @@ const _validateSignUpOrSignInInput = (username, password) => {
   _validatePassword(password)
 }
 
-const _generateKeysAndSignUp = async (username, password, seed, email, profile, backUpKey) => {
-  const passwordSecureHash = await crypto.sha256.hashString(password)
+const _generatePasswordToken = async (password, backUpKey, seed) => {
+  const passwordSalt = crypto.scrypt.generateSalt()
+  const passwordHash = await crypto.scrypt.hash(password, passwordSalt)
 
-  let pbkdfKeySalt, passwordEncryptedSeed
+  const passwordHkdfKey = await crypto.hkdf.importHkdfKeyFromString(passwordHash)
+
+  const passwordTokenSalt = crypto.hkdf.generateSalt()
+  const passwordToken = await crypto.hkdf.getPasswordToken(passwordHkdfKey, passwordTokenSalt)
+
+  let passwordBasedEncryptionKeySalt, passwordEncryptedSeed
   if (backUpKey) {
-    pbkdfKeySalt = await crypto.pbkdf.generateSalt()
-    const passwordBasedEncryptionKey = await crypto.pbkdf.importKey(password, pbkdfKeySalt)
+    passwordBasedEncryptionKeySalt = crypto.hkdf.generateSalt()
+    const passwordBasedEncryptionKey = await crypto.aesGcm.getPasswordBasedEncryptionKey(
+      passwordHkdfKey, passwordBasedEncryptionKeySalt)
+
     passwordEncryptedSeed = await crypto.aesGcm.encrypt(passwordBasedEncryptionKey, seed)
   }
 
-  const masterKey = await crypto.hkdf.importMasterKey(seed)
+  return {
+    passwordSalt,
+    passwordTokenSalt,
+    passwordToken,
+    passwordBasedEncryptionKeySalt,
+    passwordEncryptedSeed
+  }
+}
+
+const _generateKeysAndSignUp = async (username, password, seed, email, profile, backUpKey) => {
+  const {
+    passwordSalt,
+    passwordTokenSalt,
+    passwordToken,
+    passwordBasedEncryptionKeySalt,
+    passwordEncryptedSeed
+  } = await _generatePasswordToken(password, backUpKey, seed)
+
+  const masterKey = await crypto.hkdf.importHkdfKey(seed)
 
   const encryptionKeySalt = crypto.hkdf.generateSalt()
   const dhKeySalt = crypto.hkdf.generateSalt()
   const hmacKeySalt = crypto.hkdf.generateSalt()
 
   const dhPrivateKey = await crypto.diffieHellman.importKeyFromMaster(masterKey, dhKeySalt)
-  const publicKey = crypto.diffieHellman.getPublicKey(dhPrivateKey)
+  const publicKey = base64.encode(crypto.diffieHellman.getPublicKey(dhPrivateKey))
+
+  const salts = {
+    passwordSalt: base64.encode(passwordSalt),
+    passwordTokenSalt: base64.encode(passwordTokenSalt),
+    encryptionKeySalt: base64.encode(encryptionKeySalt),
+    dhKeySalt: base64.encode(dhKeySalt),
+    hmacKeySalt: base64.encode(hmacKeySalt),
+  }
+
+  const passwordBasedBackup = backUpKey && {
+    passwordBasedEncryptionKeySalt: base64.encode(passwordBasedEncryptionKeySalt),
+    passwordEncryptedSeed: base64.encode(passwordEncryptedSeed)
+  }
 
   try {
     const session = await api.auth.signUp(
       username,
-      passwordSecureHash,
-      base64.encode(publicKey),
-      base64.encode(encryptionKeySalt),
-      base64.encode(dhKeySalt),
-      base64.encode(hmacKeySalt),
+      passwordToken,
+      publicKey,
+      salts,
       email,
       profile,
-      pbkdfKeySalt && base64.encode(pbkdfKeySalt),
-      passwordEncryptedSeed && base64.encode(passwordEncryptedSeed)
+      passwordBasedBackup
     )
     return session
   } catch (e) {
@@ -354,24 +390,27 @@ const signOut = async () => {
   }
 }
 
-const _getSeedStringFromPasswordBasedBackup = async (password, passwordBasedBackup) => {
+const _getSeedStringFromPasswordBasedBackup = async (passwordHkdfKey, passwordBasedBackup) => {
   try {
-    const { pbkdfKeySalt, passwordEncryptedSeed } = passwordBasedBackup
+    const { passwordBasedEncryptionKeySalt, passwordEncryptedSeed } = passwordBasedBackup
 
-    const passwordBasedEncryptionKey = await crypto.pbkdf.importKey(password, base64.decode(pbkdfKeySalt))
+    const passwordBasedEncryptionKey = await crypto.aesGcm.getPasswordBasedEncryptionKey(
+      passwordHkdfKey, base64.decode(passwordBasedEncryptionKeySalt))
+
     const seedFromBackup = await crypto.aesGcm.decrypt(passwordBasedEncryptionKey, base64.decode(passwordEncryptedSeed))
     const seedStringFromBackup = base64.encode(seedFromBackup)
 
     return seedStringFromBackup
   } catch (e) {
-    // possible it fails because user provides temp password rather than actual password. Allow failure
+    // possible it fails because user provides temp password rather than actual password. Allow failure.
+    // User needs to provide their key in this instance
     return null
   }
 }
 
-const _signInWrapper = async (username, passwordSecureHash) => {
+const _signInWrapper = async (username, passwordToken) => {
   try {
-    const { session, email, profile, passwordBasedBackup } = await api.auth.signIn(username, passwordSecureHash)
+    const { session, email, profile, passwordBasedBackup } = await api.auth.signIn(username, passwordToken)
     return { session, email, profile, passwordBasedBackup }
   } catch (e) {
     _parseGenericErrors(e)
@@ -385,22 +424,45 @@ const _signInWrapper = async (username, passwordSecureHash) => {
   }
 }
 
+const _rebuildPasswordToken = async (username, password) => {
+  let passwordSalts
+  try {
+    passwordSalts = await api.auth.getPasswordSalts(username)
+  } catch (e) {
+    _parseGenericErrors(e)
+
+    if (e.response && e.response.data === 'User not found') {
+      throw new errors.UserNotFound
+    }
+
+    throw e
+  }
+  const { passwordSalt, passwordTokenSalt } = passwordSalts
+
+  const passwordHash = await crypto.scrypt.hash(password, new Uint8Array(base64.decode(passwordSalt)))
+  const passwordHkdfKey = await crypto.hkdf.importHkdfKeyFromString(passwordHash)
+  const passwordToken = await crypto.hkdf.getPasswordToken(passwordHkdfKey, base64.decode(passwordTokenSalt))
+
+  return { passwordHkdfKey, passwordToken }
+}
+
 const signIn = async (username, password, rememberMe = false) => {
   try {
     _validateSignUpOrSignInInput(username, password)
 
     const appId = config.getAppId()
     const lowerCaseUsername = username.toLowerCase()
-    const passwordSecureHash = await crypto.sha256.hashString(password)
 
-    const { session, email, profile, passwordBasedBackup } = await _signInWrapper(lowerCaseUsername, passwordSecureHash)
+    const { passwordHkdfKey, passwordToken } = await _rebuildPasswordToken(username, password)
+
+    const { session, email, profile, passwordBasedBackup } = await _signInWrapper(lowerCaseUsername, passwordToken)
     const { sessionId, creationDate } = session
 
     const savedSeedString = localData.getSeedString(lowerCaseUsername) // might be null if does not have seed saved
 
     let seedStringFromBackup
     if (!savedSeedString && passwordBasedBackup) {
-      seedStringFromBackup = await _getSeedStringFromPasswordBasedBackup(password, passwordBasedBackup)
+      seedStringFromBackup = await _getSeedStringFromPasswordBasedBackup(passwordHkdfKey, passwordBasedBackup)
     }
 
     if (rememberMe) localData.signInSession(lowerCaseUsername, sessionId, creationDate)
@@ -421,6 +483,7 @@ const signIn = async (username, password, rememberMe = false) => {
   } catch (e) {
 
     switch (e.name) {
+      case 'UserNotFound':
       case 'UsernameOrPasswordMismatch':
       case 'UsernameCannotBeBlank':
       case 'UsernameTooLong':
@@ -495,11 +558,9 @@ const signInWithSession = async (appId) => {
 
       throw e
     }
-    const { email, profile, passwordBasedBackup } = apiSignInWithSessionResult
+    const { email, profile, backUpKey } = apiSignInWithSessionResult
 
     const savedSeedString = localData.getSeedString(username) // might be null if does not have seed saved
-
-    const backUpKey = passwordBasedBackup ? true : false
 
     const {
       seedString,
@@ -658,15 +719,24 @@ const _buildUpdateUserParams = async (user) => {
   if (params.username) params.username = params.username.toLowerCase()
 
   if (params.password) {
-    params.passwordSecureHash = await crypto.sha256.hashString(params.password)
+    const {
+      passwordSalt,
+      passwordTokenSalt,
+      passwordToken,
+      passwordBasedEncryptionKeySalt,
+      passwordEncryptedSeed
+    } = await _generatePasswordToken(params.password, ws.backUpKey, base64.decode(ws.seedString))
 
-    if (ws.backUpKey) {
-      const pbkdfKeySalt = await crypto.pbkdf.generateSalt()
-      const passwordBasedEncryptionKey = await crypto.pbkdf.importKey(params.password, pbkdfKeySalt)
-      const passwordEncryptedSeed = await crypto.aesGcm.encrypt(passwordBasedEncryptionKey, base64.decode(ws.seedString))
+    params.passwordToken = passwordToken
 
-      params.pbkdfKeySalt = base64.encode(pbkdfKeySalt)
-      params.passwordEncryptedSeed = base64.encode(passwordEncryptedSeed)
+    params.passwordSalts = {
+      passwordSalt: base64.encode(passwordSalt),
+      passwordTokenSalt: base64.encode(passwordTokenSalt)
+    }
+
+    params.passwordBasedBackup = ws.backUpKey && {
+      passwordBasedEncryptionKeySalt: base64.encode(passwordBasedEncryptionKeySalt),
+      passwordEncryptedSeed: base64.encode(passwordEncryptedSeed)
     }
 
     delete params.password

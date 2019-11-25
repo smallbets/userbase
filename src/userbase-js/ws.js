@@ -119,12 +119,12 @@ class Connection {
 
         try {
           await this.handleMessage(JSON.parse(e.data))
-        } catch (e) {
+        } catch (err) {
           if (!this.connectionResolved) {
             this.close()
-            reject(new WebSocketError(e.message, username))
+            reject(new WebSocketError(err.message, username))
           } else {
-            console.warn('Error handling message: ', e)
+            console.warn('Error handling message: ', err)
           }
         }
       }
@@ -339,7 +339,7 @@ class Connection {
     if (!this.seedString) this.seedString = seedString
 
     const seed = base64.decode(seedString)
-    const masterKey = await crypto.hkdf.importMasterKey(seed)
+    const masterKey = await crypto.hkdf.importHkdfKey(seed)
 
     const salts = this.keys.salts
     this.keys.encryptionKey = await crypto.aesGcm.importKeyFromMaster(masterKey, base64.decode(salts.encryptionKeySalt))
