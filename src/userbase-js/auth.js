@@ -9,6 +9,7 @@ import config from './config'
 import errors from './errors'
 import statusCodes from './statusCodes'
 import { objectHasOwnProperty } from './utils'
+import icons from './icons'
 
 const MAX_PASSWORD_CHAR_LENGTH = 1000
 const MIN_PASSWORD_CHAR_LENGTH = 6
@@ -234,12 +235,15 @@ const displayShowKeyModal = (seedString, rememberMe, backUpKey) => new Promise(r
 
 
     <div>
-    <span class='fas userbase-fa-exclamation-triangle' />
-    <span class='userbase-text-line'>
+      <span id='userbase-store-key-warning-icon' class='userbase-fa-exclamation-triangle'>
+        ${icons.exclamationTriangle.html}
+      </span>
 
-    Store this key somewhere safe.${message}
+      <span class='userbase-text-line'>
 
-    </span>
+      Store this key somewhere safe. ${message}
+
+      </span>
     </div>
 
     </div>

@@ -52,12 +52,6 @@ module.exports = (env) => {
               plugins: ['@babel/transform-runtime']
             }
           }
-        },
-        {
-          test: /\.(woff|woff2|eot|ttf|otf|png|svg|jpg|gif)$/,
-          use: {
-            loader: 'url-loader'
-          }
         }
       ]
     },
