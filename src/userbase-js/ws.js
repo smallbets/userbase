@@ -14,6 +14,7 @@ const BACKOFF_RETRY_DELAY = 1000
 const MAX_RETRY_DELAY = 1000 * 30
 
 const SERVICE_RESTART = 1012
+const NO_PONG_RECEIVED = 3000
 
 class RequestFailed extends Error {
   constructor(action, response, ...params) {
@@ -83,7 +84,7 @@ class Connection {
     return new Promise((resolve, reject) => {
       let timeout = false
 
-      setTimeout(
+      const timeoutToOpenWebSocket = setTimeout(
         () => {
           if (!this.connected) {
             timeout = true
@@ -102,6 +103,7 @@ class Connection {
 
       ws.onopen = async () => {
         if (timeout) return
+        clearTimeout(timeoutToOpenWebSocket)
 
         if (this.connected) {
           reject(new WebSocketError(wsAlreadyConnected, username))
@@ -110,6 +112,7 @@ class Connection {
 
         this.init(resolve, reject, username, sessionId, seedString, rememberMe)
         this.ws = ws
+        this.heartbeat()
 
         if (!seedString) {
           await this.requestSeed(username)
@@ -135,7 +138,8 @@ class Connection {
         if (timeout) return
 
         const serviceRestart = e.code === SERVICE_RESTART
-        const attemptToReconnect = serviceRestart || !e.wasClean // closed without explicit call to ws.close()
+        const clientDisconnected = e.code === NO_PONG_RECEIVED
+        const attemptToReconnect = serviceRestart || clientDisconnected || !e.wasClean // closed without explicit call to ws.close()
 
         if (attemptToReconnect) {
           const delay = (serviceRestart && !reconnectDelay)
@@ -219,9 +223,28 @@ class Connection {
       ))
     }
   }
+
+  heartbeat() {
+    clearTimeout(this.pingTimeout)
+
+    const LATENCY_BUFFER = 3000
+
+    this.pingTimeout = setTimeout(() => {
+      if (this.ws) this.ws.close(NO_PONG_RECEIVED)
+    }, 30000 + LATENCY_BUFFER)
+  }
+
   async handleMessage(message) {
     const route = message.route
     switch (route) {
+      case 'Ping': {
+        this.heartbeat()
+
+        const action = 'Pong'
+        this.ws.send(JSON.stringify({ action }))
+        break
+      }
+
       case 'Connection': {
         this.connected = true
 
@@ -374,9 +397,9 @@ class Connection {
     }
   }
 
-  close() {
+  close(code) {
     this.ws
-      ? this.ws.close()
+      ? this.ws.close(code)
       : this.init()
   }
 
