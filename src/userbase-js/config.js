@@ -1,7 +1,7 @@
 import errors from './errors'
 
 let userbaseAppId = null
-let userbaseEndpoint = 'https://preview.userbase.dev'
+let userbaseEndpoint = 'https://beta.userbase.dev'
 let userbaseKeyNotFoundHandler = null
 
 const getAppId = () => {

@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Ugliest To-Do</title>
-  <script type="text/javascript" src="./script/userbase-0.0.6.js"></script>
+  <script type="text/javascript" src="https://sdk.userbase.dev/userbase-sec-review.js"></script>
 </head>
 
 <body>
@@ -18,7 +18,7 @@
       <input id="login-username" type="text" required placeholder="Username">
       <input id="login-password" type="password" required placeholder="Password">
       <input type="submit" value="Sign in">
-      <div>Remember Me: <input id="login-remember-me" type="checkbox" /></div>
+      <div>Remember Me: <input id="login-remember-me" type="checkbox" checked /></div>
       <a id="forgot-password" style="cursor: pointer; font-style: italic; text-decoration: underline; color: blue;">
         Forgot Password
       </a>
@@ -31,7 +31,7 @@
       <input id="signup-password" type="password" required placeholder="Password">
       <input id="signup-email" type="email" placeholder="Email">
       <input type="submit" value="Create an account">
-      <div>Remember Me: <input id="signup-remember-me" type="checkbox" /></div>
+      <div>Remember Me: <input id="signup-remember-me" type="checkbox" checked /></div>
       <div>Back Up Key: <input id="back-up-key" type="checkbox" checked /></div>
     </form>
     <div id="signup-error"></div>
@@ -44,6 +44,9 @@
       Username: <span id="username-value"></span>
 
       <input type="button" value="Update User" id="update-user-button">
+      <input type="button" value="Logout" id="logout-button">
+      <div id="logout-error"></div>
+
       <form id="update-user-form">
         <input id="update-username" type="text" placeholder="Username">
         <input id="update-password" type="password" placeholder="Password">
@@ -55,8 +58,6 @@
     </span>
 
     <div>Public Key: <span id="public-key"></span></div>
-    <input type="button" value="Logout" id="logout-button">
-    <div id="logout-error"></div>
 
     <!-- To-dos View -->
     <div id="todo-lists-view">
@@ -68,7 +69,7 @@
 
       <form id="add-todo-list-form">
         <input id="add-todo-list" type="text" required placeholder="New To-Do List">
-        <input type="submit" value="Add">
+        <input type="submit" value="Create new list">
       </form>
       <div id="add-todo-list-error"></div>
     </div>
@@ -233,8 +234,8 @@
       const currentTodoListIsOpen = document.getElementById('todo-list-header').innerText === todoListName
 
       if (items.length === 0) {
-        currentTodoListState.innerHTML = 'Empty'
-        if (currentTodoListIsOpen) todos.innerHTML = 'Empty'
+        currentTodoListState.innerHTML = ''
+        if (currentTodoListIsOpen) todos.innerHTML = ''
       } else {
         // clear the list
         if (currentTodoListIsOpen) todos.innerHTML = ''
@@ -335,6 +336,7 @@
       document.getElementById('todos').innerText = ''
       document.getElementById('db-error').innerText = ''
       document.getElementById('db-loading').style.display = 'block'
+      document.getElementById('add-todo').focus()
 
       userbase.openDatabase(todoListName, handleDatabaseChange.bind({ todoListName }))
         .then((e) => document.getElementById('add-todo-list').value = '')
@@ -413,7 +415,7 @@
     document.getElementById('todo-view').style.display = 'none'
     document.getElementById('auth-view').style.display = 'none'
 
-    userbase.init({ appId: 'poc-id', endpoint: 'http://localhost:8080' })
+    userbase.init({ appId: '775fac56-98b5-4902-8707-445e7e77c2d4' })
       .then((session) => session.user ? showTodoLists(session.user.username, session.user.publicKey) : showAuth())
       .catch(() => showAuth())
       .finally(() => document.getElementById('loading-view').style.display = 'none')
