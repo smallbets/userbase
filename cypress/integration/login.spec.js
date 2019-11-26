@@ -37,8 +37,6 @@ describe('Login - Signup Testing', function () {
 
     cy.window().then(({ userbase }) => {
       userbase.init({ appId: info.appId, endpoint: info.endpoint })
-
-
       return userbase.signUp(ephemeralLoginInfo.username, ephemeralLoginInfo.password, null, null, showKeyHandler, true).then((user) => {
         cy.log(user)
         expect(user.username, 'user.username').to.exists
