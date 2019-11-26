@@ -173,6 +173,7 @@ class Connection {
             }
 
             this.init()
+            this.reconnecting = true
 
             // setting this.state = state here and after connect() maintains memory references
             this.state = state
@@ -412,6 +413,8 @@ class Connection {
       if (this.rememberMe) localData.signOutSession(username)
 
       const sessionId = this.sessionId
+
+      if (this.reconnecting) throw new errors.Reconnecting
 
       const action = 'SignOut'
       const params = { sessionId }

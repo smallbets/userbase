@@ -39,6 +39,14 @@ class Timeout extends ServiceUnavailable {
   }
 }
 
+class Reconnecting extends ServiceUnavailable {
+  constructor(...params) {
+    super(...params)
+
+    this.message = 'Reconnecting.'
+  }
+}
+
 export default {
   ...auth,
   ...db,
@@ -46,5 +54,6 @@ export default {
   AppIdNotSet,
   InternalServerError,
   ServiceUnavailable,
-  Timeout
+  Timeout,
+  Reconnecting
 }

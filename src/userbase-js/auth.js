@@ -314,7 +314,7 @@ const signUp = async (username, password, email, profile, showKeyHandler, rememb
 
 const signOut = async () => {
   try {
-    if (!ws.connected) throw new errors.UserNotSignedIn
+    if (!ws.username) throw new errors.UserNotSignedIn
 
     try {
       await ws.signOut()
@@ -487,6 +487,7 @@ const importKey = async (keyString) => {
     if (typeof keyString !== 'string') throw new errors.KeyMustBeString
     if (keyString.length === 0) throw new errors.KeyCannotBeBlank
 
+    if (ws.reconnecting) throw new errors.Reconnecting
     if (!ws.connected) throw new errors.UserNotSignedIn
 
     try {
@@ -593,6 +594,7 @@ const updateUser = async (user) => {
     const action = 'UpdateUser'
     const params = await _buildUpdateUserParams(user)
 
+    if (ws.reconnecting) throw new errors.Reconnecting
     if (!ws.keys.init) throw new errors.UserNotSignedIn
     try {
       if (ws.rememberMe && params.username) localData.saveSeedString(params.username, ws.seedString)
