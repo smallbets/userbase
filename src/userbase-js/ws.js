@@ -7,6 +7,7 @@ import { removeProtocolFromEndpoint, getProtocolFromEndpoint } from './utils'
 import statusCodes from './statusCodes'
 import config from './config'
 import errors from './errors'
+import icons from './icons'
 
 const wsAlreadyConnected = 'Web Socket already connected'
 
@@ -569,8 +570,10 @@ class Connection {
         <div>
           <div
             id='userbase-request-key-modal-close-button'
-            class='fas userbase-fa-times-circle'
-          />
+            class='userbase-fa-times-circle'
+          >
+          ${icons.timesCircle.html}
+          </div>
         </div>
 
         <form id='userbase-request-key-form'>
