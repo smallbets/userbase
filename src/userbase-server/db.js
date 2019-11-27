@@ -7,6 +7,8 @@ import connections from './ws'
 import logger from './logger'
 import userController from './user'
 
+const MAX_OPERATIONS_IN_TX = 10
+
 const getS3DbStateKey = (databaseId, bundleSeqNo) => `${databaseId}/${bundleSeqNo}`
 
 exports.createDatabase = async function (userId, dbNameHash, dbId, encryptedDbName, encryptedDbKey) {
@@ -406,6 +408,11 @@ exports.batchTransaction = async function (userId, dbNameHash, databaseId, opera
   if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
   if (!databaseId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
   if (!operations || !operations.length) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing operations')
+
+  if (operations.length > MAX_OPERATIONS_IN_TX) return responseBuilder.errorResponse(statusCodes['Bad Request'], {
+    error: 'OperationsExceedLimit',
+    limit: MAX_OPERATIONS_IN_TX
+  })
 
   const ops = []
   for (let i = 0; i < operations.length; i++) {
