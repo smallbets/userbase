@@ -10,6 +10,12 @@ import errors from './errors'
 
 const wsAlreadyConnected = 'Web Socket already connected'
 
+const BACKOFF_RETRY_DELAY = 1000
+const MAX_RETRY_DELAY = 1000 * 30
+
+const SERVICE_RESTART = 1012
+const NO_PONG_RECEIVED = 3000
+
 class RequestFailed extends Error {
   constructor(action, response, ...params) {
     super(...params)
@@ -36,6 +42,8 @@ class Connection {
   }
 
   init(resolveConnection, rejectConnection, username, sessionId, seedString, rememberMe, backUpKey) {
+    if (this.pingTimeout) clearTimeout(this.pingTimeout)
+
     for (const property of Object.keys(this)) {
       delete this[property]
     }
@@ -73,17 +81,16 @@ class Connection {
     }
   }
 
-  connect(appId, sessionId, username, seedString = null, rememberMe = false, backUpKey = true) {
+  connect(appId, sessionId, username, seedString = null, rememberMe = false, backUpKey = true, reconnectDelay) {
     if (this.connected) throw new WebSocketError(wsAlreadyConnected, this.username)
 
     return new Promise((resolve, reject) => {
       let timeout = false
 
-      setTimeout(
+      const timeoutToOpenWebSocket = setTimeout(
         () => {
           if (!this.connected) {
             timeout = true
-            this.close()
             reject(new WebSocketError('timeout'))
           }
         },
@@ -99,15 +106,16 @@ class Connection {
 
       ws.onopen = async () => {
         if (timeout) return
+        clearTimeout(timeoutToOpenWebSocket)
 
         if (this.connected) {
-          this.close()
           reject(new WebSocketError(wsAlreadyConnected, username))
           return
         }
 
         this.init(resolve, reject, username, sessionId, seedString, rememberMe, backUpKey)
         this.ws = ws
+        this.heartbeat()
 
         if (!seedString) {
           await this.requestSeed(username)
@@ -129,22 +137,123 @@ class Connection {
         }
       }
 
-      ws.onerror = () => {
-        if (!this.connected) {
-          reject(new WebSocketError('WebSocket error'))
-        }
-        this.close()
-      }
+      ws.onclose = async (e) => {
+        if (timeout) return
 
-      ws.onclose = () => {
-        this.init()
+        const serviceRestart = e.code === SERVICE_RESTART
+        const clientDisconnected = e.code === NO_PONG_RECEIVED
+        const attemptToReconnect = serviceRestart || clientDisconnected || !e.wasClean // closed without explicit call to ws.close()
+
+        if (attemptToReconnect) {
+          const delay = (serviceRestart && !reconnectDelay)
+            ? 0
+            : (reconnectDelay ? reconnectDelay + BACKOFF_RETRY_DELAY : 1000)
+
+          this.reconnecting = true
+          await this.reconnect(appId, resolve, reject, username, sessionId, seedString, rememberMe, backUpKey, delay)
+        } else {
+          this.init()
+        }
       }
     })
+  }
+
+  async reconnect(appId, resolveConnection, rejectConnection, username, sessionId, seedString, rememberMe, backUpKey, reconnectDelay) {
+    try {
+      const retryDelay = Math.min(reconnectDelay, MAX_RETRY_DELAY)
+      console.log(`Connection to server lost. Attempting to reconnect in ${retryDelay / 1000} second${retryDelay !== 1000 ? 's' : ''}...`)
+
+      resolveConnection(await new Promise((resolve, reject) => setTimeout(
+        async () => {
+          try {
+            const state = {
+              databases: { ...this.state.databases },
+              dbIdToHash: { ...this.state.dbIdToHash },
+              dbNameToHash: { ...this.state.dbNameToHash }
+            }
+
+            for (const dbNameHash in state.databases) {
+              state.databases[dbNameHash].init = false
+            }
+
+            this.init()
+            this.reconnecting = true
+
+            // setting this.state = state here and after connect() maintains underlying memory references
+            this.state = state
+            const result = await this.connect(appId, sessionId, username, seedString, rememberMe, backUpKey, reconnectDelay)
+            this.state = state
+
+            resolve(result)
+          } catch (e) {
+            reject(e)
+          }
+        },
+        retryDelay
+      )))
+
+      await this.reopenDatabases(1000)
+    } catch (e) {
+      rejectConnection(e)
+    }
+  }
+
+  async reopenDatabases(retryDelay) {
+    try {
+      const openDatabasePromises = []
+
+      for (const dbNameHash in this.state.databases) {
+        if (!this.state.databases[dbNameHash].reopening) {
+          this.state.databases[dbNameHash].reopening = true
+          const action = 'OpenDatabase'
+          const params = { dbNameHash }
+          openDatabasePromises.push(this.request(action, params))
+        }
+      }
+
+      await Promise.all(openDatabasePromises)
+
+      for (const dbNameHash in this.state.databases) {
+        this.state.databases[dbNameHash].reopening = false
+      }
+
+    } catch (e) {
+      for (const dbNameHash in this.state.databases) {
+        this.state.databases[dbNameHash].reopening = false
+      }
+
+      // keep attempting to reopen on failure
+      await new Promise(resolve => setTimeout(
+        async () => {
+          await this.reopenDatabases(retryDelay + BACKOFF_RETRY_DELAY)
+          resolve()
+        },
+        Math.min(retryDelay, MAX_RETRY_DELAY)
+      ))
+    }
+  }
+
+  heartbeat() {
+    clearTimeout(this.pingTimeout)
+
+    const LATENCY_BUFFER = 3000
+
+    this.pingTimeout = setTimeout(() => {
+      if (this.ws) this.ws.close(NO_PONG_RECEIVED)
+    }, 30000 + LATENCY_BUFFER)
   }
 
   async handleMessage(message) {
     const route = message.route
     switch (route) {
+      case 'Ping': {
+        this.heartbeat()
+
+        const action = 'Pong'
+        this.ws.send(JSON.stringify({ action }))
+        break
+      }
+
       case 'Connection': {
         this.connected = true
 
@@ -297,9 +406,9 @@ class Connection {
     }
   }
 
-  close() {
+  close(code) {
     this.ws
-      ? this.ws.close()
+      ? this.ws.close(code)
       : this.init()
   }
 
@@ -312,6 +421,8 @@ class Connection {
       if (this.rememberMe) localData.signOutSession(username)
 
       const sessionId = this.sessionId
+
+      if (this.reconnecting) throw new errors.Reconnecting
 
       const action = 'SignOut'
       const params = { sessionId }

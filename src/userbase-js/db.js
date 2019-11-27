@@ -414,6 +414,7 @@ const _validateDbInput = (dbName) => {
   if (dbName.length === 0) throw new errors.DatabaseNameCannotBeBlank
   if (dbName.length > MAX_DB_NAME_CHAR_LENGTH) throw new errors.DatabaseNameTooLong(MAX_DB_NAME_CHAR_LENGTH)
 
+  if (ws.reconnecting) throw new errors.Reconnecting
   if (!ws.keys.init) throw new errors.UserNotSignedIn
 }
 
