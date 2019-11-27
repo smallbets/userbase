@@ -455,7 +455,7 @@ const getOpenDb = (dbName) => {
   return database
 }
 
-const insert = async (dbName, item, id) => {
+const insertItem = async (dbName, item, id) => {
   try {
     _validateDbInput(dbName)
 
@@ -513,7 +513,7 @@ const _buildInsertParams = async (database, item, id) => {
   return { itemKey, encryptedItem }
 }
 
-const update = async (dbName, item, id) => {
+const updateItem = async (dbName, item, id) => {
   try {
     _validateDbInput(dbName)
 
@@ -567,7 +567,7 @@ const _buildUpdateParams = async (database, item, itemId) => {
   return { itemKey, encryptedItem }
 }
 
-const delete_ = async (dbName, itemId) => {
+const deleteItem = async (dbName, itemId) => {
   try {
     _validateDbInput(dbName)
 
@@ -735,9 +735,9 @@ const findDatabases = async () => {
 export default {
   openDatabase,
   findDatabases,
-  insert,
-  update,
-  'delete': delete_,
+  insertItem,
+  updateItem,
+  deleteItem,
   transaction,
 
   // used internally

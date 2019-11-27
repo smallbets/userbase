@@ -22,8 +22,8 @@ export default {
 
   openDatabase: db.openDatabase,
 
-  insert: db.insert,
-  update: db.update,
-  delete: db.delete,
+  insertItem: db.insertItem,
+  updateItem: db.updateItem,
+  deleteItem: db.deleteItem,
   transaction: db.transaction
 }
