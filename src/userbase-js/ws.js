@@ -18,12 +18,13 @@ const SERVICE_RESTART = 1012
 const NO_PONG_RECEIVED = 3000
 
 class RequestFailed extends Error {
-  constructor(action, response, ...params) {
+  constructor(action, e, ...params) {
     super(...params)
 
     this.name = `RequestFailed: ${action}`
-    this.message = response.message || response.data || 'Error'
-    this.status = response.status || (response.message === 'timeout' && statusCodes['Gateway Timeout'])
+    this.message = e.message
+    this.status = e.status || (e.message === 'timeout' && statusCodes['Gateway Timeout'])
+    this.response = e.status && e
   }
 }
 
@@ -499,9 +500,9 @@ class Connection {
     try {
       const response = await responseWatcher
       return response
-    } catch (response) {
+    } catch (e) {
       // process any errors and re-throw them
-      throw new RequestFailed(action, response)
+      throw new RequestFailed(action, e)
     }
   }
 

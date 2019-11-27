@@ -396,9 +396,9 @@ const _createDatabase = async (dbName, dbNameHash) => {
     try {
       await ws.request(action, params)
     } catch (e) {
-      if (e.message === 'Database already creating') {
+      if (e.response && e.response.data === 'Database already creating') {
         throw new errors.DatabaseAlreadyOpening
-      } else if (e.message !== 'Database already exists') {
+      } else if (e.response && e.response.data !== 'Database already exists') {
         throw e
       }
     }
@@ -455,7 +455,7 @@ const getOpenDb = (dbName) => {
   return database
 }
 
-const insert = async (dbName, item, id) => {
+const insertItem = async (dbName, item, id) => {
   try {
     _validateDbInput(dbName)
 
@@ -464,12 +464,7 @@ const insert = async (dbName, item, id) => {
     const action = 'Insert'
     const params = await _buildInsertParams(database, item, id)
 
-    try {
-      await postTransaction(database, action, params)
-    } catch (e) {
-      _parseGenericErrors(e)
-      throw e
-    }
+    await postTransaction(database, action, params)
 
   } catch (e) {
 
@@ -513,7 +508,7 @@ const _buildInsertParams = async (database, item, id) => {
   return { itemKey, encryptedItem }
 }
 
-const update = async (dbName, item, id) => {
+const updateItem = async (dbName, item, id) => {
   try {
     _validateDbInput(dbName)
 
@@ -567,7 +562,7 @@ const _buildUpdateParams = async (database, item, itemId) => {
   return { itemKey, encryptedItem }
 }
 
-const delete_ = async (dbName, itemId) => {
+const deleteItem = async (dbName, itemId) => {
   try {
     _validateDbInput(dbName)
 
@@ -619,7 +614,6 @@ const transaction = async (dbName, operations) => {
   try {
     _validateDbInput(dbName)
 
-    if (!operations) throw new errors.OperationsMissing
     if (!Array.isArray(operations)) throw new errors.OperationsMustBeArray
 
     const database = getOpenDb(dbName)
@@ -662,7 +656,15 @@ const transaction = async (dbName, operations) => {
       }))
     }
 
-    await postTransaction(database, action, params)
+    try {
+      await postTransaction(database, action, params)
+    } catch (e) {
+      if (e.response && e.response.data.error === 'OperationsExceedLimit') {
+        throw new errors.OperationsExceedLimit(e.response.data.limit)
+      }
+      throw e
+    }
+
   } catch (e) {
 
     switch (e.name) {
@@ -670,9 +672,9 @@ const transaction = async (dbName, operations) => {
       case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
       case 'DatabaseNameTooLong':
-      case 'OperationsMissing':
       case 'OperationsMustBeArray':
       case 'OperationsConflict':
+      case 'OperationsExceedLimit':
       case 'ItemIdMustBeString':
       case 'ItemIdCannotBeBlank':
       case 'ItemIdTooLong':
@@ -691,22 +693,27 @@ const transaction = async (dbName, operations) => {
 }
 
 const postTransaction = async (database, action, params) => {
-  const pendingTx = database.registerUnverifiedTransaction()
+  try {
+    const pendingTx = database.registerUnverifiedTransaction()
 
-  const paramsWithDbData = {
-    ...params,
-    dbId: database.dbId,
-    dbNameHash: ws.state.dbIdToHash[database.dbId]
+    const paramsWithDbData = {
+      ...params,
+      dbId: database.dbId,
+      dbNameHash: ws.state.dbIdToHash[database.dbId]
+    }
+
+    const response = await ws.request(action, paramsWithDbData)
+    const seqNo = response.data.sequenceNo
+
+    await pendingTx.getResult(seqNo)
+
+    database.unregisterUnverifiedTransaction(pendingTx)
+
+    return seqNo
+  } catch (e) {
+    _parseGenericErrors(e)
+    throw e
   }
-
-  const response = await ws.request(action, paramsWithDbData)
-  const seqNo = response.data.sequenceNo
-
-  await pendingTx.getResult(seqNo)
-
-  database.unregisterUnverifiedTransaction(pendingTx)
-
-  return seqNo
 }
 
 const findDatabases = async () => {
@@ -735,9 +742,9 @@ const findDatabases = async () => {
 export default {
   openDatabase,
   findDatabases,
-  insert,
-  update,
-  'delete': delete_,
+  insertItem,
+  updateItem,
+  deleteItem,
   transaction,
 
   // used internally
