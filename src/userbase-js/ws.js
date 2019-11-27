@@ -41,7 +41,9 @@ class Connection {
     this.init()
   }
 
-  init(resolveConnection, rejectConnection, username, sessionId, seedString, rememberMe) {
+  init(resolveConnection, rejectConnection, username, sessionId, seedString, rememberMe, backUpKey) {
+    if (this.pingTimeout) clearTimeout(this.pingTimeout)
+
     for (const property of Object.keys(this)) {
       delete this[property]
     }
@@ -63,6 +65,7 @@ class Connection {
     }
 
     this.rememberMe = rememberMe
+    this.backUpKey = backUpKey
 
     this.requests = {}
 
@@ -78,7 +81,7 @@ class Connection {
     }
   }
 
-  connect(appId, sessionId, username, seedString = null, rememberMe = false, reconnectDelay) {
+  connect(appId, sessionId, username, seedString = null, rememberMe = false, backUpKey = true, reconnectDelay) {
     if (this.connected) throw new WebSocketError(wsAlreadyConnected, this.username)
 
     return new Promise((resolve, reject) => {
@@ -110,7 +113,7 @@ class Connection {
           return
         }
 
-        this.init(resolve, reject, username, sessionId, seedString, rememberMe)
+        this.init(resolve, reject, username, sessionId, seedString, rememberMe, backUpKey)
         this.ws = ws
         this.heartbeat()
 
@@ -146,7 +149,8 @@ class Connection {
             ? 0
             : (reconnectDelay ? reconnectDelay + BACKOFF_RETRY_DELAY : 1000)
 
-          await this.reconnect(delay, appId, resolve, reject, username, sessionId, seedString, rememberMe)
+          this.reconnecting = true
+          await this.reconnect(appId, resolve, reject, username, sessionId, seedString, rememberMe, backUpKey, delay)
         } else {
           this.init()
         }
@@ -154,7 +158,7 @@ class Connection {
     })
   }
 
-  async reconnect(reconnectDelay, appId, resolveConnection, rejectConnection, username, sessionId, seedString, rememberMe) {
+  async reconnect(appId, resolveConnection, rejectConnection, username, sessionId, seedString, rememberMe, backUpKey, reconnectDelay) {
     try {
       const retryDelay = Math.min(reconnectDelay, MAX_RETRY_DELAY)
       console.log(`Connection to server lost. Attempting to reconnect in ${retryDelay / 1000} second${retryDelay !== 1000 ? 's' : ''}...`)
@@ -175,9 +179,9 @@ class Connection {
             this.init()
             this.reconnecting = true
 
-            // setting this.state = state here and after connect() maintains memory references
+            // setting this.state = state here and after connect() maintains underlying memory references
             this.state = state
-            const result = await this.connect(appId, sessionId, username, seedString, rememberMe, reconnectDelay)
+            const result = await this.connect(appId, sessionId, username, seedString, rememberMe, backUpKey, reconnectDelay)
             this.state = state
 
             resolve(result)
@@ -208,6 +212,10 @@ class Connection {
       }
 
       await Promise.all(openDatabasePromises)
+
+      for (const dbNameHash in this.state.databases) {
+        this.state.databases[dbNameHash].reopening = false
+      }
 
     } catch (e) {
       for (const dbNameHash in this.state.databases) {
