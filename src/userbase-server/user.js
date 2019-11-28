@@ -140,7 +140,7 @@ const _buildSignUpParams = async (username, passwordSecureHash, appId, userId,
 }
 
 const _validatePassword = async (passwordSecureHash, user) => {
-  if (!user) throw new Error('User does not exist')
+  if (!user || user['deleted']) throw new Error('UserNotFound')
 
   const passwordIsCorrect = await crypto.bcrypt.compare(passwordSecureHash, user['password-hash'])
 
@@ -320,8 +320,8 @@ exports.authenticateUser = async function (req, res, next) {
       getAppByAppId(session['app-id'])
     ])
 
-    if (!user) return res.status(statusCodes['Not Found']).send('User not found')
-    if (!app) return res.status(statusCodes['Not Found']).send('App not found')
+    if (!user || user['deleted']) return res.status(statusCodes['Unauthorized']).send('Session invalid')
+    if (!app) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
 
     res.locals.user = user // makes user object available in next route
     next()
@@ -1032,7 +1032,7 @@ const setTempPassword = async (username, appId, tempPassword) => {
       'app-id': appId
     },
     UpdateExpression: 'set #tempPassword = :tempPassword, #tempPasswordCreationDate = :tempPasswordCreationDate',
-    ConditionExpression: 'attribute_exists(username)',
+    ConditionExpression: 'attribute_exists(username) and attribute_not_exists(deleted)',
     ExpressionAttributeNames: {
       '#tempPassword': 'temp-password',
       '#tempPasswordCreationDate': 'temp-password-creation-date'
@@ -1104,47 +1104,38 @@ exports.forgotPassword = async function (req, res) {
   }
 }
 
-const _updateUserExcludingUsernameUpdate = async (username, appId, userId, passwordSecureHash, email, profile, passwordBasedBackup) => {
-  const updateUserParams = {
-    TableName: setup.usersTableName,
-    Key: {
-      'username': username,
-      'app-id': appId
-    },
-    ConditionExpression: 'attribute_exists(username) and #userId = :userId',
-  }
+const _updateUserExcludingUsernameUpdate = async (user, userId, passwordSecureHash, email, profile, passwordBasedBackup) => {
+  const updateUserParams = conditionCheckUserExists(user['username'], user['app-id'], userId)
 
   let UpdateExpression = ''
-  const ExpressionAttributeNames = { '#userId': 'user-id' }
-  const ExpressionAttributeValues = { ':userId': userId }
 
   if (passwordSecureHash || email || profile) {
     UpdateExpression = 'SET '
 
     if (passwordSecureHash) {
       UpdateExpression += '#passwordHash = :passwordHash'
-      ExpressionAttributeNames['#passwordHash'] = 'password-hash'
-      ExpressionAttributeValues[':passwordHash'] = await crypto.bcrypt.hash(passwordSecureHash)
+      updateUserParams.ExpressionAttributeNames['#passwordHash'] = 'password-hash'
+      updateUserParams.ExpressionAttributeValues[':passwordHash'] = await crypto.bcrypt.hash(passwordSecureHash)
     }
 
     if (email) {
       UpdateExpression += (passwordSecureHash ? ', ' : '') + 'email = :email'
-      ExpressionAttributeValues[':email'] = email.toLowerCase()
+      updateUserParams.ExpressionAttributeValues[':email'] = email.toLowerCase()
     }
 
     if (profile) {
       UpdateExpression += ((passwordSecureHash || email) ? ', ' : '') + 'profile = :profile'
-      ExpressionAttributeValues[':profile'] = profile
+      updateUserParams.ExpressionAttributeValues[':profile'] = profile
     }
 
     if (passwordBasedBackup) {
       UpdateExpression += ', #pbkdfKeySalt = :pbkdfKeySalt, #passwordEncryptedSeed = :passwordEncryptedSeed'
 
-      ExpressionAttributeNames['#pbkdfKeySalt'] = 'pbkdf-key-salt'
-      ExpressionAttributeNames['#passwordEncryptedSeed'] = 'password-encrypted-seed'
+      updateUserParams.ExpressionAttributeNames['#pbkdfKeySalt'] = 'pbkdf-key-salt'
+      updateUserParams.ExpressionAttributeNames['#passwordEncryptedSeed'] = 'password-encrypted-seed'
 
-      ExpressionAttributeValues[':pbkdfKeySalt'] = passwordBasedBackup.pbkdfKeySalt
-      ExpressionAttributeValues[':passwordEncryptedSeed'] = passwordBasedBackup.passwordEncryptedSeed
+      updateUserParams.ExpressionAttributeValues[':pbkdfKeySalt'] = passwordBasedBackup.pbkdfKeySalt
+      updateUserParams.ExpressionAttributeValues[':passwordEncryptedSeed'] = passwordBasedBackup.passwordEncryptedSeed
     }
   }
 
@@ -1161,29 +1152,21 @@ const _updateUserExcludingUsernameUpdate = async (username, appId, userId, passw
   }
 
   updateUserParams.UpdateExpression = UpdateExpression
-  updateUserParams.ExpressionAttributeNames = ExpressionAttributeNames
-  updateUserParams.ExpressionAttributeValues = ExpressionAttributeValues
 
-  const ddbClient = connection.ddbClient()
-  await ddbClient.update(updateUserParams).promise()
+  try {
+    const ddbClient = connection.ddbClient()
+    await ddbClient.update(updateUserParams).promise()
+  } catch (e) {
+    if (e.name === 'ConditionalCheckFailedException') {
+      throw new Error('UserNotFound')
+    }
+    throw e
+  }
 }
 
-const _updateUserIncludingUsernameUpdate = async (oldUser, appId, userId, username, passwordSecureHash, email, profile, passwordBasedBackup) => {
+const _updateUserIncludingUsernameUpdate = async (oldUser, userId, username, passwordSecureHash, email, profile, passwordBasedBackup) => {
   // if updating username, need to Delete existing DDB item and Put new one because username is partition key
-  const deleteUserParams = {
-    TableName: setup.usersTableName,
-    Key: {
-      'username': oldUser['username'],
-      'app-id': appId
-    },
-    ConditionExpression: 'attribute_exists(username) and #userId = :userId',
-    ExpressionAttributeNames: {
-      '#userId': 'user-id'
-    },
-    ExpressionAttributeValues: {
-      ':userId': userId
-    }
-  }
+  const deleteUserParams = conditionCheckUserExists(oldUser['username'], oldUser['app-id'], userId)
 
   const updatedUser = {
     ...oldUser,
@@ -1222,11 +1205,20 @@ const _updateUserIncludingUsernameUpdate = async (oldUser, appId, userId, userna
     ]
   }
 
-  const ddbClient = connection.ddbClient()
-  await ddbClient.transactWrite(params).promise()
+  try {
+    const ddbClient = connection.ddbClient()
+    await ddbClient.transactWrite(params).promise()
+  } catch (e) {
+    if (e.message.includes('[ConditionalCheckFailed')) {
+      throw new Error('UserNotFound')
+    } else if (e.message.includes('ConditionalCheckFailed]')) {
+      throw new Error('UsernameAlreadyExists')
+    }
+    throw e
+  }
 }
 
-exports.updateUser = async function (userId, appId, username, passwordSecureHash, email, profile, pbkdfKeySalt, passwordEncryptedSeed) {
+exports.updateUser = async function (userId, username, passwordSecureHash, email, profile, pbkdfKeySalt, passwordEncryptedSeed) {
   if (!username && !passwordSecureHash && !email && !profile && email !== false && profile !== false) {
     return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing all params')
   }
@@ -1242,6 +1234,7 @@ exports.updateUser = async function (userId, appId, username, passwordSecureHash
 
   try {
     const user = await getUserByUserId(userId)
+    if (!user || user['deleted']) throw new Error('UserNotFound')
 
     const passwordBasedBackup = user['pbkdf-key-salt'] // password-based key recovery must be enabled
       && pbkdfKeySalt && passwordEncryptedSeed && { pbkdfKeySalt, passwordEncryptedSeed }
@@ -1251,7 +1244,7 @@ exports.updateUser = async function (userId, appId, username, passwordSecureHash
 
     if (username && username.toLowerCase() !== user['username']) {
       try {
-        await _updateUserIncludingUsernameUpdate(user, appId, userId, username, passwordSecureHash, email, profile, passwordBasedBackup)
+        await _updateUserIncludingUsernameUpdate(user, userId, username, passwordSecureHash, email, profile, passwordBasedBackup)
       } catch (e) {
 
         if (e.message.includes('ConditionalCheckFailed]')) {
@@ -1262,12 +1255,57 @@ exports.updateUser = async function (userId, appId, username, passwordSecureHash
       }
 
     } else {
-      await _updateUserExcludingUsernameUpdate(user['username'], appId, userId, passwordSecureHash, email, profile, passwordBasedBackup)
+      await _updateUserExcludingUsernameUpdate(user, userId, passwordSecureHash, email, profile, passwordBasedBackup)
     }
 
     return responseBuilder.successResponse()
   } catch (e) {
+    if (e.message === 'UserNotFound') return responseBuilder.errorResponse(statusCodes['Not Found'], 'UserNotFound')
+    else if (e.message === 'UsernameAlreadyExists') return responseBuilder.errorResponse(statusCodes['Conflict'], 'UsernameAlreadyExists')
+
     logger.error(`Failed to update user '${userId}' with ${e}`)
     return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to update user')
   }
 }
+
+exports.deleteUser = async function (userId) {
+  try {
+    const user = await getUserByUserId(userId)
+    if (!user || user['deleted']) return responseBuilder.errorResponse(statusCodes['Not Found'], 'UserNotFound')
+
+    const params = conditionCheckUserExists(user['username'], user['app-id'], userId)
+
+    params.UpdateExpression = 'set deleted = :deleted'
+    params.ExpressionAttributeValues[':deleted'] = new Date().toISOString()
+
+    const ddbClient = connection.ddbClient()
+    await ddbClient.update(params).promise()
+
+    return responseBuilder.successResponse()
+  } catch (e) {
+    if (e.name === 'ConditionalCheckFailedException') {
+      return responseBuilder.errorResponse(statusCodes['Not Found'], 'UserNotFound')
+    }
+
+    logger.error(`Failed to delete user '${userId}' with ${e}`)
+    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to delete user')
+  }
+}
+
+const conditionCheckUserExists = (username, appId, userId) => {
+  return {
+    TableName: setup.usersTableName,
+    Key: {
+      username,
+      'app-id': appId
+    },
+    ConditionExpression: 'attribute_exists(username) and attribute_not_exists(deleted) and #userId = :userId',
+    ExpressionAttributeNames: {
+      '#userId': 'user-id'
+    },
+    ExpressionAttributeValues: {
+      ':userId': userId
+    }
+  }
+}
+exports.conditionCheckUserExists = conditionCheckUserExists

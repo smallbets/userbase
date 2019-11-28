@@ -368,6 +368,7 @@ class Connection {
 
       case 'SignOut':
       case 'UpdateUser':
+      case 'DeleteUser':
       case 'CreateDatabase':
       case 'GetDatabase':
       case 'OpenDatabase':
