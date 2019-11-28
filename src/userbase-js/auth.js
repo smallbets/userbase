@@ -18,6 +18,8 @@ const _parseGenericErrors = (e) => {
   if (e.response) {
     if (e.response.data === 'App ID not valid') {
       throw new errors.AppIdNotValid(e.response.status)
+    } else if (e.response.data === 'UserNotFound') {
+      throw new errors.UserNotFound
     } else if (e.response.status === statusCodes['Internal Server Error']) {
       throw new errors.InternalServerError
     } else if (e.response.status === statusCodes['Gateway Timeout']) {
@@ -569,12 +571,8 @@ const forgotPassword = async (username) => {
     } catch (e) {
       _parseGenericErrors(e)
 
-      if (e.response) {
-        if (e.response.data === 'UserNotFound') {
-          throw new errors.UserNotFound
-        } else if (e.response.data === 'UserEmailNotFound') {
-          throw new errors.UserEmailNotFound
-        }
+      if (e.response && e.response.data === 'UserEmailNotFound') {
+        throw new errors.UserEmailNotFound
       }
 
       throw e
@@ -685,7 +683,43 @@ const updateUser = async (user) => {
       case 'ProfileValueTooLong':
       case 'AppIdNotSet':
       case 'AppIdNotValid':
+      case 'UserNotFound':
       case 'UserNotSignedIn':
+      case 'ServiceUnavailable':
+        throw e
+
+      default:
+        throw new errors.ServiceUnavailable
+    }
+
+  }
+}
+
+const deleteUser = async () => {
+  try {
+    if (ws.reconnecting) throw new errors.Reconnecting
+    if (!ws.keys.init) throw new errors.UserNotSignedIn
+
+    const username = ws.username
+    localData.removeSeedString(username)
+    localData.removeSeedRequest(username)
+    localData.removeCurrentSession(username)
+
+    try {
+      const action = 'DeleteUser'
+      await ws.request(action)
+    } catch (e) {
+      _parseGenericErrors(e)
+      throw e
+    }
+
+    ws.close()
+
+  } catch (e) {
+
+    switch (e.name) {
+      case 'UserNotSignedIn':
+      case 'UserNotFound':
       case 'ServiceUnavailable':
         throw e
 
@@ -705,5 +739,6 @@ export default {
   grantDatabaseAccess,
   importKey,
   forgotPassword,
-  updateUser
+  updateUser,
+  deleteUser
 }

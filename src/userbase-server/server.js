@@ -66,7 +66,6 @@ async function start(express, app, userbaseConfig = {}) {
       const userId = res.locals.user['user-id']
       const username = res.locals.user['username']
       const userPublicKey = res.locals.user['public-key']
-      const appId = res.locals.user['app-id']
 
       const conn = connections.register(userId, ws)
       const connectionId = conn.id
@@ -143,7 +142,6 @@ async function start(express, app, userbaseConfig = {}) {
               case 'UpdateUser': {
                 response = await user.updateUser(
                   userId,
-                  appId,
                   params.username,
                   params.passwordSecureHash,
                   params.email,
@@ -151,6 +149,10 @@ async function start(express, app, userbaseConfig = {}) {
                   params.pbkdfKeySalt,
                   params.passwordEncryptedSeed
                 )
+                break
+              }
+              case 'DeleteUser': {
+                response = await user.deleteUser(userId)
                 break
               }
               case 'CreateDatabase': {

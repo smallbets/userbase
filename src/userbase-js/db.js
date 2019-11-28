@@ -19,7 +19,9 @@ const MAX_ITEM_BYTES = TEN_KB
 
 const _parseGenericErrors = (e) => {
   if (e.response) {
-    if (e.response.status === statusCodes['Internal Server Error']) {
+    if (e.response.data === 'UserNotFound') {
+      throw new errors.UserNotFound
+    } else if (e.response.status === statusCodes['Internal Server Error']) {
       throw new errors.InternalServerError
     } else if (e.response.status === statusCodes['Gateway Timeout']) {
       throw new errors.Timeout
@@ -396,11 +398,20 @@ const _createDatabase = async (dbName, dbNameHash) => {
     try {
       await ws.request(action, params)
     } catch (e) {
-      if (e.response && e.response.data === 'Database already creating') {
-        throw new errors.DatabaseAlreadyOpening
-      } else if (e.response && e.response.data !== 'Database already exists') {
-        throw e
+      _parseGenericErrors(e)
+
+      if (e.response) {
+        const data = e.response.data
+
+        if (data === 'Database already creating') {
+          throw new errors.DatabaseAlreadyOpening
+        } else if (data === 'Database already exists') {
+          // safe return
+          return
+        }
       }
+
+      throw e
     }
 
   } catch (e) {
@@ -439,6 +450,7 @@ const openDatabase = async (dbName, changeHandler) => {
       case 'DatabaseNameTooLong':
       case 'ChangeHandlerMustBeFunction':
       case 'UserNotSignedIn':
+      case 'UserNotFound':
       case 'ServiceUnavailable':
         throw e
 
@@ -480,6 +492,7 @@ const insertItem = async (dbName, item, id) => {
       case 'ItemTooLarge':
       case 'ItemAlreadyExists':
       case 'UserNotSignedIn':
+      case 'UserNotFound':
       case 'ServiceUnavailable':
         throw e
 
@@ -533,6 +546,7 @@ const updateItem = async (dbName, item, id) => {
       case 'ItemDoesNotExist':
       case 'ItemUpdateConflict':
       case 'UserNotSignedIn':
+      case 'UserNotFound':
       case 'ServiceUnavailable':
         throw e
 
@@ -585,6 +599,7 @@ const deleteItem = async (dbName, itemId) => {
       case 'ItemDoesNotExist':
       case 'ItemUpdateConflict':
       case 'UserNotSignedIn':
+      case 'UserNotFound':
       case 'ServiceUnavailable':
         throw e
 
@@ -683,6 +698,7 @@ const transaction = async (dbName, operations) => {
       case 'ItemDoesNotExist':
       case 'ItemUpdateConflict':
       case 'UserNotSignedIn':
+      case 'UserNotFound':
       case 'ServiceUnavailable':
         throw e
 

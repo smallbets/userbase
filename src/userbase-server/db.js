@@ -17,42 +17,47 @@ exports.createDatabase = async function (userId, dbNameHash, dbId, encryptedDbNa
   if (!encryptedDbName) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name')
   if (!encryptedDbKey) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database key')
 
-  const database = {
-    'database-id': dbId,
-    'owner-id': userId,
-    'database-name': encryptedDbName
-  }
-
-  const userDatabase = {
-    'user-id': userId,
-    'database-name-hash': dbNameHash,
-    'database-id': dbId,
-    'encrypted-db-key': encryptedDbKey,
-  }
-
-  const params = {
-    TransactItems: [{
-      Put: {
-        TableName: setup.databaseTableName,
-        Item: database,
-        ConditionExpression: 'attribute_not_exists(#dbId)',
-        ExpressionAttributeNames: {
-          '#dbId': 'database-id',
-        }
-      }
-    }, {
-      Put: {
-        TableName: setup.userDatabaseTableName,
-        Item: userDatabase,
-        ConditionExpression: 'attribute_not_exists(#userId)',
-        ExpressionAttributeNames: {
-          '#userId': 'user-id',
-        }
-      }
-    }]
-  }
-
   try {
+    const user = await userController.getUserByUserId(userId)
+    if (!user || user['deleted']) throw new Error('UserNotFound')
+
+    const database = {
+      'database-id': dbId,
+      'owner-id': userId,
+      'database-name': encryptedDbName
+    }
+
+    const userDatabase = {
+      'user-id': userId,
+      'database-name-hash': dbNameHash,
+      'database-id': dbId,
+      'encrypted-db-key': encryptedDbKey,
+    }
+
+    const params = {
+      TransactItems: [{
+        Put: {
+          TableName: setup.databaseTableName,
+          Item: database,
+          ConditionExpression: 'attribute_not_exists(#dbId)',
+          ExpressionAttributeNames: {
+            '#dbId': 'database-id',
+          }
+        }
+      }, {
+        Put: {
+          TableName: setup.userDatabaseTableName,
+          Item: userDatabase,
+          ConditionExpression: 'attribute_not_exists(#userId)',
+          ExpressionAttributeNames: {
+            '#userId': 'user-id',
+          }
+        }
+      }, {
+        ConditionCheck: userController.conditionCheckUserExists(user['username'], user['app-id'], userId)
+      }]
+    }
+
     const ddbClient = connection.ddbClient()
     await ddbClient.transactWrite(params).promise()
 
@@ -60,11 +65,17 @@ exports.createDatabase = async function (userId, dbNameHash, dbId, encryptedDbNa
 
     return responseBuilder.successResponse('Success!')
   } catch (e) {
-    if (e.message && e.message.includes('ConditionalCheckFailed')) {
-      return responseBuilder.errorResponse(statusCodes['Conflict'], 'Database already exists')
-    } else if (e.message && e.message.includes('TransactionConflict')) {
-      return responseBuilder.errorResponse(statusCodes['Conflict'], 'Database already creating')
+
+    if (e.message) {
+      if (e.message.includes('ConditionalCheckFailed]') || e.message.includes('UserNotFound')) {
+        return responseBuilder.errorResponse(statusCodes['Conflict'], 'UserNotFound')
+      } else if (e.message.includes('ConditionalCheckFailed')) {
+        return responseBuilder.errorResponse(statusCodes['Conflict'], 'Database already exists')
+      } else if (e.message.includes('TransactionConflict')) {
+        return responseBuilder.errorResponse(statusCodes['Conflict'], 'Database already creating')
+      }
     }
+
     logger.error(`Failed to create database for user ${userId} with ${e}`)
     return responseBuilder.errorResponse(
       statusCodes['Internal Server Error'],
@@ -323,6 +334,9 @@ exports.rollbackTransaction = rollbackTransaction
 
 const failedTxConditionCheckMsg = 'Make sure user has write permission to this db and the db id and hash are correct'
 const putTransaction = async function (transaction, userId, dbNameHash, databaseId) {
+  const user = await userController.getUserByUserId(userId)
+  if (!user || user['deleted']) throw new Error('UserNotFound')
+
   const transactionWithSequenceNo = memcache.pushTransaction(transaction)
 
   const params = {
@@ -333,6 +347,7 @@ const putTransaction = async function (transaction, userId, dbNameHash, database
           'user-id': userId,
           'database-name-hash': dbNameHash
         },
+        // ensure user has write permissions and db id matches
         ConditionExpression: '#readOnly <> :readOnly and #dbId = :dbId',
         ExpressionAttributeNames: {
           '#readOnly': 'read-only',
@@ -352,6 +367,8 @@ const putTransaction = async function (transaction, userId, dbNameHash, database
           '#databaseId': 'database-id'
         },
       }
+    }, {
+      ConditionCheck: userController.conditionCheckUserExists(user['username'], user['app-id'], userId)
     }]
   }
 
@@ -367,6 +384,8 @@ const putTransaction = async function (transaction, userId, dbNameHash, database
       // impossible to determine which condition in the expression failed
       if (e.message.includes('[ConditionalCheckFailed')) {
         throw new Error(failedTxConditionCheckMsg)
+      } else if (e.message.includes('ConditionalCheckFailed]')) {
+        throw new Error('UserNotFound')
       }
 
     } else {
@@ -400,7 +419,10 @@ exports.doCommand = async function (command, userId, dbNameHash, databaseId, key
     return responseBuilder.successResponse({ sequenceNo })
   } catch (e) {
     if (e.message === failedTxConditionCheckMsg) return responseBuilder.errorResponse(statusCodes['Bad Request'], failedTxConditionCheckMsg)
-    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to ${command} with ${e}`)
+    else if (e.message === 'UserNotFound') return responseBuilder.errorResponse(statusCodes['Not Found'], 'UserNotFound')
+
+    logger.warn(`Failed command ${command} for user ${userId} with ${e}`)
+    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to ${command}`)
   }
 }
 
@@ -445,7 +467,10 @@ exports.batchTransaction = async function (userId, dbNameHash, databaseId, opera
     return responseBuilder.successResponse({ sequenceNo })
   } catch (e) {
     if (e.message === failedTxConditionCheckMsg) return responseBuilder.errorResponse(statusCodes['Bad Request'], failedTxConditionCheckMsg)
-    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to batch with ${e}`)
+    else if (e.message === 'UserNotFound') return responseBuilder.errorResponse(statusCodes['Not Found'], 'UserNotFound')
+
+    logger.warn(`Failed batch transaction for user ${userId} with ${e}`)
+    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to batch transaction')
   }
 }
 
