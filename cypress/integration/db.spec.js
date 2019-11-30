@@ -30,7 +30,7 @@ describe('DB Testing', function () {
           cy.log('user', user)
           cy.spy(util, 'changeHandler')
           return userbase.openDatabase(info.dbName, util.changeHandler).then(() => {
-            expect(util.changeHandler, 'Checks if the changeHandler has being called').to.be.calledWith([])
+            expect(util.changeHandler, 'Checks if the changeHandler has being called with empty array').to.be.calledWith([])
           })
         })
         .catch((e) => {
