@@ -51,6 +51,8 @@ const removeSeedRequest = (username) => {
   return localStorage.removeItem(`userbaseSeedRequest.${username}`)
 }
 
+const removeCurrentSession = () => localStorage.removeItem('userbaseCurrentSession')
+
 export default {
   signInSession,
   signOutSession,
@@ -61,4 +63,5 @@ export default {
   setSeedRequest,
   getSeedRequest,
   removeSeedRequest,
+  removeCurrentSession,
 }

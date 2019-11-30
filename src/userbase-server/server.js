@@ -56,8 +56,8 @@ async function start(express, app, userbaseConfig = {}) {
       app(req, res)
     })
 
-    const heartbeat = function () {
-      this.isAlive = true
+    const heartbeat = function (ws) {
+      ws.isAlive = true
     }
 
     wss.on('connection', (ws, req, res) => {
@@ -66,7 +66,6 @@ async function start(express, app, userbaseConfig = {}) {
       const userId = res.locals.user['user-id']
       const username = res.locals.user['username']
       const userPublicKey = res.locals.user['public-key']
-      const appId = res.locals.user['app-id']
 
       const conn = connections.register(userId, ws)
       const connectionId = conn.id
@@ -85,10 +84,11 @@ async function start(express, app, userbaseConfig = {}) {
         encryptedValidationMessage
       }))
 
-      ws.on('pong', heartbeat)
       ws.on('close', () => connections.close(conn))
 
       ws.on('message', async (msg) => {
+        ws.isAlive = true
+
         try {
           if (msg.length > FOUR_HUNDRED_KB || msg.byteLength > FOUR_HUNDRED_KB) return ws.send('Message is too large')
 
@@ -100,7 +100,10 @@ async function start(express, app, userbaseConfig = {}) {
 
           let response
 
-          if (action === 'SignOut') {
+          if (action === 'Pong') {
+            heartbeat(ws)
+            return
+          } else if (action === 'SignOut') {
             response = await user.signOut(params.sessionId)
           } else if (!conn.keyValidated) {
 
@@ -139,12 +142,17 @@ async function start(express, app, userbaseConfig = {}) {
               case 'UpdateUser': {
                 response = await user.updateUser(
                   userId,
-                  appId,
                   params.username,
                   params.passwordSecureHash,
                   params.email,
-                  params.profile
+                  params.profile,
+                  params.pbkdfKeySalt,
+                  params.passwordEncryptedSeed
                 )
+                break
+              }
+              case 'DeleteUser': {
+                response = await user.deleteUser(userId)
                 break
               }
               case 'CreateDatabase': {
@@ -251,7 +259,7 @@ async function start(express, app, userbaseConfig = {}) {
         if (ws.isAlive === false) return ws.terminate()
 
         ws.isAlive = false
-        ws.ping(() => { })
+        ws.send(JSON.stringify({ route: 'Ping' }))
       })
     }, 30000)
 

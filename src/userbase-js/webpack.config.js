@@ -9,24 +9,41 @@ module.exports = (env) => {
   const version = packageJson.version
   const buildType = env.BUILD_TYPE
 
-  const output = {
-    path: path.join(__dirname, `../../${buildType === 'sdk-script' ? 'build/script/' : 'npm_build/userbase-js/'}`),
-    filename: buildType === 'sdk-script' ? `userbase-${version}.js` : 'index.js',
-  }
+  let config = {}
+  if (buildType === 'sdk-script') {
 
-  if (buildType === 'npm-package') {
-    output.libraryTarget = 'umd' // makes default exportable
+    config = {
+      entry: {
+        main: './src/userbase-js/userbase.js'
+      },
+      output: {
+        path: path.join(__dirname, '../../build/script/'),
+        filename: `userbase-${version}.js`,
+      },
+      target: 'web'
+    }
+
+  } else if (buildType === 'npm-package') {
+
+    config = {
+      entry: {
+        main: './src/userbase-js/'
+      },
+      output: {
+        path: path.join(__dirname, '../../npm_build/userbase-js/'),
+        filename: 'index.js',
+        libraryTarget: 'umd' // makes default exportable
+      },
+      target: 'node',
+      externals: [nodeExternals()] // ignores node modules
+    }
+
+  } else {
+    throw new Error('Unknown build type')
   }
 
   return {
-    entry: {
-      main: `../userbase-js/${buildType === 'sdk-script' ? 'userbase.js' : ''}`
-    },
-    output,
-    target: buildType === 'sdk-script' ? 'web' : 'node',
-    externals: buildType === 'npm-package'
-      ? [nodeExternals()] // ignores node_modules
-      : [],
+    ...config,
     devtool: 'source-map',
     resolve: {
       extensions: ['.js'],
@@ -51,12 +68,6 @@ module.exports = (env) => {
               presets: ['@babel/preset-env'],
               plugins: ['@babel/transform-runtime']
             }
-          }
-        },
-        {
-          test: /\.(woff|woff2|eot|ttf|otf|png|svg|jpg|gif)$/,
-          use: {
-            loader: 'url-loader'
           }
         }
       ]

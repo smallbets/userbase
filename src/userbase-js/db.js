@@ -19,7 +19,9 @@ const MAX_ITEM_BYTES = TEN_KB
 
 const _parseGenericErrors = (e) => {
   if (e.response) {
-    if (e.response.status === statusCodes['Internal Server Error']) {
+    if (e.response.data === 'UserNotFound') {
+      throw new errors.UserNotFound
+    } else if (e.response.status === statusCodes['Internal Server Error']) {
       throw new errors.InternalServerError
     } else if (e.response.status === statusCodes['Gateway Timeout']) {
       throw new errors.Timeout
@@ -396,11 +398,20 @@ const _createDatabase = async (dbName, dbNameHash) => {
     try {
       await ws.request(action, params)
     } catch (e) {
-      if (e.message === 'Database already creating') {
-        throw new errors.DatabaseAlreadyOpening
-      } else if (e.message !== 'Database already exists') {
-        throw e
+      _parseGenericErrors(e)
+
+      if (e.response) {
+        const data = e.response.data
+
+        if (data === 'Database already creating') {
+          throw new errors.DatabaseAlreadyOpening
+        } else if (data === 'Database already exists') {
+          // safe return
+          return
+        }
       }
+
+      throw e
     }
 
   } catch (e) {
@@ -414,6 +425,7 @@ const _validateDbInput = (dbName) => {
   if (dbName.length === 0) throw new errors.DatabaseNameCannotBeBlank
   if (dbName.length > MAX_DB_NAME_CHAR_LENGTH) throw new errors.DatabaseNameTooLong(MAX_DB_NAME_CHAR_LENGTH)
 
+  if (ws.reconnecting) throw new errors.Reconnecting
   if (!ws.keys.init) throw new errors.UserNotSignedIn
 }
 
@@ -438,6 +450,7 @@ const openDatabase = async (dbName, changeHandler) => {
       case 'DatabaseNameTooLong':
       case 'ChangeHandlerMustBeFunction':
       case 'UserNotSignedIn':
+      case 'UserNotFound':
       case 'ServiceUnavailable':
         throw e
 
@@ -454,7 +467,7 @@ const getOpenDb = (dbName) => {
   return database
 }
 
-const insert = async (dbName, item, id) => {
+const insertItem = async (dbName, item, id) => {
   try {
     _validateDbInput(dbName)
 
@@ -463,12 +476,7 @@ const insert = async (dbName, item, id) => {
     const action = 'Insert'
     const params = await _buildInsertParams(database, item, id)
 
-    try {
-      await postTransaction(database, action, params)
-    } catch (e) {
-      _parseGenericErrors(e)
-      throw e
-    }
+    await postTransaction(database, action, params)
 
   } catch (e) {
 
@@ -484,6 +492,7 @@ const insert = async (dbName, item, id) => {
       case 'ItemTooLarge':
       case 'ItemAlreadyExists':
       case 'UserNotSignedIn':
+      case 'UserNotFound':
       case 'ServiceUnavailable':
         throw e
 
@@ -512,7 +521,7 @@ const _buildInsertParams = async (database, item, id) => {
   return { itemKey, encryptedItem }
 }
 
-const update = async (dbName, item, id) => {
+const updateItem = async (dbName, item, id) => {
   try {
     _validateDbInput(dbName)
 
@@ -537,6 +546,7 @@ const update = async (dbName, item, id) => {
       case 'ItemDoesNotExist':
       case 'ItemUpdateConflict':
       case 'UserNotSignedIn':
+      case 'UserNotFound':
       case 'ServiceUnavailable':
         throw e
 
@@ -566,7 +576,7 @@ const _buildUpdateParams = async (database, item, itemId) => {
   return { itemKey, encryptedItem }
 }
 
-const delete_ = async (dbName, itemId) => {
+const deleteItem = async (dbName, itemId) => {
   try {
     _validateDbInput(dbName)
 
@@ -589,6 +599,7 @@ const delete_ = async (dbName, itemId) => {
       case 'ItemDoesNotExist':
       case 'ItemUpdateConflict':
       case 'UserNotSignedIn':
+      case 'UserNotFound':
       case 'ServiceUnavailable':
         throw e
 
@@ -618,7 +629,6 @@ const transaction = async (dbName, operations) => {
   try {
     _validateDbInput(dbName)
 
-    if (!operations) throw new errors.OperationsMissing
     if (!Array.isArray(operations)) throw new errors.OperationsMustBeArray
 
     const database = getOpenDb(dbName)
@@ -661,7 +671,15 @@ const transaction = async (dbName, operations) => {
       }))
     }
 
-    await postTransaction(database, action, params)
+    try {
+      await postTransaction(database, action, params)
+    } catch (e) {
+      if (e.response && e.response.data.error === 'OperationsExceedLimit') {
+        throw new errors.OperationsExceedLimit(e.response.data.limit)
+      }
+      throw e
+    }
+
   } catch (e) {
 
     switch (e.name) {
@@ -669,9 +687,9 @@ const transaction = async (dbName, operations) => {
       case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
       case 'DatabaseNameTooLong':
-      case 'OperationsMissing':
       case 'OperationsMustBeArray':
       case 'OperationsConflict':
+      case 'OperationsExceedLimit':
       case 'ItemIdMustBeString':
       case 'ItemIdCannotBeBlank':
       case 'ItemIdTooLong':
@@ -680,6 +698,7 @@ const transaction = async (dbName, operations) => {
       case 'ItemDoesNotExist':
       case 'ItemUpdateConflict':
       case 'UserNotSignedIn':
+      case 'UserNotFound':
       case 'ServiceUnavailable':
         throw e
 
@@ -690,22 +709,27 @@ const transaction = async (dbName, operations) => {
 }
 
 const postTransaction = async (database, action, params) => {
-  const pendingTx = database.registerUnverifiedTransaction()
+  try {
+    const pendingTx = database.registerUnverifiedTransaction()
 
-  const paramsWithDbData = {
-    ...params,
-    dbId: database.dbId,
-    dbNameHash: ws.state.dbIdToHash[database.dbId]
+    const paramsWithDbData = {
+      ...params,
+      dbId: database.dbId,
+      dbNameHash: ws.state.dbIdToHash[database.dbId]
+    }
+
+    const response = await ws.request(action, paramsWithDbData)
+    const seqNo = response.data.sequenceNo
+
+    await pendingTx.getResult(seqNo)
+
+    database.unregisterUnverifiedTransaction(pendingTx)
+
+    return seqNo
+  } catch (e) {
+    _parseGenericErrors(e)
+    throw e
   }
-
-  const response = await ws.request(action, paramsWithDbData)
-  const seqNo = response.data.sequenceNo
-
-  await pendingTx.getResult(seqNo)
-
-  database.unregisterUnverifiedTransaction(pendingTx)
-
-  return seqNo
 }
 
 const findDatabases = async () => {
@@ -734,9 +758,9 @@ const findDatabases = async () => {
 export default {
   openDatabase,
   findDatabases,
-  insert,
-  update,
-  'delete': delete_,
+  insertItem,
+  updateItem,
+  deleteItem,
   transaction,
 
   // used internally
