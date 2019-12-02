@@ -19,8 +19,7 @@ describe('DB Testing', function () {
 
       let util = {}
       function changeHandler(items) {
-        cy.log('I am in changeHandler')
-        return
+        cy.log('I am the changeHandler, just changed:', items)
       }
       util.changeHandler = changeHandler
 
@@ -30,7 +29,19 @@ describe('DB Testing', function () {
           cy.log('user', user)
           cy.spy(util, 'changeHandler')
           return userbase.openDatabase(info.dbName, util.changeHandler).then(() => {
-            expect(util.changeHandler, 'Checks if the changeHandler has being called with empty array').to.be.calledWith([])
+            expect(util.changeHandler, 'Checks if the changeHandler has being called with empty array').to.be.called
+            const items = [
+              { 'item1': "item1" },
+              { 'item2': 2 },
+              { 'item3': {'key': 'value'} }
+            ]
+            items.map( (item, index) => {
+              userbase.insertItem(info.dbName, item, index.toString()).then(
+                cy.log('Inserted: ', item)
+              )
+            })
+
+
           })
         })
         .catch((e) => {
@@ -38,21 +49,5 @@ describe('DB Testing', function () {
         })
     })
   })
-
-  // it('Check db status with existing user', function () {
-  //   cy.window().then(({ userbase }) => {
-  //     function keyNotFoundHandler() {
-  //       userbase.importKey(info.key)
-  //     }
-
-  //     userbase.init({ appId: info.appId, endpoint: info.endpoint, keyNotFoundHandler })
-  //     cy.getLoginInfo().then((ephemeralLoginInfo) => {
-  //       userbase.signIn(ephemeralLoginInfo.username, ephemeralLoginInfo.password, null, null, null, true).then((user) => {
-  //         cy.log('user', user)
-  //       })
-
-  //     })
-  //   })
-  // })
 
 })
