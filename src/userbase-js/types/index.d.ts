@@ -57,8 +57,10 @@ export interface DeleteOperation {
 
 export function openDatabase(dbName: string, changeHandler: (items: any[]) => void): Promise<void>
 
-export function insert(dbName: string, item: any, id?: string): Promise<void>
+export function insertItem(dbName: string, item: any, id?: string): Promise<void>
 
-export function update(dbName: string, item: any, id: string): Promise<void>
+export function updateItem(dbName: string, item: any, id: string): Promise<void>
+
+export function deleteItem(dbName: string, id: string): Promise<void>
 
 export function transaction(dbName: string, operations: DatabaseOperation[]): Promise<void>

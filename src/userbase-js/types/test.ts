@@ -8,8 +8,8 @@ import {
   importKey,
   getLastUsedUsername,
   openDatabase,
-  insert,
-  update,
+  insertItem,
+  updateItem,
   transaction
 } from './'
 
@@ -121,19 +121,19 @@ openDatabase('tdb', (items) => {})
 openDatabase('tdb')
 
 // $ExpectType Promise<void>
-insert('tdb', { name: 'tname' })
+insertItem('tdb', { name: 'tname' })
 
 // $ExpectType Promise<void>
-insert('tdb', { name: 'tname' }, 'tid')
+insertItem('tdb', { name: 'tname' }, 'tid')
 
 // $ExpectError
-insert('tdb', { name: 'tname' }, 1)
+insertItem('tdb', { name: 'tname' }, 1)
 
 // $ExpectType Promise<void>
-update('tdb', { name: 'tname' }, 'tid')
+updateItem('tdb', { name: 'tname' }, 'tid')
 
 // $ExpectError
-update('tdb', { name: 'tname' })
+updateItem('tdb', { name: 'tname' })
 
 // $ExpectType Promise<void>
 transaction('tdb', [
