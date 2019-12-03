@@ -11,12 +11,7 @@ const MAX_OPERATIONS_IN_TX = 10
 
 const getS3DbStateKey = (databaseId, bundleSeqNo) => `${databaseId}/${bundleSeqNo}`
 
-exports.createDatabase = async function (userId, dbNameHash, dbId, encryptedDbName, encryptedDbKey) {
-  if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
-  if (!dbId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
-  if (!encryptedDbName) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name')
-  if (!encryptedDbKey) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database key')
-
+const createDatabase = async function (userId, dbNameHash, dbId, encryptedDbName, encryptedDbKey) {
   try {
     const user = await userController.getUserByUserId(userId)
     if (!user || user['deleted']) throw new Error('UserNotFound')
@@ -63,7 +58,6 @@ exports.createDatabase = async function (userId, dbNameHash, dbId, encryptedDbNa
 
     memcache.initTransactionLog(dbId)
 
-    return responseBuilder.successResponse('Success!')
   } catch (e) {
 
     if (e.message) {
@@ -77,10 +71,7 @@ exports.createDatabase = async function (userId, dbNameHash, dbId, encryptedDbNa
     }
 
     logger.error(`Failed to create database for user ${userId} with ${e}`)
-    return responseBuilder.errorResponse(
-      statusCodes['Internal Server Error'],
-      'Failed to create database'
-    )
+    throw responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to create database')
   }
 }
 
@@ -147,10 +138,24 @@ const getDatabase = async function (userId, dbNameHash) {
   return { ...userDb, ...database }
 }
 
-exports.openDatabase = async function (userId, connectionId, dbNameHash) {
+exports.openDatabase = async function (userId, connectionId, dbNameHash, newDatabaseParams) {
   if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
+  if (!newDatabaseParams) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing new database params')
+
+  const newDbId = newDatabaseParams.dbId
+  const { encryptedDbName, encryptedDbKey } = newDatabaseParams
+  if (!newDbId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
+  if (!encryptedDbName) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name')
+  if (!encryptedDbKey) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database key')
 
   try {
+    try {
+      await createDatabase(userId, dbNameHash, newDbId, encryptedDbName, encryptedDbKey)
+    } catch (e) {
+      // safe to continue if database already exists, otherwise return error response
+      if (e.data !== 'Database already exists') return responseBuilder.errorResponse(e.status, e.data)
+    }
+
     const database = await getDatabase(userId, dbNameHash)
     if (!database) return responseBuilder.errorResponse(statusCodes['Not Found'], 'Database not found')
 
@@ -161,10 +166,11 @@ exports.openDatabase = async function (userId, connectionId, dbNameHash) {
     if (connections.openDatabase(userId, connectionId, dbId, bundleSeqNo, dbNameHash, dbKey)) {
       return responseBuilder.successResponse('Success!')
     } else {
-      throw new Error(`Unable to open database`)
+      throw new Error('Unable to open database')
     }
   } catch (e) {
-    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to open database with ${e}`)
+    logger.error(`Failed to open database for user ${userId} with ${e}`)
+    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to open database')
   }
 }
 
