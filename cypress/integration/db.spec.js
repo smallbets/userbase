@@ -18,8 +18,15 @@ describe('DB Testing', function () {
       }
 
       let util = {}
+      const itemsToInsert = [
+        { 'item0': "item0" },
+        { 'item1': 2 },
+        { 'item2': { 'key': 'value' } },
+        { 'item3': 3}
+      ]
       function changeHandler(items) {
-        cy.log('I am the changeHandler, just changed:', items)
+        // cy.log('I am the changeHandler, just changed:', items)
+        // expect(items).to.deep.equal(itemsToInsert)
       }
       util.changeHandler = changeHandler
 
@@ -30,15 +37,13 @@ describe('DB Testing', function () {
           cy.spy(util, 'changeHandler')
           return userbase.openDatabase(info.dbName, util.changeHandler).then(() => {
             expect(util.changeHandler, 'Checks if the changeHandler has being called with empty array').to.be.called
-            const items = [
-              { 'item1': "item1" },
-              { 'item2': 2 },
-              { 'item3': {'key': 'value'} }
-            ]
-            items.map( (item, index) => {
-              userbase.insertItem(info.dbName, item, index.toString()).then(
-                cy.log('Inserted: ', item)
-              )
+            itemsToInsert.forEach((item, index) => {
+              return userbase.insertItem(info.dbName, item, index.toString()).then((item) => {
+                 cy.log('Inserted: ', item)
+                 return userbase.deleteItem(info.dbName, index.toString()).then((item) => {
+                   cy.log('Deleted: ', item)
+                 })
+               })
             })
 
 
