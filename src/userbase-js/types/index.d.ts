@@ -30,6 +30,8 @@ export function forgotPassword(username: string): Promise<void>
 
 export function updateUser(user: { username?: string, password?: string, email?: string | null, profile?: UserProfile | null }): Promise<void>
 
+export function deleteUser(): Promise<void>
+
 export function importKey(keyString: string): Promise<void>
 
 export function getLastUsedUsername(): string | undefined

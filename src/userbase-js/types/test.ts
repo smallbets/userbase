@@ -5,6 +5,7 @@ import {
   signOut,
   forgotPassword,
   updateUser,
+  deleteUser,
   importKey,
   getLastUsedUsername,
   openDatabase,
@@ -104,6 +105,9 @@ updateUser({ profile: null })
 
 // $ExpectError
 updateUser({ profile: 'invalid' })
+
+// $ExpectType Promise<void>
+deleteUser()
 
 // $ExpectType Promise<void>
 importKey('tkey')
