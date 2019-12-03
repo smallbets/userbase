@@ -2,7 +2,6 @@ import base64 from 'base64-arraybuffer'
 import copy from 'copy-to-clipboard'
 import api from './api'
 import ws from './ws'
-import db from './db'
 import crypto from './Crypto'
 import localData from './localData'
 import config from './config'
@@ -418,7 +417,6 @@ const signIn = async (username, password, rememberMe = false) => {
     if (rememberMe && !savedSeedString) localData.saveSeedString(lowerCaseUsername, seedString)
 
     await ws.getRequestsForSeed()
-    await ws.getDatabaseAccessGrants()
 
     return _buildUserResult(lowerCaseUsername, seedString, email, profile)
   } catch (e) {
@@ -507,28 +505,12 @@ const signInWithSession = async (appId) => {
     const seedString = await _connectWebSocket(appId, sessionId, username, savedSeedString, false, backUpKey)
 
     await ws.getRequestsForSeed()
-    await ws.getDatabaseAccessGrants()
 
     return { user: _buildUserResult(username, seedString, email, profile) }
   } catch (e) {
     _parseGenericErrors(e)
     throw e
   }
-}
-
-const grantDatabaseAccess = async (dbName, username, readOnly) => {
-  if (!ws.keys.init) return
-
-  const database = db.getOpenDb(dbName)
-
-  const lowerCaseUsername = username.toLowerCase()
-
-  let action = 'GetPublicKey'
-  let params = { username: lowerCaseUsername }
-  const granteePublicKeyResponse = await ws.request(action, params)
-  const granteePublicKey = granteePublicKeyResponse.data
-
-  await ws.grantDatabaseAccess(database, username, granteePublicKey, readOnly)
 }
 
 const importKey = async (keyString) => {
@@ -736,7 +718,6 @@ export default {
   signIn,
   getLastUsedUsername,
   init,
-  grantDatabaseAccess,
   importKey,
   forgotPassword,
   updateUser,

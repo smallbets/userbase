@@ -75,31 +75,6 @@ const createDatabase = async function (userId, dbNameHash, dbId, encryptedDbName
   }
 }
 
-exports.findUserDatabaseByDatabaseId = async function (dbId, userId) {
-  const userDatabaseParams = {
-    TableName: setup.userDatabaseTableName,
-    IndexName: setup.userDatabaseIdIndex,
-    KeyConditionExpression: '#dbId = :dbId and #userId = :userId',
-    ExpressionAttributeNames: {
-      '#dbId': 'database-id',
-      '#userId': 'user-id'
-    },
-    ExpressionAttributeValues: {
-      ':dbId': dbId,
-      ':userId': userId
-    },
-  }
-
-  const ddbClient = connection.ddbClient()
-  const userDbResponse = await ddbClient.query(userDatabaseParams).promise()
-
-  if (userDbResponse.Items.length > 1) {
-    logger.warn(`Found too many user databases with db id ${dbId} and user id ${userId}`)
-  }
-
-  return userDbResponse.Items[0]
-}
-
 const findDatabaseByDatabaseId = async function (dbId) {
   const databaseParams = {
     TableName: setup.databaseTableName,
@@ -114,7 +89,6 @@ const findDatabaseByDatabaseId = async function (dbId) {
   if (!dbResponse || !dbResponse.Item) return null
   return dbResponse.Item
 }
-exports.findDatabaseByDatabaseId = findDatabaseByDatabaseId
 
 const getDatabase = async function (userId, dbNameHash) {
   const userDatabaseParams = {
@@ -171,121 +145,6 @@ exports.openDatabase = async function (userId, connectionId, dbNameHash, newData
   } catch (e) {
     logger.error(`Failed to open database for user ${userId} with ${e}`)
     return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to open database')
-  }
-}
-
-const findOtherUserDbsGrantedAccessToDb = async function (dbId, userId) {
-  const otherUserDbGrantedAccessParamsLessThan = {
-    TableName: setup.userDatabaseTableName,
-    IndexName: setup.userDatabaseIdIndex,
-    // Condition operator != is not supported, must make separate queries using < and >
-    KeyConditionExpression: '#dbId = :dbId and #userId < :userId',
-    ExpressionAttributeNames: {
-      '#dbId': 'database-id',
-      '#userId': 'user-id'
-    },
-    ExpressionAttributeValues: {
-      ':dbId': dbId,
-      ':userId': userId
-    },
-  }
-
-  const otherUserDbGrantedAccessParamsMoreThan = {
-    ...otherUserDbGrantedAccessParamsLessThan,
-    KeyConditionExpression: '#dbId = :dbId and #userId > :userId',
-  }
-
-  const ddbClient = connection.ddbClient()
-  const result = await Promise.all([
-    ddbClient.query(otherUserDbGrantedAccessParamsLessThan).promise(),
-    ddbClient.query(otherUserDbGrantedAccessParamsMoreThan).promise()
-  ])
-
-  const otherUserDbsLessThan = (result[0] && result[0].Items) || []
-  const otherUserDbsMoreThan = (result[1] && result[1].Items) || []
-
-  return otherUserDbsLessThan.concat(otherUserDbsMoreThan)
-}
-
-const findOtherUsersGrantedAccessToDb = async function (dbId, userId, otherUsersByUserId) {
-  const otherUserDbsGrantedAccess = await findOtherUserDbsGrantedAccessToDb(dbId, userId)
-
-  const userQueries = []
-  for (const otherUserDb of otherUserDbsGrantedAccess) {
-    const otherUserId = otherUserDb['user-id']
-    if (!otherUsersByUserId[otherUserId]) {
-      otherUsersByUserId[otherUserId] = userQueries.push(userController.getUserByUserId(otherUserId))
-    }
-  }
-  const uniqueUsers = await Promise.all(userQueries)
-
-  for (const uniqueUser of uniqueUsers) {
-    const otherUserId = uniqueUser['user-id']
-    otherUsersByUserId[otherUserId] = uniqueUser
-  }
-
-  return otherUserDbsGrantedAccess
-}
-
-exports.findDatabases = async function (userId, username) {
-  try {
-    const userDatabasesParams = {
-      TableName: setup.userDatabaseTableName,
-      KeyConditionExpression: '#userId = :userId',
-      ExpressionAttributeNames: {
-        '#userId': 'user-id',
-      },
-      ExpressionAttributeValues: {
-        ':userId': userId
-      }
-    }
-
-    const ddbClient = connection.ddbClient()
-    const userDbsResponse = await ddbClient.query(userDatabasesParams).promise()
-
-    const userDbs = userDbsResponse && userDbsResponse.Items
-    if (!userDbs || !userDbs.length) return responseBuilder.successResponse([])
-
-    const databaseQueries = []
-    const otherUsersByUserId = {}
-    const otherUsersGrantedDbAccessQueries = []
-    for (const userDb of userDbs) {
-      const dbId = userDb['database-id']
-
-      databaseQueries.push(findDatabaseByDatabaseId(dbId))
-      otherUsersGrantedDbAccessQueries.push(findOtherUsersGrantedAccessToDb(dbId, userId, otherUsersByUserId))
-    }
-
-    const [databases, otherUserDbsGrantedAccess] = await Promise.all([
-      Promise.all(databaseQueries),
-      Promise.all(otherUsersGrantedDbAccessQueries)
-    ])
-
-    if (!databases) {
-      logger.error(`User ${userId} is missing databases in database table`)
-      throw new Error('Missing databases')
-    }
-
-    const finalResult = databases.map((db, i) => {
-      const ownerId = db['owner-id']
-
-      return {
-        encryptedDbKey: userDbs[i]['encrypted-db-key'],
-        dbName: db['database-name'],
-        owner: ownerId === userId ? username : otherUsersByUserId[ownerId].username,
-        access: otherUserDbsGrantedAccess[i].map(otherUserDb => {
-          const otherUserId = otherUserDb['user-id']
-          return {
-            readOnly: otherUserDb['read-only'],
-            username: otherUsersByUserId[otherUserId].username
-          }
-        })
-      }
-    })
-
-    return responseBuilder.successResponse(finalResult)
-  } catch (e) {
-    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to find databases with ${e}`)
   }
 }
 
