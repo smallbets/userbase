@@ -155,18 +155,13 @@ async function start(express, app, userbaseConfig = {}) {
                 response = await user.deleteUser(userId)
                 break
               }
-              case 'CreateDatabase': {
-                response = await db.createDatabase(
-                  userId,
-                  params.dbNameHash,
-                  params.dbId,
-                  params.encryptedDbName,
-                  params.encryptedDbKey
-                )
-                break
-              }
               case 'OpenDatabase': {
-                response = await db.openDatabase(userId, connectionId, params.dbNameHash)
+                response = await db.openDatabase(
+                  userId,
+                  connectionId,
+                  params.dbNameHash,
+                  params.newDatabaseParams
+                )
                 break
               }
               case 'FindDatabases': {
