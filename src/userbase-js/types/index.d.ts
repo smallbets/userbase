@@ -16,9 +16,11 @@ export interface UserResult {
   profile?: UserProfile
 }
 
-export type ShowKeyHandler = (seedString: string, rememberMe: boolean, backUpKey: string) => void | Promise<void>
+export type KeyNotFoundHandler = (username: string, deviceId: string) => void
 
-export function init(options: { appId: string, endpoint?: string, keyNotFoundHandler?: () => void }): Promise<Session>
+export type ShowKeyHandler = (seedString: string, rememberMe: boolean, backUpKey: boolean) => void | Promise<void>
+
+export function init(options: { appId: string, endpoint?: string, keyNotFoundHandler?: KeyNotFoundHandler }): Promise<Session>
 
 export function signUp(username: string, password: string, email?: string, profile?: UserProfile, showKeyHandler?: ShowKeyHandler, rememberMe?: boolean, backUpKey?: boolean): Promise<UserResult>
 
