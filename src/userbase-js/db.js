@@ -7,8 +7,6 @@ import statusCodes from './statusCodes'
 import { byteSizeOfString } from './utils'
 
 const success = 'Success'
-const wsNotOpen = 'Web Socket not open'
-const keyNotFound = 'Key not found'
 
 const MAX_DB_NAME_CHAR_LENGTH = 50
 const MAX_ITEM_ID_CHAR_LENGTH = 100
@@ -711,32 +709,9 @@ const postTransaction = async (database, action, params) => {
   }
 }
 
-const findDatabases = async () => {
-  if (!ws.connected) throw new Error(wsNotOpen)
-  if (!ws.keys.init) throw new Error(keyNotFound)
-
-  const action = 'FindDatabases'
-  const databasesResponse = await ws.request(action)
-
-  const result = []
-  for (const db of databasesResponse.data) {
-    const dbKeyString = await crypto.aesGcm.decryptString(ws.keys.encryptionKey, db.encryptedDbKey)
-    const dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
-
-    const dbName = await crypto.aesGcm.decryptString(dbKey, db.dbName)
-
-    result.push({
-      dbName,
-      owner: db.owner,
-      access: db.access
-    })
-  }
-  return result
-}
-
 export default {
   openDatabase,
-  findDatabases,
+
   insertItem,
   updateItem,
   deleteItem,

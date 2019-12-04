@@ -164,10 +164,6 @@ async function start(express, app, userbaseConfig = {}) {
                 )
                 break
               }
-              case 'FindDatabases': {
-                response = await db.findDatabases(userId, username)
-                break
-              }
               case 'Insert':
               case 'Update':
               case 'Delete': {
@@ -199,34 +195,6 @@ async function start(express, app, userbaseConfig = {}) {
                   userPublicKey,
                   params.requesterPublicKey,
                   params.encryptedSeed
-                )
-                break
-              }
-              case 'GetPublicKey': {
-                response = await user.getPublicKey(params.username)
-                break
-              }
-              case 'GrantDatabaseAccess': {
-                response = await user.grantDatabaseAccess(
-                  userId,
-                  params.username,
-                  params.dbId,
-                  params.encryptedAccessKey,
-                  params.readOnly
-                )
-                break
-              }
-              case 'GetDatabaseAccessGrants': {
-                response = await user.queryDatabaseAccessGrants(userId)
-                break
-              }
-              case 'AcceptDatabaseAccess': {
-                response = await user.acceptDatabaseAccess(
-                  userId,
-                  params.dbId,
-                  params.dbNameHash,
-                  params.encryptedDbKey,
-                  params.encryptedDbName
                 )
                 break
               }
