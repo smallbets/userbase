@@ -1,8 +1,8 @@
 /* auth */
 
 export interface Session {
-  sessionId: string
-  creationDate: string
+  user?: UserResult
+  lastUsedUsername?: string
 }
 
 export interface UserProfile {
@@ -59,7 +59,12 @@ export interface DeleteOperation {
   id: string
 }
 
-export function openDatabase(dbName: string, changeHandler: (items: any[]) => void): Promise<void>
+export interface Item {
+  itemId: string
+  item: any
+}
+
+export function openDatabase(dbName: string, changeHandler: (items: Item[]) => void): Promise<void>
 
 export function insertItem(dbName: string, item: any, id?: string): Promise<void>
 
