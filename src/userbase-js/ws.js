@@ -372,7 +372,6 @@ class Connection {
       case 'CreateDatabase':
       case 'GetDatabase':
       case 'OpenDatabase':
-      case 'FindDatabases':
       case 'Insert':
       case 'Update':
       case 'Delete':
@@ -381,11 +380,7 @@ class Connection {
       case 'ValidateKey':
       case 'RequestSeed':
       case 'GetRequestsForSeed':
-      case 'SendSeed':
-      case 'GetPublicKey':
-      case 'GrantDatabaseAccess':
-      case 'GetDatabaseAccessGrants':
-      case 'AcceptDatabaseAccess': {
+      case 'SendSeed': {
         const requestId = message.requestId
 
         if (!requestId) return console.warn('Missing request id')
@@ -687,70 +682,6 @@ class Connection {
 
       this.sendSeed(requesterPublicKey)
     }
-  }
-
-  async grantDatabaseAccess(database, username, granteePublicKey, readOnly) {
-    const granteePublicKeyArrayBuffer = new Uint8Array(base64.decode(granteePublicKey))
-    const granteePublicKeyHash = base64.encode(await crypto.sha256.hash(granteePublicKeyArrayBuffer))
-
-    if (window.confirm(`Grant access to user '${username}' with public key:\n\n${granteePublicKeyHash}\n`)) {
-      const sharedKey = await crypto.diffieHellman.getSharedKey(
-        this.keys.dhPrivateKey,
-        granteePublicKeyArrayBuffer
-      )
-
-      const encryptedAccessKey = await crypto.aesGcm.encryptString(sharedKey, database.dbKeyString)
-
-      const action = 'GrantDatabaseAccess'
-      const params = { username, dbId: database.dbId, encryptedAccessKey, readOnly }
-      await this.request(action, params)
-    }
-  }
-
-  async getDatabaseAccessGrants() {
-    if (!this.keys.init) return
-
-    const response = await this.request('GetDatabaseAccessGrants')
-    const databaseAccessGrants = response.data
-
-    for (const grant of databaseAccessGrants) {
-      const { dbId, ownerPublicKey, encryptedAccessKey, encryptedDbName, owner } = grant
-
-      try {
-        const ownerPublicKeyArrayBuffer = new Uint8Array(base64.decode(ownerPublicKey))
-
-        const sharedKey = await crypto.diffieHellman.getSharedKey(
-          this.keys.dhPrivateKey,
-          ownerPublicKeyArrayBuffer
-        )
-
-        const dbKeyString = await crypto.aesGcm.decryptString(sharedKey, encryptedAccessKey)
-        const dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
-
-        const dbName = await crypto.aesGcm.decryptString(dbKey, encryptedDbName)
-
-        const ownerPublicKeyHash = base64.encode(await crypto.sha256.hash(ownerPublicKeyArrayBuffer))
-        if (window.confirm(`Accept access to database '${dbName}' from '${owner}' with public key: \n\n${ownerPublicKeyHash}\n`)) {
-          await this.acceptDatabaseAccessGrant(dbId, dbKeyString, dbName, encryptedDbName)
-        }
-
-      } catch (e) {
-        // continue
-        console.log(`Error processing database access grants`, e)
-      }
-    }
-  }
-
-  async acceptDatabaseAccessGrant(dbId, dbKeyString, dbName, encryptedDbName) {
-    if (!this.keys.init) return
-
-    const dbNameHash = await crypto.hmac.signString(this.keys.hmacKey, dbName)
-    const encryptedDbKey = await crypto.aesGcm.encryptString(this.keys.encryptionKey, dbKeyString)
-
-    const action = 'AcceptDatabaseAccess'
-    const params = { dbId, encryptedDbKey, dbNameHash, encryptedDbName }
-
-    await this.request(action, params)
   }
 
   async sendSeed(requesterPublicKey) {

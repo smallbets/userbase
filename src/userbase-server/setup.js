@@ -21,7 +21,6 @@ const databaseTableName = resourceNamePrefix + 'databases'
 const userDatabaseTableName = resourceNamePrefix + 'user-databases'
 const transactionsTableName = resourceNamePrefix + 'transactions'
 const seedExchangeTableName = resourceNamePrefix + 'seed-exchanges'
-const databaseAccessGrantsTableName = resourceNamePrefix + 'database-access-grants'
 const dbStatesBucketNamePrefix = resourceNamePrefix + 'database-states'
 const secretManagerSecretId = resourceNamePrefix + 'env'
 
@@ -33,7 +32,6 @@ exports.databaseTableName = databaseTableName
 exports.userDatabaseTableName = userDatabaseTableName
 exports.transactionsTableName = transactionsTableName
 exports.seedExchangeTableName = seedExchangeTableName
-exports.databaseAccessGrantsTableName = databaseAccessGrantsTableName
 
 const adminIdIndex = 'AdminIdIndex'
 const userIdIndex = 'UserIdIndex'
@@ -271,27 +269,6 @@ async function setupDdb() {
     }
   }
 
-  // holds key data per db access grant
-  const databaseAccessGrantsTableParams = {
-    AttributeDefinitions: [
-      { AttributeName: 'grantee-id', AttributeType: 'S' },
-      { AttributeName: 'database-id', AttributeType: 'S' }
-    ],
-    KeySchema: [
-      { AttributeName: 'grantee-id', KeyType: 'HASH' },
-      { AttributeName: 'database-id', KeyType: 'RANGE' }
-    ],
-    BillingMode: 'PAY_PER_REQUEST',
-    TableName: databaseAccessGrantsTableName
-  }
-  const databaseAccessGrantTimeToLive = {
-    TableName: databaseAccessGrantsTableName,
-    TimeToLiveSpecification: {
-      AttributeName: 'ttl',
-      Enabled: true
-    }
-  }
-
   logger.info('Creating DynamoDB tables if necessary')
   await Promise.all([
     createTable(ddb, adminTableParams),
@@ -302,14 +279,10 @@ async function setupDdb() {
     createTable(ddb, userDatabaseTableParams),
     createTable(ddb, transactionsTableParams),
     createTable(ddb, seedExchangeTableParams),
-    createTable(ddb, databaseAccessGrantsTableParams)
   ])
 
   logger.info('Setting time to live on tables if necessary')
-  await Promise.all([
-    setTimeToLive(ddb, seedExchangeTimeToLive),
-    setTimeToLive(ddb, databaseAccessGrantTimeToLive)
-  ])
+  await setTimeToLive(ddb, seedExchangeTimeToLive)
 }
 
 async function setupS3() {

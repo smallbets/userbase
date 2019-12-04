@@ -155,22 +155,13 @@ async function start(express, app, userbaseConfig = {}) {
                 response = await user.deleteUser(userId)
                 break
               }
-              case 'CreateDatabase': {
-                response = await db.createDatabase(
-                  userId,
-                  params.dbNameHash,
-                  params.dbId,
-                  params.encryptedDbName,
-                  params.encryptedDbKey
-                )
-                break
-              }
               case 'OpenDatabase': {
-                response = await db.openDatabase(userId, connectionId, params.dbNameHash)
-                break
-              }
-              case 'FindDatabases': {
-                response = await db.findDatabases(userId, username)
+                response = await db.openDatabase(
+                  userId,
+                  connectionId,
+                  params.dbNameHash,
+                  params.newDatabaseParams
+                )
                 break
               }
               case 'Insert':
@@ -204,34 +195,6 @@ async function start(express, app, userbaseConfig = {}) {
                   userPublicKey,
                   params.requesterPublicKey,
                   params.encryptedSeed
-                )
-                break
-              }
-              case 'GetPublicKey': {
-                response = await user.getPublicKey(params.username)
-                break
-              }
-              case 'GrantDatabaseAccess': {
-                response = await user.grantDatabaseAccess(
-                  userId,
-                  params.username,
-                  params.dbId,
-                  params.encryptedAccessKey,
-                  params.readOnly
-                )
-                break
-              }
-              case 'GetDatabaseAccessGrants': {
-                response = await user.queryDatabaseAccessGrants(userId)
-                break
-              }
-              case 'AcceptDatabaseAccess': {
-                response = await user.acceptDatabaseAccess(
-                  userId,
-                  params.dbId,
-                  params.dbNameHash,
-                  params.encryptedDbKey,
-                  params.encryptedDbName
                 )
                 break
               }

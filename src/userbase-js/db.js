@@ -7,8 +7,6 @@ import statusCodes from './statusCodes'
 import { byteSizeOfString } from './utils'
 
 const success = 'Success'
-const wsNotOpen = 'Web Socket not open'
-const keyNotFound = 'Key not found'
 
 const MAX_DB_NAME_CHAR_LENGTH = 50
 const MAX_ITEM_ID_CHAR_LENGTH = 100
@@ -336,8 +334,14 @@ class Database {
   }
 }
 
-const _openDatabase = async (dbNameHash, changeHandler) => {
+const _openDatabase = async (dbNameHash, changeHandler, newDatabaseParams) => {
   try {
+    if (ws.state.databases[dbNameHash] && ws.state.databases[dbNameHash].init) {
+      throw new errors.DatabaseAlreadyOpen
+    } else if (ws.state.databases[dbNameHash]) {
+      throw new errors.DatabaseAlreadyOpening
+    }
+
     let receivedMessage
 
     const firstMessageFromWebSocket = new Promise((resolve, reject) => {
@@ -350,65 +354,19 @@ const _openDatabase = async (dbNameHash, changeHandler) => {
       receivedMessage()
     }
 
-    if (ws.state.databases[dbNameHash] && ws.state.databases[dbNameHash].init) {
-      throw new errors.DatabaseAlreadyOpen
-    } else if (ws.state.databases[dbNameHash]) {
-      throw new errors.DatabaseAlreadyOpening
-    }
-
     ws.state.databases[dbNameHash] = new Database(handlerWrapper) // eslint-disable-line require-atomic-updates
 
     const action = 'OpenDatabase'
-    const params = { dbNameHash }
+    const params = { dbNameHash, newDatabaseParams }
 
     try {
       await ws.request(action, params)
       await firstMessageFromWebSocket
     } catch (e) {
       delete ws.state.databases[dbNameHash]
-      throw e
-    }
 
-  } catch (e) {
-    _parseGenericErrors(e)
-    throw e
-  }
-}
-
-const _createDatabase = async (dbName, dbNameHash) => {
-  try {
-    const dbId = uuidv4()
-
-    const dbKey = await crypto.aesGcm.generateKey()
-    const dbKeyString = await crypto.aesGcm.getKeyStringFromKey(dbKey)
-
-    const [encryptedDbKey, encryptedDbName] = await Promise.all([
-      crypto.aesGcm.encryptString(ws.keys.encryptionKey, dbKeyString),
-      crypto.aesGcm.encryptString(dbKey, dbName)
-    ])
-
-    const action = 'CreateDatabase'
-    const params = {
-      dbNameHash,
-      dbId,
-      encryptedDbKey,
-      encryptedDbName
-    }
-
-    try {
-      await ws.request(action, params)
-    } catch (e) {
-      _parseGenericErrors(e)
-
-      if (e.response) {
-        const data = e.response.data
-
-        if (data === 'Database already creating') {
-          throw new errors.DatabaseAlreadyOpening
-        } else if (data === 'Database already exists') {
-          // safe return
-          return
-        }
+      if (e.response && e.response.data === 'Database already creating') {
+        throw new errors.DatabaseAlreadyOpening
       }
 
       throw e
@@ -418,6 +376,25 @@ const _createDatabase = async (dbName, dbNameHash) => {
     _parseGenericErrors(e)
     throw e
   }
+}
+
+const _createDatabase = async (dbName) => {
+  const dbId = uuidv4()
+
+  const dbKey = await crypto.aesGcm.generateKey()
+  const dbKeyString = await crypto.aesGcm.getKeyStringFromKey(dbKey)
+
+  const [encryptedDbKey, encryptedDbName] = await Promise.all([
+    crypto.aesGcm.encryptString(ws.keys.encryptionKey, dbKeyString),
+    crypto.aesGcm.encryptString(dbKey, dbName)
+  ])
+
+  const newDatabaseParams = {
+    dbId,
+    encryptedDbKey,
+    encryptedDbName
+  }
+  return newDatabaseParams
 }
 
 const _validateDbInput = (dbName) => {
@@ -438,8 +415,8 @@ const openDatabase = async (dbName, changeHandler) => {
     const dbNameHash = ws.state.dbNameToHash[dbName] || await crypto.hmac.signString(ws.keys.hmacKey, dbName)
     ws.state.dbNameToHash[dbName] = dbNameHash // eslint-disable-line require-atomic-updates
 
-    await _createDatabase(dbName, dbNameHash)
-    await _openDatabase(dbNameHash, changeHandler)
+    const newDatabaseParams = await _createDatabase(dbName)
+    await _openDatabase(dbNameHash, changeHandler, newDatabaseParams)
   } catch (e) {
 
     switch (e.name) {
@@ -732,32 +709,9 @@ const postTransaction = async (database, action, params) => {
   }
 }
 
-const findDatabases = async () => {
-  if (!ws.connected) throw new Error(wsNotOpen)
-  if (!ws.keys.init) throw new Error(keyNotFound)
-
-  const action = 'FindDatabases'
-  const databasesResponse = await ws.request(action)
-
-  const result = []
-  for (const db of databasesResponse.data) {
-    const dbKeyString = await crypto.aesGcm.decryptString(ws.keys.encryptionKey, db.encryptedDbKey)
-    const dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
-
-    const dbName = await crypto.aesGcm.decryptString(dbKey, db.dbName)
-
-    result.push({
-      dbName,
-      owner: db.owner,
-      access: db.access
-    })
-  }
-  return result
-}
-
 export default {
   openDatabase,
-  findDatabases,
+
   insertItem,
   updateItem,
   deleteItem,
