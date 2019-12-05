@@ -24,32 +24,34 @@ describe('DB Testing', function () {
         { 'item2': { 'key': 'value' } },
         { 'item3': 3 }
       ]
-      function changeHandler(items) {
-        // cy.log('I am the changeHandler, just changed:', items)
-        // expect(items).to.deep.equal(itemsToInsert)
+      const spyChangeHandler = {
+        changeHandler: function (items) {
+          if (spy.callCount == 1) {
+            expect(items).to.be.empty
+          }
+          cy.log('DB status:' + JSON.stringify(items) + 'changeHandler Called ' + String(spy.callCount) + 'times')
+        }
       }
-      util.changeHandler = changeHandler
+      const spy = cy.spy(spyChangeHandler, 'changeHandler')
+
 
       userbase.init({ appId: info.appId, endpoint: info.endpoint, keyNotFoundHandler })
       return userbase.signIn(info.username, info.password)
         .then((user) => {
           cy.log('user', user)
-          cy.spy(util, 'changeHandler')
-          userbase.openDatabase(info.dbName, util.changeHandler).then(() => {
-            expect(util.changeHandler, 'Checks if the changeHandler has being called with empty array').to.be.called
-            cy.wait(5000)
+          userbase.openDatabase(info.dbName, spyChangeHandler.changeHandler).then(() => {
+            expect(spy, 'Checks if the changeHandler has being called first time').to.be.called
+            cy.wait(10000)
             itemsToInsert.forEach((item, index) => {
               userbase.insertItem(info.dbName, item, index.toString()).then((item) => {
-                cy.log('Inserted: ', item)
-                cy.wait(2000)
+                cy.wait(3000)
+                expect(spy, 'Checks if the changeHandler has being called inserting').to.be.called
                 userbase.deleteItem(info.dbName, index.toString()).then((item) => {
-                  cy.wait(2000)
-                  cy.log('Deleted: ', item)
+                  cy.wait(3000)
+                  expect(spy, 'Checks if the changeHandler has being called deleting').to.be.called
                 })
               })
             })
-
-
           })
         })
         .catch((e) => {
