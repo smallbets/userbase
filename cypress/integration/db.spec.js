@@ -22,7 +22,7 @@ describe('DB Testing', function () {
         { 'item0': "item0" },
         { 'item1': 2 },
         { 'item2': { 'key': 'value' } },
-        { 'item3': 3}
+        { 'item3': 3 }
       ]
       function changeHandler(items) {
         // cy.log('I am the changeHandler, just changed:', items)
@@ -35,15 +35,18 @@ describe('DB Testing', function () {
         .then((user) => {
           cy.log('user', user)
           cy.spy(util, 'changeHandler')
-          return userbase.openDatabase(info.dbName, util.changeHandler).then(() => {
+          userbase.openDatabase(info.dbName, util.changeHandler).then(() => {
             expect(util.changeHandler, 'Checks if the changeHandler has being called with empty array').to.be.called
+            cy.wait(5000)
             itemsToInsert.forEach((item, index) => {
-              return userbase.insertItem(info.dbName, item, index.toString()).then((item) => {
-                 cy.log('Inserted: ', item)
-                 return userbase.deleteItem(info.dbName, index.toString()).then((item) => {
-                   cy.log('Deleted: ', item)
-                 })
-               })
+              userbase.insertItem(info.dbName, item, index.toString()).then((item) => {
+                cy.log('Inserted: ', item)
+                cy.wait(2000)
+                userbase.deleteItem(info.dbName, index.toString()).then((item) => {
+                  cy.wait(2000)
+                  cy.log('Deleted: ', item)
+                })
+              })
             })
 
 

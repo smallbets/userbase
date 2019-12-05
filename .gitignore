@@ -8,3 +8,4 @@ logs
 
 npm_build
 cypress/videos
+cypress/screenshots
