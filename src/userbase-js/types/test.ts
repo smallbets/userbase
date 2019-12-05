@@ -1,4 +1,6 @@
-import {
+import userbase from 'userbase-js'
+
+const {
   init,
   signUp,
   signIn,
@@ -12,7 +14,7 @@ import {
   insertItem,
   updateItem,
   transaction
-} from './'
+} = userbase
 
 // TypeScript Version: 2.1
 
