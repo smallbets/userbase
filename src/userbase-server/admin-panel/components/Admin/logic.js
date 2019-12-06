@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { VERSION } from '../../config'
 
 const TEN_SECONDS_MS = 10 * 1000
 const UNAUTHORIZED = 401
@@ -26,7 +27,7 @@ const createAdmin = async (adminName, password, fullName) => {
     const lowerCaseAdminName = adminName.toLowerCase()
     await axios({
       method: 'POST',
-      url: '/admin/create-admin',
+      url: `/${VERSION}/admin/create-admin`,
       data: {
         adminName: lowerCaseAdminName,
         password,
@@ -48,7 +49,7 @@ const createApp = async () => {
   try {
     await axios({
       method: 'POST',
-      url: '/admin/create-app',
+      url: `/${VERSION}/admin/create-app`,
       data: {
         appName: DEFAULT_APP_NAME
       },
@@ -66,7 +67,7 @@ const signOut = async () => {
   handleSignOut()
   await axios({
     method: 'POST',
-    url: '/admin/sign-out',
+    url: `/${VERSION}/admin/sign-out`,
     timeout: TEN_SECONDS_MS
   })
 }
@@ -76,7 +77,7 @@ const signIn = async (adminName, password) => {
     const lowerCaseAdminName = adminName.toLowerCase()
     await axios({
       method: 'POST',
-      url: '/admin/sign-in',
+      url: `/${VERSION}/admin/sign-in`,
       data: {
         adminName: lowerCaseAdminName,
         password

@@ -1,7 +1,9 @@
 import errors from './errors'
 
+const VERSION = '/v1'
+
 let userbaseAppId = null
-let userbaseEndpoint = 'https://preview.userbase.dev'
+let userbaseEndpoint = 'https://preview.userbase.dev' + VERSION
 let userbaseKeyNotFoundHandler = null
 
 const getAppId = () => {
@@ -21,7 +23,7 @@ const setAppId = (appId) => {
 
 const setEndpoint = (newEndpoint) => {
   if (!newEndpoint) return
-  userbaseEndpoint = newEndpoint
+  userbaseEndpoint = newEndpoint + VERSION
 }
 
 const setKeyNotFoundHandler = (keyNotFoundHandler) => {

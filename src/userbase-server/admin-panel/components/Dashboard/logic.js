@@ -1,5 +1,6 @@
 import axios from 'axios'
 import adminLogic from '../Admin/logic'
+import { VERSION } from '../../config'
 
 const TEN_SECONDS_MS = 10 * 1000
 
@@ -21,7 +22,7 @@ const listApps = async () => {
   try {
     const listAppsResponse = await axios({
       method: 'POST',
-      url: '/admin/list-apps',
+      url: `/${VERSION}/admin/list-apps`,
       timeout: TEN_SECONDS_MS
     })
 
@@ -36,7 +37,7 @@ const listAppUsers = async (appName) => {
   try {
     const listAppUsersResponse = await axios({
       method: 'POST',
-      url: `/admin/list-app-users?appName=${appName}`,
+      url: `/${VERSION}/admin/list-app-users?appName=${appName}`,
       timeout: TEN_SECONDS_MS
     })
 

@@ -64,7 +64,6 @@ async function start(express, app, userbaseConfig = {}) {
       ws.isAlive = true
 
       const userId = res.locals.user['user-id']
-      const username = res.locals.user['username']
       const userPublicKey = res.locals.user['public-key']
 
       const conn = connections.register(userId, ws)
@@ -230,26 +229,28 @@ async function start(express, app, userbaseConfig = {}) {
     app.use(bodyParser.json())
     app.use(cookieParser())
 
-    app.get('/api', user.authenticateUser, (req, res) =>
+    const v1 = express.Router()
+    app.use('/v1', v1)
+
+    v1.get('/api', user.authenticateUser, (req, res) =>
       req.ws
         ? res.ws(socket => wss.emit('connection', socket, req, res))
         : res.send('Not a websocket!')
     )
-
-    app.post('/api/auth/sign-up', user.signUp)
-    app.post('/api/auth/sign-in', user.signIn)
-    app.post('/api/auth/sign-in-with-session', user.authenticateUser, user.extendSession)
-    app.get('/api/auth/server-public-key', user.getServerPublicKey)
-    app.post('/api/auth/forgot-password', user.forgotPassword)
+    v1.post('/api/auth/sign-up', user.signUp)
+    v1.post('/api/auth/sign-in', user.signIn)
+    v1.post('/api/auth/sign-in-with-session', user.authenticateUser, user.extendSession)
+    v1.get('/api/auth/server-public-key', user.getServerPublicKey)
+    v1.post('/api/auth/forgot-password', user.forgotPassword)
 
     app.use('/admin', express.static(path.join(__dirname + adminPanelDir)))
 
-    app.post('/admin/create-admin', admin.createAdminController)
-    app.post('/admin/create-app', admin.authenticateAdmin, admin.createAppController)
-    app.post('/admin/sign-in', admin.signInAdmin)
-    app.post('/admin/sign-out', admin.authenticateAdmin, admin.signOutAdmin)
-    app.post('/admin/list-apps', admin.authenticateAdmin, admin.listApps)
-    app.post('/admin/list-app-users', admin.authenticateAdmin, admin.listAppUsers)
+    v1.post('/admin/create-admin', admin.createAdminController)
+    v1.post('/admin/create-app', admin.authenticateAdmin, admin.createAppController)
+    v1.post('/admin/sign-in', admin.signInAdmin)
+    v1.post('/admin/sign-out', admin.authenticateAdmin, admin.signOutAdmin)
+    v1.post('/admin/list-apps', admin.authenticateAdmin, admin.listApps)
+    v1.post('/admin/list-app-users', admin.authenticateAdmin, admin.listAppUsers)
 
     app.get('/ping', function (req, res) {
       res.send('Healthy')
