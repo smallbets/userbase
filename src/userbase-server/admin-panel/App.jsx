@@ -110,7 +110,7 @@ export default class App extends Component {
               return <Dashboard />
 
             case 'app-users-table':
-              return <AppUsersTable appName={window.location.hash.substring(5)} />
+              return <AppUsersTable appName={decodeURIComponent(window.location.hash.substring(5))} />
 
             default:
               return null

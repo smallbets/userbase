@@ -19,10 +19,26 @@ export default class Dashboard extends Component {
 
   async componentDidMount() {
     try {
+      this._isMounted = true
+      document.addEventListener('keydown', this.handleHitEnter, true)
+
       const apps = await dashboardLogic.listApps()
-      this.setState({ apps, loading: false })
+      if (this._isMounted) this.setState({ apps, loading: false })
     } catch (e) {
-      this.setState({ error: e, loading: false })
+      if (this._isMounted) this.setState({ error: e, loading: false })
+    }
+  }
+
+  componentWillUnmount() {
+    this._isMounted = false
+    document.removeEventListener('keydown', this.handleHitEnter, true)
+  }
+
+  handleHitEnter(e) {
+    const ENTER_KEY_CODE = 13
+    if ((e.target.name === 'appName') &&
+      (e.key === 'Enter' || e.keyCode === ENTER_KEY_CODE)) {
+      e.stopPropagation()
     }
   }
 
@@ -37,9 +53,9 @@ export default class Dashboard extends Component {
 
       const app = await adminLogic.createApp(appName)
 
-      this.setState({ apps: apps.concat(app), appName: '', error: '', loadingApp: false })
+      if (this._isMounted) this.setState({ apps: apps.concat(app), appName: '', error: '', loadingApp: false })
     } catch (err) {
-      this.setState({ error: err, loadingApp: false })
+      if (this._isMounted) this.setState({ error: err, loadingApp: false })
     }
   }
 
