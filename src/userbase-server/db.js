@@ -200,15 +200,6 @@ const rollbackTransaction = async function (transaction) {
 exports.rollbackTransaction = rollbackTransaction
 
 const putTransaction = async function (transaction, userId, dbNameHash, databaseId) {
-  const [user, database] = await Promise.all([
-    userController.getUserByUserId(userId),
-    getDatabase(userId, dbNameHash)
-  ])
-
-  if (!user || user['deleted']) throw new Error('UserNotFound')
-  if (!database) throw new Error('DatabaseNotFound')
-  if (database['read-only']) throw new Error('DatabaseIsReadOnly')
-
   const transactionWithSequenceNo = memcache.pushTransaction(transaction)
 
   const params = {
@@ -258,10 +249,6 @@ exports.doCommand = async function (command, userId, dbNameHash, databaseId, key
     const sequenceNo = await putTransaction(transaction, userId, dbNameHash, databaseId)
     return responseBuilder.successResponse({ sequenceNo })
   } catch (e) {
-    if (e.message === 'UserNotFound') return responseBuilder.errorResponse(statusCodes['Not Found'], 'UserNotFound')
-    else if (e.message === 'DatabaseNotFound') return responseBuilder.errorResponse(statusCodes['Not Found'], 'DatabaseNotFound')
-    else if (e.message === 'DatabaseIsReadOnly') return responseBuilder.errorResponse(statusCodes['Unauthorized'], 'DatabaseIsReadOnly')
-
     logger.warn(`Failed command ${command} for user ${userId} with ${e}`)
     return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to ${command}`)
   }
@@ -307,10 +294,6 @@ exports.batchTransaction = async function (userId, dbNameHash, databaseId, opera
     const sequenceNo = await putTransaction(transaction, userId, dbNameHash, databaseId)
     return responseBuilder.successResponse({ sequenceNo })
   } catch (e) {
-    if (e.message === 'UserNotFound') return responseBuilder.errorResponse(statusCodes['Not Found'], 'UserNotFound')
-    else if (e.message === 'DatabaseNotFound') return responseBuilder.errorResponse(statusCodes['Not Found'], 'DatabaseNotFound')
-    else if (e.message === 'DatabaseIsReadOnly') return responseBuilder.errorResponse(statusCodes['Unauthorized'], 'DatabaseIsReadOnly')
-
     logger.warn(`Failed batch transaction for user ${userId} with ${e}`)
     return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to batch transaction')
   }
