@@ -252,7 +252,7 @@ async function start(express, app, userbaseConfig = {}) {
     v1.post('/admin/list-apps', admin.authenticateAdmin, admin.listApps)
     v1.post('/admin/list-app-users', admin.authenticateAdmin, admin.listAppUsers)
 
-    v1.get('/ping', function (req, res) {
+    app.get('/ping', function (req, res) {
       res.send('Healthy')
     })
 
