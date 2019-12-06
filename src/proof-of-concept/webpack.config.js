@@ -111,7 +111,7 @@ module.exports = (env, argv) => {
       host: '0.0.0.0',
       port: 3000,
       proxy: {
-        '/api/*': {
+        '/v1/api/*': {
           target: 'http://localhost:8080/',
           ws: true,
           secure: false
