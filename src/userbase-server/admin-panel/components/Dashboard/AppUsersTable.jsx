@@ -13,14 +13,20 @@ export default class AppUsersTable extends Component {
   }
 
   async componentDidMount() {
+    this._isMounted = true
+
     const { appName } = this.props
 
     try {
       const appUsers = await dashboardLogic.listAppUsers(appName)
-      this.setState({ appUsers, loading: false })
+      if (this._isMounted) this.setState({ appUsers, loading: false })
     } catch (e) {
-      this.setState({ error: e, loading: false })
+      if (this._isMounted) this.setState({ error: e, loading: false })
     }
+  }
+
+  componentWillUnmount() {
+    this._isMounted = false
   }
 
   render() {

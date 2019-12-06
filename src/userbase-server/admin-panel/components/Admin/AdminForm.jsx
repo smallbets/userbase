@@ -19,9 +19,11 @@ export default class AdminForm extends Component {
 
   // prevent last pass error in console: https://github.com/KillerCodeMonkey/ngx-quill/issues/351
   componentDidMount() {
+    this._isMounted = true
     document.addEventListener('keydown', this.handleHitEnter, true)
   }
   componentWillUnmount() {
+    this._isMounted = false
     document.removeEventListener('keydown', this.handleHitEnter, true)
   }
   handleHitEnter(e) {
@@ -49,7 +51,7 @@ export default class AdminForm extends Component {
     const { adminName, password, fullName } = this.state
     event.preventDefault()
 
-    await this.setState({ loading: true })
+    this.setState({ loading: true })
 
     try {
       if (formType === 'Create Admin') {
@@ -62,7 +64,7 @@ export default class AdminForm extends Component {
 
       window.location.hash = ''
     } catch (e) {
-      this.setState({ error: e.message, loading: false })
+      if (this._isMounted) this.setState({ error: e.message, loading: false })
     }
   }
 
