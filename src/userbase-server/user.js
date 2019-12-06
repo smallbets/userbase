@@ -82,7 +82,7 @@ const getAppByAppId = async function (appId) {
 }
 
 const _buildSignUpParams = async (username, passwordSecureHash, appId, userId,
-  publicKey, salts, app, email, profile, passwordBasedBackup) => {
+  publicKey, salts, email, profile, passwordBasedBackup) => {
   const passwordHash = await crypto.bcrypt.hash(passwordSecureHash)
 
   const { encryptionKeySalt, dhKeySalt, hmacKeySalt } = salts
@@ -106,35 +106,15 @@ const _buildSignUpParams = async (username, passwordSecureHash, appId, userId,
   }
 
   return {
-    TransactItems: [{
-      // ensure app still exists when creating user
-      ConditionCheck: {
-        TableName: setup.appsTableName,
-        Key: {
-          'admin-id': app['admin-id'],
-          'app-name': app['app-name']
-        },
-        ConditionExpression: '#appId = :appId',
-        ExpressionAttributeNames: {
-          '#appId': 'app-id'
-        },
-        ExpressionAttributeValues: {
-          ':appId': appId,
-        },
-      },
-    }, {
-      Put: {
-        TableName: setup.usersTableName,
-        Item: user,
-        // if username does not exist, insert
-        // if it already exists and user hasn't saved seed yet, overwrite (to allow another sign up attempt)
-        // if it already exists and user has saved seed, fail with ConditionalCheckFailedException
-        ConditionExpression: 'attribute_not_exists(username) or attribute_exists(#seedNotSavedYet)',
-        ExpressionAttributeNames: {
-          '#seedNotSavedYet': 'seed-not-saved-yet'
-        },
-      }
-    }]
+    TableName: setup.usersTableName,
+    Item: user,
+    // if username does not exist, insert
+    // if it already exists and user hasn't saved seed yet, overwrite (to allow another sign up attempt)
+    // if it already exists and user has saved seed, fail with ConditionalCheckFailedException
+    ConditionExpression: 'attribute_not_exists(username) or attribute_exists(#seedNotSavedYet)',
+    ExpressionAttributeNames: {
+      '#seedNotSavedYet': 'seed-not-saved-yet'
+    }
   }
 }
 
@@ -255,15 +235,13 @@ exports.signUp = async function (req, res) {
     const passwordBasedBackup = { pbkdfKeySalt, passwordEncryptedSeed }
 
     const params = await _buildSignUpParams(username, passwordSecureHash, appId, userId,
-      publicKey, salts, app, email, profile, passwordBasedBackup)
+      publicKey, salts, email, profile, passwordBasedBackup)
 
     try {
       const ddbClient = connection.ddbClient()
-      await ddbClient.transactWrite(params).promise()
+      await ddbClient.put(params).promise()
     } catch (e) {
-      if (e.message.includes('[ConditionalCheckFailed')) {
-        return res.status(statusCodes['Unauthorized']).send('App ID not valid')
-      } else if (e.message.includes('ConditionalCheckFailed]')) {
+      if (e.name === 'ConditionalCheckFailedException') {
         return res.status(statusCodes['Conflict']).send('UsernameAlreadyExists')
       }
       throw e
@@ -1021,4 +999,3 @@ const conditionCheckUserExists = (username, appId, userId) => {
     }
   }
 }
-exports.conditionCheckUserExists = conditionCheckUserExists
