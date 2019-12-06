@@ -245,12 +245,12 @@ async function start(express, app, userbaseConfig = {}) {
 
     app.use('/admin', express.static(path.join(__dirname + adminPanelDir)))
 
-    app.post('/admin/create-admin', admin.createAdminController)
-    app.post('/admin/create-app', admin.authenticateAdmin, admin.createAppController)
-    app.post('/admin/sign-in', admin.signInAdmin)
-    app.post('/admin/sign-out', admin.authenticateAdmin, admin.signOutAdmin)
-    app.post('/admin/list-apps', admin.authenticateAdmin, admin.listApps)
-    app.post('/admin/list-app-users', admin.authenticateAdmin, admin.listAppUsers)
+    v1.post('/admin/create-admin', admin.createAdminController)
+    v1.post('/admin/create-app', admin.authenticateAdmin, admin.createAppController)
+    v1.post('/admin/sign-in', admin.signInAdmin)
+    v1.post('/admin/sign-out', admin.authenticateAdmin, admin.signOutAdmin)
+    v1.post('/admin/list-apps', admin.authenticateAdmin, admin.listApps)
+    v1.post('/admin/list-app-users', admin.authenticateAdmin, admin.listAppUsers)
 
     v1.get('/ping', function (req, res) {
       res.send('Healthy')

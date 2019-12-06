@@ -93,7 +93,7 @@ module.exports = (env, argv) => {
       host: '0.0.0.0',
       port: 3001,
       proxy: {
-        '/admin/*': {
+        '/v1/admin/*': {
           target: 'http://localhost:8080/',
           ws: true,
           secure: false
