@@ -2,8 +2,20 @@ import axios from 'axios'
 import { VERSION } from '../../config'
 
 const TEN_SECONDS_MS = 10 * 1000
+
 const UNAUTHORIZED = 401
-const DEFAULT_APP_NAME = 'Preview'
+
+const errorHandler = (e, signOutUnauthorized = true) => {
+  if (e && e.response) {
+    if (signOutUnauthorized && e.response.status === UNAUTHORIZED) {
+      handleSignOut()
+    } else {
+      throw new Error(e.response.data)
+    }
+  } else {
+    throw e
+  }
+}
 
 const handleSignOut = () => {
   signOutLocalSession()
@@ -37,29 +49,23 @@ const createAdmin = async (adminName, password, fullName) => {
     })
     signInLocalSession(lowerCaseAdminName)
   } catch (e) {
-    if (e && e.response) {
-      throw new Error(e.response.data)
-    } else {
-      throw e
-    }
+    errorHandler(e)
   }
 }
 
-const createApp = async () => {
+const createApp = async (appName) => {
   try {
-    await axios({
+    const appResponse = await axios({
       method: 'POST',
       url: `/${VERSION}/admin/create-app`,
       data: {
-        appName: DEFAULT_APP_NAME
+        appName
       },
       timeout: TEN_SECONDS_MS
     })
+    return appResponse.data
   } catch (e) {
-    if (e && e.response && e.response.status === UNAUTHORIZED) {
-      handleSignOut()
-    }
-    throw e
+    errorHandler(e)
   }
 }
 
@@ -86,11 +92,7 @@ const signIn = async (adminName, password) => {
     })
     signInLocalSession(lowerCaseAdminName)
   } catch (e) {
-    if (e && e.response) {
-      throw new Error(e.response.data)
-    } else {
-      throw e
-    }
+    errorHandler(e, false)
   }
 }
 
@@ -99,5 +101,6 @@ export default {
   createApp,
   signOut,
   handleSignOut,
-  signIn
+  signIn,
+  errorHandler
 }

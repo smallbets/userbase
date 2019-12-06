@@ -295,7 +295,7 @@ const createApp = async function (appName, adminId, appId = uuidv4()) {
   try {
     const ddbClient = connection.ddbClient()
     await ddbClient.put(params).promise()
-    return appId
+    return app
   } catch (e) {
     if (e.name === 'ConditionalCheckFailedException') {
       throw {
@@ -320,8 +320,8 @@ exports.createAppController = async function (req, res) {
   const adminId = admin['admin-id']
 
   try {
-    const appId = await createApp(appName, adminId)
-    return res.send(appId)
+    const app = await createApp(appName, adminId)
+    return res.send(app)
   } catch (e) {
     return res
       .status(e.status)
