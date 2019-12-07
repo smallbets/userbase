@@ -34,7 +34,20 @@ const listAppUsers = async (appName) => {
   }
 }
 
+const deleteApp = async (appName) => {
+  try {
+    await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/delete-app?appName=${appName}`,
+      timeout: TEN_SECONDS_MS
+    })
+  } catch (e) {
+    adminLogic.errorHandler(e)
+  }
+}
+
 export default {
   listApps,
-  listAppUsers
+  listAppUsers,
+  deleteApp
 }

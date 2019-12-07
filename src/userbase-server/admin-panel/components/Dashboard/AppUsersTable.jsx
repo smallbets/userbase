@@ -10,6 +10,8 @@ export default class AppUsersTable extends Component {
       appUsers: [],
       loading: true
     }
+
+    this.handleDeleteApp = this.handleDeleteApp.bind(this)
   }
 
   async componentDidMount() {
@@ -29,6 +31,21 @@ export default class AppUsersTable extends Component {
     this._isMounted = false
   }
 
+  async handleDeleteApp() {
+    const { appName } = this.props
+
+    if (this._isMounted) this.setState({ loading: false })
+
+    try {
+      if (window.confirm(`Are you sure you want to delete app '${appName}'?`)) {
+        await dashboardLogic.deleteApp(appName)
+        window.location.hash = '' // eslint-disable-line require-atomic-updates
+      }
+    } catch (e) {
+      if (this._isMounted) this.setState({ loading: false, error: e })
+    }
+  }
+
   render() {
     const { appName } = this.props
     const { loading, appUsers, error } = this.state
@@ -38,36 +55,52 @@ export default class AppUsersTable extends Component {
 
         <div className='container content'>
 
-          <div className='italic mb-6'>{appName}</div>
+          <div className='flex mb-6'>
+            <div className='flex-0 italic'>{appName}</div>
+            <div className='flex-1 text-right'>
+              <input
+                className='btn w-32'
+                type='button'
+                value='Delete App'
+                onClick={this.handleDeleteApp}
+              />
+            </div>
+          </div>
 
           {loading
             ? <div className='text-center'><div className='loader w-6 h-6 inline-block' /></div>
-            : <div className='text-center'>
-              <table className='table-auto w-full border-collapse border-2 border-gray-500 mx-auto'>
+            : appUsers && appUsers.length
 
-                <thead>
-                  <tr>
-                    <th className='border border-gray-400 px-4 py-2 text-gray-800'>Username</th>
-                    <th className='border border-gray-400 px-4 py-2 text-gray-800'>Created</th>
-                  </tr>
-                </thead>
+              ? <div className='text-center'>
+                <table className='table-auto w-full border-collapse border-2 border-gray-500 mx-auto'>
 
-                <tbody>
-
-                  {appUsers && appUsers.length !== 0 && appUsers.map((user) => (
-                    <tr key={user['user-id']}>
-                      <td className='border border-gray-400 px-4 py-2 font-light'>{user['username']}</td>
-                      <td className='border border-gray-400 px-4 py-2 font-light'>{user['creation-date']}</td>
+                  <thead>
+                    <tr>
+                      <th className='border border-gray-400 px-4 py-2 text-gray-800'>Username</th>
+                      <th className='border border-gray-400 px-4 py-2 text-gray-800'>Created</th>
                     </tr>
-                  ))}
+                  </thead>
 
-                </tbody>
+                  <tbody>
 
-              </table>
+                    {appUsers && appUsers.length !== 0 && appUsers.map((user) => (
+                      <tr key={user['user-id']}>
+                        <td className='border border-gray-400 px-4 py-2 font-light'>{user['username']}</td>
+                        <td className='border border-gray-400 px-4 py-2 font-light'>{user['creation-date']}</td>
+                      </tr>
+                    ))}
 
-              {error && <div className='error'>{error.message}</div>}
-            </div>
+
+                  </tbody>
+
+                </table>
+
+              </div>
+
+              : !error && <p className='italic font-light'>No users yet.</p>
           }
+
+          {error && <div className='error'>{error.message}</div>}
 
         </div>
 

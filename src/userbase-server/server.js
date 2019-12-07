@@ -11,6 +11,7 @@ import setup from './setup'
 import admin from './admin'
 import user from './user'
 import db from './db'
+import appController from './app'
 import connections from './ws'
 import statusCodes from './statusCodes'
 import responseBuilder from './responseBuilder'
@@ -246,11 +247,12 @@ async function start(express, app, userbaseConfig = {}) {
     app.use('/admin', express.static(path.join(__dirname + adminPanelDir)))
 
     v1.post('/admin/create-admin', admin.createAdminController)
-    v1.post('/admin/create-app', admin.authenticateAdmin, admin.createAppController)
     v1.post('/admin/sign-in', admin.signInAdmin)
     v1.post('/admin/sign-out', admin.authenticateAdmin, admin.signOutAdmin)
-    v1.post('/admin/list-apps', admin.authenticateAdmin, admin.listApps)
-    v1.post('/admin/list-app-users', admin.authenticateAdmin, admin.listAppUsers)
+    v1.post('/admin/create-app', admin.authenticateAdmin, appController.createAppController)
+    v1.post('/admin/list-apps', admin.authenticateAdmin, appController.listApps)
+    v1.post('/admin/list-app-users', admin.authenticateAdmin, appController.listAppUsers)
+    v1.post('/admin/delete-app', admin.authenticateAdmin, appController.deleteApp)
 
     app.get('/ping', function (req, res) {
       res.send('Healthy')
@@ -266,7 +268,7 @@ function createAdmin(adminName, password, adminId, storePasswordInSecretsManager
 }
 
 function createApp(appName, adminId, appId) {
-  return admin.createApp(appName, adminId, appId)
+  return appController.createApp(appName, adminId, appId)
 }
 
 export default {
