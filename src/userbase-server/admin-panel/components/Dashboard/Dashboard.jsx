@@ -98,7 +98,15 @@ export default class Dashboard extends Component {
                     {apps.map((app) => (
                       <tr key={app['app-id']}>
                         <td className='border border-gray-400 px-4 py-2 font-light'>
-                          <a href={`#app=${app['app-name']}`}>{app['app-name']}</a>
+
+                          {app['deleted']
+                            ? <span>
+                              {app['app-name'] + ' '}
+                              <span className='italic text-red-600'>(Deleted)</span>
+                            </span>
+                            : <a href={`#app=${app['app-name']}`}>{app['app-name']}</a>
+                          }
+
                         </td>
                         <td className='border border-gray-400 px-4 py-2 font-light'>{app['app-id']}</td>
                       </tr>
