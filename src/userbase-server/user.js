@@ -931,18 +931,23 @@ exports.updateUser = async function (userId, username, passwordSecureHash, email
   }
 }
 
-exports.deleteUser = async function (userId) {
+const deleteUser = async (username, appId, userId) => {
+  const params = conditionCheckUserExists(username, appId, userId)
+
+  params.UpdateExpression = 'set deleted = :deleted'
+  params.ExpressionAttributeValues[':deleted'] = new Date().toISOString()
+
+  const ddbClient = connection.ddbClient()
+  await ddbClient.update(params).promise()
+}
+exports.deleteUser = deleteUser
+
+exports.deleteUserController = async function (userId) {
   try {
     const user = await getUserByUserId(userId)
     if (!user || user['deleted']) return responseBuilder.errorResponse(statusCodes['Not Found'], 'UserNotFound')
 
-    const params = conditionCheckUserExists(user['username'], user['app-id'], userId)
-
-    params.UpdateExpression = 'set deleted = :deleted'
-    params.ExpressionAttributeValues[':deleted'] = new Date().toISOString()
-
-    const ddbClient = connection.ddbClient()
-    await ddbClient.update(params).promise()
+    await deleteUser(user['username'], user['app-id'], userId)
 
     return responseBuilder.successResponse()
   } catch (e) {

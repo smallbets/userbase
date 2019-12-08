@@ -152,7 +152,7 @@ async function start(express, app, userbaseConfig = {}) {
                 break
               }
               case 'DeleteUser': {
-                response = await user.deleteUser(userId)
+                response = await user.deleteUserController(userId)
                 break
               }
               case 'OpenDatabase': {
@@ -253,6 +253,7 @@ async function start(express, app, userbaseConfig = {}) {
     v1.post('/admin/list-apps', admin.authenticateAdmin, appController.listApps)
     v1.post('/admin/list-app-users', admin.authenticateAdmin, appController.listAppUsers)
     v1.post('/admin/delete-app', admin.authenticateAdmin, appController.deleteApp)
+    v1.post('/admin/delete-user', admin.authenticateAdmin, admin.deleteUser)
 
     app.get('/ping', function (req, res) {
       res.send('Healthy')
