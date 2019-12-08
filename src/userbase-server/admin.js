@@ -4,6 +4,8 @@ import connection from './connection'
 import setup from './setup'
 import statusCodes from './statusCodes'
 import logger from './logger'
+import appController from './app'
+import userController from './user'
 
 // source: https://github.com/OWASP/CheatSheetSeries/blob/master/cheatsheets/Session_Management_Cheat_Sheet.md#session-id-length
 const ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID = 16
@@ -267,5 +269,33 @@ exports.authenticateAdmin = async function (req, res, next) {
     return res
       .status(statusCodes['Internal Server Error'])
       .send('Failed to authenticate admin')
+  }
+}
+
+exports.deleteUser = async function (req, res) {
+  const appName = req.body.appName
+  const username = req.body.username
+  const userId = req.body.userId
+
+  const adminId = res.locals.admin['admin-id']
+
+  if (!appName || !username) return res
+    .status(statusCodes['Bad Request'])
+    .send('Missing required items')
+
+  try {
+    const app = await appController.getApp(adminId, appName)
+    if (!app || app['deleted']) return res.status(statusCodes['Not Found']).send('App not found')
+
+    await userController.deleteUser(username, app['app-id'], userId)
+
+    return res.end()
+  } catch (e) {
+    if (e.name === 'ConditionalCheckFailedException') {
+      return res.status(statusCodes['Not Found']).send('User not found')
+    }
+
+    logger.error(`Failed to delete user '${userId}' from admin '${adminId}' with ${e}`)
+    return res.status(statusCodes['Internal Server Error']).send('Failed to delete user')
   }
 }

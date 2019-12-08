@@ -12,6 +12,7 @@ export default class AppUsersTable extends Component {
     }
 
     this.handleDeleteApp = this.handleDeleteApp.bind(this)
+    this.handleDeleteUser = this.handleDeleteUser.bind(this)
   }
 
   async componentDidMount() {
@@ -43,6 +44,40 @@ export default class AppUsersTable extends Component {
       }
     } catch (e) {
       if (this._isMounted) this.setState({ loading: false, error: e })
+    }
+  }
+
+  async handleDeleteUser(user) {
+    const { appName } = this.props
+    const { appUsers } = this.state
+
+    const userId = user['user-id']
+    const username = user['username']
+
+    const getUserIndex = () => this.state.appUsers.findIndex((appUser) => appUser['user-id'] === userId)
+
+    try {
+      if (window.confirm(`Are you sure you want to delete user '${username}'?`)) {
+
+        appUsers[getUserIndex()].deleting = true
+        this.setState({ appUsers })
+
+        await dashboardLogic.deleteUser(userId, appName, username)
+
+        if (this._isMounted) {
+          const { appUsers } = this.state
+          const userIndex = getUserIndex()
+          appUsers[userIndex].deleting = undefined
+          appUsers[userIndex].deleted = true
+          this.setState({ appUsers })
+        }
+      }
+    } catch (e) {
+      if (this._isMounted) {
+        const { appUsers } = this.state
+        appUsers[getUserIndex()].deleting = undefined
+        this.setState({ error: e, appUsers })
+      }
     }
   }
 
@@ -78,18 +113,42 @@ export default class AppUsersTable extends Component {
                     <tr>
                       <th className='border border-gray-400 px-4 py-2 text-gray-800'>Username</th>
                       <th className='border border-gray-400 px-4 py-2 text-gray-800'>Created</th>
+                      <th className='border border-gray-400 px-4 py-2'></th>
                     </tr>
                   </thead>
 
                   <tbody>
 
-                    {appUsers && appUsers.length !== 0 && appUsers.map((user) => (
+                    {appUsers.map((user) => (
                       <tr key={user['user-id']}>
-                        <td className='border border-gray-400 px-4 py-2 font-light'>{user['username']}</td>
+                        <td className='border border-gray-400 px-4 py-2 font-light'>
+
+                          {user['deleted']
+                            ? <span>
+                              {user['username'] + ' '}
+                              <span className='italic text-red-600'>(Deleted)</span>
+                            </span>
+                            : user['username']
+                          }
+
+                        </td>
                         <td className='border border-gray-400 px-4 py-2 font-light'>{user['creation-date']}</td>
+                        <td className='border border-gray-400 px-4 py-2 font-light'>
+
+                          {!user['deleted'] && !user['deleting'] &&
+                            <div
+                              className='fas fa-trash-alt font-normal text-lg cursor-pointer text-yellow-700'
+                              onClick={() => this.handleDeleteUser(user)}
+                            />
+                          }
+
+                          {user['deleting'] &&
+                            <div className='loader w-4 h-4 inline-block' />
+                          }
+
+                        </td>
                       </tr>
                     ))}
-
 
                   </tbody>
 
