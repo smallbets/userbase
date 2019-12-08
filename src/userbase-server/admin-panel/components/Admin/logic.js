@@ -96,11 +96,25 @@ const signIn = async (adminName, password) => {
   }
 }
 
+const forgotPassword = async (adminName) => {
+  try {
+    const lowerCaseAdminName = adminName.toLowerCase()
+    await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/forgot-password?adminName=${lowerCaseAdminName}`,
+      timeout: TEN_SECONDS_MS
+    })
+  } catch (e) {
+    errorHandler(e)
+  }
+}
+
 export default {
   createAdmin,
   createApp,
   signOut,
   handleSignOut,
   signIn,
-  errorHandler
+  errorHandler,
+  forgotPassword
 }

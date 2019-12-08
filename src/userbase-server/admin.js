@@ -11,9 +11,10 @@ import userController from './user'
 const ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID = 16
 const SESSION_COOKIE_NAME = 'adminSessionId'
 
-const oneDaySeconds = 60 * 60 * 24
-const oneDayMs = 1000 * oneDaySeconds
-const SESSION_LENGTH = oneDayMs
+const HOURS_IN_A_DAY = 24
+const SECONDS_IN_A_DAY = 60 * 60 * HOURS_IN_A_DAY
+const MS_IN_A_DAY = 1000 * SECONDS_IN_A_DAY
+const SESSION_LENGTH = MS_IN_A_DAY
 
 const createSession = async function (adminId) {
   const sessionId = crypto
@@ -159,6 +160,24 @@ const findAdminByAdminId = async (adminId) => {
   return adminResponse.Items[0]
 }
 
+const _validateAdminPassword = async (password, admin) => {
+  if (!admin) throw new Error('Admin not found')
+
+  const passwordIsCorrect = await crypto.bcrypt.compare(password, admin['password-hash'])
+
+  if (!passwordIsCorrect) {
+    const tempPasswordIsCorrect = await crypto.bcrypt.compare(password, admin['temp-password'])
+
+    if (!tempPasswordIsCorrect) {
+      throw new Error('Incorrect password or temp password')
+    } else {
+      if (new Date() - new Date(admin['temp-password-creation-date']) > MS_IN_A_DAY) {
+        throw new Error('Temp password expired')
+      }
+    }
+  }
+}
+
 exports.signInAdmin = async function (req, res) {
   const adminName = req.body.adminName
   const password = req.body.password
@@ -180,18 +199,19 @@ exports.signInAdmin = async function (req, res) {
 
     const admin = adminResponse.Item
 
-    const doesNotExist = !admin
-    const incorrectPassword = doesNotExist || !(await crypto.bcrypt.compare(password, admin['password-hash']))
-
-    if (doesNotExist || incorrectPassword) return res
-      .status(statusCodes['Unauthorized'])
-      .send('Incorrect password')
+    try {
+      await _validateAdminPassword(password, admin)
+    } catch (e) {
+      return res
+        .status(statusCodes['Unauthorized'])
+        .send('Incorrect password')
+    }
 
     const sessionId = await createSession(admin['admin-id'])
     setSessionCookie(res, sessionId)
     return res.end()
   } catch (e) {
-    logger.error(`Admin ${adminName} failed to sign in with ${e}`)
+    logger.error(`Admin '${adminName}' failed to sign in with ${e}`)
     return res
       .status(statusCodes['Internal Server Error'])
       .send('Failed to sign in admin!')
@@ -297,5 +317,77 @@ exports.deleteUser = async function (req, res) {
 
     logger.error(`Failed to delete user '${userId}' from admin '${adminId}' with ${e}`)
     return res.status(statusCodes['Internal Server Error']).send('Failed to delete user')
+  }
+}
+
+const setTempPassword = async (adminName, tempPassword) => {
+  const params = {
+    TableName: setup.adminTableName,
+    Key: {
+      'admin-name': adminName
+    },
+    UpdateExpression: 'set #tempPassword = :tempPassword, #tempPasswordCreationDate = :tempPasswordCreationDate',
+    ConditionExpression: 'attribute_exists(#adminName)',
+    ExpressionAttributeNames: {
+      '#tempPassword': 'temp-password',
+      '#tempPasswordCreationDate': 'temp-password-creation-date',
+      '#adminName': 'admin-name'
+    },
+    ExpressionAttributeValues: {
+      ':tempPassword': await crypto.bcrypt.hash(tempPassword),
+      ':tempPasswordCreationDate': new Date().toISOString()
+    },
+    ReturnValues: 'ALL_NEW'
+  }
+
+  const ddbClient = connection.ddbClient()
+
+  try {
+    const adminResponse = await ddbClient.update(params).promise()
+    return adminResponse.Attributes
+  } catch (e) {
+    if (e.name === 'ConditionalCheckFailedException') {
+      return null
+    }
+    throw e
+  }
+}
+
+exports.forgotPassword = async function (req, res) {
+  const adminName = req.query.adminName && req.query.adminName.toLowerCase()
+
+  if (!adminName) return res
+    .status(statusCodes['Bad Request'])
+    .send('Missing admin name')
+
+  try {
+    const tempPassword = crypto
+      .randomBytes(ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID)
+      .toString('base64')
+
+    const admin = await setTempPassword(adminName, tempPassword)
+    if (!admin) return res.status(statusCodes['Not Found']).send('Admin not found')
+
+    const subject = 'Forgot Password - Userbase'
+    const body = `Hello, ${adminName}!`
+      + '<br />'
+      + '<br />'
+      + 'Someone has requested you forgot your password to your Userbase admin account!'
+      + '<br />'
+      + '<br />'
+      + 'If you did not make this request, you can safely ignore this email.'
+      + '<br />'
+      + '<br />'
+      + `Here is your temporary password you can use to log in: ${tempPassword}`
+      + '<br />'
+      + '<br />'
+      + `This password will expire in ${HOURS_IN_A_DAY} hours.`
+
+    await setup.sendEmail(adminName, subject, body)
+
+    return res.end()
+  } catch (e) {
+    logger.error(`Failed to forget password for admin '${adminName}' with ${e}`)
+    return res.status(statusCodes['Internal Server Error']).send('Failed to forget password')
   }
 }

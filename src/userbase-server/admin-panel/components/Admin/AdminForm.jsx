@@ -15,6 +15,7 @@ export default class AdminForm extends Component {
 
     this.handleInputChange = this.handleInputChange.bind(this)
     this.handleSubmit = this.handleSubmit.bind(this)
+    this.handleForgotPassword = this.handleForgotPassword.bind(this)
   }
 
   // prevent last pass error in console: https://github.com/KillerCodeMonkey/ngx-quill/issues/351
@@ -63,6 +64,22 @@ export default class AdminForm extends Component {
       }
 
       window.location.hash = ''
+    } catch (e) {
+      if (this._isMounted) this.setState({ error: e.message, loading: false })
+    }
+  }
+
+  async handleForgotPassword(event) {
+    event.preventDefault()
+
+    const { adminName } = this.state
+
+    this.setState({ loading: true })
+
+    try {
+      await adminLogic.forgotPassword(adminName)
+      window.alert('Check your email!')
+      if (this._isMounted) this.setState({ loading: false })
     } catch (e) {
       if (this._isMounted) this.setState({ error: e.message, loading: false })
     }
@@ -127,6 +144,21 @@ export default class AdminForm extends Component {
                 />
               </div>
             </div>
+
+            {formType === 'Sign In' &&
+              <div className='table-row'>
+                <div className='table-cell p-2 pt-0'>
+                </div>
+
+                <div className='table-cell p-2 pt-0 text-left'>
+                  <div className='block select-none'>
+                    <div className='inline-block text-left whitespace-no-wrap'>
+                      <a className='cursor-pointer italic font-light text-xs xs:text-sm' onClick={this.handleForgotPassword}>Forgot password</a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            }
 
           </div>
 
