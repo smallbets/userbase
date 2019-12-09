@@ -3,6 +3,7 @@ import AdminForm from './components/Admin/AdminForm'
 import adminLogic from './components/Admin/logic'
 import Dashboard from './components/Dashboard/Dashboard'
 import AppUsersTable from './components/Dashboard/AppUsersTable'
+import EditAdmin from './components/Admin/EditAdmin'
 
 export default class App extends Component {
   constructor(props) {
@@ -49,6 +50,11 @@ export default class App extends Component {
           ? window.location.hash = ''
           : this.setState({ mode: hashRoute })
 
+      case 'edit-account':
+        return signedIn
+          ? this.setState({ mode: hashRoute })
+          : window.location.hash = ''
+
       default:
         if (hashRoute && hashRoute.substring(0, 4) === 'app=' && signedIn) {
           return this.setState({ mode: 'app-users-table' })
@@ -83,7 +89,7 @@ export default class App extends Component {
                 <li className='inline-block ml-4'><a className={mode === 'create-admin' ? 'text-orange-600' : ''} href='#create-admin'>New admin</a></li>
               </ul>
               : <ul>
-                <li className='inline-block ml-4 font-light'>{adminName}</li>
+                <li className='inline-block ml-4 font-light'><a className={mode === 'edit-account' ? 'text-orange-600' : ''} href='#edit-account'>{adminName}</a></li>
                 <li className='inline-block ml-4'><a href='#' onClick={this.handleSignOut}>Sign out</a></li>
               </ul>
             }
@@ -114,6 +120,9 @@ export default class App extends Component {
                 appName={decodeURIComponent(window.location.hash.substring(5))}
                 key={window.location.hash} // re-renders on hash change
               />
+
+            case 'edit-account':
+              return <EditAdmin />
 
             default:
               return null

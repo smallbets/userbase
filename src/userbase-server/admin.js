@@ -154,14 +154,17 @@ const findAdminByAdminId = async (adminId) => {
   if (!adminResponse || adminResponse.Items.length === 0) return null
 
   if (adminResponse.Items.length > 1) {
-    logger.warn(`Too many admins found with id ${adminId}`)
+    const errorMsg = `Too many admins found with id ${adminId}`
+    logger.fatal(errorMsg)
+    throw new Error(errorMsg)
   }
 
   return adminResponse.Items[0]
 }
+exports.findAdminByAdminId = findAdminByAdminId
 
 const _validateAdminPassword = async (password, admin) => {
-  if (!admin) throw new Error('Admin not found')
+  if (!admin || admin['deleted']) throw new Error('Admin not found')
 
   const passwordIsCorrect = await crypto.bcrypt.compare(password, admin['password-hash'])
 
@@ -278,7 +281,7 @@ exports.authenticateAdmin = async function (req, res, next) {
       .status(statusCodes['Unauthorized']).end()
 
     const admin = await findAdminByAdminId(session['admin-id'])
-    if (!admin) return res
+    if (!admin || admin['deleted']) return res
       .status(statusCodes['Not Found'])
       .send('Admin does not exist')
 
@@ -366,7 +369,7 @@ exports.forgotPassword = async function (req, res) {
       .toString('base64')
 
     const admin = await setTempPassword(adminName, tempPassword)
-    if (!admin) return res.status(statusCodes['Not Found']).send('Admin not found')
+    if (!admin || admin['deleted']) return res.status(statusCodes['Not Found']).send('Admin not found')
 
     const subject = 'Forgot Password - Userbase'
     const body = `Hello, ${adminName}!`
@@ -389,5 +392,41 @@ exports.forgotPassword = async function (req, res) {
   } catch (e) {
     logger.error(`Failed to forget password for admin '${adminName}' with ${e}`)
     return res.status(statusCodes['Internal Server Error']).send('Failed to forget password')
+  }
+}
+
+exports.deleteAdmin = async function (req, res) {
+  const admin = res.locals.admin
+  const adminName = admin['admin-name']
+  const adminId = admin['admin-id']
+
+  try {
+    const params = {
+      TableName: setup.adminTableName,
+      Key: {
+        'admin-name': adminName,
+      },
+      UpdateExpression: 'SET deleted = :deleted',
+      ConditionExpression: '#adminId = :adminId and attribute_not_exists(deleted)',
+      ExpressionAttributeValues: {
+        ':deleted': new Date().toISOString(),
+        ':adminId': adminId
+      },
+      ExpressionAttributeNames: {
+        '#adminId': 'admin-id'
+      }
+    }
+
+    const ddbClient = connection.ddbClient()
+    await ddbClient.update(params).promise()
+
+    return res.end()
+  } catch (e) {
+    if (e.name === 'ConditionalCheckFailedException') {
+      return res.status(statusCodes['Not Found']).send('Admin not found')
+    }
+
+    logger.error(`Failed to delete admin '${adminId}' with ${e}`)
+    return res.status(statusCodes['Internal Server Error']).send('Failed to delete admin')
   }
 }

@@ -34,6 +34,10 @@ const signOutLocalSession = () => {
   localStorage.setItem('adminSession', signedOutSession)
 }
 
+const removeLocalSession = () => {
+  localStorage.removeItem('adminSession')
+}
+
 const createAdmin = async (adminName, password, fullName) => {
   try {
     const lowerCaseAdminName = adminName.toLowerCase()
@@ -109,6 +113,20 @@ const forgotPassword = async (adminName) => {
   }
 }
 
+const deleteAdmin = async () => {
+  try {
+    await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/delete-admin`,
+      timeout: TEN_SECONDS_MS
+    })
+    removeLocalSession()
+    window.location.hash = ''
+  } catch (e) {
+    errorHandler(e)
+  }
+}
+
 export default {
   createAdmin,
   createApp,
@@ -116,5 +134,6 @@ export default {
   handleSignOut,
   signIn,
   errorHandler,
-  forgotPassword
+  forgotPassword,
+  deleteAdmin
 }

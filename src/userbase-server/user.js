@@ -8,6 +8,7 @@ import connections from './ws'
 import logger from './logger'
 import { validateEmail, stringToArrayBuffer } from './utils'
 import appController from './app'
+import adminController from './admin'
 
 const getTtl = secondsToLive => Math.floor(Date.now() / 1000) + secondsToLive
 
@@ -203,6 +204,9 @@ exports.signUp = async function (req, res) {
     const app = await appController.getAppByAppId(appId)
     if (!app || app['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
 
+    const admin = await adminController.findAdminByAdminId(app['admin-id'])
+    if (!admin || admin['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
+
     const salts = { encryptionKeySalt, dhKeySalt, hmacKeySalt }
     const passwordBasedBackup = { pbkdfKeySalt, passwordEncryptedSeed }
 
@@ -271,6 +275,9 @@ exports.authenticateUser = async function (req, res, next) {
 
     if (!user || user['deleted']) return res.status(statusCodes['Unauthorized']).send('Session invalid')
     if (!app || app['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
+
+    const admin = await adminController.findAdminByAdminId(app['admin-id'])
+    if (!admin || admin['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
 
     res.locals.user = user // makes user object available in next route
     next()
@@ -380,6 +387,9 @@ exports.signIn = async function (req, res) {
     // Warning: uses secondary index here. It's possible index won't be up to date and this fails
     const app = await appController.getAppByAppId(appId)
     if (!app || app['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
+
+    const admin = await adminController.findAdminByAdminId(app['admin-id'])
+    if (!admin || admin['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
 
     const params = {
       TableName: setup.usersTableName,
@@ -732,6 +742,9 @@ exports.forgotPassword = async function (req, res) {
     // Warning: uses secondary index here. It's possible index won't be up to date and this fails
     const app = await appController.getAppByAppId(appId)
     if (!app || app['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
+
+    const admin = await adminController.findAdminByAdminId(app['admin-id'])
+    if (!admin || admin['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
 
     const tempPassword = crypto
       .randomBytes(ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID)
