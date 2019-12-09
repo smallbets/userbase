@@ -254,6 +254,7 @@ async function start(express, app, userbaseConfig = {}) {
     v1.post('/admin/list-app-users', admin.authenticateAdmin, appController.listAppUsers)
     v1.post('/admin/delete-app', admin.authenticateAdmin, appController.deleteApp)
     v1.post('/admin/delete-user', admin.authenticateAdmin, admin.deleteUser)
+    v1.post('/admin/delete-admin', admin.authenticateAdmin, admin.deleteAdmin)
     v1.post('/admin/forgot-password', admin.forgotPassword)
 
     app.get('/ping', function (req, res) {
