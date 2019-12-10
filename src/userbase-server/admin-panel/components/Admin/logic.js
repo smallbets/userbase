@@ -22,9 +22,18 @@ const handleSignOut = () => {
   window.location.hash = 'sign-in'
 }
 
-const signInLocalSession = (email) => {
-  const adminSession = JSON.stringify({ email, signedIn: true })
+const signInLocalSession = (email, fullName) => {
+  const adminSession = JSON.stringify({ email, fullName, signedIn: true })
   localStorage.setItem('adminSession', adminSession)
+}
+
+const updateLocalSession = (email, fullName) => {
+  const adminSessionJson = localStorage.getItem('adminSession')
+  const adminSession = JSON.parse(adminSessionJson)
+  const updatedSession = { ...adminSession }
+  if (email) updatedSession.email = email
+  if (fullName) updatedSession.fullName = fullName
+  localStorage.setItem('adminSession', JSON.stringify(updatedSession))
 }
 
 const signOutLocalSession = () => {
@@ -51,7 +60,7 @@ const createAdmin = async (email, password, fullName) => {
       },
       timeout: TEN_SECONDS_MS
     })
-    signInLocalSession(lowerCaseEmail)
+    signInLocalSession(lowerCaseEmail, fullName)
   } catch (e) {
     errorHandler(e)
   }
@@ -85,7 +94,7 @@ const signOut = async () => {
 const signIn = async (email, password) => {
   try {
     const lowerCaseEmail = email.toLowerCase()
-    await axios({
+    const signInResponse = await axios({
       method: 'POST',
       url: `/${VERSION}/admin/sign-in`,
       data: {
@@ -94,7 +103,8 @@ const signIn = async (email, password) => {
       },
       timeout: TEN_SECONDS_MS
     })
-    signInLocalSession(lowerCaseEmail)
+    const fullName = signInResponse.data
+    signInLocalSession(lowerCaseEmail, fullName)
   } catch (e) {
     errorHandler(e, false)
   }
@@ -108,6 +118,24 @@ const forgotPassword = async (email) => {
       url: `/${VERSION}/admin/forgot-password?email=${lowerCaseEmail}`,
       timeout: TEN_SECONDS_MS
     })
+  } catch (e) {
+    errorHandler(e)
+  }
+}
+
+const updateAdmin = async ({ email, password, fullName }) => {
+  try {
+    await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/update-admin`,
+      data: {
+        email,
+        password,
+        fullName
+      },
+      timeout: TEN_SECONDS_MS
+    })
+    if (email || fullName) updateLocalSession(email, fullName)
   } catch (e) {
     errorHandler(e)
   }
@@ -135,5 +163,6 @@ export default {
   signIn,
   errorHandler,
   forgotPassword,
+  updateAdmin,
   deleteAdmin
 }

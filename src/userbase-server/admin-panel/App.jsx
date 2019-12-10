@@ -11,10 +11,13 @@ export default class App extends Component {
 
     this.state = {
       mode: undefined,
-      email: undefined
+      signedIn: undefined,
+      email: undefined,
+      fullName: undefined
     }
 
     this.handleSignOut = this.handleSignOut.bind(this)
+    this.handleUpdateAccount = this.handleUpdateAccount.bind(this)
     this.handleReadHash = this.handleReadHash.bind(this)
   }
 
@@ -31,14 +34,28 @@ export default class App extends Component {
     await adminLogic.signOut()
   }
 
+  handleUpdateAccount(email, fullName) {
+    this.setState({
+      email: email || this.state.email,
+      fullName: fullName || this.state.fullName
+    })
+  }
+
   handleReadHash() {
     const sessionJson = localStorage.getItem('adminSession')
     const session = sessionJson && JSON.parse(sessionJson)
     const signedIn = session && session.signedIn
     const email = session && session.email
+    const fullName = session && session.fullName
 
-    if (email && email !== this.state.email) {
-      this.setState({ email: session.email })
+    this.setState({ signedIn })
+
+    if (email !== this.state.email) {
+      this.setState({ email })
+    }
+
+    if (fullName !== this.state.fullName) {
+      this.setState({ fullName })
     }
 
     const hashRoute = window.location.hash.substring(1)
@@ -67,11 +84,14 @@ export default class App extends Component {
   }
 
   render() {
-    const { mode, email } = this.state
+    const { mode, signedIn, email, fullName } = this.state
 
     if (!mode) {
       return <div />
     }
+
+    const adminPanelHeader = signedIn && fullName
+      && `${fullName}'${fullName.charAt(fullName.length - 1) === "s" ? "" : "s"} `
 
     return (
       <div>
@@ -79,7 +99,7 @@ export default class App extends Component {
           <div className='flex-0 ml-2 tracking-tight'>
             <div className='flex items-center min-w-full'>
               <a href='#'><img src={require('./img/icon.png')} className='h-10 sm:h-12' /></a>
-              <p className='ml-4 italic'>Admin Panel</p>
+              <p className='ml-4 italic'>{adminPanelHeader || ''}Admin Panel</p>
             </div>
           </div>
           <div className='flex-1 text-right tracking-tight mr-5'>
@@ -122,7 +142,7 @@ export default class App extends Component {
               />
 
             case 'edit-account':
-              return <EditAdmin />
+              return <EditAdmin handleUpdateAccount={this.handleUpdateAccount} />
 
             default:
               return null

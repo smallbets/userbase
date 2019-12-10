@@ -50,8 +50,8 @@ const setSessionCookie = (res, sessionId) => {
   res.cookie(SESSION_COOKIE_NAME, sessionId, cookieResponseHeaders)
 }
 
-async function createAdmin(email, password, adminId = uuidv4(), storePasswordInSecretsManager = false, fullName) {
-  if (!email || !password) throw {
+async function createAdmin(email, password, fullName, adminId = uuidv4(), storePasswordInSecretsManager = false) {
+  if (!email || !password || !fullName) throw {
     status: statusCodes['Bad Request'],
     data: 'Missing required items'
   }
@@ -72,12 +72,9 @@ async function createAdmin(email, password, adminId = uuidv4(), storePasswordInS
     const admin = {
       email: email.toLowerCase(),
       'password-hash': passwordHash,
+      'full-name': fullName,
       'admin-id': adminId,
       'creation-date': new Date().toISOString()
-    }
-
-    if (fullName) {
-      admin['full-name'] = fullName
     }
 
     const params = {
@@ -111,14 +108,10 @@ exports.createAdminController = async function (req, res) {
   const password = req.body.password
   const fullName = req.body.fullName
 
-  if (!fullName) return res
-    .status(statusCodes['Bad Request'])
-    .send('Missing full name')
-
   const adminId = uuidv4()
   try {
     const storePasswordInSecretsManager = false
-    await createAdmin(email, password, adminId, storePasswordInSecretsManager, fullName)
+    await createAdmin(email, password, fullName, adminId, storePasswordInSecretsManager)
   } catch (e) {
     return res
       .status(e.status)
@@ -215,7 +208,8 @@ exports.signInAdmin = async function (req, res) {
 
     const sessionId = await createSession(admin['admin-id'])
     setSessionCookie(res, sessionId)
-    return res.end()
+
+    return res.status(statusCodes['Success']).send(admin['full-name'])
   } catch (e) {
     logger.error(`Admin '${email}' failed to sign in with ${e}`)
     return res
@@ -394,6 +388,122 @@ exports.forgotPassword = async function (req, res) {
   } catch (e) {
     logger.error(`Failed to forget password for admin '${email}' with ${e}`)
     return res.status(statusCodes['Internal Server Error']).send('Failed to forget password')
+  }
+}
+
+const conditionExpressionAdminExists = (email, adminId) => {
+  return {
+    TableName: setup.adminTableName,
+    Key: {
+      email
+    },
+    ConditionExpression: '#adminId = :adminId and attribute_not_exists(deleted)',
+    ExpressionAttributeValues: {
+      ':adminId': adminId
+    },
+    ExpressionAttributeNames: {
+      '#adminId': 'admin-id'
+    }
+  }
+}
+
+const _updateAdminExcludingEmailUpdate = async (oldAdmin, adminId, password, fullName) => {
+  const params = conditionExpressionAdminExists(oldAdmin['email'], adminId)
+
+  let UpdateExpression = 'SET '
+
+  if (password) {
+    UpdateExpression += '#passwordHash = :passwordHash'
+    params.ExpressionAttributeNames['#passwordHash'] = 'password-hash'
+    params.ExpressionAttributeValues[':passwordHash'] = await crypto.bcrypt.hash(password)
+  }
+
+  if (fullName) {
+    UpdateExpression += (password ? ', ' : '') + '#fullName = :fullName'
+    params.ExpressionAttributeNames['#fullName'] = 'full-name'
+    params.ExpressionAttributeValues[':fullName'] = fullName
+  }
+
+  params.UpdateExpression = UpdateExpression
+
+  try {
+    const ddbClient = connection.ddbClient()
+    await ddbClient.update(params).promise()
+  } catch (e) {
+    if (e.name === 'ConditionalCheckFailedException') {
+      throw new Error('Admin not found')
+    }
+    throw e
+  }
+}
+
+const _updateAdminIncludingEmailUpdate = async (oldAdmin, adminId, email, password, fullName) => {
+  // if updating email, need to Delete existing DDB item and Put new one because email is partition key
+  const deleteAdminParams = conditionExpressionAdminExists(oldAdmin['email'], adminId)
+
+  const updatedAdmin = {
+    ...oldAdmin,
+    email: email.toLowerCase()
+  }
+
+  if (password) updatedAdmin['password-hash'] = await crypto.bcrypt.hash(password)
+
+  if (fullName) updatedAdmin['full-name'] = fullName
+
+  const updateAdminParams = {
+    TableName: setup.adminTableName,
+    Item: updatedAdmin,
+    ConditionExpression: 'attribute_not_exists(email)'
+  }
+
+  const params = {
+    TransactItems: [
+      { Delete: deleteAdminParams },
+      { Put: updateAdminParams }
+    ]
+  }
+
+  try {
+    const ddbClient = connection.ddbClient()
+    await ddbClient.transactWrite(params).promise()
+  } catch (e) {
+    if (e.message.includes('[ConditionalCheckFailed')) {
+      throw new Error('Admin not found')
+    } else if (e.message.includes('ConditionalCheckFailed]')) {
+      throw new Error('Admin already exists')
+    }
+    throw e
+  }
+}
+
+exports.updateAdmin = async function (req, res) {
+  const email = req.body.email
+  const password = req.body.password
+  const fullName = req.body.fullName
+
+  const admin = res.locals.admin
+  const adminId = admin['admin-id']
+
+  try {
+
+    if (email) {
+      if (!validateEmail(email)) return res.status(statusCodes['Bad Request']).send('Invalid Email')
+      await _updateAdminIncludingEmailUpdate(admin, adminId, email, password, fullName)
+    } else {
+      if (!password && !fullName) return res.status(statusCodes['Bad Request']).send('Missing required items')
+      await _updateAdminExcludingEmailUpdate(admin, adminId, password, fullName)
+    }
+
+    return res.end()
+  } catch (e) {
+    if (e.message === 'Admin not found') {
+      return res.status(statusCodes['Not Found']).send('Admin not found')
+    } else if (e.message === 'Admin already exists') {
+      return res.status(statusCodes['Conflict']).send('Admin already exists')
+    }
+
+    logger.error(`Failed to update admin '${adminId}' with ${e}`)
+    return res.status(statusCodes['Internal Server Error']).send('Failed to update admin')
   }
 }
 
