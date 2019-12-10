@@ -266,8 +266,8 @@ async function start(express, app, userbaseConfig = {}) {
   }
 }
 
-function createAdmin(adminName, password, adminId, storePasswordInSecretsManager = false) {
-  return admin.createAdmin(adminName, password, adminId, storePasswordInSecretsManager)
+function createAdmin(email, password, adminId, storePasswordInSecretsManager = false) {
+  return admin.createAdmin(email, password, adminId, storePasswordInSecretsManager)
 }
 
 function createApp(appName, adminId, appId) {

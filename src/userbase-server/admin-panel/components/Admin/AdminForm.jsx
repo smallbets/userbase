@@ -6,7 +6,7 @@ export default class AdminForm extends Component {
   constructor(props) {
     super(props)
     this.state = {
-      adminName: this.props.placeholderAdminName,
+      email: this.props.placeholderEmail,
       password: '',
       fullName: '',
       error: '',
@@ -29,7 +29,7 @@ export default class AdminForm extends Component {
   }
   handleHitEnter(e) {
     const ENTER_KEY_CODE = 13
-    if ((e.target.name === 'adminName' || e.target.name === 'password') &&
+    if ((e.target.name === 'email' || e.target.name === 'password') &&
       (e.key === 'Enter' || e.keyCode === ENTER_KEY_CODE)) {
       e.stopPropagation()
     }
@@ -49,16 +49,16 @@ export default class AdminForm extends Component {
 
   async handleSubmit(event) {
     const { formType } = this.props
-    const { adminName, password, fullName } = this.state
+    const { email, password, fullName } = this.state
     event.preventDefault()
 
     this.setState({ loading: true })
 
     try {
       if (formType === 'Create Admin') {
-        await adminLogic.createAdmin(adminName, password, fullName)
+        await adminLogic.createAdmin(email, password, fullName)
       } else if (formType === 'Sign In') {
-        await adminLogic.signIn(adminName, password)
+        await adminLogic.signIn(email, password)
       } else {
         return console.error('Unknown form type')
       }
@@ -72,12 +72,12 @@ export default class AdminForm extends Component {
   async handleForgotPassword(event) {
     event.preventDefault()
 
-    const { adminName } = this.state
+    const { email } = this.state
 
     this.setState({ loading: true })
 
     try {
-      await adminLogic.forgotPassword(adminName)
+      await adminLogic.forgotPassword(email)
       window.alert('Check your email!')
       if (this._isMounted) this.setState({ loading: false })
     } catch (e) {
@@ -86,10 +86,10 @@ export default class AdminForm extends Component {
   }
 
   render() {
-    const { adminName, password, fullName, error, loading } = this.state
+    const { email, password, fullName, error, loading } = this.state
     const { formType } = this.props
 
-    const disabled = !adminName || !password || (formType === 'Create Admin' && (!fullName))
+    const disabled = !email || !password || (formType === 'Create Admin' && (!fullName))
 
     return (
       <form onSubmit={this.handleSubmit}>
@@ -123,11 +123,11 @@ export default class AdminForm extends Component {
               <div className='table-cell p-2'>
                 <input
                   className='font-light text-xs xs:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
-                  type='text'
-                  name='adminName'
-                  autoComplete='username'
+                  type='email'
+                  name='email'
+                  autoComplete='email'
                   onChange={this.handleInputChange}
-                  defaultValue={adminName}
+                  defaultValue={email}
                 />
               </div>
             </div>
@@ -192,5 +192,5 @@ export default class AdminForm extends Component {
 
 AdminForm.propTypes = {
   formType: string,
-  placeholderAdminName: string
+  placeholderEmail: string
 }

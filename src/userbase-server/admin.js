@@ -6,6 +6,7 @@ import statusCodes from './statusCodes'
 import logger from './logger'
 import appController from './app'
 import userController from './user'
+import { validateEmail } from './utils'
 
 // source: https://github.com/OWASP/CheatSheetSeries/blob/master/cheatsheets/Session_Management_Cheat_Sheet.md#session-id-length
 const ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID = 16
@@ -49,10 +50,15 @@ const setSessionCookie = (res, sessionId) => {
   res.cookie(SESSION_COOKIE_NAME, sessionId, cookieResponseHeaders)
 }
 
-async function createAdmin(adminName, password, adminId = uuidv4(), storePasswordInSecretsManager = false, fullName) {
-  if (!adminName || !password) throw {
+async function createAdmin(email, password, adminId = uuidv4(), storePasswordInSecretsManager = false, fullName) {
+  if (!email || !password) throw {
     status: statusCodes['Bad Request'],
     data: 'Missing required items'
+  }
+
+  if (!validateEmail(email)) throw {
+    status: statusCodes['Bad Request'],
+    data: 'Invalid email'
   }
 
   try {
@@ -64,7 +70,7 @@ async function createAdmin(adminName, password, adminId = uuidv4(), storePasswor
     const passwordHash = await crypto.bcrypt.hash(password)
 
     const admin = {
-      'admin-name': adminName.toLowerCase(),
+      email: email.toLowerCase(),
       'password-hash': passwordHash,
       'admin-id': adminId,
       'creation-date': new Date().toISOString()
@@ -77,10 +83,7 @@ async function createAdmin(adminName, password, adminId = uuidv4(), storePasswor
     const params = {
       TableName: setup.adminTableName,
       Item: admin,
-      ConditionExpression: 'attribute_not_exists(#adminName)',
-      ExpressionAttributeNames: {
-        '#adminName': 'admin-name'
-      },
+      ConditionExpression: 'attribute_not_exists(email)'
     }
 
     const ddbClient = connection.ddbClient()
@@ -104,7 +107,7 @@ async function createAdmin(adminName, password, adminId = uuidv4(), storePasswor
 exports.createAdmin = createAdmin
 
 exports.createAdminController = async function (req, res) {
-  const adminName = req.body.adminName
+  const email = req.body.email
   const password = req.body.password
   const fullName = req.body.fullName
 
@@ -115,7 +118,7 @@ exports.createAdminController = async function (req, res) {
   const adminId = uuidv4()
   try {
     const storePasswordInSecretsManager = false
-    await createAdmin(adminName, password, adminId, storePasswordInSecretsManager, fullName)
+    await createAdmin(email, password, adminId, storePasswordInSecretsManager, fullName)
   } catch (e) {
     return res
       .status(e.status)
@@ -182,17 +185,17 @@ const _validateAdminPassword = async (password, admin) => {
 }
 
 exports.signInAdmin = async function (req, res) {
-  const adminName = req.body.adminName
+  const email = req.body.email
   const password = req.body.password
 
-  if (!adminName || !password) return res
+  if (!email || !password) return res
     .status(statusCodes['Bad Request'])
     .send('Missing required items')
 
   const params = {
     TableName: setup.adminTableName,
     Key: {
-      'admin-name': adminName.toLowerCase()
+      email: email.toLowerCase()
     },
   }
 
@@ -214,7 +217,7 @@ exports.signInAdmin = async function (req, res) {
     setSessionCookie(res, sessionId)
     return res.end()
   } catch (e) {
-    logger.error(`Admin '${adminName}' failed to sign in with ${e}`)
+    logger.error(`Admin '${email}' failed to sign in with ${e}`)
     return res
       .status(statusCodes['Internal Server Error'])
       .send('Failed to sign in admin!')
@@ -323,18 +326,17 @@ exports.deleteUser = async function (req, res) {
   }
 }
 
-const setTempPassword = async (adminName, tempPassword) => {
+const setTempPassword = async (email, tempPassword) => {
   const params = {
     TableName: setup.adminTableName,
     Key: {
-      'admin-name': adminName
+      email
     },
     UpdateExpression: 'set #tempPassword = :tempPassword, #tempPasswordCreationDate = :tempPasswordCreationDate',
-    ConditionExpression: 'attribute_exists(#adminName)',
+    ConditionExpression: 'attribute_exists(email)',
     ExpressionAttributeNames: {
       '#tempPassword': 'temp-password',
       '#tempPasswordCreationDate': 'temp-password-creation-date',
-      '#adminName': 'admin-name'
     },
     ExpressionAttributeValues: {
       ':tempPassword': await crypto.bcrypt.hash(tempPassword),
@@ -357,9 +359,9 @@ const setTempPassword = async (adminName, tempPassword) => {
 }
 
 exports.forgotPassword = async function (req, res) {
-  const adminName = req.query.adminName && req.query.adminName.toLowerCase()
+  const email = req.query.email && req.query.email.toLowerCase()
 
-  if (!adminName) return res
+  if (!email) return res
     .status(statusCodes['Bad Request'])
     .send('Missing admin name')
 
@@ -368,11 +370,11 @@ exports.forgotPassword = async function (req, res) {
       .randomBytes(ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID)
       .toString('base64')
 
-    const admin = await setTempPassword(adminName, tempPassword)
+    const admin = await setTempPassword(email, tempPassword)
     if (!admin || admin['deleted']) return res.status(statusCodes['Not Found']).send('Admin not found')
 
     const subject = 'Forgot Password - Userbase'
-    const body = `Hello, ${adminName}!`
+    const body = `Hello, ${email}!`
       + '<br />'
       + '<br />'
       + 'Someone has requested you forgot your password to your Userbase admin account!'
@@ -386,25 +388,25 @@ exports.forgotPassword = async function (req, res) {
       + '<br />'
       + `This password will expire in ${HOURS_IN_A_DAY} hours.`
 
-    await setup.sendEmail(adminName, subject, body)
+    await setup.sendEmail(email, subject, body)
 
     return res.end()
   } catch (e) {
-    logger.error(`Failed to forget password for admin '${adminName}' with ${e}`)
+    logger.error(`Failed to forget password for admin '${email}' with ${e}`)
     return res.status(statusCodes['Internal Server Error']).send('Failed to forget password')
   }
 }
 
 exports.deleteAdmin = async function (req, res) {
   const admin = res.locals.admin
-  const adminName = admin['admin-name']
+  const email = admin['email']
   const adminId = admin['admin-id']
 
   try {
     const params = {
       TableName: setup.adminTableName,
       Key: {
-        'admin-name': adminName,
+        email
       },
       UpdateExpression: 'SET deleted = :deleted',
       ConditionExpression: '#adminId = :adminId and attribute_not_exists(deleted)',

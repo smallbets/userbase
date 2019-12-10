@@ -22,8 +22,8 @@ const handleSignOut = () => {
   window.location.hash = 'sign-in'
 }
 
-const signInLocalSession = (adminName) => {
-  const adminSession = JSON.stringify({ adminName, signedIn: true })
+const signInLocalSession = (email) => {
+  const adminSession = JSON.stringify({ email, signedIn: true })
   localStorage.setItem('adminSession', adminSession)
 }
 
@@ -38,20 +38,20 @@ const removeLocalSession = () => {
   localStorage.removeItem('adminSession')
 }
 
-const createAdmin = async (adminName, password, fullName) => {
+const createAdmin = async (email, password, fullName) => {
   try {
-    const lowerCaseAdminName = adminName.toLowerCase()
+    const lowerCaseEmail = email.toLowerCase()
     await axios({
       method: 'POST',
       url: `/${VERSION}/admin/create-admin`,
       data: {
-        adminName: lowerCaseAdminName,
+        email: lowerCaseEmail,
         password,
         fullName
       },
       timeout: TEN_SECONDS_MS
     })
-    signInLocalSession(lowerCaseAdminName)
+    signInLocalSession(lowerCaseEmail)
   } catch (e) {
     errorHandler(e)
   }
@@ -82,30 +82,30 @@ const signOut = async () => {
   })
 }
 
-const signIn = async (adminName, password) => {
+const signIn = async (email, password) => {
   try {
-    const lowerCaseAdminName = adminName.toLowerCase()
+    const lowerCaseEmail = email.toLowerCase()
     await axios({
       method: 'POST',
       url: `/${VERSION}/admin/sign-in`,
       data: {
-        adminName: lowerCaseAdminName,
+        email: lowerCaseEmail,
         password
       },
       timeout: TEN_SECONDS_MS
     })
-    signInLocalSession(lowerCaseAdminName)
+    signInLocalSession(lowerCaseEmail)
   } catch (e) {
     errorHandler(e, false)
   }
 }
 
-const forgotPassword = async (adminName) => {
+const forgotPassword = async (email) => {
   try {
-    const lowerCaseAdminName = adminName.toLowerCase()
+    const lowerCaseEmail = email.toLowerCase()
     await axios({
       method: 'POST',
-      url: `/${VERSION}/admin/forgot-password?adminName=${lowerCaseAdminName}`,
+      url: `/${VERSION}/admin/forgot-password?email=${lowerCaseEmail}`,
       timeout: TEN_SECONDS_MS
     })
   } catch (e) {

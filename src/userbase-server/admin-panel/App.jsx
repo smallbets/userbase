@@ -11,7 +11,7 @@ export default class App extends Component {
 
     this.state = {
       mode: undefined,
-      adminName: undefined
+      email: undefined
     }
 
     this.handleSignOut = this.handleSignOut.bind(this)
@@ -35,10 +35,10 @@ export default class App extends Component {
     const sessionJson = localStorage.getItem('adminSession')
     const session = sessionJson && JSON.parse(sessionJson)
     const signedIn = session && session.signedIn
-    const adminName = session && session.adminName
+    const email = session && session.email
 
-    if (adminName && adminName !== this.state.adminName) {
-      this.setState({ adminName: session.adminName })
+    if (email && email !== this.state.email) {
+      this.setState({ email: session.email })
     }
 
     const hashRoute = window.location.hash.substring(1)
@@ -67,7 +67,7 @@ export default class App extends Component {
   }
 
   render() {
-    const { mode, adminName } = this.state
+    const { mode, email } = this.state
 
     if (!mode) {
       return <div />
@@ -89,7 +89,7 @@ export default class App extends Component {
                 <li className='inline-block ml-4'><a className={mode === 'create-admin' ? 'text-orange-600' : ''} href='#create-admin'>New admin</a></li>
               </ul>
               : <ul>
-                <li className='inline-block ml-4 font-light'><a className={mode === 'edit-account' ? 'text-orange-600' : ''} href='#edit-account'>{adminName}</a></li>
+                <li className='inline-block ml-4 font-light'><a className={mode === 'edit-account' ? 'text-orange-600' : ''} href='#edit-account'>{email}</a></li>
                 <li className='inline-block ml-4'><a href='#' onClick={this.handleSignOut}>Sign out</a></li>
               </ul>
             }
@@ -102,14 +102,14 @@ export default class App extends Component {
               return <AdminForm
                 formType='Create Admin'
                 key='create-admin'
-                placeholderAdminName=''
+                placeholderEmail=''
               />
 
             case 'sign-in':
               return <AdminForm
                 formType='Sign In'
                 key='sign-in'
-                placeholderAdminName={adminName}
+                placeholderEmail={email}
               />
 
             case 'dashboard':
