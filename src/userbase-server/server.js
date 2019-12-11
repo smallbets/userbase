@@ -255,6 +255,7 @@ async function start(express, app, userbaseConfig = {}) {
     v1.post('/admin/delete-app', admin.authenticateAdmin, appController.deleteApp)
     v1.post('/admin/delete-user', admin.authenticateAdmin, admin.deleteUser)
     v1.post('/admin/delete-admin', admin.authenticateAdmin, admin.deleteAdmin)
+    v1.post('/admin/update-admin', admin.authenticateAdmin, admin.updateAdmin)
     v1.post('/admin/forgot-password', admin.forgotPassword)
 
     app.get('/ping', function (req, res) {
@@ -266,8 +267,8 @@ async function start(express, app, userbaseConfig = {}) {
   }
 }
 
-function createAdmin(adminName, password, adminId, storePasswordInSecretsManager = false) {
-  return admin.createAdmin(adminName, password, adminId, storePasswordInSecretsManager)
+function createAdmin(email, password, fullName, adminId, storePasswordInSecretsManager = false) {
+  return admin.createAdmin(email, password, fullName, adminId, storePasswordInSecretsManager)
 }
 
 function createApp(appName, adminId, appId) {

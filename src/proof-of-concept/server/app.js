@@ -24,8 +24,9 @@ const userbaseConfig = {
   emailDomain: 'encrypted.dev'
 }
 
-const ADMIN_NAME = 'admin'
+const ADMIN_EMAIL = 'admin@userbase.dev'
 const ADMIN_ID = 'admin-id'
+const ADMIN_FULL_NAME = 'Default Admin'
 
 const APP_NAME = 'proof-of-concept'
 const APP_ID = 'poc-id'
@@ -51,7 +52,7 @@ async function setupAdmin() {
       storePasswordInSecretsManager = true
     }
 
-    await userbaseServer.createAdmin(ADMIN_NAME, adminPassword, ADMIN_ID, storePasswordInSecretsManager)
+    await userbaseServer.createAdmin(ADMIN_EMAIL, adminPassword, ADMIN_FULL_NAME, ADMIN_ID, storePasswordInSecretsManager)
   } catch (e) {
     if (!e || e.status !== CONFLICT_STATUS_CODE) {
       console.log(`Failed to set up new admin account with ${JSON.stringify(e)}`)

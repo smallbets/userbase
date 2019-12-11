@@ -11,10 +11,13 @@ export default class App extends Component {
 
     this.state = {
       mode: undefined,
-      adminName: undefined
+      signedIn: undefined,
+      email: undefined,
+      fullName: undefined
     }
 
     this.handleSignOut = this.handleSignOut.bind(this)
+    this.handleUpdateAccount = this.handleUpdateAccount.bind(this)
     this.handleReadHash = this.handleReadHash.bind(this)
   }
 
@@ -31,14 +34,28 @@ export default class App extends Component {
     await adminLogic.signOut()
   }
 
+  handleUpdateAccount(email, fullName) {
+    this.setState({
+      email: email || this.state.email,
+      fullName: fullName || this.state.fullName
+    })
+  }
+
   handleReadHash() {
     const sessionJson = localStorage.getItem('adminSession')
     const session = sessionJson && JSON.parse(sessionJson)
     const signedIn = session && session.signedIn
-    const adminName = session && session.adminName
+    const email = session && session.email
+    const fullName = session && session.fullName
 
-    if (adminName && adminName !== this.state.adminName) {
-      this.setState({ adminName: session.adminName })
+    this.setState({ signedIn })
+
+    if (email !== this.state.email) {
+      this.setState({ email })
+    }
+
+    if (fullName !== this.state.fullName) {
+      this.setState({ fullName })
     }
 
     const hashRoute = window.location.hash.substring(1)
@@ -67,11 +84,14 @@ export default class App extends Component {
   }
 
   render() {
-    const { mode, adminName } = this.state
+    const { mode, signedIn, email, fullName } = this.state
 
     if (!mode) {
       return <div />
     }
+
+    const adminPanelHeader = signedIn && fullName
+      && `${fullName}'${fullName.charAt(fullName.length - 1) === "s" ? "" : "s"} `
 
     return (
       <div>
@@ -79,7 +99,7 @@ export default class App extends Component {
           <div className='flex-0 ml-2 tracking-tight'>
             <div className='flex items-center min-w-full'>
               <a href='#'><img src={require('./img/icon.png')} className='h-10 sm:h-12' /></a>
-              <p className='ml-4 italic'>Admin Panel</p>
+              <p className='ml-4 italic'>{adminPanelHeader || ''}Admin Panel</p>
             </div>
           </div>
           <div className='flex-1 text-right tracking-tight mr-5'>
@@ -89,7 +109,7 @@ export default class App extends Component {
                 <li className='inline-block ml-4'><a className={mode === 'create-admin' ? 'text-orange-600' : ''} href='#create-admin'>New admin</a></li>
               </ul>
               : <ul>
-                <li className='inline-block ml-4 font-light'><a className={mode === 'edit-account' ? 'text-orange-600' : ''} href='#edit-account'>{adminName}</a></li>
+                <li className='inline-block ml-4 font-light'><a className={mode === 'edit-account' ? 'text-orange-600' : ''} href='#edit-account'>{email}</a></li>
                 <li className='inline-block ml-4'><a href='#' onClick={this.handleSignOut}>Sign out</a></li>
               </ul>
             }
@@ -102,14 +122,14 @@ export default class App extends Component {
               return <AdminForm
                 formType='Create Admin'
                 key='create-admin'
-                placeholderAdminName=''
+                placeholderEmail=''
               />
 
             case 'sign-in':
               return <AdminForm
                 formType='Sign In'
                 key='sign-in'
-                placeholderAdminName={adminName}
+                placeholderEmail={email}
               />
 
             case 'dashboard':
@@ -122,7 +142,7 @@ export default class App extends Component {
               />
 
             case 'edit-account':
-              return <EditAdmin />
+              return <EditAdmin handleUpdateAccount={this.handleUpdateAccount} />
 
             default:
               return null
