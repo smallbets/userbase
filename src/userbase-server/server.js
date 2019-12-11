@@ -227,40 +227,46 @@ async function start(express, app, userbaseConfig = {}) {
     }, 30000)
 
     app.use(expressLogger({ logger }))
-    app.use(bodyParser.json())
-    app.use(cookieParser())
+    app.get('/ping', function (req, res) {
+      res.send('Healthy')
+    })
 
-    const v1 = express.Router()
-    app.use('/v1', v1)
+    // Userbase user API
+    const v1Api = express.Router()
+    app.use('/v1/api', v1Api)
 
-    v1.get('/api', user.authenticateUser, (req, res) =>
+    v1Api.use(bodyParser.json())
+
+    v1Api.get('/', user.authenticateUser, (req, res) =>
       req.ws
         ? res.ws(socket => wss.emit('connection', socket, req, res))
         : res.send('Not a websocket!')
     )
-    v1.post('/api/auth/sign-up', user.signUp)
-    v1.post('/api/auth/sign-in', user.signIn)
-    v1.post('/api/auth/sign-in-with-session', user.authenticateUser, user.extendSession)
-    v1.get('/api/auth/server-public-key', user.getServerPublicKey)
-    v1.post('/api/auth/forgot-password', user.forgotPassword)
+    v1Api.post('/auth/sign-up', user.signUp)
+    v1Api.post('/auth/sign-in', user.signIn)
+    v1Api.post('/auth/sign-in-with-session', user.authenticateUser, user.extendSession)
+    v1Api.get('/auth/server-public-key', user.getServerPublicKey)
+    v1Api.post('/auth/forgot-password', user.forgotPassword)
 
+    // Userbase admin API
     app.use('/admin', express.static(path.join(__dirname + adminPanelDir)))
+    const v1Admin = express.Router()
+    app.use('/v1/admin', v1Admin)
 
-    v1.post('/admin/create-admin', admin.createAdminController)
-    v1.post('/admin/sign-in', admin.signInAdmin)
-    v1.post('/admin/sign-out', admin.authenticateAdmin, admin.signOutAdmin)
-    v1.post('/admin/create-app', admin.authenticateAdmin, appController.createAppController)
-    v1.post('/admin/list-apps', admin.authenticateAdmin, appController.listApps)
-    v1.post('/admin/list-app-users', admin.authenticateAdmin, appController.listAppUsers)
-    v1.post('/admin/delete-app', admin.authenticateAdmin, appController.deleteApp)
-    v1.post('/admin/delete-user', admin.authenticateAdmin, admin.deleteUser)
-    v1.post('/admin/delete-admin', admin.authenticateAdmin, admin.deleteAdmin)
-    v1.post('/admin/update-admin', admin.authenticateAdmin, admin.updateAdmin)
-    v1.post('/admin/forgot-password', admin.forgotPassword)
+    v1Admin.use(cookieParser())
+    v1Admin.use(bodyParser.json())
 
-    app.get('/ping', function (req, res) {
-      res.send('Healthy')
-    })
+    v1Admin.post('/create-admin', admin.createAdminController)
+    v1Admin.post('/sign-in', admin.signInAdmin)
+    v1Admin.post('/sign-out', admin.authenticateAdmin, admin.signOutAdmin)
+    v1Admin.post('/create-app', admin.authenticateAdmin, appController.createAppController)
+    v1Admin.post('/list-apps', admin.authenticateAdmin, appController.listApps)
+    v1Admin.post('/list-app-users', admin.authenticateAdmin, appController.listAppUsers)
+    v1Admin.post('/delete-app', admin.authenticateAdmin, appController.deleteApp)
+    v1Admin.post('/delete-user', admin.authenticateAdmin, admin.deleteUser)
+    v1Admin.post('/delete-admin', admin.authenticateAdmin, admin.deleteAdmin)
+    v1Admin.post('/update-admin', admin.authenticateAdmin, admin.updateAdmin)
+    v1Admin.post('/forgot-password', admin.forgotPassword)
 
   } catch (e) {
     logger.info(`Unhandled error while launching server: ${e}`)
