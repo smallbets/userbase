@@ -35,11 +35,24 @@
   },
   "version": "0.0.6",
   "scripts": {
-    "test:types": "dtslint types"
+    "test:types": "dtslint types",
+    "size": "size-limit"
   },
+  "size-limit": [
+    {
+      "name": "umd",
+      "path": "../../build/script/userbase-*.js",
+      "webpack": false
+    },
+    {
+      "name": "esm",
+      "path": "../../npm_build/userbase-js/index.js"
+    }
+  ],
   "devDependencies": {
     "@fortawesome/fontawesome-svg-core": "^1.2.25",
     "@fortawesome/free-solid-svg-icons": "^5.11.2",
+    "@size-limit/preset-big-lib": "^2.2.2",
     "css-loader": "^3.2.0",
     "dtslint": "^2.0.2",
     "optimize-css-assets-webpack-plugin": "^5.0.3",
