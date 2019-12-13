@@ -63,7 +63,7 @@ module.exports = (env, argv) => {
             loader: 'babel-loader',
             options: {
               presets: ['@babel/preset-env', '@babel/react'],
-              plugins: ['@babel/transform-runtime']
+              plugins: [['@babel/transform-runtime', { absoluteRuntime: true }]]
             }
           }
         },
