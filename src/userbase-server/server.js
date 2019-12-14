@@ -254,6 +254,10 @@ async function start(express, app, userbaseConfig = {}) {
     app.use('/v1/admin', v1Admin)
 
     v1Admin.use(cookieParser())
+
+    v1Admin.post('/stripe/webhook', bodyParser.raw({ type: 'application/json' }), admin.handleStripeWebhook)
+
+    // must come after stripe/webhook to ensure parsing done correctly
     v1Admin.use(bodyParser.json())
 
     v1Admin.post('/create-admin', admin.createAdminController)
@@ -264,9 +268,19 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.post('/list-app-users', admin.authenticateAdmin, appController.listAppUsers)
     v1Admin.post('/delete-app', admin.authenticateAdmin, appController.deleteApp)
     v1Admin.post('/delete-user', admin.authenticateAdmin, admin.deleteUser)
-    v1Admin.post('/delete-admin', admin.authenticateAdmin, admin.deleteAdmin)
+    v1Admin.post('/delete-admin', admin.authenticateAdmin, admin.getSaasSubscription, admin.deleteAdmin)
     v1Admin.post('/update-admin', admin.authenticateAdmin, admin.updateAdmin)
     v1Admin.post('/forgot-password', admin.forgotPassword)
+    v1Admin.get('/payment-status', admin.authenticateAdmin, admin.getSaasSubscription, (req, res) => {
+      const subscription = res.locals.subscription
+      if (!subscription) return res.end()
+      return res.send(subscription.cancel_at_period_end ? 'cancel_at_period_end' : subscription.status)
+    })
+
+    v1Admin.post('/stripe/create-saas-payment-session', admin.authenticateAdmin, admin.createSaasPaymentSession)
+    v1Admin.post('/stripe/update-saas-payment-session', admin.authenticateAdmin, admin.getSaasSubscription, admin.updateSaasSubscriptionPaymentSession)
+    v1Admin.post('/stripe/cancel-saas-subscription', admin.authenticateAdmin, admin.getSaasSubscription, admin.cancelSaasSubscription)
+    v1Admin.post('/stripe/resume-saas-subscription', admin.authenticateAdmin, admin.getSaasSubscription, admin.resumeSaasSubscription)
 
   } catch (e) {
     logger.info(`Unhandled error while launching server: ${e}`)

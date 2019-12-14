@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { VERSION } from '../../config'
+import { VERSION, STRIPE } from '../../config'
 
 const TEN_SECONDS_MS = 10 * 1000
 
@@ -155,6 +155,78 @@ const deleteAdmin = async () => {
   }
 }
 
+const subscribeToSaas = async () => {
+  try {
+    const paymentSessionResponse = await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/stripe/create-saas-payment-session`,
+      timeout: TEN_SECONDS_MS
+    })
+    const sessionId = paymentSessionResponse.data
+
+    const result = await STRIPE.redirectToCheckout({ sessionId })
+    if (result.error) throw result.error
+
+  } catch (e) {
+    errorHandler(e)
+  }
+}
+
+const updateSaasPaymentMethod = async () => {
+  try {
+    const updatePaymenSessionResponse = await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/stripe/update-saas-payment-session`,
+      timeout: TEN_SECONDS_MS
+    })
+    const sessionId = updatePaymenSessionResponse.data
+
+    const result = await STRIPE.redirectToCheckout({ sessionId })
+    if (result.error) throw result.error
+
+  } catch (e) {
+    errorHandler(e)
+  }
+}
+
+const cancelSaasSubscription = async () => {
+  try {
+    await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/stripe/cancel-saas-subscription`,
+      timeout: TEN_SECONDS_MS
+    })
+  } catch (e) {
+    errorHandler(e)
+  }
+}
+
+const resumeSaasSubscription = async () => {
+  try {
+    await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/stripe/resume-saas-subscription`,
+      timeout: TEN_SECONDS_MS
+    })
+  } catch (e) {
+    errorHandler(e)
+  }
+}
+
+const getPaymentStatus = async () => {
+  try {
+    const paymentStatusResponse = await axios({
+      method: 'GET',
+      url: `/${VERSION}/admin/payment-status`,
+      timeout: TEN_SECONDS_MS
+    })
+    const paymentStatus = paymentStatusResponse.data
+    return paymentStatus
+  } catch (e) {
+    errorHandler(e)
+  }
+}
+
 export default {
   createAdmin,
   createApp,
@@ -164,5 +236,10 @@ export default {
   errorHandler,
   forgotPassword,
   updateAdmin,
-  deleteAdmin
+  deleteAdmin,
+  subscribeToSaas,
+  updateSaasPaymentMethod,
+  cancelSaasSubscription,
+  resumeSaasSubscription,
+  getPaymentStatus
 }
