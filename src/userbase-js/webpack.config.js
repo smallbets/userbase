@@ -66,7 +66,7 @@ module.exports = (env) => {
             loader: 'babel-loader',
             options: {
               presets: ['@babel/preset-env'],
-              plugins: [['@babel/plugin-transform-runtime', { corejs: 3, useESModules: true }]]
+              plugins: [['@babel/plugin-transform-runtime', { corejs: 3, useESModules: true, version: "^7.7.6" }]]
             }
           }
         }
