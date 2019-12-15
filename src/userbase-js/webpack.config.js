@@ -14,11 +14,13 @@ module.exports = (env) => {
 
     config = {
       entry: {
-        main: './src/userbase-js/userbase.js'
+        main: './src/userbase-js/index.js'
       },
       output: {
         path: path.join(__dirname, '../../build/script/'),
         filename: `userbase-${version}.js`,
+        library: 'userbase',
+        libraryExport: 'default'
       },
       target: 'web'
     }
