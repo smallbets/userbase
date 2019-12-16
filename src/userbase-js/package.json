@@ -28,6 +28,7 @@
   "main": "./index.js",
   "typings": "./types/index.d.ts",
   "name": "userbase-js",
+  "sideEffects": false,
   "repository": {
     "type": "git",
     "url": "git+https://github.com/encrypted-dev/userbase.git"
