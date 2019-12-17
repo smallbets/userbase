@@ -17,8 +17,8 @@
     "express": "^4.17.1",
     "react": "^16.8.6",
     "react-dom": "^16.8.6",
-    "userbase-js": "file:../userbase-js",
-    "userbase-server": "file:../userbase-server"
+    "userbase-js": "^0.0.6",
+    "userbase-server": "^0.0.9"
   },
   "devDependencies": {
     "@babel/cli": "^7.4.4",
