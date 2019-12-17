@@ -58,12 +58,8 @@ a:hover {
   margin-top: 2px;
 }
 
-.todo-text {
+.input-text {
   @apply font-light text-sm h-8 p-2 border border-gray-500 outline-none;
-}
-
-.todo-item {
-  @apply inline-block ml-2 font-semibold flex-1
 }
 
 .error {

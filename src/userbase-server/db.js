@@ -6,91 +6,71 @@ import connections from './ws'
 import logger from './logger'
 import userController from './user'
 
+const MAX_OPERATIONS_IN_TX = 10
+
 const getS3DbStateKey = (databaseId, bundleSeqNo) => `${databaseId}/${bundleSeqNo}`
 
-exports.createDatabase = async function (userId, dbNameHash, dbId, encryptedDbName, encryptedDbKey) {
-  if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
-  if (!dbId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
-  if (!encryptedDbName) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name')
-  if (!encryptedDbKey) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database key')
-
-  const database = {
-    'database-id': dbId,
-    'owner-id': userId,
-    'database-name': encryptedDbName
-  }
-
-  const userDatabase = {
-    'user-id': userId,
-    'database-name-hash': dbNameHash,
-    'database-id': dbId,
-    'encrypted-db-key': encryptedDbKey,
-  }
-
-  const params = {
-    TransactItems: [{
-      Put: {
-        TableName: setup.databaseTableName,
-        Item: database,
-        ConditionExpression: 'attribute_not_exists(#dbId)',
-        ExpressionAttributeNames: {
-          '#dbId': 'database-id',
-        }
-      }
-    }, {
-      Put: {
-        TableName: setup.userDatabaseTableName,
-        Item: userDatabase,
-        ConditionExpression: 'attribute_not_exists(#userId)',
-        ExpressionAttributeNames: {
-          '#userId': 'user-id',
-        }
-      }
-    }]
-  }
-
+const createDatabase = async function (userId, dbNameHash, dbId, encryptedDbName, encryptedDbKey) {
   try {
+    const user = await userController.getUserByUserId(userId)
+    if (!user || user['deleted']) throw new Error('UserNotFound')
+
+    memcache.initTransactionLog(dbId)
+
+    const database = {
+      'database-id': dbId,
+      'owner-id': userId,
+      'database-name': encryptedDbName
+    }
+
+    const userDatabase = {
+      'user-id': userId,
+      'database-name-hash': dbNameHash,
+      'database-id': dbId,
+      'encrypted-db-key': encryptedDbKey,
+    }
+
+    const params = {
+      TransactItems: [{
+        Put: {
+          TableName: setup.databaseTableName,
+          Item: database,
+          ConditionExpression: 'attribute_not_exists(#dbId)',
+          ExpressionAttributeNames: {
+            '#dbId': 'database-id',
+          }
+        }
+      }, {
+        Put: {
+          TableName: setup.userDatabaseTableName,
+          Item: userDatabase,
+          ConditionExpression: 'attribute_not_exists(#userId)',
+          ExpressionAttributeNames: {
+            '#userId': 'user-id',
+          }
+        }
+      }]
+    }
+
     const ddbClient = connection.ddbClient()
     await ddbClient.transactWrite(params).promise()
 
-    return responseBuilder.successResponse('Success!')
+    return { ...database, ...userDatabase }
   } catch (e) {
-    if (e.message && e.message.includes('ConditionalCheckFailed')) {
-      return responseBuilder.errorResponse(statusCodes['Conflict'], 'Database already exists')
-    } else if (e.message && e.message.includes('TransactionConflict')) {
-      return responseBuilder.errorResponse(statusCodes['Conflict'], 'Database already creating')
+
+    if (e.message) {
+      if (e.message.includes('UserNotFound')) {
+        return responseBuilder.errorResponse(statusCodes['Conflict'], 'UserNotFound')
+      } else if (e.message.includes('ConditionalCheckFailed')) {
+        return responseBuilder.errorResponse(statusCodes['Conflict'], 'Database already exists')
+      } else if (e.message.includes('TransactionConflict')) {
+        return responseBuilder.errorResponse(statusCodes['Conflict'], 'Database already creating')
+      }
     }
+
     logger.error(`Failed to create database for user ${userId} with ${e}`)
-    return responseBuilder.errorResponse(
-      statusCodes['Internal Server Error'],
-      'Failed to create database'
-    )
+    throw responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to create database')
   }
-}
-
-exports.findUserDatabaseByDatabaseId = async function (dbId, userId) {
-  const userDatabaseParams = {
-    TableName: setup.userDatabaseTableName,
-    IndexName: setup.userDatabaseIdIndex,
-    KeyConditionExpression: '#dbId = :dbId and #userId = :userId',
-    ExpressionAttributeNames: {
-      '#dbId': 'database-id',
-      '#userId': 'user-id'
-    },
-    ExpressionAttributeValues: {
-      ':dbId': dbId,
-      ':userId': userId
-    },
-  }
-
-  const ddbClient = connection.ddbClient()
-  const userDbResponse = await ddbClient.query(userDatabaseParams).promise()
-
-  if (userDbResponse.Items.length > 1) {
-    logger.warn(`Found too many user databases with db id ${dbId} and user id ${userId}`)
-  }
-
-  return userDbResponse.Items[0]
 }
 
 const findDatabaseByDatabaseId = async function (dbId) {
@@ -107,7 +87,6 @@ const findDatabaseByDatabaseId = async function (dbId) {
   if (!dbResponse || !dbResponse.Item) return null
   return dbResponse.Item
 }
-exports.findDatabaseByDatabaseId = findDatabaseByDatabaseId
 
 const getDatabase = async function (userId, dbNameHash) {
   const userDatabaseParams = {
@@ -131,11 +110,28 @@ const getDatabase = async function (userId, dbNameHash) {
   return { ...userDb, ...database }
 }
 
-exports.openDatabase = async function (userId, connectionId, dbNameHash) {
+exports.openDatabase = async function (userId, connectionId, dbNameHash, newDatabaseParams) {
   if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
+  if (!newDatabaseParams) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing new database params')
+
+  const newDbId = newDatabaseParams.dbId
+  const { encryptedDbName, encryptedDbKey } = newDatabaseParams
+  if (!newDbId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
+  if (!encryptedDbName) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name')
+  if (!encryptedDbKey) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database key')
 
   try {
-    const database = await getDatabase(userId, dbNameHash)
+    let database
+    try {
+      database = await getDatabase(userId, dbNameHash) || await createDatabase(userId, dbNameHash, newDbId, encryptedDbName, encryptedDbKey)
+    } catch (e) {
+      if (e.data === 'Database already exists' || e.data === 'Database already creating') {
+        // User must have made a concurrent request to open db with same name for the first time.
+        // Can safely reattempt to get the database
+        database = await getDatabase(userId, dbNameHash)
+      }
+      else return responseBuilder.errorResponse(e.status, e.data)
+    }
     if (!database) return responseBuilder.errorResponse(statusCodes['Not Found'], 'Database not found')
 
     const dbId = database['database-id']
@@ -145,125 +141,11 @@ exports.openDatabase = async function (userId, connectionId, dbNameHash) {
     if (connections.openDatabase(userId, connectionId, dbId, bundleSeqNo, dbNameHash, dbKey)) {
       return responseBuilder.successResponse('Success!')
     } else {
-      throw new Error(`Unable to open database`)
+      throw new Error('Unable to open database')
     }
   } catch (e) {
-    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to open database with ${e}`)
-  }
-}
-
-const findOtherUserDbsGrantedAccessToDb = async function (dbId, userId) {
-  const otherUserDbGrantedAccessParamsLessThan = {
-    TableName: setup.userDatabaseTableName,
-    IndexName: setup.userDatabaseIdIndex,
-    // Condition operator != is not supported, must make separate queries using < and >
-    KeyConditionExpression: '#dbId = :dbId and #userId < :userId',
-    ExpressionAttributeNames: {
-      '#dbId': 'database-id',
-      '#userId': 'user-id'
-    },
-    ExpressionAttributeValues: {
-      ':dbId': dbId,
-      ':userId': userId
-    },
-  }
-
-  const otherUserDbGrantedAccessParamsMoreThan = {
-    ...otherUserDbGrantedAccessParamsLessThan,
-    KeyConditionExpression: '#dbId = :dbId and #userId > :userId',
-  }
-
-  const ddbClient = connection.ddbClient()
-  const result = await Promise.all([
-    ddbClient.query(otherUserDbGrantedAccessParamsLessThan).promise(),
-    ddbClient.query(otherUserDbGrantedAccessParamsMoreThan).promise()
-  ])
-
-  const otherUserDbsLessThan = (result[0] && result[0].Items) || []
-  const otherUserDbsMoreThan = (result[1] && result[1].Items) || []
-
-  return otherUserDbsLessThan.concat(otherUserDbsMoreThan)
-}
-
-const findOtherUsersGrantedAccessToDb = async function (dbId, userId, otherUsersByUserId) {
-  const otherUserDbsGrantedAccess = await findOtherUserDbsGrantedAccessToDb(dbId, userId)
-
-  const userQueries = []
-  for (const otherUserDb of otherUserDbsGrantedAccess) {
-    const otherUserId = otherUserDb['user-id']
-    if (!otherUsersByUserId[otherUserId]) {
-      otherUsersByUserId[otherUserId] = userQueries.push(userController.getUserByUserId(otherUserId))
-    }
-  }
-  const uniqueUsers = await Promise.all(userQueries)
-
-  for (const uniqueUser of uniqueUsers) {
-    const otherUserId = uniqueUser['user-id']
-    otherUsersByUserId[otherUserId] = uniqueUser
-  }
-
-  return otherUserDbsGrantedAccess
-}
-
-exports.findDatabases = async function (userId, username) {
-  try {
-    const userDatabasesParams = {
-      TableName: setup.userDatabaseTableName,
-      KeyConditionExpression: '#userId = :userId',
-      ExpressionAttributeNames: {
-        '#userId': 'user-id',
-      },
-      ExpressionAttributeValues: {
-        ':userId': userId
-      }
-    }
-
-    const ddbClient = connection.ddbClient()
-    const userDbsResponse = await ddbClient.query(userDatabasesParams).promise()
-
-    const userDbs = userDbsResponse && userDbsResponse.Items
-    if (!userDbs || !userDbs.length) return responseBuilder.successResponse([])
-
-    const databaseQueries = []
-    const otherUsersByUserId = {}
-    const otherUsersGrantedDbAccessQueries = []
-    for (const userDb of userDbs) {
-      const dbId = userDb['database-id']
-
-      databaseQueries.push(findDatabaseByDatabaseId(dbId))
-      otherUsersGrantedDbAccessQueries.push(findOtherUsersGrantedAccessToDb(dbId, userId, otherUsersByUserId))
-    }
-
-    const [databases, otherUserDbsGrantedAccess] = await Promise.all([
-      Promise.all(databaseQueries),
-      Promise.all(otherUsersGrantedDbAccessQueries)
-    ])
-
-    if (!databases) {
-      logger.error(`User ${userId} is missing databases in database table`)
-      throw new Error('Missing databases')
-    }
-
-    const finalResult = databases.map((db, i) => {
-      const ownerId = db['owner-id']
-
-      return {
-        encryptedDbKey: userDbs[i]['encrypted-db-key'],
-        dbName: db['database-name'],
-        owner: ownerId === userId ? username : otherUsersByUserId[ownerId].username,
-        access: otherUserDbsGrantedAccess[i].map(otherUserDb => {
-          const otherUserId = otherUserDb['user-id']
-          return {
-            readOnly: otherUserDb['read-only'],
-            username: otherUsersByUserId[otherUserId].username
-          }
-        })
-      }
-    })
-
-    return responseBuilder.successResponse(finalResult)
-  } catch (e) {
-    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to find databases with ${e}`)
+    logger.error(`Failed to open database for user ${userId} with ${e}`)
+    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to open database')
   }
 }
 
@@ -297,33 +179,12 @@ const putTransaction = async function (transaction, userId, dbNameHash, database
 
   // write the transaction using the next sequence number
   const params = {
-    TransactItems: [{
-      ConditionCheck: {
-        TableName: setup.userDatabaseTableName,
-        Key: {
-          'user-id': userId,
-          'database-name-hash': dbNameHash
-        },
-        ConditionExpression: '#readOnly <> :readOnly and #dbId = :dbId',
-        ExpressionAttributeNames: {
-          '#readOnly': 'read-only',
-          '#dbId': 'database-id'
-        },
-        ExpressionAttributeValues: {
-          ':readOnly': true,
-          ':dbId': databaseId
-        },
-      }
-    }, {
-      Put: {
-        TableName: setup.transactionsTableName,
-        Item: transaction,
-        ConditionExpression: 'attribute_not_exists(#databaseId)',
-        ExpressionAttributeNames: {
-          '#databaseId': 'database-id'
-        }
-      }
-    }]
+    TableName: setup.transactionsTableName,
+    Item: transactionWithSequenceNo,
+    ConditionExpression: 'attribute_not_exists(#databaseId)',
+    ExpressionAttributeNames: {
+      '#databaseId': 'database-id'
+    }
   }
 
   try {
@@ -379,8 +240,8 @@ exports.doCommand = async function (command, userId, dbNameHash, databaseId, key
     const sequenceNo = await putTransaction(transaction, userId, dbNameHash, databaseId)
     return responseBuilder.successResponse({ sequenceNo })
   } catch (e) {
-    if (e.message === failedTxConditionCheckMsg) return responseBuilder.errorResponse(statusCodes['Bad Request'], failedTxConditionCheckMsg)
-    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to ${command} with ${e}`)
+    logger.warn(`Failed command ${command} for user ${userId} with ${e}`)
+    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to ${command}`)
   }
 }
 
@@ -388,6 +249,11 @@ exports.batchTransaction = async function (userId, dbNameHash, databaseId, opera
   if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
   if (!databaseId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
   if (!operations || !operations.length) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing operations')
+
+  if (operations.length > MAX_OPERATIONS_IN_TX) return responseBuilder.errorResponse(statusCodes['Bad Request'], {
+    error: 'OperationsExceedLimit',
+    limit: MAX_OPERATIONS_IN_TX
+  })
 
   const ops = []
   for (let i = 0; i < operations.length; i++) {
@@ -419,8 +285,8 @@ exports.batchTransaction = async function (userId, dbNameHash, databaseId, opera
     const sequenceNo = await putTransaction(transaction, userId, dbNameHash, databaseId)
     return responseBuilder.successResponse({ sequenceNo })
   } catch (e) {
-    if (e.message === failedTxConditionCheckMsg) return responseBuilder.errorResponse(statusCodes['Bad Request'], failedTxConditionCheckMsg)
-    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to batch with ${e}`)
+    logger.warn(`Failed batch transaction for user ${userId} with ${e}`)
+    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to batch transaction')
   }
 }
 

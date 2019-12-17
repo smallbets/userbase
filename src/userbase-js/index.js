@@ -1,24 +1,28 @@
-import config from './config'
 import auth from './auth'
 import db from './db'
+
+import './style.css'
 
 if (!global._babelPolyfill) {
   require('babel-polyfill')
 }
 
 export default {
-  configure: config.configure,
+  init: auth.init,
 
   signUp: auth.signUp,
   signIn: auth.signIn,
   signOut: auth.signOut,
+  forgotPassword: auth.forgotPassword,
+  updateUser: auth.updateUser,
+  deleteUser: auth.deleteUser,
+  importKey: auth.importKey,
   getLastUsedUsername: auth.getLastUsedUsername,
-  signInWithSession: auth.signInWithSession,
 
   openDatabase: db.openDatabase,
 
-  insert: db.insert,
-  update: db.update,
-  delete: db.delete,
+  insertItem: db.insertItem,
+  updateItem: db.updateItem,
+  deleteItem: db.deleteItem,
   transaction: db.transaction
 }

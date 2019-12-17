@@ -6,9 +6,9 @@ const _errorHandler = (e, operation) => {
   return { error: e.message }
 }
 
-const signUp = async (username, password) => {
+const signUp = async (username, password, email, rememberMe) => {
   try {
-    const user = await userbase.signUp(username, password)
+    const user = await userbase.signUp(username, password, email, null, null, rememberMe)
     return user
   } catch (e) {
     return _errorHandler(e, 'sign up')
@@ -23,21 +23,38 @@ const signOut = async () => {
   }
 }
 
-const signIn = async (username, password) => {
+const signIn = async (username, password, rememberMe) => {
   try {
-    const result = await userbase.signIn(username, password)
+    const result = await userbase.signIn(username, password, rememberMe)
     return result
   } catch (e) {
     return _errorHandler(e, 'sign in')
   }
 }
 
-const signInWithSession = async () => {
+const init = async (settings) => {
   try {
-    const session = await userbase.signInWithSession()
+    const session = await userbase.init(settings)
     return session
   } catch (e) {
-    return _errorHandler(e, 'sign in with session')
+    return _errorHandler(e, 'init')
+  }
+}
+
+const importKey = async (keyString) => {
+  try {
+    await userbase.importKey(keyString)
+  } catch (e) {
+    return _errorHandler(e, 'import key')
+  }
+}
+
+const forgotPassword = async (username) => {
+  try {
+    await userbase.forgotPassword(username)
+  } catch (e) {
+    _errorHandler(e, 'forgot password')
+    throw e
   }
 }
 
@@ -45,5 +62,7 @@ export default {
   signUp,
   signOut,
   signIn,
-  signInWithSession
+  init,
+  importKey,
+  forgotPassword
 }

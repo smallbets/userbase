@@ -50,16 +50,6 @@ class DatabaseAlreadyOpening extends Error {
   }
 }
 
-class ChangeHandlerMissing extends Error {
-  constructor(...params) {
-    super(...params)
-
-    this.name = 'ChangeHandlerMissing'
-    this.message = 'Change handler must be be provided.'
-    this.status = statusCodes['Bad Request']
-  }
-}
-
 class ChangeHandlerMustBeFunction extends Error {
   constructor(...params) {
     super(...params)
@@ -160,16 +150,6 @@ class ItemUpdateConflict extends Error {
   }
 }
 
-class OperationsMissing extends Error {
-  constructor(...params) {
-    super(...params)
-
-    this.name = 'OperationsMissing'
-    this.message = 'Operations missing.'
-    this.status = statusCodes['Bad Request']
-  }
-}
-
 class OperationsMustBeArray extends Error {
   constructor(...params) {
     super(...params)
@@ -200,13 +180,22 @@ class OperationsConflict extends Error {
   }
 }
 
+class OperationsExceedLimit extends Error {
+  constructor(limit, ...params) {
+    super(limit, ...params)
+
+    this.name = 'OperationsExceedLimit'
+    this.message = `Operations exceed limit. Only allowed ${limit} operations.`
+    this.status = statusCodes['Conflict']
+  }
+}
+
 export default {
   DatabaseNameCannotBeBlank,
   DatabaseNameMustBeString,
   DatabaseNameTooLong,
   DatabaseAlreadyOpen,
   DatabaseAlreadyOpening,
-  ChangeHandlerMissing,
   ChangeHandlerMustBeFunction,
   DatabaseNotOpen,
   ItemMissing,
@@ -217,8 +206,8 @@ export default {
   ItemAlreadyExists,
   ItemDoesNotExist,
   ItemUpdateConflict,
-  OperationsMissing,
   OperationsMustBeArray,
   OperationsConflict,
+  OperationsExceedLimit,
   CommandUnrecognized
 }

@@ -5,16 +5,26 @@ import localData from './localData'
 import crypto from './Crypto'
 import { removeProtocolFromEndpoint, getProtocolFromEndpoint } from './utils'
 import statusCodes from './statusCodes'
+import config from './config'
+import errors from './errors'
+import icons from './icons'
 
 const wsAlreadyConnected = 'Web Socket already connected'
 
+const BACKOFF_RETRY_DELAY = 1000
+const MAX_RETRY_DELAY = 1000 * 30
+
+const SERVICE_RESTART = 1012
+const NO_PONG_RECEIVED = 3000
+
 class RequestFailed extends Error {
-  constructor(action, response, ...params) {
+  constructor(action, e, ...params) {
     super(...params)
 
     this.name = `RequestFailed: ${action}`
-    this.message = response.message || response.data || 'Error'
-    this.status = response.status || (response.message === 'timeout' && statusCodes['Gateway Timeout'])
+    this.message = e.message
+    this.status = e.status || (e.message === 'timeout' && statusCodes['Gateway Timeout'])
+    this.response = e.status && e
   }
 }
 
@@ -33,15 +43,14 @@ class Connection {
     this.init()
   }
 
-  init(resolveConnection, rejectConnection, username, sessionId, seedString, signingUp) {
-    const currentEndpoint = this.endpoint
+  init(resolveConnection, rejectConnection, username, sessionId, seedString, rememberMe, backUpKey) {
+    if (this.pingTimeout) clearTimeout(this.pingTimeout)
 
     for (const property of Object.keys(this)) {
       delete this[property]
     }
 
     this.ws = null
-    this.endpoint = currentEndpoint
     this.connected = false
 
     this.resolveConnection = resolveConnection
@@ -50,15 +59,19 @@ class Connection {
 
     this.username = username
     this.sessionId = sessionId
+
     this.seedString = seedString
     this.keys = {
       init: false,
       salts: {}
     }
 
-    this.signingUp = signingUp
+    this.rememberMe = rememberMe
+    this.backUpKey = backUpKey
 
     this.requests = {}
+
+    this.seedRequest = null
 
     this.processingSeedRequest = {}
     this.sentSeedTo = {}
@@ -70,25 +83,24 @@ class Connection {
     }
   }
 
-  connect(appId, sessionId, username, seedString = null, signingUp = false) {
+  connect(appId, sessionId, username, seedString = null, rememberMe = false, backUpKey = true, reconnectDelay) {
     if (this.connected) throw new WebSocketError(wsAlreadyConnected, this.username)
 
     return new Promise((resolve, reject) => {
       let timeout = false
 
-      setTimeout(
+      const timeoutToOpenWebSocket = setTimeout(
         () => {
           if (!this.connected) {
             timeout = true
-            this.close()
             reject(new WebSocketError('timeout'))
           }
         },
         10000
       )
 
-      const host = removeProtocolFromEndpoint(this.endpoint)
-      const protocol = getProtocolFromEndpoint(this.endpoint)
+      const host = removeProtocolFromEndpoint(config.getEndpoint())
+      const protocol = getProtocolFromEndpoint(config.getEndpoint())
       const url = ((protocol === 'https') ?
         'wss://' : 'ws://') + `${host}/api?appId=${appId}&sessionId=${sessionId}`
 
@@ -96,15 +108,16 @@ class Connection {
 
       ws.onopen = async () => {
         if (timeout) return
+        clearTimeout(timeoutToOpenWebSocket)
 
         if (this.connected) {
-          this.close()
           reject(new WebSocketError(wsAlreadyConnected, username))
           return
         }
 
-        this.init(resolve, reject, username, sessionId, seedString, signingUp)
+        this.init(resolve, reject, username, sessionId, seedString, rememberMe, backUpKey)
         this.ws = ws
+        this.heartbeat()
 
         if (!seedString) {
           await this.requestSeed(username)
@@ -126,22 +139,123 @@ class Connection {
         }
       }
 
-      ws.onerror = () => {
-        if (!this.connected) {
-          reject(new WebSocketError('WebSocket error'))
-        }
-        this.close()
-      }
+      ws.onclose = async (e) => {
+        if (timeout) return
 
-      ws.onclose = () => {
-        this.init()
+        const serviceRestart = e.code === SERVICE_RESTART
+        const clientDisconnected = e.code === NO_PONG_RECEIVED
+        const attemptToReconnect = serviceRestart || clientDisconnected || !e.wasClean // closed without explicit call to ws.close()
+
+        if (attemptToReconnect) {
+          const delay = (serviceRestart && !reconnectDelay)
+            ? 0
+            : (reconnectDelay ? reconnectDelay + BACKOFF_RETRY_DELAY : 1000)
+
+          this.reconnecting = true
+          await this.reconnect(appId, resolve, reject, username, sessionId, seedString, rememberMe, backUpKey, delay)
+        } else {
+          this.init()
+        }
       }
     })
+  }
+
+  async reconnect(appId, resolveConnection, rejectConnection, username, sessionId, seedString, rememberMe, backUpKey, reconnectDelay) {
+    try {
+      const retryDelay = Math.min(reconnectDelay, MAX_RETRY_DELAY)
+      console.log(`Connection to server lost. Attempting to reconnect in ${retryDelay / 1000} second${retryDelay !== 1000 ? 's' : ''}...`)
+
+      resolveConnection(await new Promise((resolve, reject) => setTimeout(
+        async () => {
+          try {
+            const state = {
+              databases: { ...this.state.databases },
+              dbIdToHash: { ...this.state.dbIdToHash },
+              dbNameToHash: { ...this.state.dbNameToHash }
+            }
+
+            for (const dbNameHash in state.databases) {
+              state.databases[dbNameHash].init = false
+            }
+
+            this.init()
+            this.reconnecting = true
+
+            // setting this.state = state here and after connect() maintains underlying memory references
+            this.state = state
+            const result = await this.connect(appId, sessionId, username, seedString, rememberMe, backUpKey, reconnectDelay)
+            this.state = state
+
+            resolve(result)
+          } catch (e) {
+            reject(e)
+          }
+        },
+        retryDelay
+      )))
+
+      await this.reopenDatabases(1000)
+    } catch (e) {
+      rejectConnection(e)
+    }
+  }
+
+  async reopenDatabases(retryDelay) {
+    try {
+      const openDatabasePromises = []
+
+      for (const dbNameHash in this.state.databases) {
+        if (!this.state.databases[dbNameHash].reopening) {
+          this.state.databases[dbNameHash].reopening = true
+          const action = 'OpenDatabase'
+          const params = { dbNameHash }
+          openDatabasePromises.push(this.request(action, params))
+        }
+      }
+
+      await Promise.all(openDatabasePromises)
+
+      for (const dbNameHash in this.state.databases) {
+        this.state.databases[dbNameHash].reopening = false
+      }
+
+    } catch (e) {
+      for (const dbNameHash in this.state.databases) {
+        this.state.databases[dbNameHash].reopening = false
+      }
+
+      // keep attempting to reopen on failure
+      await new Promise(resolve => setTimeout(
+        async () => {
+          await this.reopenDatabases(retryDelay + BACKOFF_RETRY_DELAY)
+          resolve()
+        },
+        Math.min(retryDelay, MAX_RETRY_DELAY)
+      ))
+    }
+  }
+
+  heartbeat() {
+    clearTimeout(this.pingTimeout)
+
+    const LATENCY_BUFFER = 3000
+
+    this.pingTimeout = setTimeout(() => {
+      if (this.ws) this.ws.close(NO_PONG_RECEIVED)
+    }, 30000 + LATENCY_BUFFER)
   }
 
   async handleMessage(message) {
     const route = message.route
     switch (route) {
+      case 'Ping': {
+        this.heartbeat()
+
+        const action = 'Pong'
+        this.ws.send(JSON.stringify({ action }))
+        break
+      }
+
       case 'Connection': {
         this.connected = true
 
@@ -241,7 +355,7 @@ class Connection {
 
       case 'ReceiveSeed': {
         const { encryptedSeed, senderPublicKey } = message
-        const { seedRequestPrivateKey } = localData.getSeedRequest(this.username)
+        const { seedRequestPrivateKey } = this.seedRequest
 
         await this.receiveSeed(
           encryptedSeed,
@@ -253,10 +367,11 @@ class Connection {
       }
 
       case 'SignOut':
+      case 'UpdateUser':
+      case 'DeleteUser':
       case 'CreateDatabase':
       case 'GetDatabase':
       case 'OpenDatabase':
-      case 'FindDatabases':
       case 'Insert':
       case 'Update':
       case 'Delete':
@@ -265,11 +380,7 @@ class Connection {
       case 'ValidateKey':
       case 'RequestSeed':
       case 'GetRequestsForSeed':
-      case 'SendSeed':
-      case 'GetPublicKey':
-      case 'GrantDatabaseAccess':
-      case 'GetDatabaseAccessGrants':
-      case 'AcceptDatabaseAccess': {
+      case 'SendSeed': {
         const requestId = message.requestId
 
         if (!requestId) return console.warn('Missing request id')
@@ -293,22 +404,41 @@ class Connection {
     }
   }
 
-  close() {
+  close(code) {
     this.ws
-      ? this.ws.close()
+      ? this.ws.close(code)
       : this.init()
   }
 
   async signOut() {
-    localData.signOutSession(this.username)
+    const username = this.username
+    const connectionResolved = this.connectionResolved
+    const rejectConnection = this.rejectConnection
 
-    const sessionId = this.sessionId
+    try {
+      if (this.rememberMe) localData.signOutSession(username)
 
-    const action = 'SignOut'
-    const params = { sessionId }
-    await this.request(action, params)
+      const sessionId = this.sessionId
 
-    this.close()
+      if (this.reconnecting) throw new errors.Reconnecting
+
+      const action = 'SignOut'
+      const params = { sessionId }
+      await this.request(action, params)
+
+      this.close()
+
+      if (!connectionResolved && rejectConnection) {
+        rejectConnection(new WebSocketError('Canceled', username))
+      }
+
+    } catch (e) {
+      if (!connectionResolved && rejectConnection) {
+        rejectConnection(new WebSocketError('Canceled', username))
+      }
+
+      throw e
+    }
   }
 
   async setKeys(seedString) {
@@ -329,13 +459,9 @@ class Connection {
 
     this.keys.init = true
 
-    if (!this.signingUp) {
-      await this.getRequestsForSeed()
-      await this.getDatabaseAccessGrants()
-    }
-
     this.resolveConnection(seedString)
     this.connectionResolved = true
+    if (this.hideSeedRequestModal) this.hideSeedRequestModal()
   }
 
   async validateKey() {
@@ -370,9 +496,9 @@ class Connection {
     try {
       const response = await responseWatcher
       return response
-    } catch (response) {
+    } catch (e) {
       // process any errors and re-throw them
-      throw new RequestFailed(action, response)
+      throw new RequestFailed(action, e)
     }
   }
 
@@ -390,6 +516,8 @@ class Connection {
 
   async requestSeed(username) {
     const seedRequest = localData.getSeedRequest(username) || await this.buildSeedRequest(username)
+    this.seedRequest = seedRequest
+
     const {
       seedRequestPrivateKey,
       seedRequestPublicKey
@@ -413,37 +541,133 @@ class Connection {
     const publicKey = crypto.diffieHellman.getPublicKey(seedRequestPrivateKey)
     const seedRequestPublicKey = base64.encode(publicKey)
 
-    localData.setSeedRequest(username, seedRequestPublicKey, seedRequestPrivateKey)
+    if (this.rememberMe) localData.setSeedRequest(username, seedRequestPrivateKey, seedRequestPublicKey)
+
     return { seedRequestPrivateKey, seedRequestPublicKey }
   }
 
   async inputSeedManually(username, seedRequestPublicKey) {
-    const seedRequestPublicKeyHash = await crypto.sha256.hashString(seedRequestPublicKey)
+    const deviceId = await crypto.sha256.hashBase64String(seedRequestPublicKey)
 
-    const seedString = window.prompt(
-      `Welcome, ${username}!`
-      + '\n\n'
-      + 'Sign in from a device you used before to send the secret key to this device.'
-      + '\n\n'
-      + 'Before sending, please verify the Device ID matches:'
-      + '\n\n'
-      + seedRequestPublicKeyHash
-      + '\n\n'
-      + 'You can also manually enter the secret key below. You received your secret key when you created your account.'
-      + '\n\n'
-      + 'Hit cancel to sign out.'
-      + '\n'
-    )
-
-    if (seedString) {
-      await this.saveSeed(username, seedString)
+    const keyNotFoundHandler = config.getKeyNotFoundHandler()
+    if (keyNotFoundHandler) {
+      keyNotFoundHandler(username, deviceId)
     } else {
-      const userHitCancel = seedString === null
-      if (userHitCancel) {
-        await this.signOut()
-        this.rejectConnection(new WebSocketError('Canceled', this.username))
+      this.displaySeedRequestModal(username, deviceId)
+    }
+  }
+
+  displaySeedRequestModal(username, deviceId) {
+    const seedRequestModal = document.createElement('div')
+    seedRequestModal.className = 'userbase-modal'
+
+    seedRequestModal.innerHTML = `
+      <div class='userbase-container'>
+
+        <div>
+          <div
+            id='userbase-request-key-modal-close-button'
+            class='userbase-fa-times-circle'
+          >
+          ${icons.timesCircle.html}
+          </div>
+        </div>
+
+        <form id='userbase-request-key-form'>
+
+          <p id='userbase-request-key-form-first-line'>
+            Whoops! We need your secret key to sign in.
+          </p>
+
+          <div class='userbase-text-line'>
+            Sign in from a device you used before to send the secret key to this device.
+          </div>
+
+          <div class='userbase-text-line'>
+            Before sending, please verify the Device ID matches:
+          </div>
+
+          <div class='userbase-display-key'>
+            ${deviceId}
+          </div>
+
+          <div>
+            <div class='userbase-loader-wrapper'>
+              <div class='userbase-loader' />
+            </div>
+          </div>
+
+          <div class='userbase-text-line'>
+            You can also manually enter the secret key below. You received your secret key when you created your account.
+          </div>
+
+          <div id='userbase-manual-input-key-form'>
+
+            <div id='userbase-manual-input-key-outer-wrapper'>
+              <div class='userbase-manual-input-key-inner-wrapper'>
+                <input
+                  id='userbase-secret-key-input'
+                  type='text'
+                  autoComplete='off'
+                  placeholder='Paste your secret key here'
+                />
+              </div>
+            </div>
+          </div>
+
+          <div id='userbase-submit-wrapper'>
+            <div id='userbase-submit-inner-wrapper'>
+              <input
+                class='userbase-button'
+                type='submit'
+                value='Save'
+              />
+              <div id='userbase-request-key-form-error' class='userbase-error'>
+              </div>
+            </div>
+          </div>
+
+        </form>
+      </div>
+    `
+
+    document.body.appendChild(seedRequestModal)
+
+    const closeButton = document.getElementById('userbase-request-key-modal-close-button')
+    const keyInput = document.getElementById('userbase-secret-key-input')
+    const keyInputForm = document.getElementById('userbase-request-key-form')
+    const keyFormError = document.getElementById('userbase-request-key-form-error')
+
+    async function inputSeed(e) {
+      e.preventDefault()
+
+      const seedString = keyInput.value
+      if (!seedString) return
+
+      try {
+        await this.saveSeed(seedString)
+        hideSeedRequestModal()
+      } catch (e) {
+        keyFormError.innerText = e.message
       }
     }
+
+    async function closeModal() {
+      try {
+        await this.signOut()
+        hideSeedRequestModal()
+      } catch (e) {
+        keyFormError.innerText = e.message
+      }
+    }
+
+    function hideSeedRequestModal() {
+      document.body.removeChild(seedRequestModal)
+    }
+
+    keyInputForm.onsubmit = inputSeed.bind(this)
+    closeButton.onclick = closeModal.bind(this)
+    this.hideSeedRequestModal = hideSeedRequestModal
   }
 
   async getRequestsForSeed() {
@@ -460,78 +684,15 @@ class Connection {
     }
   }
 
-  async grantDatabaseAccess(database, username, granteePublicKey, readOnly) {
-    const granteePublicKeyArrayBuffer = new Uint8Array(base64.decode(granteePublicKey))
-    const granteePublicKeyHash = base64.encode(await crypto.sha256.hash(granteePublicKeyArrayBuffer))
-
-    if (window.confirm(`Grant access to user '${username}' with public key:\n\n${granteePublicKeyHash}\n`)) {
-      const sharedKey = await crypto.diffieHellman.getSharedKey(
-        this.keys.dhPrivateKey,
-        granteePublicKeyArrayBuffer
-      )
-
-      const encryptedAccessKey = await crypto.aesGcm.encryptString(sharedKey, database.dbKeyString)
-
-      const action = 'GrantDatabaseAccess'
-      const params = { username, dbId: database.dbId, encryptedAccessKey, readOnly }
-      await this.request(action, params)
-    }
-  }
-
-  async getDatabaseAccessGrants() {
-    if (!this.keys.init) return
-
-    const response = await this.request('GetDatabaseAccessGrants')
-    const databaseAccessGrants = response.data
-
-    for (const grant of databaseAccessGrants) {
-      const { dbId, ownerPublicKey, encryptedAccessKey, encryptedDbName, owner } = grant
-
-      try {
-        const ownerPublicKeyArrayBuffer = new Uint8Array(base64.decode(ownerPublicKey))
-
-        const sharedKey = await crypto.diffieHellman.getSharedKey(
-          this.keys.dhPrivateKey,
-          ownerPublicKeyArrayBuffer
-        )
-
-        const dbKeyString = await crypto.aesGcm.decryptString(sharedKey, encryptedAccessKey)
-        const dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
-
-        const dbName = await crypto.aesGcm.decryptString(dbKey, encryptedDbName)
-
-        const ownerPublicKeyHash = base64.encode(await crypto.sha256.hash(ownerPublicKeyArrayBuffer))
-        if (window.confirm(`Accept access to database '${dbName}' from '${owner}' with public key: \n\n${ownerPublicKeyHash}\n`)) {
-          await this.acceptDatabaseAccessGrant(dbId, dbKeyString, dbName, encryptedDbName)
-        }
-
-      } catch (e) {
-        // continue
-        console.log(`Error processing database access grants`, e)
-      }
-    }
-  }
-
-  async acceptDatabaseAccessGrant(dbId, dbKeyString, dbName, encryptedDbName) {
-    if (!this.keys.init) return
-
-    const dbNameHash = await crypto.hmac.signString(this.keys.hmacKey, dbName)
-    const encryptedDbKey = await crypto.aesGcm.encryptString(this.keys.encryptionKey, dbKeyString)
-
-    const action = 'AcceptDatabaseAccess'
-    const params = { dbId, encryptedDbKey, dbNameHash, encryptedDbName }
-
-    await this.request(action, params)
-  }
-
   async sendSeed(requesterPublicKey) {
     const requesterPublicKeyArrayBuffer = new Uint8Array(base64.decode(requesterPublicKey))
-    const requesterPublicKeyHash = base64.encode(await crypto.sha256.hash(requesterPublicKeyArrayBuffer))
+    const requesterDeviceId = base64.encode(await crypto.sha256.hash(requesterPublicKeyArrayBuffer))
 
-    if (this.sentSeedTo[requesterPublicKeyHash] || this.processingSeedRequest[requesterPublicKeyHash]) return
-    this.processingSeedRequest[requesterPublicKeyHash] = true
+    if (this.sentSeedTo[requesterDeviceId] || this.processingSeedRequest[requesterDeviceId]) return
 
-    if (window.confirm(`Send the seed to device: \n\n${requesterPublicKeyHash}\n`)) {
+    this.processingSeedRequest[requesterDeviceId] = true
+
+    if (window.confirm(`Send the secret key to device with Device ID: \n\n${requesterDeviceId}\n`)) {
       try {
         const sharedKey = await crypto.diffieHellman.getSharedKey(
           this.keys.dhPrivateKey,
@@ -544,12 +705,12 @@ class Connection {
         const params = { requesterPublicKey, encryptedSeed }
 
         await this.request(action, params)
-        this.sentSeedTo[requesterPublicKeyHash] = true
+        this.sentSeedTo[requesterDeviceId] = true
       } catch (e) {
         console.warn(e)
       }
     }
-    delete this.processingSeedRequest[requesterPublicKeyHash]
+    delete this.processingSeedRequest[requesterDeviceId]
   }
 
   async receiveSeed(encryptedSeed, senderPublicKey, seedRequestPrivateKey) {
@@ -560,12 +721,20 @@ class Connection {
 
     const seedString = await crypto.aesGcm.decryptString(sharedKey, encryptedSeed)
 
-    await this.saveSeed(this.username, seedString)
+    await this.saveSeed(seedString)
   }
 
-  async saveSeed(username, seedString) {
-    localData.saveSeedString(username, seedString)
-    await this.setKeys(seedString)
+  async saveSeed(seedString) {
+    const username = this.username
+
+    if (this.rememberMe) localData.saveSeedString(username, seedString)
+
+    try {
+      await this.setKeys(seedString)
+    } catch (e) {
+      localData.removeSeedString(username)
+      throw new errors.KeyNotValid(username)
+    }
     localData.removeSeedRequest(username)
   }
 }

@@ -9,19 +9,19 @@ let initialized = false
 const defaultRegion = 'us-west-2'
 
 // if running in dev mode, prefix the DynamoDB tables and S3 buckets with the username
-const usernamePrefix = (process.env.NODE_ENV == 'development') ? os.userInfo().username + '-' : ''
+const resourceNamePrefix = 'userbase-' + ((process.env.NODE_ENV == 'development') ? os.userInfo().username : 'beta') + '-'
+const ddbTableGroup = 'userbase-' + ((process.env.NODE_ENV == 'development') ? os.userInfo().username : 'beta')
 
-const adminTableName = usernamePrefix + 'admin'
-const appsTableName = usernamePrefix + 'apps'
-const usersTableName = usernamePrefix + 'users'
-const sessionsTableName = usernamePrefix + 'sessions'
-const databaseTableName = usernamePrefix + 'database'
-const userDatabaseTableName = usernamePrefix + 'user-database'
-const transactionsTableName = usernamePrefix + 'transactions'
-const seedExchangeTableName = usernamePrefix + 'seed-exchange'
-const databaseAccessGrantsTableName = usernamePrefix + 'database-access-grants'
-const dbStatesBucketNamePrefix = usernamePrefix + 'db-states'
-const secretManagerSecretId = usernamePrefix + 'env'
+const adminTableName = resourceNamePrefix + 'admins'
+const appsTableName = resourceNamePrefix + 'apps'
+const usersTableName = resourceNamePrefix + 'users'
+const sessionsTableName = resourceNamePrefix + 'sessions'
+const databaseTableName = resourceNamePrefix + 'databases'
+const userDatabaseTableName = resourceNamePrefix + 'user-databases'
+const transactionsTableName = resourceNamePrefix + 'transactions'
+const seedExchangeTableName = resourceNamePrefix + 'seed-exchanges'
+const dbStatesBucketNamePrefix = resourceNamePrefix + 'database-states'
+const secretManagerSecretId = resourceNamePrefix + 'env'
 
 exports.adminTableName = adminTableName
 exports.appsTableName = appsTableName
@@ -31,7 +31,6 @@ exports.databaseTableName = databaseTableName
 exports.userDatabaseTableName = userDatabaseTableName
 exports.transactionsTableName = transactionsTableName
 exports.seedExchangeTableName = seedExchangeTableName
-exports.databaseAccessGrantsTableName = databaseAccessGrantsTableName
 
 const adminIdIndex = 'AdminIdIndex'
 const userIdIndex = 'UserIdIndex'
@@ -110,11 +109,11 @@ async function setupDdb() {
     TableName: adminTableName,
     BillingMode: 'PAY_PER_REQUEST',
     AttributeDefinitions: [
-      { AttributeName: 'admin-name', AttributeType: 'S' },
+      { AttributeName: 'email', AttributeType: 'S' },
       { AttributeName: 'admin-id', AttributeType: 'S' }
     ],
     KeySchema: [
-      { AttributeName: 'admin-name', KeyType: 'HASH' }
+      { AttributeName: 'email', KeyType: 'HASH' }
     ],
     GlobalSecondaryIndexes: [{
       IndexName: adminIdIndex,
@@ -265,27 +264,6 @@ async function setupDdb() {
     }
   }
 
-  // holds key data per db access grant
-  const databaseAccessGrantsTableParams = {
-    AttributeDefinitions: [
-      { AttributeName: 'grantee-id', AttributeType: 'S' },
-      { AttributeName: 'database-id', AttributeType: 'S' }
-    ],
-    KeySchema: [
-      { AttributeName: 'grantee-id', KeyType: 'HASH' },
-      { AttributeName: 'database-id', KeyType: 'RANGE' }
-    ],
-    BillingMode: 'PAY_PER_REQUEST',
-    TableName: databaseAccessGrantsTableName
-  }
-  const databaseAccessGrantTimeToLive = {
-    TableName: databaseAccessGrantsTableName,
-    TimeToLiveSpecification: {
-      AttributeName: 'ttl',
-      Enabled: true
-    }
-  }
-
   logger.info('Creating DynamoDB tables if necessary')
   await Promise.all([
     createTable(ddb, adminTableParams),
@@ -296,14 +274,10 @@ async function setupDdb() {
     createTable(ddb, userDatabaseTableParams),
     createTable(ddb, transactionsTableParams),
     createTable(ddb, seedExchangeTableParams),
-    createTable(ddb, databaseAccessGrantsTableParams)
   ])
 
   logger.info('Setting time to live on tables if necessary')
-  await Promise.all([
-    setTimeToLive(ddb, seedExchangeTimeToLive),
-    setTimeToLive(ddb, databaseAccessGrantTimeToLive)
-  ])
+  await setTimeToLive(ddb, seedExchangeTimeToLive)
 }
 
 async function setupS3() {
@@ -319,6 +293,8 @@ async function setupS3() {
 }
 
 async function createTable(ddb, params) {
+  params.Tags = [{ Key: 'DDBTableGroupKey-' + ddbTableGroup, Value: ddbTableGroup }]
+
   try {
     await ddb.createTable(params).promise()
     logger.info(`Table ${params.TableName} created successfully`)
@@ -329,6 +305,21 @@ async function createTable(ddb, params) {
   }
 
   await ddb.waitFor('tableExists', { TableName: params.TableName, $waiter: { delay: 2, maxAttempts: 60 } }).promise()
+
+  const enableBackup = async function () {
+    try {
+      await ddb.updateContinuousBackups({ TableName: params.TableName, PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true } }).promise()
+    } catch (e) {
+      if (e.code === 'ContinuousBackupsUnavailableException') {
+        setTimeout(enableBackup, 15000)
+      } else {
+        logger.error(e)
+        throw e
+      }
+    }
+  }
+
+  enableBackup()
 }
 
 async function setTimeToLive(ddb, params) {
@@ -353,6 +344,23 @@ async function createBucket(s3, params) {
   }
 
   await s3.waitFor('bucketExists', { Bucket: params.Bucket, $waiter: { delay: 2, maxAttempts: 60 } }).promise()
+
+  await s3.putPublicAccessBlock({
+    Bucket: params.Bucket,
+    PublicAccessBlockConfiguration: {
+      BlockPublicAcls: true,
+      BlockPublicPolicy: true,
+      IgnorePublicAcls: true,
+      RestrictPublicBuckets: true
+    }
+  }).promise()
+
+  await s3.putBucketEncryption({
+    Bucket: params.Bucket,
+    ServerSideEncryptionConfiguration: {
+      Rules: [{ ApplyServerSideEncryptionByDefault: { SSEAlgorithm: 'AES256' } }]
+    }
+  }).promise()
 }
 
 async function setupSM() {
@@ -442,7 +450,7 @@ async function setupSes() {
   ses = new aws.SES()
 }
 
-const sendEmail = async function (to, subject, body) {
+async function sendEmail(to, subject, body) {
 
   if (!emailDomain) {
     throw new Error('Email domain not set')

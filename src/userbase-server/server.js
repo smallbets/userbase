@@ -11,6 +11,7 @@ import setup from './setup'
 import admin from './admin'
 import user from './user'
 import db from './db'
+import appController from './app'
 import connections from './ws'
 import statusCodes from './statusCodes'
 import responseBuilder from './responseBuilder'
@@ -56,16 +57,16 @@ async function start(express, app, userbaseConfig = {}) {
       app(req, res)
     })
 
-    const heartbeat = function () {
-      this.isAlive = true
+    const heartbeat = function (ws) {
+      ws.isAlive = true
     }
 
     wss.on('connection', (ws, req, res) => {
       ws.isAlive = true
 
       const userId = res.locals.user['user-id']
-      const username = res.locals.user['username']
       const userPublicKey = res.locals.user['public-key']
+
       const conn = connections.register(userId, ws)
       const connectionId = conn.id
 
@@ -83,10 +84,11 @@ async function start(express, app, userbaseConfig = {}) {
         encryptedValidationMessage
       }))
 
-      ws.on('pong', heartbeat)
       ws.on('close', () => connections.close(conn))
 
       ws.on('message', async (msg) => {
+        ws.isAlive = true
+
         try {
           if (msg.length > FOUR_HUNDRED_KB || msg.byteLength > FOUR_HUNDRED_KB) return ws.send('Message is too large')
 
@@ -98,7 +100,10 @@ async function start(express, app, userbaseConfig = {}) {
 
           let response
 
-          if (action === 'SignOut') {
+          if (action === 'Pong') {
+            heartbeat(ws)
+            return
+          } else if (action === 'SignOut') {
             response = await user.signOut(params.sessionId)
           } else if (!conn.keyValidated) {
 
@@ -134,22 +139,29 @@ async function start(express, app, userbaseConfig = {}) {
                 response = responseBuilder.errorResponse(statusCodes['Bad Request'], 'Already validated key')
                 break
               }
-              case 'CreateDatabase': {
-                response = await db.createDatabase(
+              case 'UpdateUser': {
+                response = await user.updateUser(
                   userId,
-                  params.dbNameHash,
-                  params.dbId,
-                  params.encryptedDbName,
-                  params.encryptedDbKey
+                  params.username,
+                  params.passwordSecureHash,
+                  params.email,
+                  params.profile,
+                  params.pbkdfKeySalt,
+                  params.passwordEncryptedSeed
                 )
                 break
               }
-              case 'OpenDatabase': {
-                response = await db.openDatabase(userId, connectionId, params.dbNameHash)
+              case 'DeleteUser': {
+                response = await user.deleteUserController(userId)
                 break
               }
-              case 'FindDatabases': {
-                response = await db.findDatabases(userId, username)
+              case 'OpenDatabase': {
+                response = await db.openDatabase(
+                  userId,
+                  connectionId,
+                  params.dbNameHash,
+                  params.newDatabaseParams
+                )
                 break
               }
               case 'Insert':
@@ -186,34 +198,6 @@ async function start(express, app, userbaseConfig = {}) {
                 )
                 break
               }
-              case 'GetPublicKey': {
-                response = await user.getPublicKey(params.username)
-                break
-              }
-              case 'GrantDatabaseAccess': {
-                response = await user.grantDatabaseAccess(
-                  userId,
-                  params.username,
-                  params.dbId,
-                  params.encryptedAccessKey,
-                  params.readOnly
-                )
-                break
-              }
-              case 'GetDatabaseAccessGrants': {
-                response = await user.queryDatabaseAccessGrants(userId)
-                break
-              }
-              case 'AcceptDatabaseAccess': {
-                response = await user.acceptDatabaseAccess(
-                  userId,
-                  params.dbId,
-                  params.dbNameHash,
-                  params.encryptedDbKey,
-                  params.encryptedDbName
-                )
-                break
-              }
               default: {
                 return ws.send(`Received unkown action ${action}`)
               }
@@ -238,7 +222,7 @@ async function start(express, app, userbaseConfig = {}) {
         if (ws.isAlive === false) return ws.terminate()
 
         ws.isAlive = false
-        ws.ping(() => { })
+        ws.send(JSON.stringify({ route: 'Ping' }))
       })
     }, 30000)
 
@@ -246,25 +230,33 @@ async function start(express, app, userbaseConfig = {}) {
     app.use(bodyParser.json())
     app.use(cookieParser())
 
-    app.get('/api', user.authenticateUser, (req, res) =>
+    const v1 = express.Router()
+    app.use('/v1', v1)
+
+    v1.get('/api', user.authenticateUser, (req, res) =>
       req.ws
         ? res.ws(socket => wss.emit('connection', socket, req, res))
         : res.send('Not a websocket!')
     )
-
-    app.post('/api/auth/sign-up', user.signUp)
-    app.post('/api/auth/sign-in', user.signIn)
-    app.post('/api/auth/sign-in-with-session', user.authenticateUser, user.extendSession)
-    app.get('/api/auth/server-public-key', user.getServerPublicKey)
+    v1.post('/api/auth/sign-up', user.signUp)
+    v1.post('/api/auth/sign-in', user.signIn)
+    v1.post('/api/auth/sign-in-with-session', user.authenticateUser, user.extendSession)
+    v1.get('/api/auth/server-public-key', user.getServerPublicKey)
+    v1.post('/api/auth/forgot-password', user.forgotPassword)
 
     app.use('/admin', express.static(path.join(__dirname + adminPanelDir)))
 
-    app.post('/admin/create-admin', admin.createAdminController)
-    app.post('/admin/create-app', admin.authenticateAdmin, admin.createAppController)
-    app.post('/admin/sign-in', admin.signInAdmin)
-    app.post('/admin/sign-out', admin.authenticateAdmin, admin.signOutAdmin)
-    app.post('/admin/list-apps', admin.authenticateAdmin, admin.listApps)
-    app.post('/admin/list-app-users', admin.authenticateAdmin, admin.listAppUsers)
+    v1.post('/admin/create-admin', admin.createAdminController)
+    v1.post('/admin/sign-in', admin.signInAdmin)
+    v1.post('/admin/sign-out', admin.authenticateAdmin, admin.signOutAdmin)
+    v1.post('/admin/create-app', admin.authenticateAdmin, appController.createAppController)
+    v1.post('/admin/list-apps', admin.authenticateAdmin, appController.listApps)
+    v1.post('/admin/list-app-users', admin.authenticateAdmin, appController.listAppUsers)
+    v1.post('/admin/delete-app', admin.authenticateAdmin, appController.deleteApp)
+    v1.post('/admin/delete-user', admin.authenticateAdmin, admin.deleteUser)
+    v1.post('/admin/delete-admin', admin.authenticateAdmin, admin.deleteAdmin)
+    v1.post('/admin/update-admin', admin.authenticateAdmin, admin.updateAdmin)
+    v1.post('/admin/forgot-password', admin.forgotPassword)
 
     app.get('/ping', function (req, res) {
       res.send('Healthy')
@@ -275,12 +267,12 @@ async function start(express, app, userbaseConfig = {}) {
   }
 }
 
-function createAdmin(adminName, password, adminId, storePasswordInSecretsManager = false) {
-  return admin.createAdmin(adminName, password, adminId, storePasswordInSecretsManager)
+function createAdmin(email, password, fullName, adminId, storePasswordInSecretsManager = false) {
+  return admin.createAdmin(email, password, fullName, adminId, storePasswordInSecretsManager)
 }
 
 function createApp(appName, adminId, appId) {
-  return admin.createApp(appName, adminId, appId)
+  return appController.createApp(appName, adminId, appId)
 }
 
 export default {

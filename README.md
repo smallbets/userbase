@@ -100,6 +100,13 @@ npm start
 
 Go to http://localhost:3000 and you should see the sign in screen.
 
+### Running tests
+We use [Cypress](https://www.cypress.io/) to run tests, all the test files are under the ./cypress dir.
+
+```
+npm run test
+```
+
 ## Who's behind this?
 This product is the work of [Daniel Vassallo](https://twitter.com/dvassallo) and [Justin Berman](https://twitter.com/justinberman95). If you have any questions, or there's anything we can do to help you with your web app, please [get in touch](mailto:daniel@encrypted.dev). Thank you!
 

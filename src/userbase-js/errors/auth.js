@@ -133,6 +133,26 @@ class UserNotSignedIn extends Error {
   }
 }
 
+class UserNotFound extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'UserNotFound'
+    this.message = 'User not found.'
+    this.status = statusCodes['Not Found']
+  }
+}
+
+class UserEmailNotFound extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'UserEmailNotFound'
+    this.message = 'Email not found.'
+    this.status = statusCodes['Not Found']
+  }
+}
+
 class EmailNotValid extends Error {
   constructor(...params) {
     super(...params)
@@ -219,6 +239,77 @@ class ProfileValueTooLong extends Error {
   }
 }
 
+class KeyNotFoundHandlerMustBeFunction extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'KeyNotFoundHandlerMustBeFunction'
+    this.message = 'Key not found handler must be a function.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class KeyNotValid extends Error {
+  constructor(username, ...params) {
+    super(username, ...params)
+
+    this.name = 'KeyNotValid'
+    this.message = 'Key not valid.'
+    this.status = statusCodes['Unauthorized']
+    this.username = username
+  }
+}
+
+class KeyCannotBeBlank extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'KeyCannotBeBlank'
+    this.message = 'Key cannot be blank.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class KeyMustBeString extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'KeyMustBeString'
+    this.message = 'Key must be a string.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class ShowKeyHandlerMustBeFunction extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'ShowKeyHandlerMustBeFunction'
+    this.message = 'Show key handler must be a function.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class UserMustBeObject extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'UserMustBeObject'
+    this.message = 'User must be an object.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class UserMissingExpectedProperties extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'UserMissingExpectedProperties'
+    this.message = 'User missing expected properties.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
 export default {
   UsernameAlreadyExists,
   UsernameCannotBeBlank,
@@ -233,6 +324,8 @@ export default {
   UserAlreadySignedIn,
   AppIdNotValid,
   UserNotSignedIn,
+  UserNotFound,
+  UserEmailNotFound,
   EmailNotValid,
   ProfileMustBeObject,
   ProfileCannotBeEmpty,
@@ -240,5 +333,12 @@ export default {
   ProfileKeyMustBeString,
   ProfileKeyTooLong,
   ProfileValueMustBeString,
-  ProfileValueTooLong
+  ProfileValueTooLong,
+  KeyNotFoundHandlerMustBeFunction,
+  KeyNotValid,
+  KeyCannotBeBlank,
+  KeyMustBeString,
+  ShowKeyHandlerMustBeFunction,
+  UserMustBeObject,
+  UserMissingExpectedProperties,
 }
