@@ -1,22 +1,8 @@
 import axios from 'axios'
-import adminLogic from '../Admin/logic'
 import { VERSION } from '../../config'
+import adminLogic from '../Admin/logic'
 
 const TEN_SECONDS_MS = 10 * 1000
-
-const UNAUTHORIZED = 401
-
-const errorHandler = (e) => {
-  if (e && e.response) {
-    if (e.response.status === UNAUTHORIZED) {
-      adminLogic.handleSignOut()
-    } else {
-      throw new Error(e.response.data)
-    }
-  } else {
-    throw e
-  }
-}
 
 const listApps = async () => {
   try {
@@ -29,7 +15,7 @@ const listApps = async () => {
     const apps = listAppsResponse.data
     return apps
   } catch (e) {
-    errorHandler(e)
+    adminLogic.errorHandler(e)
   }
 }
 
@@ -44,11 +30,41 @@ const listAppUsers = async (appName) => {
     const appUsers = listAppUsersResponse.data
     return appUsers
   } catch (e) {
-    errorHandler(e)
+    adminLogic.errorHandler(e)
+  }
+}
+
+const deleteApp = async (appName) => {
+  try {
+    await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/delete-app?appName=${appName}`,
+      timeout: TEN_SECONDS_MS
+    })
+  } catch (e) {
+    adminLogic.errorHandler(e)
+  }
+}
+const deleteUser = async (userId, appName, username) => {
+  try {
+    await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/delete-user`,
+      data: {
+        userId,
+        appName,
+        username
+      },
+      timeout: TEN_SECONDS_MS
+    })
+  } catch (e) {
+    adminLogic.errorHandler(e)
   }
 }
 
 export default {
   listApps,
-  listAppUsers
+  listAppUsers,
+  deleteApp,
+  deleteUser
 }

@@ -114,11 +114,11 @@ async function setupDdb() {
     TableName: adminTableName,
     BillingMode: 'PAY_PER_REQUEST',
     AttributeDefinitions: [
-      { AttributeName: 'admin-name', AttributeType: 'S' },
+      { AttributeName: 'email', AttributeType: 'S' },
       { AttributeName: 'admin-id', AttributeType: 'S' }
     ],
     KeySchema: [
-      { AttributeName: 'admin-name', KeyType: 'HASH' }
+      { AttributeName: 'email', KeyType: 'HASH' }
     ],
     GlobalSecondaryIndexes: [{
       IndexName: adminIdIndex,

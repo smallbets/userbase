@@ -7,6 +7,8 @@ import crypto from './crypto'
 import connections from './ws'
 import logger from './logger'
 import { validateEmail, stringToArrayBuffer } from './utils'
+import appController from './app'
+import adminController from './admin'
 
 const getTtl = secondsToLive => Math.floor(Date.now() / 1000) + secondsToLive
 
@@ -50,35 +52,6 @@ const createSession = async function (userId, appId) {
   await ddbClient.put(params).promise()
 
   return { sessionId, creationDate }
-}
-
-const getAppByAppId = async function (appId) {
-  const params = {
-    TableName: setup.appsTableName,
-    IndexName: setup.appIdIndex,
-    KeyConditionExpression: '#appId = :appId',
-    ExpressionAttributeNames: {
-      '#appId': 'app-id'
-    },
-    ExpressionAttributeValues: {
-      ':appId': appId
-    },
-    Select: 'ALL_ATTRIBUTES'
-  }
-
-  const ddbClient = connection.ddbClient()
-  const appResponse = await ddbClient.query(params).promise()
-
-  if (!appResponse || appResponse.Items.length === 0) return null
-
-  if (appResponse.Items.length > 1) {
-    // too sensitive not to throw here. This should never happen
-    const errorMsg = `Too many apps found with app id ${appId}`
-    logger.fatal(errorMsg)
-    throw new Error(errorMsg)
-  }
-
-  return appResponse.Items[0]
 }
 
 const _buildSignUpParams = async (username, passwordSecureHash, appId, userId,
@@ -228,8 +201,11 @@ exports.signUp = async function (req, res) {
     const userId = uuidv4()
 
     // Warning: uses secondary index here. It's possible index won't be up to date and this fails
-    const app = await getAppByAppId(appId)
-    if (!app) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
+    const app = await appController.getAppByAppId(appId)
+    if (!app || app['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
+
+    const admin = await adminController.findAdminByAdminId(app['admin-id'])
+    if (!admin || admin['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
 
     const salts = { encryptionKeySalt, dhKeySalt, hmacKeySalt }
     const passwordBasedBackup = { pbkdfKeySalt, passwordEncryptedSeed }
@@ -294,11 +270,14 @@ exports.authenticateUser = async function (req, res, next) {
     // Warning: uses secondary indexes here. It's possible index won't be up to date and this fails
     const [user, app] = await Promise.all([
       getUserByUserId(session['user-id']),
-      getAppByAppId(session['app-id'])
+      appController.getAppByAppId(session['app-id'])
     ])
 
     if (!user || user['deleted']) return res.status(statusCodes['Unauthorized']).send('Session invalid')
-    if (!app) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
+    if (!app || app['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
+
+    const admin = await adminController.findAdminByAdminId(app['admin-id'])
+    if (!admin || admin['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
 
     res.locals.user = user // makes user object available in next route
     next()
@@ -406,8 +385,11 @@ exports.signIn = async function (req, res) {
 
   try {
     // Warning: uses secondary index here. It's possible index won't be up to date and this fails
-    const app = await getAppByAppId(appId)
-    if (!app) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
+    const app = await appController.getAppByAppId(appId)
+    if (!app || app['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
+
+    const admin = await adminController.findAdminByAdminId(app['admin-id'])
+    if (!admin || admin['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
 
     const params = {
       TableName: setup.usersTableName,
@@ -758,8 +740,11 @@ exports.forgotPassword = async function (req, res) {
 
   try {
     // Warning: uses secondary index here. It's possible index won't be up to date and this fails
-    const app = await getAppByAppId(appId)
-    if (!app) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
+    const app = await appController.getAppByAppId(appId)
+    if (!app || app['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
+
+    const admin = await adminController.findAdminByAdminId(app['admin-id'])
+    if (!admin || admin['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
 
     const tempPassword = crypto
       .randomBytes(ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID)
@@ -959,18 +944,23 @@ exports.updateUser = async function (userId, username, passwordSecureHash, email
   }
 }
 
-exports.deleteUser = async function (userId) {
+const deleteUser = async (username, appId, userId) => {
+  const params = conditionCheckUserExists(username, appId, userId)
+
+  params.UpdateExpression = 'set deleted = :deleted'
+  params.ExpressionAttributeValues[':deleted'] = new Date().toISOString()
+
+  const ddbClient = connection.ddbClient()
+  await ddbClient.update(params).promise()
+}
+exports.deleteUser = deleteUser
+
+exports.deleteUserController = async function (userId) {
   try {
     const user = await getUserByUserId(userId)
     if (!user || user['deleted']) return responseBuilder.errorResponse(statusCodes['Not Found'], 'UserNotFound')
 
-    const params = conditionCheckUserExists(user['username'], user['app-id'], userId)
-
-    params.UpdateExpression = 'set deleted = :deleted'
-    params.ExpressionAttributeValues[':deleted'] = new Date().toISOString()
-
-    const ddbClient = connection.ddbClient()
-    await ddbClient.update(params).promise()
+    await deleteUser(user['username'], user['app-id'], userId)
 
     return responseBuilder.successResponse()
   } catch (e) {
