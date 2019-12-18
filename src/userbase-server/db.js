@@ -15,8 +15,6 @@ const createDatabase = async function (userId, dbNameHash, dbId, encryptedDbName
     const user = await userController.getUserByUserId(userId)
     if (!user || user['deleted']) throw new Error('UserNotFound')
 
-    memcache.initTransactionLog(dbId)
-
     const database = {
       'database-id': dbId,
       'owner-id': userId,
@@ -149,7 +147,6 @@ exports.openDatabase = async function (userId, connectionId, dbNameHash, newData
   }
 }
 
-const failedTxConditionCheckMsg = 'Make sure user has write permission to this db and the db id and hash are correct'
 const putTransaction = async function (transaction, userId, dbNameHash, databaseId) {
   const ddbClient = connection.ddbClient()
 
@@ -180,7 +177,7 @@ const putTransaction = async function (transaction, userId, dbNameHash, database
   // write the transaction using the next sequence number
   const params = {
     TableName: setup.transactionsTableName,
-    Item: transactionWithSequenceNo,
+    Item: transaction,
     ConditionExpression: 'attribute_not_exists(#databaseId)',
     ExpressionAttributeNames: {
       '#databaseId': 'database-id'
@@ -188,7 +185,7 @@ const putTransaction = async function (transaction, userId, dbNameHash, database
   }
 
   try {
-    await ddbClient.transactWrite(params).promise()
+    await ddbClient.put(params).promise()
   } catch (e) {
     // best effort rollback - if the rollback fails here, it will get attempted again when the transactions are read
     await rollbackAttempt(transaction, ddbClient)
