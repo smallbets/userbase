@@ -42,6 +42,7 @@
     "patch:userbase-server:npm": "cd ./src/userbase-server && printf 'Input patch commit message: ' && read message && npm version patch -m '$message' && cd ../.. && npm run copy:userbase-server:files",
     "publish:userbase-server:npm": "cd ./npm_build/userbase-server && npm publish",
     "build:userbase-js:script": "rm -Rf ./build/script && webpack --env.BUILD_TYPE=sdk-script --mode production --config ./src/userbase-js/webpack.config.js",
+    "lint": "eslint .",
     "test:setup": "npm run build:userbase-js:script && cp ./build/script/userbase-*.js ./build/script/userbase-latest.js && npm start &",
     "test": "npm run test:setup && npx cypress open"
   },
