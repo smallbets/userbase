@@ -53,6 +53,8 @@ class Connection {
       database.lastSeqNo = bundleSeqNo
     }
 
+    let lastSeqNo = database.lastSeqNo
+
     // get transactions from the last sequence number
     const params = {
       TableName: setup.transactionsTableName,
@@ -63,7 +65,7 @@ class Connection {
       },
       ExpressionAttributeValues: {
         ":dbId": databaseId,
-        ":seqNo": database.lastSeqNo
+        ":seqNo": lastSeqNo
       }
     }
 
@@ -74,8 +76,6 @@ class Connection {
 
       do {
         let transactionLogResponse = await ddbClient.query(params).promise()
-
-        let lastSeqNo = database.lastSeqNo
 
         for (let i = 0; i < transactionLogResponse.Items.length; i++) {
           size += sizeOfDdbItem(transactionLogResponse.Items[i])
