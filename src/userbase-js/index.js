@@ -1,8 +1,6 @@
 import auth from './auth'
 import db from './db'
 
-import './style.css'
-
 export default {
   init: auth.init,
 
