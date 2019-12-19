@@ -27,6 +27,7 @@
   ],
   "license": "MIT",
   "main": "./index.js",
+  "module": "lib/index.js",
   "typings": "./types/index.d.ts",
   "name": "userbase-js",
   "sideEffects": false,
