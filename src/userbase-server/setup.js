@@ -1,7 +1,6 @@
 import aws from 'aws-sdk'
 import os from 'os'
 import logger from './logger'
-import memcache from './memcache'
 import crypto from './crypto'
 
 let awsAccountId
@@ -100,10 +99,6 @@ exports.init = async function (userbaseConfig) {
   await setupS3()
   await setupSM()
   await setupSes()
-
-  logger.info('Eager loading in-memory transaction log cache')
-  await memcache.eagerLoad()
-  logger.info('Loaded transaction log cache successfully')
 }
 
 async function setupDdb() {

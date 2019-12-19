@@ -2,7 +2,6 @@ import connection from './connection'
 import setup from './setup'
 import statusCodes from './statusCodes'
 import responseBuilder from './responseBuilder'
-import memcache from './memcache'
 import connections from './ws'
 import logger from './logger'
 import userController from './user'
@@ -15,8 +14,6 @@ const createDatabase = async function (userId, dbNameHash, dbId, encryptedDbName
   try {
     const user = await userController.getUserByUserId(userId)
     if (!user || user['deleted']) throw new Error('UserNotFound')
-
-    memcache.initTransactionLog(dbId)
 
     const database = {
       'database-id': dbId,
@@ -150,61 +147,37 @@ exports.openDatabase = async function (userId, connectionId, dbNameHash, newData
   }
 }
 
-/**
- * Attempts to rollback a transaction that has not persisted to DDB
- * yet. Does not return anything because the caller does not need to
- * know whether or not this succeeds.
- *
- * @param {*} transaction
- */
-const rollbackTransaction = async function (transaction) {
-  const transactionWithRollbackCommand = {
-    'database-id': transaction['database-id'],
-    'sequence-no': transaction['sequence-no'],
-    'item-id': transaction['item-id'],
-    command: 'rollback'
-  }
+const putTransaction = async function (transaction, userId, dbNameHash, databaseId) {
+  const ddbClient = connection.ddbClient()
 
-  const rollbackTransactionParams = {
-    TableName: setup.transactionsTableName,
-    Item: transactionWithRollbackCommand,
-    // if database id + seq no does not exist, insert
-    // if it already exists and command is rollback, overwrite
-    // if it already exists and command isn't rollback, fail with ConditionalCheckFailedException
-    ConditionExpression: 'attribute_not_exists(#databaseId) or command = :command',
+  const incrementSeqNoParams = {
+    TableName: setup.databaseTableName,
+    Key: {
+      'database-id': databaseId
+    },
+    UpdateExpression: 'add #nextSeqNumber :num',
     ExpressionAttributeNames: {
-      '#databaseId': 'database-id',
+      '#nextSeqNumber': 'next-seq-number'
     },
     ExpressionAttributeValues: {
-      ':command': 'rollback',
-    }
+      ':num': 1
+    },
+    ReturnValues: 'UPDATED_NEW'
   }
 
+  // atomically increments and gets the next sequence number for the database
   try {
-    const ddbClient = connection.ddbClient()
-    await ddbClient.put(rollbackTransactionParams).promise()
-
-    memcache.transactionRolledBack(transactionWithRollbackCommand)
+    const db = await ddbClient.update(incrementSeqNoParams).promise()
+    transaction['sequence-no'] = db.Attributes['next-seq-number']
+    transaction['creation-date'] = new Date().toISOString()
   } catch (e) {
-    if (e.name === 'ConditionalCheckFailedException') {
-      // This is good -- must have been persisted to disk because it exists and was not rolled back
-      memcache.transactionPersistedToDdb(transaction)
-      logger.info('Failed to rollback -- transaction already persisted to disk')
-    } else {
-      // No need to throw, can fail gracefully and log error
-      logger.warn(`Failed to rollback with ${e}`)
-    }
+    throw new Error(`Failed with ${e}.`)
   }
-}
 
-exports.rollbackTransaction = rollbackTransaction
-
-const putTransaction = async function (transaction, userId, dbNameHash, databaseId) {
-  const transactionWithSequenceNo = memcache.pushTransaction(transaction)
-
+  // write the transaction using the next sequence number
   const params = {
     TableName: setup.transactionsTableName,
-    Item: transactionWithSequenceNo,
+    Item: transaction,
     ConditionExpression: 'attribute_not_exists(#databaseId)',
     ExpressionAttributeNames: {
       '#databaseId': 'database-id'
@@ -212,24 +185,39 @@ const putTransaction = async function (transaction, userId, dbNameHash, database
   }
 
   try {
-    const ddbClient = connection.ddbClient()
     await ddbClient.put(params).promise()
-
-    memcache.transactionPersistedToDdb(transactionWithSequenceNo)
   } catch (e) {
-    if (e.name === 'ConditionalCheckFailedException') {
-      memcache.transactionCancelled(transactionWithSequenceNo)
-    } else {
-      logger.warn(`Transaction ${transactionWithSequenceNo['sequence-no']} failed for user ${userId} on db ${databaseId} with ${e}! Rolling back...`)
-      rollbackTransaction(transactionWithSequenceNo)
-    }
-
+    // best effort rollback - if the rollback fails here, it will get attempted again when the transactions are read
+    await rollbackAttempt(transaction, ddbClient)
     throw new Error(`Failed with ${e}.`)
   }
 
+  // notify all websocket connections that there's a database change
   connections.push(transaction['database-id'], userId)
 
-  return transactionWithSequenceNo['sequence-no']
+  return transaction['sequence-no']
+}
+
+const rollbackAttempt = async function (transaction, ddbClient) {
+  const rollbackParams = {
+    TableName: setup.transactionsTableName,
+    Item: {
+      'database-id': transaction['database-id'],
+      'sequence-no': transaction['sequence-no'],
+      'command': 'Rollback',
+      'creation-date': new Date().toISOString()
+    },
+    ConditionExpression: 'attribute_not_exists(#databaseId)',
+    ExpressionAttributeNames: {
+      '#databaseId': 'database-id'
+    }
+  }
+
+  try {
+    await ddbClient.put(rollbackParams).promise()
+  } catch (e) {
+    throw new Error(`Failed with ${e}.`)
+  }
 }
 
 exports.doCommand = async function (command, userId, dbNameHash, databaseId, key, record) {
@@ -344,8 +332,6 @@ exports.bundleTransactionLog = async function (databaseId, seqNo, bundle) {
 
     const ddbClient = connection.ddbClient()
     await ddbClient.update(bundleParams).promise()
-
-    memcache.setBundleSeqNo(databaseId, bundleSeqNo)
 
     return responseBuilder.successResponse({})
   } catch (e) {
