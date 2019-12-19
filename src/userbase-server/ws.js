@@ -5,6 +5,7 @@ import db from './db'
 import logger from './logger'
 import { sizeOfDdbItem } from './utils'
 
+const SECONDS_BEFORE_ROLLBACK_GAP_TRIGGERED = 1000 * 10 // 10s
 const TRANSACTION_SIZE_BUNDLE_TRIGGER = 1024 * 50 // 50 KB
 
 class Connection {
@@ -73,16 +74,23 @@ class Connection {
     let size = 0
     try {
       const ddbClient = connection.ddbClient()
+      let gapInSeqNo = false
 
       do {
         let transactionLogResponse = await ddbClient.query(params).promise()
 
-        for (let i = 0; i < transactionLogResponse.Items.length; i++) {
+        for (let i = 0; i < transactionLogResponse.Items.length && !gapInSeqNo; i++) {
           size += sizeOfDdbItem(transactionLogResponse.Items[i])
 
-          // if there's a gap in sequence numbers, put a rollback transaction
-          if (transactionLogResponse.Items[i]['sequence-no'] > lastSeqNo + 1) {
+          // if there's a gap in sequence numbers and past rollback buffer, rollback all transactions in gap
+          gapInSeqNo = transactionLogResponse.Items[i]['sequence-no'] > lastSeqNo + 1
+          const secondsSinceCreation = gapInSeqNo && new Date() - new Date(transactionLogResponse.Items[i]['creation-date'])
+
+          if (gapInSeqNo && secondsSinceCreation > SECONDS_BEFORE_ROLLBACK_GAP_TRIGGERED) {
             await this.rollback(lastSeqNo, transactionLogResponse.Items[i]['sequence-no'], databaseId, ddbClient)
+          } else if (gapInSeqNo) {
+            // at this point must stop querying for more transactions
+            continue
           }
 
           lastSeqNo = transactionLogResponse.Items[i]['sequence-no']
@@ -104,11 +112,11 @@ class Connection {
         }
 
         // paginate over all results
-        logger.info('EK: ' + transactionLogResponse.LastEvaluatedKey)
         params.ExclusiveStartKey = transactionLogResponse.LastEvaluatedKey
-      } while (params.ExclusiveStartKey)
+      } while (params.ExclusiveStartKey && !gapInSeqNo)
 
     } catch (e) {
+      logger.warn(`Failed to push with ${e}`)
       throw new Error(e)
     }
 

@@ -171,7 +171,7 @@ const putTransaction = async function (transaction, userId, dbNameHash, database
     transaction['sequence-no'] = db.Attributes['next-seq-number']
     transaction['creation-date'] = new Date().toISOString()
   } catch (e) {
-    throw new Error(`Failed with ${e}.`)
+    throw new Error(`Failed to increment sequence number with ${e}.`)
   }
 
   // write the transaction using the next sequence number
@@ -189,7 +189,7 @@ const putTransaction = async function (transaction, userId, dbNameHash, database
   } catch (e) {
     // best effort rollback - if the rollback fails here, it will get attempted again when the transactions are read
     await rollbackAttempt(transaction, ddbClient)
-    throw new Error(`Failed with ${e}.`)
+    throw new Error(`Failed to put transaction with ${e}.`)
   }
 
   // notify all websocket connections that there's a database change
@@ -216,7 +216,7 @@ const rollbackAttempt = async function (transaction, ddbClient) {
   try {
     await ddbClient.put(rollbackParams).promise()
   } catch (e) {
-    throw new Error(`Failed with ${e}.`)
+    throw new Error(`Failed to rollback with ${e}.`)
   }
 }
 
