@@ -85,6 +85,7 @@ class UnverifiedTransaction {
   }
 
   addTransaction(transaction, code) {
+    if (this.transactions[transaction.seqNo]) return
     this.transactions[transaction.seqNo] = code
     this.verifyPromise()
   }
@@ -311,7 +312,7 @@ class Database {
   registerUnverifiedTransaction() {
     const unverifiedTransaction = new UnverifiedTransaction(this.lastSeqNo)
     const i = this.unverifiedTransactions.push(unverifiedTransaction)
-    unverifiedTransaction.setIndex(i)
+    unverifiedTransaction.setIndex(i - 1)
     return unverifiedTransaction
   }
 
