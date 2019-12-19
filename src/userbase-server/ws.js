@@ -127,15 +127,7 @@ class Connection {
 
     payload.transactionLog = transactionLog
 
-    this.socket.send(JSON.stringify(payload))
-
-    database.lastSeqNo = transactionLog[transactionLog.length - 1]['seqNo']
-    database.transactionLogSize += size
-
-    if (database.transactionLogSize >= TRANSACTION_SIZE_BUNDLE_TRIGGER) {
-      this.socket.send(JSON.stringify({ dbId: databaseId, route: 'BuildBundle' }))
-      database.transactionLogSize = 0
-    }
+    this.sendPayload(payload, database, size)
   }
 
   async rollback(lastSeqNo, thisSeqNo, databaseId, ddbClient) {
@@ -155,6 +147,20 @@ class Connection {
       }
 
       await ddbClient.put(rollbackParams).promise()
+    }
+  }
+
+  sendPayload(payload, database, size) {
+    this.socket.send(JSON.stringify(payload))
+
+    const { transactionLog, dbId } = payload
+
+    database.lastSeqNo = transactionLog[transactionLog.length - 1]['seqNo']
+    database.transactionLogSize += size
+
+    if (database.transactionLogSize >= TRANSACTION_SIZE_BUNDLE_TRIGGER) {
+      this.socket.send(JSON.stringify({ dbId, route: 'BuildBundle' }))
+      database.transactionLogSize = 0
     }
   }
 
@@ -214,11 +220,31 @@ export default class Connections {
     return true
   }
 
-  static push(databaseId, userId) {
+  static push(transaction, userId) {
     if (!Connections.sockets || !Connections.sockets[userId]) return
 
     for (const conn of Object.values(Connections.sockets[userId])) {
-      conn.push(databaseId)
+      const database = conn.databases[transaction['database-id']]
+
+      // don't need to requery DDB if sending transaction with the next sequence no
+      if (database && transaction['sequence-no'] === database.lastSeqNo + 1) {
+        const payload = {
+          route: 'ApplyTransactions',
+          transactionLog: [{
+            seqNo: transaction['sequence-no'],
+            command: transaction['command'],
+            key: transaction['key'],
+            record: transaction['record'],
+            operations: transaction['operations'],
+            dbId: transaction['database-id']
+          }],
+          dbId: transaction['database-id']
+        }
+
+        conn.sendPayload(payload, database, sizeOfDdbItem(transaction))
+      } else {
+        conn.push(transaction['database-id'])
+      }
     }
   }
 

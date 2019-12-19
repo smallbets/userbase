@@ -193,7 +193,7 @@ const putTransaction = async function (transaction, userId, dbNameHash, database
   }
 
   // notify all websocket connections that there's a database change
-  connections.push(transaction['database-id'], userId)
+  connections.push(transaction, userId)
 
   return transaction['sequence-no']
 }
