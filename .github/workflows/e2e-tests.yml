@@ -31,7 +31,7 @@ jobs:
       # and run all Cypress tests
       - name: Install dependencies and build
         run: |
-          npm install
+          npm run ci:install
           npm run test:setup-ci
       - name: Cypress run
         uses: cypress-io/github-action@v1
