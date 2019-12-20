@@ -1,15 +1,12 @@
 const path = require('path')
-const packageJson = require('./package.json')
-
-const version = packageJson.version
 
 module.exports = {
   entry: {
-    main: './src/userbase-js/index.js'
+    main: './src/index.js'
   },
   output: {
-    path: path.join(__dirname, '../../build/script/'),
-    filename: `userbase-${version}.js`,
+    path: path.join(__dirname, 'dist'),
+    filename: `userbase.js`,
     library: 'userbase',
     libraryExport: 'default'
   },

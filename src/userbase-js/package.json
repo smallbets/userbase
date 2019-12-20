@@ -26,7 +26,7 @@
     "authentication"
   ],
   "license": "MIT",
-  "main": "./index.js",
+  "main": "dist/userbase.js",
   "module": "lib/index.js",
   "typings": "./types/index.d.ts",
   "name": "userbase-js",
@@ -37,21 +37,31 @@
   },
   "version": "0.0.6",
   "scripts": {
+    "prepublishOnly": "npm run build",
+    "build": "npm run build:esm && npm run build:umd",
+    "build:esm": "rm -rf lib && babel src --out-dir lib",
+    "build:umd": "rm -rf dist && webpack --mode production",
+    "patch": "printf 'Input patch commit message: ' && read message && npm version patch -m '$message'",
+    "size": "size-limit",
     "test:types": "dtslint types",
-    "size": "size-limit"
+    "watch": "babel src --out-dir lib --watch"
   },
   "size-limit": [
     {
       "name": "umd",
-      "path": "../../build/script/userbase-*.js",
+      "path": "dist/userbase.js",
       "webpack": false
     },
     {
       "name": "esm",
-      "path": "../../npm_build/userbase-js/index.js"
+      "path": "lib/index.js"
     }
   ],
   "devDependencies": {
+    "@babel/cli": "^7.7.7",
+    "@babel/core": "^7.7.7",
+    "@babel/plugin-transform-runtime": "^7.7.6",
+    "@babel/preset-env": "^7.7.7",
     "@fortawesome/fontawesome-svg-core": "^1.2.25",
     "@fortawesome/free-solid-svg-icons": "^5.11.2",
     "@size-limit/preset-big-lib": "^2.2.2",
@@ -61,6 +71,8 @@
     "style-loader": "^1.0.0",
     "terser-webpack-plugin": "^2.2.1",
     "typescript": "^3.7.3",
+    "webpack": "^4.41.4",
+    "webpack-cli": "^3.3.10",
     "webpack-node-externals": "^1.7.2"
   }
 }
