@@ -23,6 +23,8 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
+      - name: Show current linux user
+        run: whoami
       - name: AWS CLI test
         run: aws configure list
       - name: Checkout
@@ -42,3 +44,4 @@ jobs:
           wait-on: 'http://localhost:8080/ping'
           wait-on-timeout: 120
           record: true
+          env: configFile=development

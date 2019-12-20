@@ -46,7 +46,8 @@
     "build:userbase-js:script": "rm -Rf ./build/script && webpack --env.BUILD_TYPE=sdk-script --mode production --config ./src/userbase-js/webpack.config.js",
     "lint": "eslint .",
     "test:setup": "npm run build:userbase-js:script && cp ./build/script/userbase-*.js ./build/script/userbase-latest.js && npm start &",
-    "test": "npm run test:setup && npx cypress open"
+    "test": "npm run test:setup && npx cypress open",
+    "test:setup-ci": "npm run build:userbase-js:script && cp ./build/script/userbase-*.js ./build/script/userbase-latest.js"
   },
   "repository": "https://github.com/dvassallo/encrypted.dev",
   "keywords": [],
