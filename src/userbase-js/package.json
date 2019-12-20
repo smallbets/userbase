@@ -4,6 +4,8 @@
   },
   "dependencies": {
     "@babel/runtime-corejs3": "^7.7.6",
+    "@fortawesome/fontawesome-svg-core": "^1.2.25",
+    "@fortawesome/free-solid-svg-icons": "^5.11.2",
     "axios": "^0.19.0",
     "base64-arraybuffer": "^0.2.0",
     "copy-to-clipboard": "^3.2.0",
@@ -62,17 +64,10 @@
     "@babel/core": "^7.7.7",
     "@babel/plugin-transform-runtime": "^7.7.6",
     "@babel/preset-env": "^7.7.7",
-    "@fortawesome/fontawesome-svg-core": "^1.2.25",
-    "@fortawesome/free-solid-svg-icons": "^5.11.2",
     "@size-limit/preset-big-lib": "^2.2.2",
-    "css-loader": "^3.2.0",
     "dtslint": "^2.0.2",
-    "optimize-css-assets-webpack-plugin": "^5.0.3",
-    "style-loader": "^1.0.0",
-    "terser-webpack-plugin": "^2.2.1",
     "typescript": "^3.7.3",
     "webpack": "^4.41.4",
-    "webpack-cli": "^3.3.10",
-    "webpack-node-externals": "^1.7.2"
+    "webpack-cli": "^3.3.10"
   }
 }
