@@ -1,4 +1,4 @@
 src/
 
 .babelrc
-webpack.config.js
+webpack.*.js
