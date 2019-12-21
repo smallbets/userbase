@@ -569,7 +569,7 @@ class Connection {
         <div>
           <div
             id='userbase-request-key-modal-close-button'
-            class='userbase-fa-times-circle ${styles.faTimesCircle}'
+            class='userbase-fa-times-circle ${styles.requestKeyModalCloseButton} ${styles.faTimesCircle}'
           >
           ${icons.timesCircle.html}
           </div>

@@ -225,7 +225,7 @@ const displayShowKeyModal = (seedString, rememberMe, backUpKey) => new Promise(r
           />
         </div>
 
-        <div id='userbase-show-key-modal-copied-key-message' class='userbase-message ${styles.message}'>
+        <div id='userbase-show-key-modal-copied-key-message' class='userbase-message ${styles.showKeyModalCopiedKeyMessage} ${styles.message}'>
           Key copied to clipboard
         </div>
       </div>
