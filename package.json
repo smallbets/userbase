@@ -47,7 +47,8 @@
     "lint": "eslint .",
     "test:setup": "npm run build:userbase-js:script && cp ./build/script/userbase-*.js ./build/script/userbase-latest.js && npm start &",
     "test": "npm run test:setup && npx cypress open",
-    "test:setup-ci": "npm run build:userbase-js:script && cp ./build/script/userbase-*.js ./build/script/userbase-latest.js"
+    "test:setup-ci": "npm run build:userbase-js:script && cp ./build/script/userbase-*.js ./build/script/userbase-latest.js",
+    "test:start": "npm-run-all -r -p watch:server watch:admin-panel"
   },
   "repository": "https://github.com/dvassallo/encrypted.dev",
   "keywords": [],
