@@ -28,7 +28,7 @@
     "authentication"
   ],
   "license": "MIT",
-  "main": "dist/userbase.js",
+  "main": "dist/userbase.cjs.js",
   "module": "lib/index.js",
   "typings": "./types/index.d.ts",
   "name": "userbase-js",
@@ -40,9 +40,10 @@
   "version": "0.0.6",
   "scripts": {
     "prepublishOnly": "npm run build",
-    "build": "npm run build:esm && npm run build:umd",
+    "build": "npm run build:esm && npm run build:cjs && npm run build:umd",
     "build:esm": "rm -rf lib && babel src --out-dir lib",
-    "build:umd": "rm -rf dist && webpack --mode production",
+    "build:cjs": "webpack --mode production --config webpack.cjs.js",
+    "build:umd": "webpack --mode production --config webpack.umd.js",
     "patch": "printf 'Input patch commit message: ' && read message && npm version patch -m '$message'",
     "size": "size-limit",
     "test:types": "dtslint types",
@@ -68,6 +69,8 @@
     "dtslint": "^2.0.2",
     "typescript": "^3.7.3",
     "webpack": "^4.41.4",
-    "webpack-cli": "^3.3.10"
+    "webpack-cli": "^3.3.10",
+    "webpack-merge": "^4.2.2",
+    "webpack-node-externals": "^1.7.2"
   }
 }
