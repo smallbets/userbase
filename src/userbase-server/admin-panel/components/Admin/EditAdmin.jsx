@@ -9,6 +9,8 @@ export default class EditAdmin extends Component {
       email: '',
       fullName: '',
       password: '',
+      paymentStatus: '',
+      loadingPaymentStatus: true,
       loadingUpdate: false,
       loadingDelete: false,
       errorUpdating: '',
@@ -18,11 +20,21 @@ export default class EditAdmin extends Component {
     this.handleInputChange = this.handleInputChange.bind(this)
     this.handleUpdateAcount = this.handleUpdateAcount.bind(this)
     this.handleDeleteAccount = this.handleDeleteAccount.bind(this)
+    this.handleCancelSubscription = this.handleCancelSubscription.bind(this)
+    this.handleResumeSubscription = this.handleResumeSubscription.bind(this)
   }
 
-  componentDidMount() {
+  async componentDidMount() {
     this._isMounted = true
     document.addEventListener('keydown', this.handleHitEnter, true)
+
+    try {
+      const paymentStatus = await adminLogic.getPaymentStatus()
+      if (this._isMounted) this.setState({ paymentStatus, loadingPaymentStatus: false })
+    } catch (e) {
+      if (this._isMounted) this.setState({ loadingPaymentStatus: false })
+      console.log(e.message)
+    }
   }
 
   componentWillUnmount() {
@@ -84,11 +96,120 @@ export default class EditAdmin extends Component {
     }
   }
 
+  async handleCheckout(event) {
+    event.preventDefault()
+
+    try {
+      await adminLogic.subscribeToSaas()
+    } catch (e) {
+      console.log(e.message)
+    }
+  }
+
+  async handleUpdatePaymentMethod(event) {
+    event.preventDefault()
+
+    try {
+      await adminLogic.updateSaasPaymentMethod()
+    } catch (e) {
+      console.log(e.message)
+    }
+  }
+
+  async handleCancelSubscription(event) {
+    event.preventDefault()
+
+    try {
+      if (window.confirm('Are you sure you want to cancel your subscription?')) {
+        this.setState({ loadingPaymentStatus: true })
+        await adminLogic.cancelSaasSubscription()
+        if (this._isMounted) this.setState({ paymentStatus: 'cancel_at_period_end', loadingPaymentStatus: false })
+      }
+    } catch (e) {
+      console.log(JSON.stringify(e), e.message)
+    }
+  }
+
+  async handleResumeSubscription(event) {
+    event.preventDefault()
+
+    try {
+      this.setState({ loadingPaymentStatus: true })
+      await adminLogic.resumeSaasSubscription()
+      const paymentStatus = await adminLogic.getPaymentStatus()
+      if (this._isMounted) this.setState({ paymentStatus, loadingPaymentStatus: false })
+    } catch (e) {
+      if (this._isMounted) this.setState({ loadingPaymentStatus: false })
+      console.log(e.message)
+    }
+  }
+
   render() {
-    const { fullName, email, password, loadingUpdate, loadingDelete, errorUpdating, errorDeleting } = this.state
+    const {
+      fullName,
+      email,
+      password,
+      loadingUpdate,
+      loadingDelete,
+      errorUpdating,
+      errorDeleting,
+      paymentStatus,
+      loadingPaymentStatus
+    } = this.state
 
     return (
-      <div className='container content text-xs xs:text-base text-center'>
+      <div className='container content text-xs xs:text-base text-center mb-8'>
+
+        {loadingPaymentStatus
+          ? <div className='loader inline-block w-6 h-6' />
+          : paymentStatus === 'active' || paymentStatus === 'past_due'
+            ?
+            <div>
+              <input
+                className='btn w-56 text-center'
+                type='button'
+                role='link'
+                value='Update Payment Method'
+                onClick={this.handleUpdatePaymentMethod}
+              />
+
+              <br />
+              <br />
+
+              <input
+                className='btn w-56 text-center'
+                type='button'
+                role='link'
+                value='Cancel Subscription'
+                onClick={this.handleCancelSubscription}
+              />
+            </div>
+            :
+            <div>
+              <div className='font-light text-left mb-4'>
+                You are currently using the <span className='font-bold'>free</span> version of Userbase.
+              </div>
+
+              {paymentStatus === 'cancel_at_period_end'
+                ? <input
+                  className='btn w-56 text-center'
+                  type='button'
+                  role='link'
+                  value='Resume Subscription'
+                  onClick={this.handleResumeSubscription}
+                />
+                : <input
+                  className='btn w-56 text-center'
+                  type='button'
+                  role='link'
+                  value='Purchase Subscription'
+                  onClick={this.handleCheckout}
+                />
+              }
+            </div>
+        }
+
+        <hr className='border border-t-0 border-gray-400 mt-8 mb-4' />
 
         <form onSubmit={this.handleUpdateAcount}>
           <div className='table'>
@@ -138,23 +259,20 @@ export default class EditAdmin extends Component {
           </div>
 
 
-          <div className='mt-3 h-16'>
-            <div className='h-6 text-center'>
-              <input
-                className='btn w-40'
-                type='submit'
-                value={loadingUpdate ? 'Updating...' : 'Update Account'}
-                disabled={(!fullName && !email && !password) || loadingDelete || loadingUpdate}
-              />
+          <div className='text-center'>
+            <input
+              className='btn w-40 mt-4'
+              type='submit'
+              value={loadingUpdate ? 'Updating...' : 'Update Account'}
+              disabled={(!fullName && !email && !password) || loadingDelete || loadingUpdate}
+            />
 
-              <div className='error'>{errorUpdating}</div>
-            </div>
-
+            <div className='error'>{errorUpdating}</div>
           </div>
 
         </form>
 
-        <hr className='border border-t-0 border-gray-400 mt-8 mb-4' />
+        <hr className='border border-t-0 border-gray-400 mt-8 mb-6' />
 
         <input
           className='btn w-40'
