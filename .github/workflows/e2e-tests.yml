@@ -34,7 +34,7 @@ jobs:
       - name: Install dependencies and build
         run: |
           npm run ci:install
-          npm run test:setup-ci
+          npm run start
       - name: Cypress run
         uses: cypress-io/github-action@v1
         env:
