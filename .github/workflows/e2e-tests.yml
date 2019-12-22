@@ -35,13 +35,12 @@ jobs:
         run: |
           npm run ci:install
           npm run test:setup-ci
-          npm run start
       - name: Cypress run
         uses: cypress-io/github-action@v1
         env:
           CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
         with:
-          start: npm run test:start
+          start: npm run start
           wait-on: 'http://localhost:8080/ping'
           wait-on-timeout: 120
           record: true
