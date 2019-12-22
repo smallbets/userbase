@@ -25,8 +25,8 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
       - name: Show current linux user
         run: whoami
-      - name: AWS CLI test
-        run: aws configure list
+      # - name: AWS CLI test
+      #   run: aws configure list
       - name: Checkout
         uses: actions/checkout@v1
       # Install NPM dependencies, cache them correctly
@@ -40,8 +40,8 @@ jobs:
         env:
           CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
         with:
-          start: npm run start
+          start: npm run test:start
           wait-on: 'http://localhost:8080/ping'
           wait-on-timeout: 120
           record: true
-          env: configFile=development
+          env: configFile=ci

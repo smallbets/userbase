@@ -58,7 +58,6 @@ describe('DB Testing', function () {
                       })
                   })
               })
-              cy.wait(1000)
             })
         })
         .catch((e) => {
