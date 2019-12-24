@@ -110,18 +110,22 @@ const getDatabase = async function (userId, dbNameHash) {
 
 exports.openDatabase = async function (userId, connectionId, dbNameHash, newDatabaseParams) {
   if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
-  if (!newDatabaseParams) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing new database params')
-
-  const newDbId = newDatabaseParams.dbId
-  const { encryptedDbName, encryptedDbKey } = newDatabaseParams
-  if (!newDbId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
-  if (!encryptedDbName) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name')
-  if (!encryptedDbKey) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database key')
 
   try {
     let database
     try {
-      database = await getDatabase(userId, dbNameHash) || await createDatabase(userId, dbNameHash, newDbId, encryptedDbName, encryptedDbKey)
+      database = await getDatabase(userId, dbNameHash)
+
+      if (!database && !newDatabaseParams) return responseBuilder.errorResponse(statusCodes['Not Found'], 'Database not found')
+      else if (!database) {
+        // attempt to create new database
+        const { dbId, encryptedDbName, encryptedDbKey } = newDatabaseParams
+        if (!dbId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
+        if (!encryptedDbName) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name')
+        if (!encryptedDbKey) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database key')
+
+        database = await createDatabase(userId, dbNameHash, dbId, encryptedDbName, encryptedDbKey)
+      }
     } catch (e) {
       if (e.data === 'Database already exists' || e.data === 'Database already creating') {
         // User must have made a concurrent request to open db with same name for the first time.
