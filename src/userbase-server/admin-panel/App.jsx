@@ -21,9 +21,22 @@ export default class App extends Component {
     this.handleReadHash = this.handleReadHash.bind(this)
   }
 
-  componentDidMount() {
+  async componentDidMount() {
     window.addEventListener('hashchange', this.handleReadHash, false)
     this.handleReadHash()
+
+    try {
+      const paymentStatus = await adminLogic.getPaymentStatus()
+      if (this.state.signedIn && paymentStatus !== 'active') {
+        if (paymentStatus === 'past_due') {
+          window.alert('Please update your payment method!')
+        } else {
+          window.alert('You are using the free version of Userbase!')
+        }
+      }
+    } catch (e) {
+      // do nothing
+    }
   }
 
   componentWillUnmount() {
@@ -71,6 +84,14 @@ export default class App extends Component {
         return signedIn
           ? this.setState({ mode: hashRoute })
           : window.location.hash = ''
+
+      case 'success':
+        window.alert('Payment successful!')
+        return window.location.hash = ''
+
+      case 'update-success':
+        window.alert('Payment method saved!')
+        return window.location.hash = ''
 
       default:
         if (hashRoute && hashRoute.substring(0, 4) === 'app=' && signedIn) {

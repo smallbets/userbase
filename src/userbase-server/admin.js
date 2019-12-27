@@ -7,6 +7,7 @@ import logger from './logger'
 import appController from './app'
 import userController from './user'
 import { validateEmail } from './utils'
+import stripe from './stripe'
 
 // source: https://github.com/OWASP/CheatSheetSeries/blob/master/cheatsheets/Session_Management_Cheat_Sheet.md#session-id-length
 const ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID = 16
@@ -69,35 +70,52 @@ async function createAdmin(email, password, fullName, adminId = uuidv4(), storeP
 
     const passwordHash = await crypto.bcrypt.hash(password)
 
-    const admin = {
+    // There may be multiple Stripe customers with same admin ID. Only one that
+    // matters to us is the one that ultimately gets stored on the admin in DDB
+    const stripeCustomer = await stripe.getClient().customers.create({
       email: email.toLowerCase(),
-      'password-hash': passwordHash,
-      'full-name': fullName,
-      'admin-id': adminId,
-      'creation-date': new Date().toISOString()
+      metadata: { adminId }
+    })
+    const stripeCustomerId = stripeCustomer.id
+
+    try {
+      const admin = {
+        email: email.toLowerCase(),
+        'password-hash': passwordHash,
+        'full-name': fullName,
+        'admin-id': adminId,
+        'creation-date': new Date().toISOString(),
+        'stripe-customer-id': stripeCustomerId
+      }
+
+      const params = {
+        TableName: setup.adminTableName,
+        Item: admin,
+        ConditionExpression: 'attribute_not_exists(email)'
+      }
+
+      const ddbClient = connection.ddbClient()
+      await ddbClient.put(params).promise()
+    } catch (e) {
+      if (e && e.name === 'ConditionalCheckFailedException') {
+        await stripe.getClient().customers.del(stripeCustomerId)
+
+        throw {
+          status: statusCodes['Conflict'],
+          data: 'Admin already exists'
+        }
+      }
+      throw e
     }
 
-    const params = {
-      TableName: setup.adminTableName,
-      Item: admin,
-      ConditionExpression: 'attribute_not_exists(email)'
-    }
-
-    const ddbClient = connection.ddbClient()
-    await ddbClient.put(params).promise()
     return adminId
   } catch (e) {
-    if (e && e.name === 'ConditionalCheckFailedException') {
-      throw {
-        status: statusCodes['Conflict'],
-        data: 'Admin already exists'
-      }
-    } else {
-      logger.error(`Failed to create admin with ${e}`)
-      throw {
-        status: statusCodes['Internal Server Error'],
-        data: 'Failed to create admin'
-      }
+    if (e.data === 'Admin already exists') throw e
+
+    logger.error(`Failed to create admin with ${e}`)
+    throw {
+      status: statusCodes['Internal Server Error'],
+      data: 'Failed to create admin'
     }
   }
 }
@@ -443,7 +461,7 @@ const _updateAdminIncludingEmailUpdate = async (oldAdmin, adminId, email, passwo
 
   const updatedAdmin = {
     ...oldAdmin,
-    email: email.toLowerCase()
+    email
   }
 
   if (password) updatedAdmin['password-hash'] = await crypto.bcrypt.hash(password)
@@ -477,18 +495,25 @@ const _updateAdminIncludingEmailUpdate = async (oldAdmin, adminId, email, passwo
 }
 
 exports.updateAdmin = async function (req, res) {
-  const email = req.body.email
-  const password = req.body.password
-  const fullName = req.body.fullName
-
   const admin = res.locals.admin
   const adminId = admin['admin-id']
+  const stripeCustomerId = admin['stripe-customer-id']
 
   try {
+    const email = req.body.email && req.body.email.toLowerCase()
+    const password = req.body.password
+    const fullName = req.body.fullName
 
     if (email) {
+      if (email === admin['email']) return res.status(statusCodes['Conflict']).send('Email must be different')
       if (!validateEmail(email)) return res.status(statusCodes['Bad Request']).send('Invalid Email')
-      await _updateAdminIncludingEmailUpdate(admin, adminId, email, password, fullName)
+
+      // ok if 1 fails and other succeeds. It's undesirable, but ok if they are out of sync since
+      // Stripe Checkout allows for customers to change their email at the point of checkout anyway
+      await Promise.all([
+        _updateAdminIncludingEmailUpdate(admin, adminId, email, password, fullName),
+        stripe.getClient().customers.update(stripeCustomerId, { email })
+      ])
     } else {
       if (!password && !fullName) return res.status(statusCodes['Bad Request']).send('Missing required items')
       await _updateAdminExcludingEmailUpdate(admin, adminId, password, fullName)
@@ -512,7 +537,13 @@ exports.deleteAdmin = async function (req, res) {
   const email = admin['email']
   const adminId = admin['admin-id']
 
+  const subscription = res.locals.subscription
+
   try {
+    if (subscription && !subscription.cancel_at_period_end) {
+      await stripe.getClient().subscriptions.update(subscription.id, { cancel_at_period_end: true })
+    }
+
     const params = {
       TableName: setup.adminTableName,
       Key: {
@@ -540,5 +571,177 @@ exports.deleteAdmin = async function (req, res) {
 
     logger.error(`Failed to delete admin '${adminId}' with ${e}`)
     return res.status(statusCodes['Internal Server Error']).send('Failed to delete admin')
+  }
+}
+
+exports.createSaasPaymentSession = async function (req, res) {
+  const admin = res.locals.admin
+  const adminId = admin['admin-id']
+  const stripeCustomerId = admin['stripe-customer-id']
+
+  try {
+    const session = await stripe.getClient().checkout.sessions.create({
+      customer: stripeCustomerId,
+      payment_method_types: ['card'],
+      subscription_data: {
+        items: [{
+          plan: stripe.getStripeSaasSubscriptionPlanId(),
+        }]
+      },
+      success_url: `${req.headers.origin || req.headers.referer}/#success`,
+      cancel_url: `${req.headers.origin || req.headers.referer}/#edit-account`,
+    },
+      {
+        idempotency_key: stripeCustomerId // admin can only checkout a single subscription plan
+      })
+
+    return res.send(session.id)
+  } catch (e) {
+    logger.error(`Failed to create SaaS payment session for admin '${adminId}' with ${e}`)
+    return res.status(statusCodes['Internal Server Error']).send('Failed to create payment session')
+  }
+}
+
+exports.updateSaasSubscriptionPaymentSession = async function (req, res) {
+  const admin = res.locals.admin
+  const adminId = admin['admin-id']
+  const email = admin['email']
+
+  const stripeCustomerId = admin['stripe-customer-id']
+
+  try {
+    const session = await stripe.getClient().checkout.sessions.create({
+      payment_method_types: ['card'],
+      mode: 'setup',
+      customer_email: email,
+      setup_intent_data: {
+        metadata: {
+          customer_id: stripeCustomerId,
+          subscription_id: res.locals.subscription.id
+        },
+      },
+      success_url: `${req.headers.origin || req.headers.referer}/#update-success`,
+      cancel_url: `${req.headers.origin || req.headers.referer}/#edit-account`,
+    })
+
+    return res.send(session.id)
+  } catch (e) {
+    logger.error(`Failed to generate update SaaS payment session for admin '${adminId}' with ${e}`)
+    return res.status(statusCodes['Internal Server Error']).send('Failed to update payment session')
+  }
+}
+
+const updateStripePaymentMethod = async function (session) {
+  const setupIntent = await stripe.getClient().setupIntents.retrieve(session.setup_intent)
+  const { payment_method, metadata: { customer_id, subscription_id } } = setupIntent
+
+  await stripe.getClient().paymentMethods.attach(
+    payment_method,
+    {
+      customer: customer_id,
+    }
+  )
+  await stripe.getClient().customers.update(
+    customer_id,
+    {
+      invoice_settings: { default_payment_method: payment_method },
+    }
+  )
+  logger.info(`Successfully updated payment method for admin with Stripe customer id ${customer_id}`)
+
+  const subscription = await stripe.getClient().subscriptions.retrieve(subscription_id)
+  if (subscription.status === 'past_due' || subscription.status === 'unpaid') {
+    const latestInvoiceId = subscription.latest_invoice
+
+    await stripe.getClient().invoices.pay(latestInvoiceId, { payment_method })
+    logger.info(`Successfully charged admin with Stripe customer id ${customer_id} with updated payment method`)
+  }
+}
+
+exports.handleStripeWebhook = async function (req, res) {
+  try {
+    const event = stripe.getClient().webhooks.constructEvent(
+      req.body,
+      req.headers['stripe-signature'],
+      stripe.getWebhookSecret()
+    )
+
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object
+
+      if (session.mode === 'setup') {
+        await updateStripePaymentMethod(session)
+      }
+    }
+
+    res.json({ received: true })
+  } catch (err) {
+    logger.warn(`Stripe webhook failed with ${err}`)
+    return res.status(statusCodes['Bad Request']).send(`Webhook Error: ${err.message}`)
+  }
+}
+
+exports.getSaasSubscription = async function (req, res, next) {
+  const admin = res.locals.admin
+  const adminId = admin['admin-id']
+  const stripeCustomerId = admin['stripe-customer-id']
+
+  try {
+    const customer = await stripe.getClient().customers.retrieve(stripeCustomerId)
+
+    if (customer.subscriptions.data.length > 1) {
+      logger.fatal(`Admin ${adminId} has more than 1 subscription (${customer.subscriptions.data.length} total)`)
+    }
+
+    res.locals.subscription = customer.subscriptions.data.find((subscription => {  // eslint-disable-line require-atomic-updates
+      return subscription.plan.id === stripe.getStripeSaasSubscriptionPlanId()
+    }))
+
+    logger.info(res.locals.subscription)
+
+    next()
+  } catch (e) {
+    logger.error(`Failed to verify subscription payment for admin '${adminId}' with ${e}`)
+    return res.status(statusCodes['Internal Server Error']).send('Failed to verify subscription payment')
+  }
+}
+
+exports.cancelSaasSubscription = async function (req, res) {
+  const { admin, subscription } = res.locals
+  const adminId = admin['admin-id']
+
+  if (!subscription) return res.status(statusCodes['Not Found']).send('No subscription found')
+  if (subscription.cancel_at_period_end) return res.end()
+
+  try {
+    await stripe.getClient().subscriptions.update(subscription.id, { cancel_at_period_end: true })
+
+    return res.end()
+  } catch (e) {
+    logger.error(`Failed to cancel subscription for admin '${adminId}' with ${e}`)
+    return res.status(statusCodes['Internal Server Error']).send('Failed to cancel subscription')
+  }
+}
+
+exports.resumeSaasSubscription = async function (req, res) {
+  const { admin, subscription } = res.locals
+  const adminId = admin['admin-id']
+
+  if (!subscription) return res.status(statusCodes['Not Found']).send('No subscription found')
+  if (!subscription.cancel_at_period_end) return res.end()
+
+  try {
+    await stripe.getClient().subscriptions.update(subscription.id, {
+      cancel_at_period_end: false,
+      items: [{
+        id: subscription.items.data[0].id,
+        plan: subscription.plan.id,
+      }]
+    })
+
+    return res.end()
+  } catch (e) {
+    logger.error(`Failed to resume subscription for admin '${adminId}' with ${e}`)
+    return res.status(statusCodes['Internal Server Error']).send('Failed to resume subscription')
   }
 }
