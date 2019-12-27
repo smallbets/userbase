@@ -9,6 +9,7 @@ import errors from './errors'
 import statusCodes from './statusCodes'
 import { objectHasOwnProperty } from './utils'
 import icons from './icons'
+import * as styles from './styles'
 
 const MAX_PASSWORD_CHAR_LENGTH = 1000
 const MIN_PASSWORD_CHAR_LENGTH = 6
@@ -177,7 +178,7 @@ const _validateProfile = (profile) => {
 
 const displayShowKeyModal = (seedString, rememberMe, backUpKey) => new Promise(resolve => {
   const showKeyModal = document.createElement('div')
-  showKeyModal.className = 'userbase-modal'
+  showKeyModal.className = `userbase-modal ${styles.modal}`
 
   let message = ' '
   if (rememberMe && !backUpKey) {
@@ -191,56 +192,56 @@ const displayShowKeyModal = (seedString, rememberMe, backUpKey) => new Promise(r
   }
 
   showKeyModal.innerHTML = `
-    <div class='userbase-container'>
+    <div class='userbase-container ${styles.container}'>
 
-      <div class='userbase-text-line'>
+      <div class='userbase-text-line ${styles.textLine}'>
         Your secret key:
       </div>
 
-      <div class='userbase-table'>
-        <div class='userbase-table-row'>
-          <div class='userbase-table-cell'>
-            <div class='userbase-display-key'>
+      <div class='userbase-table ${styles.table}'>
+        <div class='userbase-table-row ${styles.tableRow}'>
+          <div class='userbase-table-cell ${styles.tableCell}'>
+            <div class='userbase-display-key ${styles.displayKey}'>
               ${seedString}
             </div>
           </div>
         </div>
       </div>
 
-      <div id='userbase-secret-key-button-outer-wrapper'>
-        <div id='userbase-secret-key-button-input-wrapper'>
+      <div id='userbase-secret-key-button-outer-wrapper' class='${styles.secretKeyButtonOuterWrapper}'>
+        <div id='userbase-secret-key-button-input-wrapper' class='${styles.secretKeyButtonInputWrapper}'>
           <input
             id='userbase-show-key-modal-copy-button'
-            class='userbase-button'
+            class='userbase-button ${styles.button}'
             type='button'
             value='Copy'
           />
 
           <input
             id='userbase-show-key-modal-close-button'
-            class='userbase-button-cancel'
+            class='userbase-button-cancel ${styles.buttonCancel}'
             type='button'
             value='Close'
           />
         </div>
 
-        <div id='userbase-show-key-modal-copied-key-message' class='userbase-message'>
+        <div id='userbase-show-key-modal-copied-key-message' class='userbase-message ${styles.showKeyModalCopiedKeyMessage} ${styles.message}'>
           Key copied to clipboard
         </div>
       </div>
 
       <div>
-        <hr class='userbase-divider'>
+        <hr class='userbase-divider ${styles.divider}'>
         </hr>
       </div>
 
 
     <div>
-      <span id='userbase-store-key-warning-icon' class='userbase-fa-exclamation-triangle'>
+      <span id='userbase-store-key-warning-icon' class='userbase-fa-exclamation-triangle ${styles.faExclamationTriangle}'>
         ${icons.exclamationTriangle.html}
       </span>
 
-      <span class='userbase-text-line'>
+      <span class='userbase-text-line ${styles.textLine}'>
 
       Store this key somewhere safe. ${message}
 
