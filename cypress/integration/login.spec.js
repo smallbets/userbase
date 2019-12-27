@@ -37,7 +37,7 @@ describe('Login - Signup Testing', function () {
 
     cy.window().then(({ userbase }) => {
       userbase.init({ appId: info.appId, endpoint: info.endpoint })
-      return userbase.signUp(ephemeralLoginInfo.username, ephemeralLoginInfo.password, null, null, showKeyHandler, true).then((user) => {
+      return userbase.signUp(ephemeralLoginInfo.username, ephemeralLoginInfo.password, null, null, showKeyHandler, true, false).then((user) => {
         cy.log(user)
         expect(user.username, 'user.username').to.exists
         expect(user.username, 'user.username to be the one signed up').to.equal(ephemeralLoginInfo.username)
@@ -66,21 +66,6 @@ describe('Login - Signup Testing', function () {
 
         })
       })
-    })
-  })
-  it('Login existing user in fresh browser', function () {
-    cy.window().then(({ userbase }) => {
-      userbase.init({ appId: info.appId, endpoint: info.endpoint })
-      userbase.signIn(info.username, info.password).then( (user) => {
-        cy.log('user content is:', user)
-        expect(user).to.exist
-        expect(user).to.haveOwnProperty('username')
-        expect(user.username).to.equal(info.username)
-       expect(user.key).to.equal(info.key)
-      })
-      cy.get('#userbase-secret-key-input').should('exist')
-      cy.get('#userbase-secret-key-input').type(info.key)
-      cy.get('.userbase-button').click()
     })
   })
 

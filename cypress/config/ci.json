@@ -1,10 +1,11 @@
 {
   "env": {
-    "username": "h20zcgeo78wzpxdfi0b82n-user",
-    "password": "nked5kex5of7eal5rzvpa-pass",
-    "key": "eP6u7MfbZC40NLk3hNiazCa08FoZenuFS/s916K0d2M=",
+    "username": "pn6qd7jxah20bearc2kuv-user",
+    "password": "zcdzjejqbzsy4l5ghg22-pass",
+    "key": "l4xuHpcn2wdok3/0V+aFSm3HMVychslISjqsV9FVu7s=",
     "endpoint": "http://localhost:3000",
     "appId": "004b7892-785a-450c-aa8a-1a66cff23d6e",
     "dbName": "test"
   }
 }
+
