@@ -37,7 +37,7 @@ describe('Login - Signup Testing', function () {
 
     cy.window().then(({ userbase }) => {
       userbase.init({ appId: info.appId, endpoint: info.endpoint })
-      return userbase.signUp(ephemeralLoginInfo.username, ephemeralLoginInfo.password, null, null, showKeyHandler, true, false).then((user) => {
+      userbase.signUp(ephemeralLoginInfo.username, ephemeralLoginInfo.password, null, null, showKeyHandler, true, true).then((user) => {
         cy.log(user)
         expect(user.username, 'user.username').to.exists
         expect(user.username, 'user.username to be the one signed up').to.equal(ephemeralLoginInfo.username)
@@ -50,7 +50,7 @@ describe('Login - Signup Testing', function () {
         let creationTime = new Date(currentSession.creationDate)
         let now = new Date()
         expect(now >= creationTime, 'creationDate should be in the past').to.be.true
-        return userbase.signOut().then(() => {
+        userbase.signOut().then(() => {
           const loggedOutSession = JSON.parse(localStorage.getItem('userbaseCurrentSession'))
           cy.log(loggedOutSession)
 
@@ -58,7 +58,7 @@ describe('Login - Signup Testing', function () {
           expect(loggedOutSession.username, 'username should be the same after signout').to.equal(ephemeralLoginInfo.username)
 
           cy.clearLocalStorage()
-          return userbase.signIn(ephemeralLoginInfo.username, ephemeralLoginInfo.password).then((user) => {
+          userbase.signIn(ephemeralLoginInfo.username, ephemeralLoginInfo.password).then((user) => {
             cy.log('user', user)
             expect(user.username, 'login should set the username').to.exist.and.to.equal(ephemeralLoginInfo.username)
             expect(user.key, 'user key should be the same as before').to.be.not.null
@@ -68,5 +68,22 @@ describe('Login - Signup Testing', function () {
       })
     })
   })
+
+  it('Login existing user in fresh browser', function () {
+    cy.window().then(({ userbase }) => {
+      userbase.init({ appId: info.appId, endpoint: info.endpoint })
+      userbase.signIn(info.username, info.password).then((user) => {
+        cy.log('user content is:', user)
+        expect(user).to.exist
+        expect(user).to.haveOwnProperty('username')
+        expect(user.username).to.equal(info.username)
+        expect(user.key).to.equal(info.key)
+      })
+      cy.get('#userbase-secret-key-input').should('exist')
+      cy.get('#userbase-secret-key-input').type(info.key)
+      cy.get('.userbase-button').click()
+    })
+  })
+
 
 })
