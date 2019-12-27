@@ -18,7 +18,9 @@ export const validateEmail = (email) => {
   return true
 }
 
-export const sizeOfDdbItem = (item) => {
+// estimates the size of a DDB item that we know will be structured a certain way. This
+// will not work for arbitrary DDB items that have different data types we are not using
+export const estimateSizeOfDdbItem = (item) => {
   let bytes = 0
 
   for (let attribute in item) {
@@ -37,6 +39,12 @@ export const sizeOfDdbItem = (item) => {
         break
       case 'boolean':
         bytes += 1 // The size of a null attribute or a Boolean attribute is(length of attribute name) + (1 byte).
+        break
+      case 'object':
+        bytes += 3 // An attribute of type List or Map requires 3 bytes of overhead, regardless of its contents
+        for (let objectItem of value) {
+          bytes += estimateSizeOfDdbItem(objectItem)
+        }
         break
       default:
         if (value.type === 'Buffer') {
