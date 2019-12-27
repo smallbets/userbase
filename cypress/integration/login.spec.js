@@ -28,7 +28,7 @@ describe('Login - Signup Testing', function () {
     })
   })
 
-  it('Signup/Logout/Signin a new user in same browser', function () {
+  it('Signup/Logout/Signin a new user in same browser, rememberMe=true, backUpKey=true', function () {
     function showKeyHandler(seedString, rememberMe) {
       cy.log('seedString is:', seedString)
       cy.log('rememberMe is:', rememberMe)
@@ -69,7 +69,40 @@ describe('Login - Signup Testing', function () {
     })
   })
 
-  it('Login existing user in fresh browser', function () {
+  it.only('Signup/Logout/Signin a new user in same browser, rememberMe=false, backUpKey=true', function () {
+    const showKeyHandler = function showKeyHandler(seedString, rememberMe) {
+      cy.log('seedString is:', seedString)
+      cy.log('rememberMe is:', rememberMe)
+      return
+    }
+    let randomInfo
+    cy.getRandomInfoWithParams(showKeyHandler, null, null, false, true).then((loginInfo) => {
+      randomInfo = loginInfo
+    })
+
+    cy.window().then(({ userbase }) => {
+      userbase.init({ appId: info.appId, endpoint: info.endpoint })
+      userbase.signUp(randomInfo.username, randomInfo.password, randomInfo.email, randomInfo.profile, randomInfo.showKeyHandler, randomInfo.rememberMe, randomInfo.backUpKey).then((user) => {
+        cy.log(user)
+        expect(user.username, 'user.username').to.exists
+        expect(user.username, 'user.username to be the one signed up').to.equal(randomInfo.username)
+        expect(user.key, 'user has to be signed in').not.to.be.empty
+        expect(localStorage.length, 'localstorage size').to.equal(0)
+        let signUpKey = user.key
+        userbase.signOut().then(() => {
+          userbase.signIn(randomInfo.username, randomInfo.password).then((user) => {
+            cy.log('user', user)
+            expect(user.username, 'login should set the username').to.exist.and.to.equal(randomInfo.username)
+            expect(user.key, 'user key should be the same as before').to.be.not.null
+            expect(user.key).to.be.equal(signUpKey)
+          })
+
+        })
+      })
+    })
+  })
+
+  it('Login existing user without backUpKey in fresh browser', function () {
     cy.window().then(({ userbase }) => {
       userbase.init({ appId: info.appId, endpoint: info.endpoint })
       userbase.signIn(info.username, info.password).then((user) => {

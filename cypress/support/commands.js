@@ -20,3 +20,18 @@ Cypress.Commands.add("getLoginInfo", () => {
   cy.log('getting new login info:', loginInfo)
   cy.wrap(loginInfo)
 })
+
+Cypress.Commands.add("getRandomInfoWithParams", (showKeyHandler, email, profile, rememberMe, backUpKey) => {
+  class RandomInfo {
+    constructor() {
+      this.username = randomString() + "-userrand",
+        this.password = randomString() + "-pass",
+        this.email = email,
+        this.profile = profile,
+        this.rembemberMe = rememberMe,
+        this.backUpKey = backUpKey
+    }
+  }
+  RandomInfo.prototype.showKeyHandler = showKeyHandler
+  cy.wrap(new RandomInfo())
+})
