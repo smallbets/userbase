@@ -48,7 +48,7 @@ module.exports = (env, argv) => {
         {
           enforce: 'pre',
           test: /\.jsx?$/,
-          exclude: /node_modules/,
+          exclude: /(node_modules|userbase-js)/,
           loader: 'eslint-loader',
           options: {
             emitWarning: true,
@@ -58,12 +58,12 @@ module.exports = (env, argv) => {
         },
         {
           test: /\.(js|jsx)$/,
-          exclude: /node_modules/,
+          exclude: /(node_modules|userbase-js)/,
           use: {
             loader: 'babel-loader',
             options: {
               presets: ['@babel/preset-env', '@babel/react'],
-              plugins: ['@babel/transform-runtime']
+              plugins: [['@babel/transform-runtime', { absoluteRuntime: true }]]
             }
           }
         },
