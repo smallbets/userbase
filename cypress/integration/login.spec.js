@@ -1,16 +1,13 @@
 /// <reference types="Cypress" />
 
 describe('Login - Signup Testing', function () {
-  let ephemeralLoginInfo = {}
   let info = {}
 
   beforeEach(() => {
     info = Cypress.env()
     cy.visit('./cypress/integration/index.html').then((win) => {
       expect(win).to.have.property('userbase')
-    })
-    cy.getLoginInfo().then((loginInfo) => {
-      ephemeralLoginInfo = loginInfo
+      cy.clearLocalStorage()
     })
   })
 
@@ -62,7 +59,7 @@ describe('Login - Signup Testing', function () {
           expect(loggedOutSession.username, 'username should be the same after signout').to.equal(randomInfo.username)
 
           cy.clearLocalStorage()
-          userbase.signIn(randomInfo.username, randomInfo.password).then((user) => {
+          return userbase.signIn(randomInfo.username, randomInfo.password).then((user) => {
             cy.log('user', user)
             expect(user.username, 'login should set the username').to.exist.and.to.equal(randomInfo.username)
             expect(user.key, 'user key should be the same as before').to.be.not.null
@@ -90,7 +87,7 @@ describe('Login - Signup Testing', function () {
         cy.log(user)
         expect(user.username, 'user.username').to.exists
         expect(user.username, 'user.username to be the one signed up').to.equal(randomInfo.username)
-        expect(user.key, 'user has to be signed in').not.to.be.empty
+        expect(user.key, 'user has to be signed in').to.be.not.empty
         expect(localStorage.length, 'localstorage size').to.equal(0)
         let signUpKey = user.key
         userbase.signOut().then(() => {
