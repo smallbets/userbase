@@ -11,7 +11,7 @@
     "install:poc": "cd ./src/proof-of-concept && npm install",
     "ci:postinstall": "npm-run-all -p ci:sdk ci:server ci:admin-panel && npm run ci:poc",
     "ci:install": "npm ci --ignore-scripts && npm run ci:postinstall",
-    "ci:setup": "npm run build:userbase-js:script && cp ./build/script/userbase-*.js ./build/script/userbase-latest.js",
+    "ci:setup": "npm run build:userbase-js:script && cp ./build/script/userbase.js ./build/script/userbase-latest.js",
     "ci:sdk": "cd ./src/userbase-js && npm ci",
     "ci:server": "cd ./src/userbase-server && npm ci",
     "ci:admin-panel": "cd ./src/userbase-server/admin-panel && npm ci",
