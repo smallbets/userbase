@@ -1,8 +1,5 @@
 {
   "env": {
-    "username": "7vgqr3snk3gq6i30ujx5f9-user",
-    "password": "s4mc13kqhz2eeu6sigu5l-pass",
-    "key": "tcejnc7WwyNwVVr4nhgiP4h3z/LKWd3WOxjKhPO5Wos=",
     "endpoint": "http://localhost:8080",
     "appId": "004b7892-785a-450c-aa8a-1a66cff23d6e",
     "dbName": "test"
