@@ -107,29 +107,25 @@ describe('Login - Signup Testing', function () {
   })
 
   it.only('Signup/Logout/Signin a new user in same browser, rememberMe=false, backUpKey=false', function () {
-
     let randomInfo
     cy.getRandomInfoWithParams(null, null, null, false, false).then((loginInfo) => {
       randomInfo = loginInfo
     })
-    let readKey = 'some'
     cy.window().then(({ userbase }) => {
       userbase.init({ appId: info.appId, endpoint: info.endpoint })
-
+      // UI watchers
       cy.get('.userbase-display-key').invoke('text').then((shownKey) => {
-        readKey = shownKey.trim()
+        let readKey = shownKey.trim()
         cy.get('#userbase-show-key-modal-close-button').click()
         cy.get('#userbase-secret-key-input').should('exist')
         cy.get('#userbase-secret-key-input').type(readKey)
       })
-
       cy.get('.userbase-button').click()
 
       userbase.signUp(randomInfo.username, randomInfo.password, randomInfo.email, randomInfo.profile, randomInfo.showKeyHandler, randomInfo.rememberMe, randomInfo.backUpKey).then((user) => {
         expect(user).to.exist
         expect(user).to.haveOwnProperty('username')
         expect(user.username).to.equal(randomInfo.username)
-
         userbase.signOut().then(() => {
           userbase.signIn(randomInfo.username, randomInfo.password).then((user) => {
             expect(user, 'In signin').to.exist
