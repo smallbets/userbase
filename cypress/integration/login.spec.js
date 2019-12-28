@@ -106,7 +106,7 @@ describe('Login - Signup Testing', function () {
     })
   })
 
-  it.only('Signup/Logout/Signin a new user in same browser, rememberMe=false, backUpKey=false', function () {
+  it('Signup/Logout/Signin a new user in same browser, rememberMe=false, backUpKey=false', function () {
     let randomInfo
     cy.getRandomInfoWithParams(null, null, null, false, false).then((loginInfo) => {
       randomInfo = loginInfo
@@ -131,7 +131,6 @@ describe('Login - Signup Testing', function () {
             expect(user, 'In signin').to.exist
             expect(user, 'In signin').to.haveOwnProperty('username')
             expect(user.username).to.equal(randomInfo.username)
-
           })
         })
       })
