@@ -317,7 +317,7 @@ exports.bundleTransactionLog = async function (databaseId, seqNo, bundle) {
     const s3 = setup.s3()
     await s3.upload(dbStateParams).promise()
 
-    logger.info('Setting bundle sequence number on user...')
+    logger.info(`Setting bundle sequence number ${bundleSeqNo} on database ${databaseId}...`)
 
     const bundleParams = {
       TableName: setup.databaseTableName,
@@ -339,8 +339,8 @@ exports.bundleTransactionLog = async function (databaseId, seqNo, bundle) {
 
     return responseBuilder.successResponse({})
   } catch (e) {
-
-    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to bundle with ${e}`)
+    logger.error(`Failed to bundle database ${databaseId} at sequence number ${bundleSeqNo} with ${e}`)
+    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to bundle')
   }
 }
 

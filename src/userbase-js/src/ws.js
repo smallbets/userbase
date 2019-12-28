@@ -312,36 +312,9 @@ class Connection {
           database.init = true
         }
 
-        break
-      }
-
-      case 'BuildBundle': {
-        const dbId = message.dbId
-        const dbNameHash = this.state.dbIdToHash[dbId]
-        const database = this.state.databases[dbNameHash]
-
-        if (!database) return
-
-        const bundle = {
-          items: database.items,
-          itemsIndex: database.itemsIndex.array
+        if (message.buildBundle) {
+          this.buildBundle(database)
         }
-
-        const itemKeys = []
-
-        for (let i = 0; i < bundle.itemsIndex.length; i++) {
-          const itemId = bundle.itemsIndex[i].itemId
-          const itemKey = await crypto.hmac.signString(this.keys.hmacKey, itemId)
-          itemKeys.push(itemKey)
-        }
-
-        const plaintextString = JSON.stringify(bundle)
-        const compressedString = LZString.compress(plaintextString)
-        const base64Bundle = await crypto.aesGcm.encryptString(database.dbKey, compressedString)
-
-        const action = 'Bundle'
-        const params = { dbId, seqNo: database.lastSeqNo, bundle: base64Bundle, keys: itemKeys }
-        this.request(action, params)
 
         break
       }
@@ -514,6 +487,30 @@ class Connection {
 
     delete this.requests[requestId]
     return response
+  }
+
+  async buildBundle(database) {
+    const bundle = {
+      items: database.items,
+      itemsIndex: database.itemsIndex.array
+    }
+    const dbId = database.dbId
+    const lastSeqNo = database.lastSeqNo
+
+    const itemKeyPromises = []
+    for (let i = 0; i < bundle.itemsIndex.length; i++) {
+      const itemId = bundle.itemsIndex[i].itemId
+      itemKeyPromises.push(crypto.hmac.signString(this.keys.hmacKey, itemId))
+    }
+    const itemKeys = await Promise.all(itemKeyPromises)
+
+    const plaintextString = JSON.stringify(bundle)
+    const compressedString = LZString.compress(plaintextString)
+    const base64Bundle = await crypto.aesGcm.encryptString(database.dbKey, compressedString)
+
+    const action = 'Bundle'
+    const params = { dbId, seqNo: lastSeqNo, bundle: base64Bundle, keys: itemKeys }
+    this.request(action, params)
   }
 
   async requestSeed(username) {

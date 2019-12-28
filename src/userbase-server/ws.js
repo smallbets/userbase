@@ -47,7 +47,7 @@ class Connection {
     }
 
     const bundleSeqNo = database.bundleSeqNo
-    if (bundleSeqNo >= 0 && database.lastSeqNo < 0) {
+    if (bundleSeqNo >= 0 && database.lastSeqNo === 0) {
       const bundle = await db.getBundle(databaseId, bundleSeqNo)
       payload.bundeSeqNo = bundleSeqNo
       payload.bundle = bundle
@@ -151,17 +151,16 @@ class Connection {
   }
 
   sendPayload(payload, database, size) {
-    this.socket.send(JSON.stringify(payload))
+    const { transactionLog } = payload
 
-    const { transactionLog, dbId } = payload
-
-    database.lastSeqNo = transactionLog[transactionLog.length - 1]['seqNo']
-    database.transactionLogSize += size
-
-    if (database.transactionLogSize >= TRANSACTION_SIZE_BUNDLE_TRIGGER) {
-      this.socket.send(JSON.stringify({ dbId, route: 'BuildBundle' }))
+    if (database.transactionLogSize + size >= TRANSACTION_SIZE_BUNDLE_TRIGGER) {
+      this.socket.send(JSON.stringify({ ...payload, buildBundle: true }))
       database.transactionLogSize = 0
+    } else {
+      this.socket.send(JSON.stringify(payload))
+      database.transactionLogSize += size
     }
+    database.lastSeqNo = transactionLog[transactionLog.length - 1]['seqNo']
   }
 
   openSeedRequest(requesterPublicKey) {
