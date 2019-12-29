@@ -40,7 +40,6 @@ describe('Login - Signup Testing', function () {
       userbase.init({ appId: info.appId, endpoint: info.endpoint })
       return userbase.signUp(randomInfo.username, randomInfo.password, randomInfo.email, randomInfo.profile, randomInfo.showKeyHandler, randomInfo.rememberMe, randomInfo.backUpKey).then((user) => {
         cy.log(user)
-        debugger
         expect(user.username, 'user.username').to.exists
         expect(user.username, 'user.username to be the one signed up').to.equal(randomInfo.username)
         expect(user.key, 'user has to be signed in').not.to.be.empty
