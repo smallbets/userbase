@@ -45,6 +45,8 @@ describe('Login - Signup Testing', function () {
         expect(user.key, 'user has to be signed in').not.to.be.empty
         const currentSession = JSON.parse(localStorage.getItem('userbaseCurrentSession'))
         cy.log('session current user', localStorage.getItem('userbaseCurrentSession'))
+        expect(currentSession).to.exist
+        expect(currentSession).to.haveOwnProperty('signedIn')
         expect(currentSession.signedIn, 'signedIn should be true').to.be.true
         expect(currentSession.sessionId, 'sessionId should exists').to.be.not.null
         expect(currentSession.creationDate, 'creationDate should exists').to.be.not.null
@@ -118,13 +120,13 @@ describe('Login - Signup Testing', function () {
         cy.get('#userbase-secret-key-input').type(readKey)
       })
       cy.get('.userbase-button').click()
-
-      return userbase.signUp(randomInfo.username, randomInfo.password, randomInfo.email, randomInfo.profile, randomInfo.showKeyHandler, randomInfo.rememberMe, randomInfo.backUpKey).then((user) => {
+      // Avoid returning the callbacks if we want the UI watchers to keep working
+      userbase.signUp(randomInfo.username, randomInfo.password, randomInfo.email, randomInfo.profile, randomInfo.showKeyHandler, randomInfo.rememberMe, randomInfo.backUpKey).then((user) => {
         expect(user).to.exist
         expect(user).to.haveOwnProperty('username')
         expect(user.username).to.equal(randomInfo.username)
-        return userbase.signOut().then(() => {
-          return userbase.signIn(randomInfo.username, randomInfo.password).then((user) => {
+        userbase.signOut().then(() => {
+          userbase.signIn(randomInfo.username, randomInfo.password).then((user) => {
             expect(user, 'In signin').to.exist
             expect(user, 'In signin').to.haveOwnProperty('username')
             expect(user.username).to.equal(randomInfo.username)
