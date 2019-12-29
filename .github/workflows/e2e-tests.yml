@@ -1,0 +1,51 @@
+name: Integration tests
+
+on:
+  # Trigger the workflow on push or pull request,
+  # but only for the master branch
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  integration-tests:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/setup-node@v1
+        with:
+          node-version: '12.x'
+      - name: Install build-essential and python
+        run: sudo apt-get install -y build-essential python
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Show current linux user
+        run: whoami
+      # - name: AWS CLI test
+      #   run: aws configure list
+      - name: Checkout
+        uses: actions/checkout@v1
+      # Install NPM dependencies, cache them correctly
+      # and run all Cypress tests
+      - name: Install dependencies and build
+        run: |
+          npm run ci:install
+          npm run ci:setup
+      - name: Cypress run
+        uses: cypress-io/github-action@v1
+        env:
+          CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
+        with:
+          start: npm run ci:start
+          wait-on: 'http://localhost:8080/ping'
+          wait-on-timeout: 120
+          record: true
+          env: configFile=ci

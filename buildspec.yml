@@ -15,7 +15,7 @@ phases:
     commands:
       # run 'npm install' using versions in package-lock.json
       - npm ci
-      - npm run postinstall:ci
+      - npm run ci:postinsall
   build:
     commands:
       # run the build

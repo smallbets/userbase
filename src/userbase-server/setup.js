@@ -8,9 +8,25 @@ let initialized = false
 
 const defaultRegion = 'us-west-2'
 
+const defineUsername = () => {
+  let appUsername = ''
+  if (process.env.NODE_ENV == 'development') {
+    if (process.env.USERNAME) {
+      appUsername = process.env.USERNAME
+    } else {
+      appUsername = os.userInfo().username
+    }
+  } else {
+    appUsername = 'beta'
+  }
+  return appUsername
+}
+
+logger.info("Running as USER: " + defineUsername());
+
 // if running in dev mode, prefix the DynamoDB tables and S3 buckets with the username
-const resourceNamePrefix = 'userbase-' + ((process.env.NODE_ENV == 'development') ? os.userInfo().username : 'beta') + '-'
-const ddbTableGroup = 'userbase-' + ((process.env.NODE_ENV == 'development') ? os.userInfo().username : 'beta')
+const resourceNamePrefix = 'userbase-' + defineUsername() + '-'
+const ddbTableGroup = 'userbase-' + defineUsername()
 
 const adminTableName = resourceNamePrefix + 'admins'
 const appsTableName = resourceNamePrefix + 'apps'
