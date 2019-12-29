@@ -25,11 +25,11 @@ Cypress.Commands.add("getRandomInfoWithParams", (showKeyHandler, email, profile,
   class RandomInfo {
     constructor() {
       this.username = randomString() + "-userrand",
-        this.password = randomString() + "-pass",
-        this.email = email,
-        this.profile = profile,
-        this.rembemberMe = rememberMe,
-        this.backUpKey = backUpKey
+      this.password = randomString() + "-pass",
+      this.email = email,
+      this.profile = profile,
+      this.rememberMe = rememberMe,
+      this.backUpKey = backUpKey
     }
   }
   RandomInfo.prototype.showKeyHandler = showKeyHandler
