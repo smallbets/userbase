@@ -11,7 +11,7 @@ describe('DB Testing', function () {
     })
   })
 
-  it.only('Check db status with existing user', function () {
+  it('Check db status with existing user', function () {
     cy.window().then(({ userbase }) => {
       function keyNotFoundHandler() {
         userbase.importKey(info.key)

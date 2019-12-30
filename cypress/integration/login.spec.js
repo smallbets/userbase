@@ -11,20 +11,6 @@ describe('Login - Signup Testing', function () {
     })
   })
 
-  it('Check all the endpoints exists', function () {
-    cy.window().then(({ userbase }) => {
-      expect(userbase)
-      expect(userbase).to.respondTo('signIn')
-      expect(userbase).to.respondTo('signUp')
-      expect(userbase).to.respondTo('signOut')
-      expect(userbase).to.respondTo('openDatabase')
-      expect(userbase).to.respondTo('insertItem')
-      expect(userbase).to.respondTo('updateItem')
-      expect(userbase).to.respondTo('deleteItem')
-      expect(userbase).to.respondTo('transaction')
-    })
-  })
-
   it('Signup/Logout/Signin a new user in same browser, rememberMe=true, backUpKey=true', function () {
     function showKeyHandler(seedString, rememberMe) {
       cy.log('seedString is:', seedString)
