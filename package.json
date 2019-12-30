@@ -46,8 +46,8 @@
     "publish:userbase-server:npm": "cd ./npm_build/userbase-server && npm publish",
     "build:userbase-js:script": "cd src/userbase-js && npm run build:umd",
     "lint": "eslint .",
-    "test:setup": "npm run build:userbase-js:script && npm start &",
-    "test": "npm run test:setup && npx cypress open"
+    "test:setup": "npm run build:userbase-js:script && npm run watch:server",
+    "test": "npx cypress open & npm run test:setup"
   },
   "repository": "https://github.com/encrypted-dev/userbase",
   "keywords": [],
