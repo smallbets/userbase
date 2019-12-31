@@ -38,7 +38,7 @@ jobs:
       - name: Install dependencies and build
         run: |
           npm run ci:install
-          npm run ci:setup
+          npm run build:userbase-js:script
       - name: Cypress run
         uses: cypress-io/github-action@v1
         env:
