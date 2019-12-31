@@ -36,122 +36,131 @@ describe('DB Correctness Tests', function () {
   const dbName = 'test-db'
 
   describe('Open Database', function () {
-    beforeEach(function () { beforeEachHook() })
 
-    it('Open 1 Database', async function () {
-      let changeHandlerCallCount = 0
+    describe('Synchronous Tests', function () {
+      beforeEach(function () { beforeEachHook() })
 
-      const changeHandler = function (items) {
-        expect(items, 'array passed to changeHandler').to.be.a('array')
-        expect(items, 'array passed to changeHandler').to.be.empty
+      it('Open 1 Database', async function () {
+        let changeHandlerCallCount = 0
 
-        changeHandlerCallCount += 1
-      }
-      await this.test.userbase.openDatabase(dbName, changeHandler)
+        const changeHandler = function (items) {
+          expect(items, 'array passed to changeHandler').to.be.a('array')
+          expect(items, 'array passed to changeHandler').to.be.empty
 
-      expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
-    })
-
-    it('Open 2 Databases sequentially with the same name', async function () {
-      let changeHandlerCallCount = 0
-
-      const changeHandler = function (items) {
-        expect(items, 'array passed to changeHandler').to.be.a('array')
-        expect(items, 'array passed to changeHandler').to.be.empty
-
-        changeHandlerCallCount += 1
-      }
-
-      await this.test.userbase.openDatabase(dbName, changeHandler)
-
-      try {
+          changeHandlerCallCount += 1
+        }
         await this.test.userbase.openDatabase(dbName, changeHandler)
-      } catch (e) {
-        expect(e.name, 'error name').to.equal('DatabaseAlreadyOpen')
-        expect(e.message, 'error message').to.equal('Database is already open.')
-        expect(e.status, 'error status').to.equal(400)
-      }
 
-      expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
-    })
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+      })
 
-    it('Open 10 Databases sequentially', async function () {
-      const numDatabases = 10
+      it('Open 2 Databases sequentially with the same name', async function () {
+        let changeHandlerCallCount = 0
 
-      let changeHandlerCallCount = 0
+        const changeHandler = function (items) {
+          expect(items, 'array passed to changeHandler').to.be.a('array')
+          expect(items, 'array passed to changeHandler').to.be.empty
 
-      const changeHandler = function (items) {
-        expect(items, 'array passed to changeHandler').to.be.a('array')
-        expect(items, 'array passed to changeHandler').to.be.empty
+          changeHandlerCallCount += 1
+        }
 
-        changeHandlerCallCount += 1
-      }
+        await this.test.userbase.openDatabase(dbName, changeHandler)
 
-      for (let i = 0; i < numDatabases; i++) {
-        await this.test.userbase.openDatabase(dbName + i, changeHandler)
-      }
-
-      expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(10)
-    })
-
-    it('Open 10 Databases concurrently', async function () {
-      const numDatabases = 10
-
-      let changeHandlerCallCount = 0
-
-      const changeHandler = function (items) {
-        expect(items, 'array passed to changeHandler').to.be.a('array')
-        expect(items, 'array passed to changeHandler').to.be.empty
-
-        changeHandlerCallCount += 1
-      }
-
-      const promises = []
-      for (let i = 0; i < numDatabases; i++) {
-        promises.push(this.test.userbase.openDatabase(dbName + i, changeHandler))
-      }
-      await Promise.all(promises)
-
-      expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(10)
-    })
-
-    it('Open 10 Databases concurrently with the same name', async function () {
-      const numDatabases = 10
-
-      let changeHandlerCallCount = 0
-
-      const changeHandler = function (items) {
-        expect(items, 'array passed to changeHandler').to.be.a('array')
-        expect(items, 'array passed to changeHandler').to.be.empty
-
-        changeHandlerCallCount += 1
-      }
-
-      let successCount = 0
-      let failureCount = 0
-
-      const openDatabase = async () => {
         try {
           await this.test.userbase.openDatabase(dbName, changeHandler)
-          successCount += 1
         } catch (e) {
-          expect(e.name, 'error name').to.be.equal('DatabaseAlreadyOpening')
-          expect(e.message, 'error message').to.equal('Already attempting to open database.')
+          expect(e.name, 'error name').to.equal('DatabaseAlreadyOpen')
+          expect(e.message, 'error message').to.equal('Database is already open.')
           expect(e.status, 'error status').to.equal(400)
-          failureCount += 1
         }
-      }
 
-      const promises = []
-      for (let i = 0; i < numDatabases; i++) {
-        promises.push(openDatabase())
-      }
-      await Promise.all(promises)
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+      })
 
-      expect(successCount, 'success count').to.equal(1)
-      expect(failureCount, 'failure count').to.equal(numDatabases - 1)
-      expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+      it('Open 10 Databases sequentially', async function () {
+        const numDatabases = 10
+
+        let changeHandlerCallCount = 0
+
+        const changeHandler = function (items) {
+          expect(items, 'array passed to changeHandler').to.be.a('array')
+          expect(items, 'array passed to changeHandler').to.be.empty
+
+          changeHandlerCallCount += 1
+        }
+
+        for (let i = 0; i < numDatabases; i++) {
+          await this.test.userbase.openDatabase(dbName + i, changeHandler)
+        }
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(10)
+      })
     })
+
+    describe('Concurrency tests', function () {
+      beforeEach(function () { beforeEachHook() })
+
+      it('Open 10 Databases concurrently', async function () {
+        const numDatabases = 10
+
+        let changeHandlerCallCount = 0
+
+        const changeHandler = function (items) {
+          expect(items, 'array passed to changeHandler').to.be.a('array')
+          expect(items, 'array passed to changeHandler').to.be.empty
+
+          changeHandlerCallCount += 1
+        }
+
+        const promises = []
+        for (let i = 0; i < numDatabases; i++) {
+          promises.push(this.test.userbase.openDatabase(dbName + i, changeHandler))
+        }
+        await Promise.all(promises)
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(10)
+      })
+
+      it('Open 10 Databases concurrently with the same name', async function () {
+        const numDatabases = 10
+
+        let changeHandlerCallCount = 0
+
+        const changeHandler = function (items) {
+          expect(items, 'array passed to changeHandler').to.be.a('array')
+          expect(items, 'array passed to changeHandler').to.be.empty
+
+          changeHandlerCallCount += 1
+        }
+
+        let successCount = 0
+        let failureCount = 0
+
+        const openDatabase = async () => {
+          try {
+            await this.test.userbase.openDatabase(dbName, changeHandler)
+            successCount += 1
+          } catch (e) {
+            expect(e.name, 'error name').to.be.equal('DatabaseAlreadyOpening')
+            expect(e.message, 'error message').to.equal('Already attempting to open database.')
+            expect(e.status, 'error status').to.equal(400)
+            failureCount += 1
+          }
+        }
+
+        const promises = []
+        for (let i = 0; i < numDatabases; i++) {
+          promises.push(openDatabase())
+        }
+        await Promise.all(promises)
+
+        expect(successCount, 'success count').to.equal(1)
+        expect(failureCount, 'failure count').to.equal(numDatabases - 1)
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+      })
+
+    })
+
   })
 
   describe('Insert/Update/Delete/Transaction', function () {
@@ -827,9 +836,10 @@ describe('DB Correctness Tests', function () {
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(4)
         expect(successful, 'successful state').to.be.true
       })
+
     })
 
-    describe('Concurrent Tests', function () {
+    describe('Concurrency tests', function () {
       beforeEach(function () { beforeEachHook() })
 
       it('10 concurrent Inserts', async function () {
@@ -839,8 +849,12 @@ describe('DB Correctness Tests', function () {
         let changeHandlerCallCount = 0
         let successful
 
+        let latestState
+        let correctState
+
         const changeHandler = function (items) {
           changeHandlerCallCount += 1
+          latestState = items
 
           if (items.length === numConcurrentOperations && !successful) {
             for (let i = 0; i < numConcurrentOperations; i++) {
@@ -861,6 +875,7 @@ describe('DB Correctness Tests', function () {
             }
 
             successful = true
+            correctState = items
           }
         }
 
@@ -877,6 +892,11 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(1 + numConcurrentOperations)
         expect(successful, 'successful state').to.be.true
+
+        // give client time to process all inserts, then make sure state is still correct
+        const THREE_SECONDS = 3 * 1000
+        await wait(THREE_SECONDS)
+        expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
       })
 
       it('10 concurrent Inserts, then concurrent 5 Updates & 5 Deletes', async function () {
@@ -891,12 +911,14 @@ describe('DB Correctness Tests', function () {
         let succesfullyInsertedAllItems
         let successfullyUpdatedAndDeletedAllItems
 
+        let latestState
+        let correctState
+
         const changeHandler = function (items) {
           changeHandlerCallCount += 1
+          latestState = items
 
           if (succesfullyInsertedAllItems && items.length === numUpdates && !successfullyUpdatedAndDeletedAllItems) {
-            expect(items, 'array passed to changeHandler').to.have.lengthOf(numUpdates)
-
             for (let i = 0; i < numUpdates; i++) {
               const insertedItem = items[i]
               expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
@@ -913,6 +935,7 @@ describe('DB Correctness Tests', function () {
             }
 
             successfullyUpdatedAndDeletedAllItems = true
+            correctState = items
           }
         }
 
@@ -944,6 +967,11 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(1 + (numConcurrentOperations * 2))
         expect(successfullyUpdatedAndDeletedAllItems, 'successful state').to.be.true
+
+        // give client time to process all transactions, then make sure state is still correct
+        const THREE_SECONDS = 3 * 1000
+        await wait(THREE_SECONDS)
+        expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
       })
 
       it('10 concurrent Inserts with same Item ID', async function () {
@@ -954,8 +982,12 @@ describe('DB Correctness Tests', function () {
         let changeHandlerCallCount = 0
         let successful
 
+        let latestState
+        let correctState
+
         const changeHandler = function (items) {
           changeHandlerCallCount += 1
+          latestState = items
 
           if (items.length === 1 && !successful) {
             const insertedItem = items[0]
@@ -966,6 +998,7 @@ describe('DB Correctness Tests', function () {
             expect(item, 'item in items array passed to changeHandler').to.be.within(0, numConcurrentOperations - 1)
 
             successful = true
+            correctState = items
           }
         }
 
@@ -999,6 +1032,11 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(1 + numConcurrentOperations)
         expect(successful, 'successful state').to.be.true
+
+        // give client time to process all transactions, then make sure state is still correct
+        const THREE_SECONDS = 3 * 1000
+        await wait(THREE_SECONDS)
+        expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
       })
 
       it('2 concurrent Updates on same item', async function () {
@@ -1019,8 +1057,13 @@ describe('DB Correctness Tests', function () {
         let changeHandlerCallCount = 0
         let successful
 
+        let latestState
+        let correctState
+
         const changeHandler = function (items) {
           changeHandlerCallCount += 1
+          latestState = items
+
           if (changeHandlerCallCount > 2 && !successful) {
             expect(items, 'array passed to changeHandler').to.have.lengthOf(1)
 
@@ -1037,6 +1080,7 @@ describe('DB Correctness Tests', function () {
             }
 
             successful = true
+            correctState = items
           }
         }
 
@@ -1057,6 +1101,11 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(4)
         expect(successful, 'successful state').to.be.true
+
+        // give client time to process all transactions, then make sure state is still correct
+        const THREE_SECONDS = 3 * 1000
+        await wait(THREE_SECONDS)
+        expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
       })
 
       it('Concurrent Update and Transaction on same item', async function () {
@@ -1080,8 +1129,12 @@ describe('DB Correctness Tests', function () {
         let changeHandlerCallCount = 0
         let successful
 
+        let latestState
+        let correctState
+
         const changeHandler = function (items) {
           changeHandlerCallCount += 1
+          latestState = items
 
           if (changeHandlerCallCount > 2 && !successful) {
             expect(items, 'array passed to changeHandler').to.have.lengthOf(1)
@@ -1099,6 +1152,7 @@ describe('DB Correctness Tests', function () {
             }
 
             successful = true
+            correctState = items
           }
         }
 
@@ -1119,6 +1173,11 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(4)
         expect(successful, 'successful state').to.be.true
+
+        // give client time to process all transactions, then make sure state is still correct
+        const THREE_SECONDS = 3 * 1000
+        await wait(THREE_SECONDS)
+        expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
       })
 
       it('2 concurrent Deletes on same item', async function () {
@@ -1131,12 +1190,17 @@ describe('DB Correctness Tests', function () {
         let changeHandlerCallCount = 0
         let successful
 
+        let latestState
+        let correctState
+
         const changeHandler = function (items) {
           changeHandlerCallCount += 1
+          latestState = items
 
           if (changeHandlerCallCount > 2 && !successful) {
             expect(items, 'array passed to changeHandler').to.be.empty
             successful = true
+            correctState = items
           }
         }
 
@@ -1157,6 +1221,11 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(4)
         expect(successful, 'successful state').to.be.true
+
+        // give client time to process all transactions, then make sure state is still correct
+        const THREE_SECONDS = 3 * 1000
+        await wait(THREE_SECONDS)
+        expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
       })
 
       it('Concurrent Update and Delete on same item', async function () {
@@ -1174,8 +1243,12 @@ describe('DB Correctness Tests', function () {
         let changeHandlerCallCount = 0
         let successful
 
+        let latestState
+        let correctState
+
         const changeHandler = function (items) {
           changeHandlerCallCount += 1
+          latestState = items
 
           if (changeHandlerCallCount > 2 && !successful) {
             expect(items.length).to.be.oneOf([0, 1])
@@ -1191,6 +1264,7 @@ describe('DB Correctness Tests', function () {
             }
 
             successful = true
+            correctState = items
           }
         }
 
@@ -1221,6 +1295,11 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(4)
         expect(successful, 'successful state').to.be.true
+
+        // give client time to process all transactions, then make sure state is still correct
+        const THREE_SECONDS = 3 * 1000
+        await wait(THREE_SECONDS)
+        expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
       })
 
       it('2 concurrent Inserts, 1 large item & 1 small item', async function () {
@@ -1234,8 +1313,13 @@ describe('DB Correctness Tests', function () {
         let changeHandlerCallCount = 0
         let successful
 
+        let latestState
+        let correctState
+
         const changeHandler = function (items) {
           changeHandlerCallCount += 1
+          latestState = items
+
           if (items.length === 2 && !successful) {
             const item1 = items[0]
             const item2 = items[1]
@@ -1257,6 +1341,7 @@ describe('DB Correctness Tests', function () {
             }
 
             successful = true
+            correctState = items
           }
         }
 
@@ -1269,6 +1354,11 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(3)
         expect(successful, 'successful state').to.be.true
+
+        // give client time to process all transactions, then make sure state is still correct
+        const THREE_SECONDS = 3 * 1000
+        await wait(THREE_SECONDS)
+        expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
       })
 
       it('Concurrent Insert and Transaction', async function () {
@@ -1289,8 +1379,12 @@ describe('DB Correctness Tests', function () {
         let changeHandlerCallCount = 0
         let successful
 
+        let latestState
+        let correctState
+
         const changeHandler = function (items) {
           changeHandlerCallCount += 1
+          latestState = items
 
           if (items.length === 3 && !successful) {
             const item1 = items[0]
@@ -1321,6 +1415,7 @@ describe('DB Correctness Tests', function () {
             }
 
             successful = true
+            correctState = items
           }
         }
 
@@ -1333,7 +1428,13 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(3)
         expect(successful, 'successful state').to.be.true
+
+        // give client time to process all transactions, then make sure state is still correct
+        const THREE_SECONDS = 3 * 1000
+        await wait(THREE_SECONDS)
+        expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
       })
+
     })
 
   })
@@ -1406,7 +1507,6 @@ describe('DB Correctness Tests', function () {
         // give client sufficient time to finish the bundle
         const THREE_SECONDS = 3 * 1000
         await wait(THREE_SECONDS)
-
         await this.test.userbase.signOut()
         await this.test.userbase.signIn(this.test.username, this.test.password)
 
@@ -1646,7 +1746,7 @@ describe('DB Correctness Tests', function () {
       })
     })
 
-    describe('Concurrent Tests', function () {
+    describe('Concurrency tests', function () {
       beforeEach(function () { beforeEachHook() })
 
       // must check the server logs to verify bundling occurs
