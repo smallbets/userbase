@@ -51,6 +51,107 @@ describe('DB Correctness Tests', function () {
 
       expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
     })
+
+    it('Open 2 Databases sequentially with the same name', async function () {
+      let changeHandlerCallCount = 0
+
+      const changeHandler = function (items) {
+        expect(items, 'array passed to changeHandler').to.be.a('array')
+        expect(items, 'array passed to changeHandler').to.be.empty
+
+        changeHandlerCallCount += 1
+      }
+
+      await this.test.userbase.openDatabase(dbName, changeHandler)
+
+      try {
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+      } catch (e) {
+        expect(e.name, 'error name').to.equal('DatabaseAlreadyOpen')
+        expect(e.message, 'error message').to.equal('Database is already open.')
+        expect(e.status, 'error status').to.equal(400)
+      }
+
+      expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+    })
+
+    it('Open 10 Databases sequentially', async function () {
+      const numDatabases = 10
+
+      let changeHandlerCallCount = 0
+
+      const changeHandler = function (items) {
+        expect(items, 'array passed to changeHandler').to.be.a('array')
+        expect(items, 'array passed to changeHandler').to.be.empty
+
+        changeHandlerCallCount += 1
+      }
+
+      for (let i = 0; i < numDatabases; i++) {
+        await this.test.userbase.openDatabase(dbName + i, changeHandler)
+      }
+
+      expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(10)
+    })
+
+    it('Open 10 Databases concurrently', async function () {
+      const numDatabases = 10
+
+      let changeHandlerCallCount = 0
+
+      const changeHandler = function (items) {
+        expect(items, 'array passed to changeHandler').to.be.a('array')
+        expect(items, 'array passed to changeHandler').to.be.empty
+
+        changeHandlerCallCount += 1
+      }
+
+      const promises = []
+      for (let i = 0; i < numDatabases; i++) {
+        promises.push(this.test.userbase.openDatabase(dbName + i, changeHandler))
+      }
+      await Promise.all(promises)
+
+      expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(10)
+    })
+
+    it('Open 10 Databases concurrently with the same name', async function () {
+      const numDatabases = 10
+
+      let changeHandlerCallCount = 0
+
+      const changeHandler = function (items) {
+        expect(items, 'array passed to changeHandler').to.be.a('array')
+        expect(items, 'array passed to changeHandler').to.be.empty
+
+        changeHandlerCallCount += 1
+      }
+
+      let successCount = 0
+      let failureCount = 0
+
+      const openDatabase = async () => {
+        try {
+          await this.test.userbase.openDatabase(dbName, changeHandler)
+          successCount += 1
+        } catch (e) {
+          expect(e.name, 'error name').to.be.equal('DatabaseAlreadyOpening')
+          expect(e.message, 'error message').to.equal('Already attempting to open database.')
+          expect(e.status, 'error status').to.equal(400)
+          failureCount += 1
+        }
+      }
+
+      const promises = []
+      for (let i = 0; i < numDatabases; i++) {
+        promises.push(openDatabase())
+      }
+      await Promise.all(promises)
+
+      expect(successCount, 'success count').to.equal(1)
+      expect(failureCount, 'failure count').to.equal(numDatabases - 1)
+      expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+    })
   })
 
   describe('Insert/Update/Delete/Transaction', function () {
