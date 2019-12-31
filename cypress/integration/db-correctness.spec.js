@@ -42,8 +42,9 @@ describe('DB Correctness Tests', function () {
       let changeHandlerCallCount = 0
 
       const changeHandler = function (items) {
-        expect(items).to.be.an('array')
-        expect(items).to.be.empty
+        expect(items, 'array passed to changeHandler').to.be.a('array')
+        expect(items, 'array passed to changeHandler').to.be.empty
+
         changeHandlerCallCount += 1
       }
       await this.test.userbase.openDatabase(dbName, changeHandler)
@@ -68,15 +69,16 @@ describe('DB Correctness Tests', function () {
 
         const changeHandler = function (items) {
           changeHandlerCallCount += 1
+
           if (changeHandlerCallCount === 2) {
-            expect(items).to.have.lengthOf(1)
+            expect(items, 'items array to have correct length').to.have.lengthOf(1)
 
             const insertedItem = items[0]
-            expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
             const { item, itemId } = insertedItem
-            expect(item).to.deep.equal(itemToInsert)
-            expect(itemId).to.be.a('string')
+            expect(item, 'item in items array passed to changeHandler').to.deep.equal(itemToInsert)
+            expect(itemId, 'item ID of item in items array passed to changeHandler').to.be.a('string')
 
             successful = true
           }
@@ -103,14 +105,14 @@ describe('DB Correctness Tests', function () {
           changeHandlerCallCount += 1
 
           if (changeHandlerCallCount === 2) {
-            expect(items).to.have.lengthOf(1)
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(1)
 
             const insertedItem = items[0]
-            expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
             const { item, itemId } = insertedItem
-            expect(item).to.deep.equal(itemToInsert)
-            expect(itemId).to.equal(testItemId)
+            expect(item, 'item in items array passed to changeHandler').to.deep.equal(itemToInsert)
+            expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(testItemId)
 
             successful = true
           }
@@ -142,14 +144,14 @@ describe('DB Correctness Tests', function () {
           changeHandlerCallCount += 1
 
           if (changeHandlerCallCount === 3) {
-            expect(items).to.have.lengthOf(1)
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(1)
 
             const updatedItem = items[0]
-            expect(updatedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(updatedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
             const { item, itemId } = updatedItem
-            expect(item).to.deep.equal(itemToUpdate)
-            expect(itemId).to.equal(testItemId)
+            expect(item, 'item in items array passed to changeHandler').to.deep.equal(itemToUpdate)
+            expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(testItemId)
 
             successful = true
           }
@@ -177,7 +179,7 @@ describe('DB Correctness Tests', function () {
           changeHandlerCallCount += 1
 
           if (changeHandlerCallCount === 3) {
-            expect(items).to.be.empty
+            expect(items, 'array passed to changeHandler').to.be.empty
             successful = true
           }
         }
@@ -208,14 +210,14 @@ describe('DB Correctness Tests', function () {
           changeHandlerCallCount += 1
 
           if (changeHandlerCallCount === 3) {
-            expect(items).to.have.lengthOf(1)
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(1)
 
             const insertedItem = items[0]
-            expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
             const { item, itemId } = insertedItem
-            expect(item).to.deep.equal(itemToInsert)
-            expect(itemId).to.equal(testItemId)
+            expect(item, 'item in items array passed to changeHandler').to.deep.equal(itemToInsert)
+            expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(testItemId)
 
             successful = true
           }
@@ -228,9 +230,9 @@ describe('DB Correctness Tests', function () {
           await this.test.userbase.insertItem(dbName, duplicateItem, testItemId)
           throw new Error('Should have failed')
         } catch (e) {
-          expect(e.name).to.be.equal('ItemAlreadyExists')
-          expect(e.message).to.be.equal('Item with the same id already exists.')
-          expect(e.status).to.be.equal(409)
+          expect(e.name, 'error name').to.be.equal('ItemAlreadyExists')
+          expect(e.message, 'error message').to.be.equal('Item with the same id already exists.')
+          expect(e.status, 'error status').to.be.equal(409)
         }
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(3)
@@ -254,9 +256,9 @@ describe('DB Correctness Tests', function () {
           await this.test.userbase.updateItem(dbName, itemToFailUpdate, testItemId)
           throw new Error('Should have failed')
         } catch (e) {
-          expect(e.name).to.be.equal('ItemDoesNotExist')
-          expect(e.message).to.be.equal('Item with the provided id does not exist.')
-          expect(e.status).to.be.equal(404)
+          expect(e.name, 'error name').to.be.equal('ItemDoesNotExist')
+          expect(e.message, 'error message').to.be.equal('Item with the provided id does not exist.')
+          expect(e.status, 'error status').to.be.equal(404)
         }
 
         expect(changeHandlerCallCount, 'changeHandler is not called if item does not exist').to.equal(1)
@@ -265,9 +267,9 @@ describe('DB Correctness Tests', function () {
           await this.test.userbase.deleteItem(dbName, testItemId)
           throw new Error('Should have failed')
         } catch (e) {
-          expect(e.name).to.be.equal('ItemDoesNotExist')
-          expect(e.message).to.be.equal('Item with the provided id does not exist.')
-          expect(e.status).to.be.equal(404)
+          expect(e.name, 'error name').to.be.equal('ItemDoesNotExist')
+          expect(e.message, 'error message').to.be.equal('Item with the provided id does not exist.')
+          expect(e.status, 'error status').to.be.equal(404)
         }
 
         expect(changeHandlerCallCount, 'changeHandler is not called if item does not exist').to.equal(1)
@@ -297,9 +299,9 @@ describe('DB Correctness Tests', function () {
           await this.test.userbase.updateItem(dbName, itemToFailUpdate, testItemId)
           throw new Error('Should have failed')
         } catch (e) {
-          expect(e.name).to.be.equal('ItemDoesNotExist')
-          expect(e.message).to.be.equal('Item with the provided id does not exist.')
-          expect(e.status).to.be.equal(404)
+          expect(e.name, 'error name').to.be.equal('ItemDoesNotExist')
+          expect(e.message, 'error message').to.be.equal('Item with the provided id does not exist.')
+          expect(e.status, 'error status').to.be.equal(404)
         }
 
         expect(changeHandlerCallCount, 'changeHandler is not called if item does not exist').to.equal(3)
@@ -308,9 +310,9 @@ describe('DB Correctness Tests', function () {
           await this.test.userbase.deleteItem(dbName, testItemId)
           throw new Error('Should have failed')
         } catch (e) {
-          expect(e.name).to.be.equal('ItemDoesNotExist')
-          expect(e.message).to.be.equal('Item with the provided id does not exist.')
-          expect(e.status).to.be.equal(404)
+          expect(e.name, 'error name').to.be.equal('ItemDoesNotExist')
+          expect(e.message, 'error message').to.be.equal('Item with the provided id does not exist.')
+          expect(e.status, 'error status').to.be.equal(404)
         }
 
         expect(changeHandlerCallCount, 'changeHandler is not called if item does not exist').to.equal(3)
@@ -330,14 +332,14 @@ describe('DB Correctness Tests', function () {
           changeHandlerCallCount += 1
 
           if (changeHandlerCallCount === 4) {
-            expect(items).to.have.lengthOf(1)
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(1)
 
             const insertedItem = items[0]
-            expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
             const { item, itemId } = insertedItem
-            expect(item).to.deep.equal(itemToInsert)
-            expect(itemId).to.equal(testItemId)
+            expect(item, 'item in items array passed to changeHandler').to.deep.equal(itemToInsert)
+            expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(testItemId)
 
             successful = true
           }
@@ -364,32 +366,32 @@ describe('DB Correctness Tests', function () {
           if (changeHandlerCallCount === 1 + numSequentialOperations) {
             // all inserts are complete
 
-            expect(items).to.have.lengthOf(numSequentialOperations)
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(numSequentialOperations)
 
             for (let i = 0; i < numSequentialOperations; i++) {
               const insertedItem = items[i]
-              expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
               const { item, itemId } = insertedItem
-              expect(item).to.equal(i.toString())
-              expect(itemId).to.equal(i.toString())
+              expect(item, 'item in items array passed to changeHandler').to.equal(i.toString())
+              expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(i.toString())
             }
           } else if (changeHandlerCallCount === 1 + (numSequentialOperations * 2)) {
             // all updates are complete
 
-            expect(items).to.have.lengthOf(numSequentialOperations)
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(numSequentialOperations)
 
             for (let i = 0; i < numSequentialOperations; i++) {
               const insertedItem = items[i]
-              expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
               const { item, itemId } = insertedItem
-              expect(item).to.equal((i + numSequentialOperations).toString())
-              expect(itemId).to.equal(i.toString())
+              expect(item, 'item in items array passed to changeHandler').to.equal((i + numSequentialOperations).toString())
+              expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(i.toString())
             }
           } else if (changeHandlerCallCount === 1 + (numSequentialOperations * 3)) {
             // all deletes are complete
-            expect(items).to.be.empty
+            expect(items, 'array passed to changeHandler').to.be.empty
             successful = true
           }
         }
@@ -428,14 +430,14 @@ describe('DB Correctness Tests', function () {
           changeHandlerCallCount += 1
 
           if (changeHandlerCallCount === 2) {
-            expect(items).to.have.lengthOf(1)
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(1)
 
             const insertedItem = items[0]
-            expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
             const { item, itemId } = insertedItem
-            expect(item).to.equal(largeString)
-            expect(itemId).to.be.a('string')
+            expect(item, 'item in items array passed to changeHandler').to.equal(largeString)
+            expect(itemId, 'item ID of item in items array passed to changeHandler').to.be.a('string')
 
             successful = true
           }
@@ -463,17 +465,17 @@ describe('DB Correctness Tests', function () {
           changeHandlerCallCount += 1
 
           if (changeHandlerCallCount === 3) {
-            expect(items).to.have.lengthOf(2)
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(2)
 
             const insertedLargeItem = items[0]
-            expect(insertedLargeItem).to.be.an('object').that.has.all.keys('item', 'itemId')
-            expect(insertedLargeItem.item).to.equal(largeString)
-            expect(insertedLargeItem.itemId).to.be.a('string')
+            expect(insertedLargeItem, 'large item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(insertedLargeItem.item, 'large item in items array passed to changeHandler').to.equal(largeString)
+            expect(insertedLargeItem.itemId, 'item ID of large item in items array passed to changeHandler').to.be.a('string')
 
             const insertedSmallItem = items[1]
-            expect(insertedSmallItem).to.be.an('object').that.has.all.keys('item', 'itemId')
-            expect(insertedSmallItem.item).to.deep.equal(smallItem)
-            expect(insertedSmallItem.itemId).to.be.a('string')
+            expect(insertedSmallItem, 'small item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(insertedSmallItem.item, 'small item in items array passed to changeHandler').to.deep.equal(smallItem)
+            expect(insertedSmallItem.itemId, 'item ID of small item in items array passed to changeHandler').to.be.a('string')
             successful = true
           }
         }
@@ -503,14 +505,14 @@ describe('DB Correctness Tests', function () {
           changeHandlerCallCount += 1
 
           if (changeHandlerCallCount === 2) {
-            expect(items).to.have.lengthOf(1)
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(1)
 
             const insertedItem = items[0]
-            expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
             const { item, itemId } = insertedItem
-            expect(item).to.deep.equal(itemToInsert)
-            expect(itemId).to.be.a('string')
+            expect(item, 'item in items array passed to changeHandler').to.deep.equal(itemToInsert)
+            expect(itemId, 'item ID of item in items array passed to changeHandler').to.be.a('string')
 
             successful = true
           }
@@ -540,15 +542,15 @@ describe('DB Correctness Tests', function () {
           changeHandlerCallCount += 1
 
           if (changeHandlerCallCount === 2) {
-            expect(items).to.have.lengthOf(NUM_ITEMS)
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(NUM_ITEMS)
 
             for (let i = 0; i < NUM_ITEMS; i++) {
               const insertedItem = items[i]
-              expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
               const { item, itemId } = insertedItem
-              expect(item).to.equal(i.toString())
-              expect(itemId).to.equal(i.toString())
+              expect(item, 'item in items array passed to changeHandler').to.equal(i.toString())
+              expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(i.toString())
             }
 
             successful = true
@@ -586,15 +588,15 @@ describe('DB Correctness Tests', function () {
           changeHandlerCallCount += 1
 
           if (changeHandlerCallCount === 3) {
-            expect(items).to.have.lengthOf(NUM_ITEMS)
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(NUM_ITEMS)
 
             for (let i = 0; i < NUM_ITEMS; i++) {
               const updatedItem = items[i]
-              expect(updatedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(updatedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
               const { item, itemId } = updatedItem
-              expect(item).to.equal((i + NUM_ITEMS).toString())
-              expect(itemId).to.equal(i.toString())
+              expect(item, 'item in items array passed to changeHandler').to.equal((i + NUM_ITEMS).toString())
+              expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(i.toString())
             }
 
             successful = true
@@ -642,15 +644,15 @@ describe('DB Correctness Tests', function () {
 
           if (changeHandlerCallCount === 4) {
             const totalItemsExpected = NUM_ITEMS - NUM_DELETES
-            expect(items).to.have.lengthOf(totalItemsExpected)
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(totalItemsExpected)
 
             for (let i = 0; i < totalItemsExpected; i++) {
               const actualItem = items[i]
-              expect(actualItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(actualItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
               const { item, itemId } = actualItem
-              expect(item).to.equal((i + NUM_ITEMS + NUM_DELETES).toString())
-              expect(itemId).to.equal((i + NUM_DELETES).toString())
+              expect(item, 'item in items array passed to changeHandler').to.equal((i + NUM_ITEMS + NUM_DELETES).toString())
+              expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal((i + NUM_DELETES).toString())
             }
 
             successful = true
@@ -699,17 +701,17 @@ describe('DB Correctness Tests', function () {
           changeHandlerCallCount += 1
 
           if (changeHandlerCallCount === 4) {
-            expect(items).to.have.lengthOf(2)
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(2)
 
             const item2 = items[0]
-            expect(item2).to.be.an('object').that.has.all.keys('item', 'itemId')
-            expect(item2.itemId).to.equal(itemId2)
-            expect(item2.item).to.deep.equal(item2ToUpdate)
+            expect(item2, 'item 2 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(item2.itemId, 'item ID of item 2 in items array passed to changeHandler').to.equal(itemId2)
+            expect(item2.item, 'item 2 in items array passed to changeHandler').to.deep.equal(item2ToUpdate)
 
             const item3 = items[1]
-            expect(item3).to.be.an('object').that.has.all.keys('item', 'itemId')
-            expect(item3.itemId).to.equal(itemId3)
-            expect(item3.item).to.deep.equal(item3ToInsert)
+            expect(item3, 'item 3 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(item3.itemId, 'item ID of item 3 in items array passed to changeHandler').to.equal(itemId3)
+            expect(item3.item, 'item 3 in items array passed to changeHandler').to.deep.equal(item3ToInsert)
 
             successful = true
           }
@@ -742,19 +744,19 @@ describe('DB Correctness Tests', function () {
           if (items.length === numConcurrentOperations && !successful) {
             for (let i = 0; i < numConcurrentOperations; i++) {
               const insertedItem = items[i]
-              expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
               const { item, itemId } = insertedItem
-              expect(item).to.equal(itemId)
+              expect(item, 'item in items array passed to changeHandler').to.equal(itemId)
 
               // order of inserted items not guaranteed, but every insert should only be
               // inserted a single time
-              expect(insertedItems[itemId]).to.be.false
+              expect(insertedItems[itemId], 'item status before insert confirmed').to.be.false
               insertedItems[itemId] = true
             }
 
             for (let insertedItem of Object.values(insertedItems)) {
-              expect(insertedItem).to.be.true
+              expect(insertedItem, 'item status after insert confirmed').to.be.true
             }
 
             successful = true
@@ -792,21 +794,21 @@ describe('DB Correctness Tests', function () {
           changeHandlerCallCount += 1
 
           if (succesfullyInsertedAllItems && items.length === numUpdates && !successfullyUpdatedAndDeletedAllItems) {
-            expect(items).to.have.lengthOf(numUpdates)
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(numUpdates)
 
             for (let i = 0; i < numUpdates; i++) {
               const insertedItem = items[i]
-              expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
               const { item, itemId } = insertedItem
-              expect(Number(item)).to.equal(Number(itemId) + numConcurrentOperations)
+              expect(Number(item), 'item in items array passed to changeHandler').to.equal(Number(itemId) + numConcurrentOperations)
 
-              expect(updatedItems[itemId]).to.be.false
+              expect(updatedItems[itemId], 'item status before update confirmed').to.be.false
               updatedItems[itemId] = true
             }
 
             for (let updatedItem of Object.values(updatedItems)) {
-              expect(updatedItem).to.be.true
+              expect(updatedItem, 'item status after update confirmed').to.be.true
             }
 
             successfullyUpdatedAndDeletedAllItems = true
@@ -853,13 +855,14 @@ describe('DB Correctness Tests', function () {
 
         const changeHandler = function (items) {
           changeHandlerCallCount += 1
+
           if (items.length === 1 && !successful) {
             const insertedItem = items[0]
-            expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
             const { item, itemId } = insertedItem
-            expect(itemId).to.equal(testItemId)
-            expect(item).to.be.within(0, numConcurrentOperations - 1)
+            expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(testItemId)
+            expect(item, 'item in items array passed to changeHandler').to.be.within(0, numConcurrentOperations - 1)
 
             successful = true
           }
@@ -879,9 +882,9 @@ describe('DB Correctness Tests', function () {
               await this.test.userbase.insertItem(dbName, item, testItemId)
               successCount += 1
             } catch (e) {
-              expect(e.name).to.be.equal('ItemAlreadyExists')
-              expect(e.message).to.be.equal('Item with the same id already exists.')
-              expect(e.status).to.be.equal(409)
+              expect(e.name, 'error name').to.be.equal('ItemAlreadyExists')
+              expect(e.message, 'error message').to.be.equal('Item with the same id already exists.')
+              expect(e.status, 'error status').to.be.equal(409)
               failureCount += 1
             }
           }
@@ -890,8 +893,8 @@ describe('DB Correctness Tests', function () {
 
         await Promise.all(inserts)
 
-        expect(successCount).to.equal(1)
-        expect(failureCount).to.equal(numConcurrentOperations - 1)
+        expect(successCount, 'success count').to.equal(1)
+        expect(failureCount, 'failure count').to.equal(numConcurrentOperations - 1)
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(1 + numConcurrentOperations)
         expect(successful, 'successful state').to.be.true
@@ -918,18 +921,18 @@ describe('DB Correctness Tests', function () {
         const changeHandler = function (items) {
           changeHandlerCallCount += 1
           if (changeHandlerCallCount > 2 && !successful) {
-            expect(items).to.have.lengthOf(1)
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(1)
 
             const updatedItem = items[0]
-            expect(updatedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(updatedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
             const { item, itemId } = updatedItem
-            expect(itemId).to.equal(testItemId)
+            expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(testItemId)
 
             if (Object.prototype.hasOwnProperty.call(item, 'updatedKey')) {
-              expect(item).to.deep.equal(update1)
+              expect(item, 'item in items array passed to changeHandler').to.deep.equal(update1)
             } else {
-              expect(item).to.deep.equal(update2)
+              expect(item, 'item in items array passed to changeHandler').to.deep.equal(update2)
             }
 
             successful = true
@@ -946,9 +949,9 @@ describe('DB Correctness Tests', function () {
           ])
           throw new Error('Should have failed')
         } catch (e) {
-          expect(e.name).to.equal('ItemUpdateConflict')
-          expect(e.message).to.equal('Item update conflict.')
-          expect(e.status).to.equal(409)
+          expect(e.name, 'error name').to.equal('ItemUpdateConflict')
+          expect(e.message, 'error message').to.equal('Item update conflict.')
+          expect(e.status, 'error status').to.equal(409)
         }
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(4)
@@ -980,18 +983,18 @@ describe('DB Correctness Tests', function () {
           changeHandlerCallCount += 1
 
           if (changeHandlerCallCount > 2 && !successful) {
-            expect(items).to.have.lengthOf(1)
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(1)
 
             const updatedItem = items[0]
-            expect(updatedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(updatedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
             const { item, itemId } = updatedItem
-            expect(itemId).to.equal(testItemId)
+            expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(testItemId)
 
             if (Object.prototype.hasOwnProperty.call(item, 'updatedKey')) {
-              expect(item).to.deep.equal(update1)
+              expect(item, 'item in items array passed to changeHandler').to.deep.equal(update1)
             } else {
-              expect(item).to.deep.equal(update2)
+              expect(item, 'item in items array passed to changeHandler').to.deep.equal(update2)
             }
 
             successful = true
@@ -1008,9 +1011,9 @@ describe('DB Correctness Tests', function () {
           ])
           throw new Error('Should have failed')
         } catch (e) {
-          expect(e.name).to.equal('ItemUpdateConflict')
-          expect(e.message).to.equal('Item update conflict.')
-          expect(e.status).to.equal(409)
+          expect(e.name, 'error name').to.equal('ItemUpdateConflict')
+          expect(e.message, 'error message').to.equal('Item update conflict.')
+          expect(e.status, 'error status').to.equal(409)
         }
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(4)
@@ -1031,7 +1034,7 @@ describe('DB Correctness Tests', function () {
           changeHandlerCallCount += 1
 
           if (changeHandlerCallCount > 2 && !successful) {
-            expect(items).to.be.empty
+            expect(items, 'array passed to changeHandler').to.be.empty
             successful = true
           }
         }
@@ -1046,9 +1049,9 @@ describe('DB Correctness Tests', function () {
           ])
           throw new Error('Should have failed')
         } catch (e) {
-          expect(e.name).to.be.equal('ItemDoesNotExist')
-          expect(e.message).to.be.equal('Item with the provided id does not exist.')
-          expect(e.status).to.be.equal(404)
+          expect(e.name, 'error name').to.be.equal('ItemDoesNotExist')
+          expect(e.message, 'error message').to.be.equal('Item with the provided id does not exist.')
+          expect(e.status, 'error status').to.be.equal(404)
         }
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(4)
@@ -1079,11 +1082,11 @@ describe('DB Correctness Tests', function () {
 
             if (winningTransaction === 'Update') {
               const updatedItem = items[0]
-              expect(updatedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(updatedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
               const { item, itemId } = updatedItem
-              expect(item).to.deep.equal(update)
-              expect(itemId).to.equal(testItemId)
+              expect(item, 'item in items array passed to changeHandler').to.deep.equal(update)
+              expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(testItemId)
             }
 
             successful = true
@@ -1103,13 +1106,13 @@ describe('DB Correctness Tests', function () {
           if (e.message === 'Should have failed') throw e
 
           if (winningTransaction === 'Update') {
-            expect(e.name).to.equal('ItemUpdateConflict')
-            expect(e.message).to.equal('Item update conflict.')
-            expect(e.status).to.equal(409)
+            expect(e.name, 'error name').to.equal('ItemUpdateConflict')
+            expect(e.message, 'error message').to.equal('Item update conflict.')
+            expect(e.status, 'error status').to.equal(409)
           } else if (winningTransaction === 'Delete') {
-            expect(e.name).to.be.equal('ItemDoesNotExist')
-            expect(e.message).to.be.equal('Item with the provided id does not exist.')
-            expect(e.status).to.be.equal(404)
+            expect(e.name, 'error name').to.be.equal('ItemDoesNotExist')
+            expect(e.message, 'error message').to.be.equal('Item with the provided id does not exist.')
+            expect(e.status, 'error status').to.be.equal(404)
           } else {
             throw new Error('Db handler not called')
           }
@@ -1136,20 +1139,20 @@ describe('DB Correctness Tests', function () {
             const item1 = items[0]
             const item2 = items[1]
 
-            expect(item1).to.be.an('object').that.has.all.keys('item', 'itemId')
-            expect(item2).to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(item1, 'item 1 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(item2, 'item 2 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
             if (item1.itemId === largeItemId) {
-              expect(item1.item).to.deep.equal(largeItem)
+              expect(item1.item, 'item 1 in items array passed to changeHandler').to.deep.equal(largeItem)
 
-              expect(item2.itemId).to.equal(smallItemId)
-              expect(item2.item).to.deep.equal(smallItem)
+              expect(item2.itemId, 'item ID of item 2 in items array passed to changeHandler').to.equal(smallItemId)
+              expect(item2.item, 'item 2 in items array passed to changeHandler').to.deep.equal(smallItem)
             } else {
-              expect(item1.itemId).to.equal(smallItemId)
-              expect(item1.item).to.deep.equal(smallItem)
+              expect(item1.itemId, 'item ID of item 1 in items array passed to changeHandler').to.equal(smallItemId)
+              expect(item1.item, 'item 1 in items array passed to changeHandler').to.deep.equal(smallItem)
 
-              expect(item2.itemId).to.equal(largeItemId)
-              expect(item2.item).to.deep.equal(largeItem)
+              expect(item2.itemId, 'item ID of item 2 in items array passed to changeHandler').to.equal(largeItemId)
+              expect(item2.item, 'item 2 in items array passed to changeHandler').to.deep.equal(largeItem)
             }
 
             successful = true
@@ -1193,27 +1196,27 @@ describe('DB Correctness Tests', function () {
             const item2 = items[1]
             const item3 = items[2]
 
-            expect(item1).to.be.an('object').that.has.all.keys('item', 'itemId')
-            expect(item2).to.be.an('object').that.has.all.keys('item', 'itemId')
-            expect(item3).to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(item1, 'item 1 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(item2, 'item 2 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(item3, 'item 3 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
             if (item1.itemId === insertItemId) {
-              expect(item1.item).to.deep.equal(insertItem)
+              expect(item1.item, 'item 1 in items array passed to changeHandler').to.deep.equal(insertItem)
 
-              expect(item2.itemId).to.equal(transactionItem1Id)
-              expect(item2.item).to.deep.equal(transactionItem1)
+              expect(item2.itemId, 'item ID of item 2 in items array passed to changeHandler').to.equal(transactionItem1Id)
+              expect(item2.item, 'item 2 in items array passed to changeHandler').to.deep.equal(transactionItem1)
 
-              expect(item3.itemId).to.equal(transactionItem2Id)
-              expect(item3.item).to.deep.equal(transactionItem2)
+              expect(item3.itemId, 'item ID of item 3 in items array passed to changeHandler').to.equal(transactionItem2Id)
+              expect(item3.item, 'item 3 in items array passed to changeHandler').to.deep.equal(transactionItem2)
             } else {
-              expect(item1.itemId).to.deep.equal(transactionItem1Id)
-              expect(item1.item).to.deep.equal(transactionItem1)
+              expect(item1.itemId, 'item ID of item 1 in items array passed to changeHandler').to.deep.equal(transactionItem1Id)
+              expect(item1.item, 'item 1 in items array passed to changeHandler').to.deep.equal(transactionItem1)
 
-              expect(item2.itemId).to.equal(transactionItem2Id)
-              expect(item2.item).to.deep.equal(transactionItem2)
+              expect(item2.itemId, 'item ID of item 2 in items array passed to changeHandler').to.equal(transactionItem2Id)
+              expect(item2.item, 'item 2 in items array passed to changeHandler').to.deep.equal(transactionItem2)
 
-              expect(item3.itemId).to.equal(insertItemId)
-              expect(item3.item).to.deep.equal(insertItem)
+              expect(item3.itemId, 'item ID of item 3 in items array passed to changeHandler').to.equal(insertItemId)
+              expect(item3.item, 'item 3 in items array passed to changeHandler').to.deep.equal(insertItem)
             }
 
             successful = true
@@ -1245,7 +1248,7 @@ describe('DB Correctness Tests', function () {
 
         const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
         const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
-        expect(numItemsNeededToTriggerBundle).to.be.lte(10) // max operations allowed in tx
+        expect(numItemsNeededToTriggerBundle, 'items needed to trigger bundle').to.be.lte(10) // max operations allowed in tx
 
         const largeString = getStringOfByteLength(ITEM_SIZE)
         const operations = []
@@ -1260,15 +1263,15 @@ describe('DB Correctness Tests', function () {
           changeHandlerCallCount += 1
 
           if (changeHandlerCallCount === 2) {
-            expect(items).to.have.lengthOf(numItemsNeededToTriggerBundle)
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(numItemsNeededToTriggerBundle)
 
             for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
               const insertedItem = items[i]
-              expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
               const { item, itemId } = insertedItem
-              expect(item).to.equal(largeString)
-              expect(itemId).to.equal(i.toString())
+              expect(item, 'item in items array passed to changeHandler').to.equal(largeString)
+              expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(i.toString())
             }
 
             successful = true
@@ -1288,7 +1291,7 @@ describe('DB Correctness Tests', function () {
 
         const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
         const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
-        expect(numItemsNeededToTriggerBundle).to.be.lte(10) // max operations allowed in tx
+        expect(numItemsNeededToTriggerBundle, 'items needed to trigger bundle').to.be.lte(10) // max operations allowed in tx
 
         const largeString = getStringOfByteLength(ITEM_SIZE)
         const operations = []
@@ -1313,15 +1316,15 @@ describe('DB Correctness Tests', function () {
           changeHandlerCallCount += 1
 
           if (changeHandlerCallCount === 1) {
-            expect(items).to.have.lengthOf(numItemsNeededToTriggerBundle)
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(numItemsNeededToTriggerBundle)
 
             for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
               const insertedItem = items[i]
-              expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
               const { item, itemId } = insertedItem
-              expect(item).to.equal(largeString)
-              expect(itemId).to.equal(i.toString())
+              expect(item, 'item in items array passed to changeHandler').to.equal(largeString)
+              expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(i.toString())
             }
 
             successful = true
@@ -1348,15 +1351,15 @@ describe('DB Correctness Tests', function () {
           changeHandlerCallCount += 1
 
           if (changeHandlerCallCount === 1 + numItemsNeededToTriggerBundle) {
-            expect(items).to.have.lengthOf(numItemsNeededToTriggerBundle)
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(numItemsNeededToTriggerBundle)
 
             for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
               const insertedItem = items[i]
-              expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
               const { item, itemId } = insertedItem
-              expect(item).to.equal(largeString)
-              expect(itemId).to.equal(i.toString())
+              expect(item, 'item in items array passed to changeHandler').to.equal(largeString)
+              expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(i.toString())
             }
 
             successful = true
@@ -1405,15 +1408,15 @@ describe('DB Correctness Tests', function () {
           changeHandlerCallCount += 1
 
           if (changeHandlerCallCount === 1) {
-            expect(items).to.have.lengthOf(numItemsNeededToTriggerBundle)
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(numItemsNeededToTriggerBundle)
 
             for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
               const insertedItem = items[i]
-              expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
               const { item, itemId } = insertedItem
-              expect(item).to.equal(largeString)
-              expect(itemId).to.equal(i.toString())
+              expect(item, 'item in items array passed to changeHandler').to.equal(largeString)
+              expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(i.toString())
             }
 
             successful = true
@@ -1434,7 +1437,7 @@ describe('DB Correctness Tests', function () {
 
         const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
         const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
-        expect(numItemsNeededToTriggerBundle).to.be.lte(10) // max operations allowed in tx
+        expect(numItemsNeededToTriggerBundle, 'items needed to tigger bundle').to.be.lte(10) // max operations allowed in tx
 
         const largeString = getStringOfByteLength(ITEM_SIZE)
 
@@ -1445,18 +1448,18 @@ describe('DB Correctness Tests', function () {
           changeHandlerCallCount += 1
 
           if (changeHandlerCallCount === 1 + numBundles) {
-            expect(items).to.have.lengthOf(numBundles * numItemsNeededToTriggerBundle)
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(numBundles * numItemsNeededToTriggerBundle)
 
             for (let i = 0; i < numBundles; i++) {
               for (let j = 0; j < numItemsNeededToTriggerBundle; j++) {
                 const itemIndex = (i * numItemsNeededToTriggerBundle) + j
 
                 const insertedItem = items[itemIndex]
-                expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+                expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
                 const { item, itemId } = insertedItem
-                expect(item).to.equal(largeString)
-                expect(itemId).to.equal(itemIndex.toString())
+                expect(item, 'item in items array passed to changeHandler').to.equal(largeString)
+                expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(itemIndex.toString())
               }
             }
 
@@ -1487,7 +1490,7 @@ describe('DB Correctness Tests', function () {
 
         const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
         const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
-        expect(numItemsNeededToTriggerBundle).to.be.lte(10) // max operations allowed in tx
+        expect(numItemsNeededToTriggerBundle, 'items needed to trigger bundle').to.be.lte(10) // max operations allowed in tx
 
         const largeString = getStringOfByteLength(ITEM_SIZE)
 
@@ -1516,18 +1519,18 @@ describe('DB Correctness Tests', function () {
           changeHandlerCallCount += 1
 
           if (changeHandlerCallCount === 1) {
-            expect(items).to.have.lengthOf(numBundles * numItemsNeededToTriggerBundle)
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(numBundles * numItemsNeededToTriggerBundle)
 
             for (let i = 0; i < numBundles; i++) {
               for (let j = 0; j < numItemsNeededToTriggerBundle; j++) {
                 const itemIndex = (i * numItemsNeededToTriggerBundle) + j
 
                 const insertedItem = items[itemIndex]
-                expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+                expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
                 const { item, itemId } = insertedItem
-                expect(item).to.equal(largeString)
-                expect(itemId).to.equal(itemIndex.toString())
+                expect(item, 'item in items array passed to changeHandler').to.equal(largeString)
+                expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(itemIndex.toString())
               }
             }
 
@@ -1551,7 +1554,7 @@ describe('DB Correctness Tests', function () {
 
         const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
         const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
-        expect(numItemsNeededToTriggerBundle).to.be.lte(10) // max operations allowed in tx
+        expect(numItemsNeededToTriggerBundle, 'items needed to trigger bundle').to.be.lte(10) // max operations allowed in tx
 
         const largeString = getStringOfByteLength(ITEM_SIZE)
 
@@ -1569,20 +1572,20 @@ describe('DB Correctness Tests', function () {
               const insertedItem1 = items[itemIndex1]
               const insertedItem2 = items[itemIndex2]
 
-              expect(insertedItem1).to.be.an('object').that.has.all.keys('item', 'itemId')
-              expect(insertedItem2).to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(insertedItem1, 'item 1 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(insertedItem2, 'item 2 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
               if (insertedItem1.itemId === itemIndex1.toString()) {
-                expect(insertedItem1.item).to.deep.equal(largeString)
+                expect(insertedItem1.item, 'item 1 in items array passed to changeHandler').to.deep.equal(largeString)
 
-                expect(insertedItem2.itemId).to.equal(itemIndex2.toString())
-                expect(insertedItem2.item).to.deep.equal(largeString)
+                expect(insertedItem2.itemId, 'item ID of item 2 in items array passed to changeHandler').to.equal(itemIndex2.toString())
+                expect(insertedItem2.item, 'item 2 in items array passed to changeHandler').to.deep.equal(largeString)
               } else {
-                expect(insertedItem1.itemId).to.equal(itemIndex2.toString())
-                expect(insertedItem1.item).to.deep.equal(largeString)
+                expect(insertedItem1.itemId, 'item ID of item 1 in items array passed to changeHandler').to.equal(itemIndex2.toString())
+                expect(insertedItem1.item, 'item 1 in items array passed to changeHandler').to.deep.equal(largeString)
 
-                expect(insertedItem2.itemId).to.equal(itemIndex1.toString())
-                expect(insertedItem2.item).to.deep.equal(largeString)
+                expect(insertedItem2.itemId, 'item ID of item 2 in items array passed to changeHandler').to.equal(itemIndex1.toString())
+                expect(insertedItem2.item, 'item 2 in items array passed to changeHandler').to.deep.equal(largeString)
               }
             }
 
@@ -1615,7 +1618,7 @@ describe('DB Correctness Tests', function () {
 
         const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
         const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
-        expect(numItemsNeededToTriggerBundle).to.be.lte(10) // max operations allowed in tx
+        expect(numItemsNeededToTriggerBundle, 'items needed to trigger bundle').to.be.lte(10) // max operations allowed in tx
 
         const largeString = getStringOfByteLength(ITEM_SIZE)
 
@@ -1646,7 +1649,7 @@ describe('DB Correctness Tests', function () {
         const changeHandler = function (items) {
           changeHandlerCallCount += 1
 
-          expect(items).to.have.lengthOf(2 * numItemsNeededToTriggerBundle)
+          expect(items, 'array passed to changeHandler').to.have.lengthOf(2 * numItemsNeededToTriggerBundle)
 
           for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
             const itemIndex1 = i
@@ -1655,20 +1658,20 @@ describe('DB Correctness Tests', function () {
             const insertedItem1 = items[itemIndex1]
             const insertedItem2 = items[itemIndex2]
 
-            expect(insertedItem1).to.be.an('object').that.has.all.keys('item', 'itemId')
-            expect(insertedItem2).to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(insertedItem1, 'item 1 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(insertedItem2, 'item 2 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
             if (insertedItem1.itemId === itemIndex1.toString()) {
-              expect(insertedItem1.item).to.deep.equal(largeString)
+              expect(insertedItem1.item, 'item 1 in items array passed to changeHandler').to.deep.equal(largeString)
 
-              expect(insertedItem2.itemId).to.equal(itemIndex2.toString())
-              expect(insertedItem2.item).to.deep.equal(largeString)
+              expect(insertedItem2.itemId, 'item ID of item 2 in items array passed to changeHandler').to.equal(itemIndex2.toString())
+              expect(insertedItem2.item, 'item 2 in items array passed to changeHandler').to.deep.equal(largeString)
             } else {
-              expect(insertedItem1.itemId).to.equal(itemIndex2.toString())
-              expect(insertedItem1.item).to.deep.equal(largeString)
+              expect(insertedItem1.itemId, 'item ID of item 1 in items array passed to changeHandler').to.equal(itemIndex2.toString())
+              expect(insertedItem1.item, 'item 1 in items array passed to changeHandler').to.deep.equal(largeString)
 
-              expect(insertedItem2.itemId).to.equal(itemIndex1.toString())
-              expect(insertedItem2.item).to.deep.equal(largeString)
+              expect(insertedItem2.itemId, 'item ID of item 2 in items array passed to changeHandler').to.equal(itemIndex1.toString())
+              expect(insertedItem2.item, 'item 2 in items array passed to changeHandler').to.deep.equal(largeString)
             }
           }
 
@@ -1689,7 +1692,7 @@ describe('DB Correctness Tests', function () {
 
         const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
         const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
-        expect(numItemsNeededToTriggerBundle).to.be.lte(10) // max operations allowed in tx
+        expect(numItemsNeededToTriggerBundle, 'items needed to trigger bundle').to.be.lte(10) // max operations allowed in tx
 
         const largeString = getStringOfByteLength(ITEM_SIZE)
 
@@ -1698,6 +1701,7 @@ describe('DB Correctness Tests', function () {
 
         const changeHandler = function (items) {
           changeHandlerCallCount += 1
+
           if (!successful && items.length === numBundles * numItemsNeededToTriggerBundle) {
 
             for (let i = 0; i < numBundles; i++) {
@@ -1707,18 +1711,18 @@ describe('DB Correctness Tests', function () {
                 const itemIndex = (i * numItemsNeededToTriggerBundle) + j
 
                 const insertedItem = items[itemIndex]
-                expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+                expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
                 const { item, itemId } = insertedItem
-                expect(item).to.equal(largeString)
+                expect(item, 'item in items array passed to changeHandler').to.equal(largeString)
 
                 if (j === 0) {
-                  expect(Number(itemId) % numItemsNeededToTriggerBundle).to.equal(0)
+                  expect(Number(itemId) % numItemsNeededToTriggerBundle, 'item ID of item in items array passed to changeHandler').to.equal(0)
                   startingItemId = Number(itemId)
                 }
 
                 const expectedItemIndex = startingItemId + j
-                expect(itemId, 'expected item id').to.equal(expectedItemIndex.toString())
+                expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(expectedItemIndex.toString())
               }
             }
 
@@ -1752,7 +1756,7 @@ describe('DB Correctness Tests', function () {
 
         const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
         const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
-        expect(numItemsNeededToTriggerBundle).to.be.lte(10) // max operations allowed in tx
+        expect(numItemsNeededToTriggerBundle, 'items needed to trigger bundle').to.be.lte(10) // max operations allowed in tx
 
         const largeString = getStringOfByteLength(ITEM_SIZE)
 
@@ -1781,7 +1785,7 @@ describe('DB Correctness Tests', function () {
 
         const changeHandler = function (items) {
           changeHandlerCallCount += 1
-          expect(items).to.have.lengthOf(numBundles * numItemsNeededToTriggerBundle)
+          expect(items, 'array passed to changeHandler').to.have.lengthOf(numBundles * numItemsNeededToTriggerBundle)
 
           for (let i = 0; i < numBundles; i++) {
             let startingItemId
@@ -1790,18 +1794,18 @@ describe('DB Correctness Tests', function () {
               const itemIndex = (i * numItemsNeededToTriggerBundle) + j
 
               const insertedItem = items[itemIndex]
-              expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
 
               const { item, itemId } = insertedItem
-              expect(item).to.equal(largeString)
+              expect(item, 'item in items array passed to changeHandler').to.equal(largeString)
 
               if (j === 0) {
-                expect(Number(itemId) % numItemsNeededToTriggerBundle).to.equal(0)
+                expect(Number(itemId) % numItemsNeededToTriggerBundle, 'item ID of item in items array passed to changeHandler').to.equal(0)
                 startingItemId = Number(itemId)
               }
 
               const expectedItemIndex = startingItemId + j
-              expect(itemId).to.equal(expectedItemIndex.toString())
+              expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(expectedItemIndex.toString())
             }
           }
 
