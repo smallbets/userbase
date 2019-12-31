@@ -8,919 +8,738 @@ const wait = (ms) => new Promise(resolve => {
   setTimeout(() => resolve(), ms)
 })
 
+const beforeEachHook = function () {
+  cy.visit('./cypress/integration/index.html').then(async function (win) {
+    expect(win).to.have.property('userbase')
+    const userbase = win.userbase
+    this.currentTest.userbase = userbase
+
+    const { appId, endpoint } = Cypress.env()
+    userbase.init({ appId, endpoint })
+
+    const randomUser = 'test-user-' + getRandomString()
+    const password = getRandomString()
+    const email = null
+    const profile = null
+    const showKeyHandler = () => { }
+    const rememberMe = false
+    const backUpKey = true
+
+    await userbase.signUp(randomUser, password, email, profile, showKeyHandler, rememberMe, backUpKey)
+
+    this.currentTest.username = randomUser
+    this.currentTest.password = password
+  })
+}
+
 describe('DB Correctness Tests', function () {
-  beforeEach(function () {
-    cy.visit('./cypress/integration/index.html').then(async function (win) {
-      expect(win).to.have.property('userbase')
-      const userbase = win.userbase
-      this.currentTest.userbase = userbase
+  const dbName = 'test-db'
 
-      const { appId, endpoint } = Cypress.env()
-      userbase.init({ appId, endpoint })
+  describe('Open Database', function () {
+    beforeEach(function () { beforeEachHook() })
 
-      const randomUser = 'test-user-' + getRandomString()
-      const password = getRandomString()
-      const email = null
-      const profile = null
-      const showKeyHandler = () => { }
-      const rememberMe = false
-      const backUpKey = true
+    it('Open 1 Database', async function () {
+      let changeHandlerCallCount = 0
 
-      await userbase.signUp(randomUser, password, email, profile, showKeyHandler, rememberMe, backUpKey)
+      const changeHandler = function (items) {
+        expect(items).to.be.an('array')
+        expect(items).to.be.empty
+        changeHandlerCallCount += 1
+      }
+      await this.test.userbase.openDatabase(dbName, changeHandler)
 
-      this.currentTest.username = randomUser
-      this.currentTest.password = password
+      expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
     })
   })
 
-  it('Open Database', async function () {
-    const dbName = 'test-db'
+  describe('Insert/Update/Delete/Transaction', function () {
 
-    const spyChangeHandler = {
-      changeHandler: function (items) {
-        expect(items).to.be.an('array')
-        expect(items).to.be.empty
-      }
-    }
-    const spy = cy.spy(spyChangeHandler, 'changeHandler')
+    describe('Synchronous Tests', function () {
+      beforeEach(function () { beforeEachHook() })
 
-    await this.test.userbase.openDatabase(dbName, spyChangeHandler.changeHandler)
-
-    expect(spy.callCount).to.equal(1)
-  })
-
-  it('Insert 1 Item', async function () {
-    const dbName = 'test-db'
-    const itemToInsert = {
-      key1: 'Test',
-      key2: 123
-    }
-
-    const spyChangeHandler = {
-      changeHandler: function (items) {
-        if (spy.callCount === 2) {
-          expect(items).to.have.lengthOf(1)
-
-          const insertedItem = items[0]
-          expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
-
-          const { item, itemId } = insertedItem
-          expect(item).to.deep.equal(itemToInsert)
-          expect(itemId).to.be.a('string')
+      it('Insert 1 Item', async function () {
+        const itemToInsert = {
+          key1: 'Test',
+          key2: 123
         }
-      }
-    }
-    const spy = cy.spy(spyChangeHandler, 'changeHandler')
 
-    await this.test.userbase.openDatabase(dbName, spyChangeHandler.changeHandler)
-    await this.test.userbase.insertItem(dbName, itemToInsert)
+        let successful
+        let changeHandlerCallCount = 0
 
-    expect(spy.callCount).to.equal(2)
-  })
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+          if (changeHandlerCallCount === 2) {
+            expect(items).to.have.lengthOf(1)
 
-  it('Insert 1 Item with Item ID provided', async function () {
-    const dbName = 'test-db'
-
-    const testItemId = 'test-id'
-    const itemToInsert = {
-      key1: 'Test',
-      key2: 123
-    }
-
-    const spyChangeHandler = {
-      changeHandler: function (items) {
-        if (spy.callCount === 2) {
-          expect(items).to.have.lengthOf(1)
-
-          const insertedItem = items[0]
-          expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
-
-          const { item, itemId } = insertedItem
-          expect(item).to.deep.equal(itemToInsert)
-          expect(itemId).to.equal(testItemId)
-        }
-      }
-    }
-    const spy = cy.spy(spyChangeHandler, 'changeHandler')
-
-    await this.test.userbase.openDatabase(dbName, spyChangeHandler.changeHandler)
-    await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
-
-    expect(spy.callCount).to.equal(2)
-  })
-
-  it('Update 1 Item', async function () {
-    const dbName = 'test-db'
-    const testItemId = 'test-id'
-    const itemToInsert = {
-      key1: 'Test',
-      key2: 123
-    }
-
-    const itemToUpdate = {
-      updatedKey: 'TestTest',
-      updatedKey2: 456
-    }
-
-    const spyChangeHandler = {
-      changeHandler: function (items) {
-        if (spy.callCount === 3) {
-          expect(items).to.have.lengthOf(1)
-
-          const updatedItem = items[0]
-          expect(updatedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
-
-          const { item, itemId } = updatedItem
-          expect(item).to.deep.equal(itemToUpdate)
-          expect(itemId).to.equal(testItemId)
-        }
-      }
-    }
-    const spy = cy.spy(spyChangeHandler, 'changeHandler')
-
-    await this.test.userbase.openDatabase(dbName, spyChangeHandler.changeHandler)
-    await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
-    await this.test.userbase.updateItem(dbName, itemToUpdate, testItemId)
-
-    expect(spy.callCount).to.equal(3)
-  })
-
-  it('Delete 1 Item', async function () {
-    const dbName = 'test-db'
-    const testItemId = 'test-id'
-    const itemToInsert = {
-      key1: 'Test',
-      key2: 123
-    }
-
-    const spyChangeHandler = {
-      changeHandler: function (items) {
-        if (spy.callCount === 3) {
-          expect(items).to.be.empty
-        }
-      }
-    }
-    const spy = cy.spy(spyChangeHandler, 'changeHandler')
-
-    await this.test.userbase.openDatabase(dbName, spyChangeHandler.changeHandler)
-    await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
-    await this.test.userbase.deleteItem(dbName, testItemId)
-
-    expect(spy.callCount).to.equal(3)
-  })
-
-  it('Inserting a duplicate item should fail', async function () {
-    const dbName = 'test-db'
-    const testItemId = 'test-id'
-    const itemToInsert = {
-      key1: 'Test',
-      key2: 123
-    }
-
-    const duplicateItem = {
-      failKey1: 'Fail'
-    }
-
-    const spyChangeHandler = {
-      changeHandler: function (items) {
-        if (spy.callCount === 3) {
-          expect(items).to.have.lengthOf(1)
-
-          const insertedItem = items[0]
-          expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
-
-          const { item, itemId } = insertedItem
-          expect(item).to.deep.equal(itemToInsert)
-          expect(itemId).to.equal(testItemId)
-        }
-      }
-    }
-    const spy = cy.spy(spyChangeHandler, 'changeHandler')
-
-    await this.test.userbase.openDatabase(dbName, spyChangeHandler.changeHandler)
-    await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
-
-    try {
-      await this.test.userbase.insertItem(dbName, duplicateItem, testItemId)
-      throw 'Should have failed'
-    } catch (e) {
-      expect(e.name).to.be.equal('ItemAlreadyExists')
-      expect(e.message).to.be.equal('Item with the same id already exists.')
-      expect(e.status).to.be.equal(409)
-    }
-
-    expect(spy.callCount).to.equal(3)
-  })
-
-  it('Updating & Deleting a non-existent item should fail', async function () {
-    const dbName = 'test-db'
-    const testItemId = 'test-id'
-    const itemToFailUpdate = {
-      failKey1: 'Fail'
-    }
-
-    const spyChangeHandler = {
-      changeHandler: function () { }
-    }
-    const spy = cy.spy(spyChangeHandler, 'changeHandler')
-
-    await this.test.userbase.openDatabase(dbName, spyChangeHandler.changeHandler)
-
-    try {
-      await this.test.userbase.updateItem(dbName, itemToFailUpdate, testItemId)
-      throw 'Should have failed'
-    } catch (e) {
-      expect(e.name).to.be.equal('ItemDoesNotExist')
-      expect(e.message).to.be.equal('Item with the provided id does not exist.')
-      expect(e.status).to.be.equal(404)
-    }
-
-    expect(spy.callCount, 'changeHandler is not called if item does not exist').to.equal(1)
-
-    try {
-      await this.test.userbase.deleteItem(dbName, testItemId)
-      throw 'Should have failed'
-    } catch (e) {
-      expect(e.name).to.be.equal('ItemDoesNotExist')
-      expect(e.message).to.be.equal('Item with the provided id does not exist.')
-      expect(e.status).to.be.equal(404)
-    }
-
-    expect(spy.callCount, 'changeHandler is not called if item does not exist').to.equal(1)
-  })
-
-  it('Updating & Deleting a deleted item should fail', async function () {
-    const dbName = 'test-db'
-    const testItemId = 'test-id'
-    const itemToInsert = {
-      key1: 'Test',
-      key2: 123
-    }
-
-    const itemToFailUpdate = {
-      failKey1: 'Fail'
-    }
-
-    const spyChangeHandler = {
-      changeHandler: function () { }
-    }
-    const spy = cy.spy(spyChangeHandler, 'changeHandler')
-
-    await this.test.userbase.openDatabase(dbName, spyChangeHandler.changeHandler)
-    await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
-    await this.test.userbase.deleteItem(dbName, testItemId)
-
-    try {
-      await this.test.userbase.updateItem(dbName, itemToFailUpdate, testItemId)
-      throw 'Should have failed'
-    } catch (e) {
-      expect(e.name).to.be.equal('ItemDoesNotExist')
-      expect(e.message).to.be.equal('Item with the provided id does not exist.')
-      expect(e.status).to.be.equal(404)
-    }
-
-    expect(spy.callCount, 'changeHandler is not called if item does not exist').to.equal(3)
-
-    try {
-      await this.test.userbase.deleteItem(dbName, testItemId)
-      throw 'Should have failed'
-    } catch (e) {
-      expect(e.name).to.be.equal('ItemDoesNotExist')
-      expect(e.message).to.be.equal('Item with the provided id does not exist.')
-      expect(e.status).to.be.equal(404)
-    }
-
-    expect(spy.callCount, 'changeHandler is not called if item does not exist').to.equal(3)
-  })
-
-  it('Insert the same item after deleting the item', async function () {
-    const dbName = 'test-db'
-    const testItemId = 'test-id'
-    const itemToInsert = {
-      key1: 'Test',
-      key2: 123
-    }
-
-    const spyChangeHandler = {
-      changeHandler: function (items) {
-        if (spy.callCount === 4) {
-          expect(items).to.have.lengthOf(1)
-
-          const insertedItem = items[0]
-          expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
-
-          const { item, itemId } = insertedItem
-          expect(item).to.deep.equal(itemToInsert)
-          expect(itemId).to.equal(testItemId)
-        }
-      }
-    }
-    const spy = cy.spy(spyChangeHandler, 'changeHandler')
-
-    await this.test.userbase.openDatabase(dbName, spyChangeHandler.changeHandler)
-    await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
-    await this.test.userbase.deleteItem(dbName, testItemId)
-    await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
-
-    expect(spy.callCount).to.equal(4)
-  })
-
-  it('3 sequential Inserts, then 3 sequential Updates, then 3 sequential Deletes', async function () {
-    const numSequentialOperations = 3
-
-    const dbName = 'test-db'
-
-    const spyChangeHandler = {
-      changeHandler: function (items) {
-
-        if (spy.callCount === 1 + numSequentialOperations) {
-          // all inserts are complete
-
-          expect(items).to.have.lengthOf(numSequentialOperations)
-
-          for (let i = 0; i < numSequentialOperations; i++) {
-            const insertedItem = items[i]
+            const insertedItem = items[0]
             expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
 
             const { item, itemId } = insertedItem
-            expect(item).to.equal(i.toString())
-            expect(itemId).to.equal(i.toString())
+            expect(item).to.deep.equal(itemToInsert)
+            expect(itemId).to.be.a('string')
+
+            successful = true
           }
-        } else if (spy.callCount === 1 + (numSequentialOperations * 2)) {
-          // all updates are complete
+        }
 
-          expect(items).to.have.lengthOf(numSequentialOperations)
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.insertItem(dbName, itemToInsert)
 
-          for (let i = 0; i < numSequentialOperations; i++) {
-            const insertedItem = items[i]
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
+        expect(successful, 'successful state').to.be.true
+      })
+
+      it('Insert 1 Item with Item ID provided', async function () {
+        const testItemId = 'test-id'
+        const itemToInsert = {
+          key1: 'Test',
+          key2: 123
+        }
+
+        let successful
+        let changeHandlerCallCount = 0
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (changeHandlerCallCount === 2) {
+            expect(items).to.have.lengthOf(1)
+
+            const insertedItem = items[0]
             expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
 
             const { item, itemId } = insertedItem
-            expect(item).to.equal((i + numSequentialOperations).toString())
-            expect(itemId).to.equal(i.toString())
-          }
-        } else if (spy.callCount === 1 + (numSequentialOperations * 3)) {
-          // all deletes are complete
-          expect(items).to.be.empty
-        }
-      }
-    }
-    const spy = cy.spy(spyChangeHandler, 'changeHandler')
+            expect(item).to.deep.equal(itemToInsert)
+            expect(itemId).to.equal(testItemId)
 
-    await this.test.userbase.openDatabase(dbName, spyChangeHandler.changeHandler)
-
-    for (let i = 0; i < numSequentialOperations; i++) {
-      const item = i.toString()
-      const itemId = item
-      await this.test.userbase.insertItem(dbName, item, itemId)
-    }
-
-    for (let i = 0; i < numSequentialOperations; i++) {
-      const item = (i + numSequentialOperations).toString()
-      const itemId = i.toString()
-      await this.test.userbase.updateItem(dbName, item, itemId)
-    }
-
-    for (let i = 0; i < numSequentialOperations; i++) {
-      const itemId = i.toString()
-      await this.test.userbase.deleteItem(dbName, itemId)
-    }
-
-    expect(spy.callCount).to.equal(1 + (numSequentialOperations * 3))
-  })
-
-  it('Insert large item', async function () {
-    const dbName = 'test-db'
-
-    const NINE_KB = 9 * 1024
-    const largeString = getStringOfByteLength(NINE_KB)
-
-    const spyChangeHandler = {
-      changeHandler: function (items) {
-        if (spy.callCount === 2) {
-          expect(items).to.have.lengthOf(1)
-
-          const insertedItem = items[0]
-          expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
-
-          const { item, itemId } = insertedItem
-          expect(item).to.equal(largeString)
-          expect(itemId).to.be.a('string')
-        }
-      }
-    }
-    const spy = cy.spy(spyChangeHandler, 'changeHandler')
-
-    await this.test.userbase.openDatabase(dbName, spyChangeHandler.changeHandler)
-    await this.test.userbase.insertItem(dbName, largeString)
-
-    expect(spy.callCount).to.equal(2)
-  })
-
-  it('Insert large item, then insert small item', async function () {
-    const dbName = 'test-db'
-
-    const NINE_KB = 9 * 1024
-    const largeString = getStringOfByteLength(NINE_KB)
-
-    const smallItem = {
-      testKey: 'test'
-    }
-
-    const spyChangeHandler = {
-      changeHandler: function (items) {
-        if (spy.callCount === 3) {
-          expect(items).to.have.lengthOf(2)
-
-          const insertedLargeItem = items[0]
-          expect(insertedLargeItem).to.be.an('object').that.has.all.keys('item', 'itemId')
-          expect(insertedLargeItem.item).to.equal(largeString)
-          expect(insertedLargeItem.itemId).to.be.a('string')
-
-          const insertedSmallItem = items[1]
-          expect(insertedSmallItem).to.be.an('object').that.has.all.keys('item', 'itemId')
-          expect(insertedSmallItem.item).to.deep.equal(smallItem)
-          expect(insertedSmallItem.itemId).to.be.a('string')
-        }
-      }
-    }
-    const spy = cy.spy(spyChangeHandler, 'changeHandler')
-
-    await this.test.userbase.openDatabase(dbName, spyChangeHandler.changeHandler)
-    await this.test.userbase.insertItem(dbName, largeString)
-    await this.test.userbase.insertItem(dbName, smallItem)
-
-    expect(spy.callCount).to.equal(3)
-  })
-
-  it('Insert 1 Item in a transaction', async function () {
-    const dbName = 'test-db'
-    const itemToInsert = {
-      key1: 'Test',
-      key2: 123
-    }
-
-    const operations = [
-      { command: 'Insert', item: itemToInsert }
-    ]
-
-    const spyChangeHandler = {
-      changeHandler: function (items) {
-        if (spy.callCount === 2) {
-          expect(items).to.have.lengthOf(1)
-
-          const insertedItem = items[0]
-          expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
-
-          const { item, itemId } = insertedItem
-          expect(item).to.deep.equal(itemToInsert)
-          expect(itemId).to.be.a('string')
-        }
-      }
-    }
-    const spy = cy.spy(spyChangeHandler, 'changeHandler')
-
-    await this.test.userbase.openDatabase(dbName, spyChangeHandler.changeHandler)
-    await this.test.userbase.transaction(dbName, operations)
-
-    expect(spy.callCount).to.equal(2)
-  })
-
-  it('Insert 10 Items in a transaction', async function () {
-    const NUM_ITEMS = 10
-
-    const dbName = 'test-db'
-    const operations = []
-    for (let i = 0; i < NUM_ITEMS; i++) {
-      const item = i.toString()
-      const id = item
-      operations.push({ command: 'Insert', item, id })
-    }
-
-    const spyChangeHandler = {
-      changeHandler: function (items) {
-        if (spy.callCount === 2) {
-          expect(items).to.have.lengthOf(NUM_ITEMS)
-
-          for (let i = 0; i < NUM_ITEMS; i++) {
-            const insertedItem = items[i]
-            expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
-
-            const { item, itemId } = insertedItem
-            expect(item).to.equal(i.toString())
-            expect(itemId).to.equal(i.toString())
+            successful = true
           }
         }
-      }
-    }
-    const spy = cy.spy(spyChangeHandler, 'changeHandler')
 
-    await this.test.userbase.openDatabase(dbName, spyChangeHandler.changeHandler)
-    await this.test.userbase.transaction(dbName, operations)
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
 
-    expect(spy.callCount).to.equal(2)
-  })
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
+        expect(successful, 'successful state').to.be.true
+      })
 
-  it('Update 10 Items in a transaction', async function () {
-    const NUM_ITEMS = 10
+      it('Update 1 Item', async function () {
+        const testItemId = 'test-id'
+        const itemToInsert = {
+          key1: 'Test',
+          key2: 123
+        }
 
-    const dbName = 'test-db'
-    const insertOperations = []
-    for (let i = 0; i < NUM_ITEMS; i++) {
-      const item = i.toString()
-      const id = item
-      insertOperations.push({ command: 'Insert', item, id })
-    }
+        const itemToUpdate = {
+          updatedKey: 'TestTest',
+          updatedKey2: 456
+        }
 
-    const updateOperations = []
-    for (let i = 0; i < NUM_ITEMS; i++) {
-      const item = (i + NUM_ITEMS).toString()
-      const id = i.toString()
-      updateOperations.push({ command: 'Update', item, id })
-    }
+        let successful
+        let changeHandlerCallCount = 0
 
-    const spyChangeHandler = {
-      changeHandler: function (items) {
-        if (spy.callCount === 3) {
-          expect(items).to.have.lengthOf(NUM_ITEMS)
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
 
-          for (let i = 0; i < NUM_ITEMS; i++) {
-            const updatedItem = items[i]
+          if (changeHandlerCallCount === 3) {
+            expect(items).to.have.lengthOf(1)
+
+            const updatedItem = items[0]
             expect(updatedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
 
             const { item, itemId } = updatedItem
-            expect(item).to.equal((i + NUM_ITEMS).toString())
-            expect(itemId).to.equal(i.toString())
+            expect(item).to.deep.equal(itemToUpdate)
+            expect(itemId).to.equal(testItemId)
+
+            successful = true
           }
         }
-      }
-    }
-    const spy = cy.spy(spyChangeHandler, 'changeHandler')
 
-    await this.test.userbase.openDatabase(dbName, spyChangeHandler.changeHandler)
-    await this.test.userbase.transaction(dbName, insertOperations)
-    await this.test.userbase.transaction(dbName, updateOperations)
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
+        await this.test.userbase.updateItem(dbName, itemToUpdate, testItemId)
 
-    expect(spy.callCount).to.equal(3)
-  })
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(3)
+        expect(successful, 'successful state').to.be.true
+      })
 
-  it('10 Inserts in a transaction, then 10 Updates in a transaction, then 5 Deletes in a transaction', async function () {
-    const dbName = 'test-db'
+      it('Delete 1 Item', async function () {
+        const testItemId = 'test-id'
+        const itemToInsert = {
+          key1: 'Test',
+          key2: 123
+        }
 
-    const NUM_ITEMS = 10
-    const NUM_DELETES = 5
-    expect(NUM_DELETES).to.be.lessThan(NUM_ITEMS)
+        let successful
+        let changeHandlerCallCount = 0
 
-    const insertOperations = []
-    for (let i = 0; i < NUM_ITEMS; i++) {
-      const item = i.toString()
-      const id = item
-      insertOperations.push({ command: 'Insert', item, id })
-    }
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
 
-    const updateOperations = []
-    for (let i = 0; i < NUM_ITEMS; i++) {
-      const item = (i + NUM_ITEMS).toString()
-      const id = i.toString()
-      updateOperations.push({ command: 'Update', item, id })
-    }
-
-    const deleteOperations = []
-    for (let i = 0; i < NUM_DELETES; i++) {
-      const id = i.toString()
-      deleteOperations.push({ command: 'Delete', id })
-    }
-
-    const spyChangeHandler = {
-      changeHandler: function (items) {
-        if (spy.callCount === 4) {
-          const totalItemsExpected = NUM_ITEMS - NUM_DELETES
-          expect(items).to.have.lengthOf(totalItemsExpected)
-
-          for (let i = 0; i < totalItemsExpected; i++) {
-            const actualItem = items[i]
-            expect(actualItem).to.be.an('object').that.has.all.keys('item', 'itemId')
-
-            const { item, itemId } = actualItem
-            expect(item).to.equal((i + NUM_ITEMS + NUM_DELETES).toString())
-            expect(itemId).to.equal((i + NUM_DELETES).toString())
+          if (changeHandlerCallCount === 3) {
+            expect(items).to.be.empty
+            successful = true
           }
         }
-      }
-    }
-    const spy = cy.spy(spyChangeHandler, 'changeHandler')
 
-    await this.test.userbase.openDatabase(dbName, spyChangeHandler.changeHandler)
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
+        await this.test.userbase.deleteItem(dbName, testItemId)
 
-    await this.test.userbase.transaction(dbName, insertOperations)
-    await this.test.userbase.transaction(dbName, updateOperations)
-    await this.test.userbase.transaction(dbName, deleteOperations)
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(3)
+        expect(successful, 'successful state').to.be.true
+      })
 
-    expect(spy.callCount).to.equal(4)
-  })
-
-  it('2 sequential Inserts, then transaction with 1 Insert, 1 Update, and 1 Delete', async function () {
-    const dbName = 'test-db'
-
-    const itemId1 = 'test-item1'
-    const item1ToInsert = {
-      key1: 'insert1'
-    }
-
-    const itemId2 = 'test-item2'
-    const item2ToInsert = {
-      key2: 'insert2'
-    }
-    const item2ToUpdate = {
-      updatedKey2: 'update2'
-    }
-
-    const itemId3 = 'test-item3'
-    const item3ToInsert = {
-      key3: 'insert3'
-    }
-
-    const operations = [
-      { command: 'Insert', item: item3ToInsert, id: itemId3 },
-      { command: 'Update', item: item2ToUpdate, id: itemId2 },
-      { command: 'Delete', id: itemId1 },
-    ]
-
-    const spyChangeHandler = {
-      changeHandler: function (items) {
-        if (spy.callCount === 4) {
-          expect(items).to.have.lengthOf(2)
-
-          const item2 = items[0]
-          expect(item2).to.be.an('object').that.has.all.keys('item', 'itemId')
-          expect(item2.itemId).to.equal(itemId2)
-          expect(item2.item).to.deep.equal(item2ToUpdate)
-
-          const item3 = items[1]
-          expect(item3).to.be.an('object').that.has.all.keys('item', 'itemId')
-          expect(item3.itemId).to.equal(itemId3)
-          expect(item3.item).to.deep.equal(item3ToInsert)
+      it('Inserting a duplicate item should fail', async function () {
+        const testItemId = 'test-id'
+        const itemToInsert = {
+          key1: 'Test',
+          key2: 123
         }
-      }
-    }
-    const spy = cy.spy(spyChangeHandler, 'changeHandler')
 
-    await this.test.userbase.openDatabase(dbName, spyChangeHandler.changeHandler)
+        const duplicateItem = {
+          failKey1: 'Fail'
+        }
 
-    await this.test.userbase.insertItem(dbName, item1ToInsert, itemId1)
-    await this.test.userbase.insertItem(dbName, item2ToInsert, itemId2)
-    await this.test.userbase.transaction(dbName, operations)
+        let successful
+        let changeHandlerCallCount = 0
 
-    expect(spy.callCount).to.equal(4)
-  })
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
 
-  // must check the server logs to verify bundling occurs
-  it('Bundle transaction log with a large Userbase transaction', async function () {
-    const dbName = 'test-db'
+          if (changeHandlerCallCount === 3) {
+            expect(items).to.have.lengthOf(1)
 
-    const BUNDLE_SIZE = 50 * 1024 // from src/userbase-server/ws.js
+            const insertedItem = items[0]
+            expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
 
-    const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
-    const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
-    expect(numItemsNeededToTriggerBundle).to.be.lte(10) // max operations allowed in tx
+            const { item, itemId } = insertedItem
+            expect(item).to.deep.equal(itemToInsert)
+            expect(itemId).to.equal(testItemId)
 
-    const largeString = getStringOfByteLength(ITEM_SIZE)
-    const operations = []
-    for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
-      operations.push({ command: 'Insert', item: largeString, id: i.toString() })
-    }
+            successful = true
+          }
+        }
 
-    const spyChangeHandler = {
-      changeHandler: function (items) {
-        if (spy.callCount === 2) {
-          expect(items).to.have.lengthOf(numItemsNeededToTriggerBundle)
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
 
-          for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
-            const insertedItem = items[i]
+        try {
+          await this.test.userbase.insertItem(dbName, duplicateItem, testItemId)
+          throw new Error('Should have failed')
+        } catch (e) {
+          expect(e.name).to.be.equal('ItemAlreadyExists')
+          expect(e.message).to.be.equal('Item with the same id already exists.')
+          expect(e.status).to.be.equal(409)
+        }
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(3)
+        expect(successful, 'successful state').to.be.true
+      })
+
+      it('Updating & Deleting a non-existent item should fail', async function () {
+        const testItemId = 'test-id'
+        const itemToFailUpdate = {
+          failKey1: 'Fail'
+        }
+
+        let changeHandlerCallCount = 0
+        const changeHandler = function () {
+          changeHandlerCallCount += 1
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+
+        try {
+          await this.test.userbase.updateItem(dbName, itemToFailUpdate, testItemId)
+          throw new Error('Should have failed')
+        } catch (e) {
+          expect(e.name).to.be.equal('ItemDoesNotExist')
+          expect(e.message).to.be.equal('Item with the provided id does not exist.')
+          expect(e.status).to.be.equal(404)
+        }
+
+        expect(changeHandlerCallCount, 'changeHandler is not called if item does not exist').to.equal(1)
+
+        try {
+          await this.test.userbase.deleteItem(dbName, testItemId)
+          throw new Error('Should have failed')
+        } catch (e) {
+          expect(e.name).to.be.equal('ItemDoesNotExist')
+          expect(e.message).to.be.equal('Item with the provided id does not exist.')
+          expect(e.status).to.be.equal(404)
+        }
+
+        expect(changeHandlerCallCount, 'changeHandler is not called if item does not exist').to.equal(1)
+      })
+
+      it('Updating & Deleting a deleted item should fail', async function () {
+        const testItemId = 'test-id'
+        const itemToInsert = {
+          key1: 'Test',
+          key2: 123
+        }
+
+        const itemToFailUpdate = {
+          failKey1: 'Fail'
+        }
+
+        let changeHandlerCallCount = 0
+        const changeHandler = function () {
+          changeHandlerCallCount += 1
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
+        await this.test.userbase.deleteItem(dbName, testItemId)
+
+        try {
+          await this.test.userbase.updateItem(dbName, itemToFailUpdate, testItemId)
+          throw new Error('Should have failed')
+        } catch (e) {
+          expect(e.name).to.be.equal('ItemDoesNotExist')
+          expect(e.message).to.be.equal('Item with the provided id does not exist.')
+          expect(e.status).to.be.equal(404)
+        }
+
+        expect(changeHandlerCallCount, 'changeHandler is not called if item does not exist').to.equal(3)
+
+        try {
+          await this.test.userbase.deleteItem(dbName, testItemId)
+          throw new Error('Should have failed')
+        } catch (e) {
+          expect(e.name).to.be.equal('ItemDoesNotExist')
+          expect(e.message).to.be.equal('Item with the provided id does not exist.')
+          expect(e.status).to.be.equal(404)
+        }
+
+        expect(changeHandlerCallCount, 'changeHandler is not called if item does not exist').to.equal(3)
+      })
+
+      it('Insert the same item after deleting the item', async function () {
+        const testItemId = 'test-id'
+        const itemToInsert = {
+          key1: 'Test',
+          key2: 123
+        }
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (changeHandlerCallCount === 4) {
+            expect(items).to.have.lengthOf(1)
+
+            const insertedItem = items[0]
+            expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+
+            const { item, itemId } = insertedItem
+            expect(item).to.deep.equal(itemToInsert)
+            expect(itemId).to.equal(testItemId)
+
+            successful = true
+          }
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
+        await this.test.userbase.deleteItem(dbName, testItemId)
+        await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(4)
+        expect(successful, 'successful state').to.be.true
+      })
+
+      it('3 sequential Inserts, then 3 sequential Updates, then 3 sequential Deletes', async function () {
+        const numSequentialOperations = 3
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (changeHandlerCallCount === 1 + numSequentialOperations) {
+            // all inserts are complete
+
+            expect(items).to.have.lengthOf(numSequentialOperations)
+
+            for (let i = 0; i < numSequentialOperations; i++) {
+              const insertedItem = items[i]
+              expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+
+              const { item, itemId } = insertedItem
+              expect(item).to.equal(i.toString())
+              expect(itemId).to.equal(i.toString())
+            }
+          } else if (changeHandlerCallCount === 1 + (numSequentialOperations * 2)) {
+            // all updates are complete
+
+            expect(items).to.have.lengthOf(numSequentialOperations)
+
+            for (let i = 0; i < numSequentialOperations; i++) {
+              const insertedItem = items[i]
+              expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+
+              const { item, itemId } = insertedItem
+              expect(item).to.equal((i + numSequentialOperations).toString())
+              expect(itemId).to.equal(i.toString())
+            }
+          } else if (changeHandlerCallCount === 1 + (numSequentialOperations * 3)) {
+            // all deletes are complete
+            expect(items).to.be.empty
+            successful = true
+          }
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+
+        for (let i = 0; i < numSequentialOperations; i++) {
+          const item = i.toString()
+          const itemId = item
+          await this.test.userbase.insertItem(dbName, item, itemId)
+        }
+
+        for (let i = 0; i < numSequentialOperations; i++) {
+          const item = (i + numSequentialOperations).toString()
+          const itemId = i.toString()
+          await this.test.userbase.updateItem(dbName, item, itemId)
+        }
+
+        for (let i = 0; i < numSequentialOperations; i++) {
+          const itemId = i.toString()
+          await this.test.userbase.deleteItem(dbName, itemId)
+        }
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1 + (numSequentialOperations * 3))
+        expect(successful, 'successful state').to.be.true
+      })
+
+      it('Insert large item', async function () {
+        const NINE_KB = 9 * 1024
+        const largeString = getStringOfByteLength(NINE_KB)
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (changeHandlerCallCount === 2) {
+            expect(items).to.have.lengthOf(1)
+
+            const insertedItem = items[0]
             expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
 
             const { item, itemId } = insertedItem
             expect(item).to.equal(largeString)
-            expect(itemId).to.equal(i.toString())
+            expect(itemId).to.be.a('string')
+
+            successful = true
           }
         }
-      }
-    }
-    const spy = cy.spy(spyChangeHandler, 'changeHandler')
 
-    await this.test.userbase.openDatabase(dbName, spyChangeHandler.changeHandler)
-    await this.test.userbase.transaction(dbName, operations)
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.insertItem(dbName, largeString)
 
-    expect(spy.callCount).to.equal(2)
-  })
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
+        expect(successful, 'successful state').to.be.true
+      })
 
-  // must check the server to verify reading bundle from S3 and not DDB
-  it('Read from bundled transaction log', async function () {
-    const dbName = 'test-db'
+      it('Insert large item, then insert small item', async function () {
+        const NINE_KB = 9 * 1024
+        const largeString = getStringOfByteLength(NINE_KB)
 
-    const BUNDLE_SIZE = 50 * 1024 // from src/userbase-server/ws.js
+        const smallItem = {
+          testKey: 'test'
+        }
 
-    const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
-    const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
-    expect(numItemsNeededToTriggerBundle).to.be.lte(10) // max operations allowed in tx
+        let changeHandlerCallCount = 0
+        let successful
 
-    const largeString = getStringOfByteLength(ITEM_SIZE)
-    const operations = []
-    for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
-      operations.push({ command: 'Insert', item: largeString, id: i.toString() })
-    }
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
 
-    await this.test.userbase.openDatabase(dbName, () => { })
-    await this.test.userbase.transaction(dbName, operations)
+          if (changeHandlerCallCount === 3) {
+            expect(items).to.have.lengthOf(2)
 
-    // give client sufficient time to finish the bundle
-    const THREE_SECONDS = 3 * 1000
-    await wait(THREE_SECONDS)
+            const insertedLargeItem = items[0]
+            expect(insertedLargeItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(insertedLargeItem.item).to.equal(largeString)
+            expect(insertedLargeItem.itemId).to.be.a('string')
 
-    await this.test.userbase.signOut()
-    await this.test.userbase.signIn(this.test.username, this.test.password)
+            const insertedSmallItem = items[1]
+            expect(insertedSmallItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(insertedSmallItem.item).to.deep.equal(smallItem)
+            expect(insertedSmallItem.itemId).to.be.a('string')
+            successful = true
+          }
+        }
 
-    const spyChangeHandler = {
-      changeHandler: function (items) {
-        if (spy.callCount === 1) {
-          expect(items).to.have.lengthOf(numItemsNeededToTriggerBundle)
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.insertItem(dbName, largeString)
+        await this.test.userbase.insertItem(dbName, smallItem)
 
-          for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
-            const insertedItem = items[i]
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(3)
+        expect(successful, 'successful state').to.be.true
+      })
+
+      it('Insert 1 Item in a transaction', async function () {
+        const itemToInsert = {
+          key1: 'Test',
+          key2: 123
+        }
+
+        const operations = [
+          { command: 'Insert', item: itemToInsert }
+        ]
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (changeHandlerCallCount === 2) {
+            expect(items).to.have.lengthOf(1)
+
+            const insertedItem = items[0]
             expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
 
             const { item, itemId } = insertedItem
-            expect(item).to.equal(largeString)
-            expect(itemId).to.equal(i.toString())
+            expect(item).to.deep.equal(itemToInsert)
+            expect(itemId).to.be.a('string')
+
+            successful = true
           }
         }
-      }
-    }
-    const spy = cy.spy(spyChangeHandler, 'changeHandler')
 
-    await this.test.userbase.openDatabase(dbName, spyChangeHandler.changeHandler)
-    expect(spy.callCount).to.equal(1)
-  })
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.transaction(dbName, operations)
 
-  // must check the server logs to verify bundling occurs
-  it('Bundle transaction log with regular inserts', async function () {
-    const dbName = 'test-db'
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
+        expect(successful, 'successful state').to.be.true
+      })
 
-    const BUNDLE_SIZE = 50 * 1024 // from src/userbase-server/ws.js
+      it('Insert 10 Items in a transaction', async function () {
+        const NUM_ITEMS = 10
 
-    const ITEM_SIZE = 5 * 1024
-    const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
-    const largeString = getStringOfByteLength(ITEM_SIZE)
+        const operations = []
+        for (let i = 0; i < NUM_ITEMS; i++) {
+          const item = i.toString()
+          const id = item
+          operations.push({ command: 'Insert', item, id })
+        }
 
-    const spyChangeHandler = {
-      changeHandler: function (items) {
-        if (spy.callCount === 1 + numItemsNeededToTriggerBundle) {
-          expect(items).to.have.lengthOf(numItemsNeededToTriggerBundle)
+        let changeHandlerCallCount = 0
+        let successful
 
-          for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
-            const insertedItem = items[i]
-            expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
 
-            const { item, itemId } = insertedItem
-            expect(item).to.equal(largeString)
-            expect(itemId).to.equal(i.toString())
+          if (changeHandlerCallCount === 2) {
+            expect(items).to.have.lengthOf(NUM_ITEMS)
+
+            for (let i = 0; i < NUM_ITEMS; i++) {
+              const insertedItem = items[i]
+              expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+
+              const { item, itemId } = insertedItem
+              expect(item).to.equal(i.toString())
+              expect(itemId).to.equal(i.toString())
+            }
+
+            successful = true
           }
         }
-      }
-    }
-    const spy = cy.spy(spyChangeHandler, 'changeHandler')
 
-    await this.test.userbase.openDatabase(dbName, spyChangeHandler.changeHandler)
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.transaction(dbName, operations)
 
-    for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
-      const item = largeString
-      const itemId = i.toString()
-      await this.test.userbase.insertItem(dbName, item, itemId)
-    }
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
+        expect(successful, 'successful state').to.be.true
+      })
 
-    expect(spy.callCount).to.equal(1 + numItemsNeededToTriggerBundle)
-  })
+      it('Update 10 Items in a transaction', async function () {
+        const NUM_ITEMS = 10
 
-  // must check the server logs to verify bundling occurs
-  it('Read from bundled transaction log with regular inserts', async function () {
-    const dbName = 'test-db'
+        const insertOperations = []
+        for (let i = 0; i < NUM_ITEMS; i++) {
+          const item = i.toString()
+          const id = item
+          insertOperations.push({ command: 'Insert', item, id })
+        }
 
-    const BUNDLE_SIZE = 50 * 1024 // from src/userbase-server/ws.js
+        const updateOperations = []
+        for (let i = 0; i < NUM_ITEMS; i++) {
+          const item = (i + NUM_ITEMS).toString()
+          const id = i.toString()
+          updateOperations.push({ command: 'Update', item, id })
+        }
 
-    const ITEM_SIZE = 5 * 1024
-    const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
-    const largeString = getStringOfByteLength(ITEM_SIZE)
+        let changeHandlerCallCount = 0
+        let successful
 
-    await this.test.userbase.openDatabase(dbName, () => { })
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
 
-    for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
-      const item = largeString
-      const itemId = i.toString()
-      await this.test.userbase.insertItem(dbName, item, itemId)
-    }
+          if (changeHandlerCallCount === 3) {
+            expect(items).to.have.lengthOf(NUM_ITEMS)
 
-    // give client sufficient time to finish the bundle
-    const THREE_SECONDS = 3 * 1000
-    await wait(THREE_SECONDS)
+            for (let i = 0; i < NUM_ITEMS; i++) {
+              const updatedItem = items[i]
+              expect(updatedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
 
-    await this.test.userbase.signOut()
-    await this.test.userbase.signIn(this.test.username, this.test.password)
+              const { item, itemId } = updatedItem
+              expect(item).to.equal((i + NUM_ITEMS).toString())
+              expect(itemId).to.equal(i.toString())
+            }
 
-    const spyChangeHandler = {
-      changeHandler: function (items) {
-        if (spy.callCount === 1) {
-          expect(items).to.have.lengthOf(numItemsNeededToTriggerBundle)
-
-          for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
-            const insertedItem = items[i]
-            expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
-
-            const { item, itemId } = insertedItem
-            expect(item).to.equal(largeString)
-            expect(itemId).to.equal(i.toString())
+            successful = true
           }
         }
-      }
-    }
-    const spy = cy.spy(spyChangeHandler, 'changeHandler')
 
-    await this.test.userbase.openDatabase(dbName, spyChangeHandler.changeHandler)
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.transaction(dbName, insertOperations)
+        await this.test.userbase.transaction(dbName, updateOperations)
 
-    expect(spy.callCount).to.equal(1)
-  })
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(3)
+        expect(successful, 'successful state').to.be.true
+      })
 
-  it('10 concurrent Inserts - Test A - State is correct after all inserts finish', async function () {
-    const dbName = 'test-db'
+      it('10 Inserts in a transaction, then 10 Updates in a transaction, then 5 Deletes in a transaction', async function () {
+        const NUM_ITEMS = 10
+        const NUM_DELETES = 5
+        expect(NUM_DELETES).to.be.lessThan(NUM_ITEMS)
 
-    const numConcurrentOperations = 10
-    const insertedItems = {}
-
-    let succesfullyInsertedAllItems = false
-
-    const spyChangeHandler = {
-      changeHandler: function (items) {
-
-        // items can all be inserted successfully before the change handler gets
-        // called on the final insert because the server will send batches of
-        // transactions to the client at a time. This test makes sure the client
-        // has the expected state after all inserts finish
-
-        if (items.length === numConcurrentOperations && !succesfullyInsertedAllItems) {
-          for (let i = 0; i < numConcurrentOperations; i++) {
-            const insertedItem = items[i]
-            expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
-
-            const { item, itemId } = insertedItem
-            expect(item).to.equal(itemId)
-
-            // order of inserted items not guaranteed, but every insert should only be
-            // inserted a single time
-            expect(insertedItems[itemId]).to.be.false
-            insertedItems[itemId] = true
-          }
-
-          for (let insertedItem of Object.values(insertedItems)) {
-            expect(insertedItem).to.be.true
-          }
-
-          succesfullyInsertedAllItems = true
+        const insertOperations = []
+        for (let i = 0; i < NUM_ITEMS; i++) {
+          const item = i.toString()
+          const id = item
+          insertOperations.push({ command: 'Insert', item, id })
         }
-      }
-    }
-    const spy = cy.spy(spyChangeHandler, 'changeHandler')
 
-    await this.test.userbase.openDatabase(dbName, spyChangeHandler.changeHandler)
+        const updateOperations = []
+        for (let i = 0; i < NUM_ITEMS; i++) {
+          const item = (i + NUM_ITEMS).toString()
+          const id = i.toString()
+          updateOperations.push({ command: 'Update', item, id })
+        }
 
-    const inserts = []
-    for (let i = 0; i < numConcurrentOperations; i++) {
-      const item = i.toString()
-      const itemId = item
-      insertedItems[itemId] = false
-      inserts.push(this.test.userbase.insertItem(dbName, item, itemId))
-    }
-    await Promise.all(inserts)
+        const deleteOperations = []
+        for (let i = 0; i < NUM_DELETES; i++) {
+          const id = i.toString()
+          deleteOperations.push({ command: 'Delete', id })
+        }
 
-    expect(spy.callCount).to.be.lte(1 + numConcurrentOperations)
-    expect(succesfullyInsertedAllItems).to.be.true
-  })
+        let changeHandlerCallCount = 0
+        let successful
 
-  it('10 concurrent Inserts - Test B - State is correct after change handler is called for all inserts', async function () {
-    const dbName = 'test-db'
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
 
-    const numConcurrentOperations = 10
-    const insertedItems = {}
+          if (changeHandlerCallCount === 4) {
+            const totalItemsExpected = NUM_ITEMS - NUM_DELETES
+            expect(items).to.have.lengthOf(totalItemsExpected)
 
-    let spyChangeHandler
+            for (let i = 0; i < totalItemsExpected; i++) {
+              const actualItem = items[i]
+              expect(actualItem).to.be.an('object').that.has.all.keys('item', 'itemId')
 
-    // All inserts can return successfully before final insert calls change handler. However,
-    // we are sure the final insert WILL call the change handler. This promise makes sure
-    // the state is what's expected after the change handler is called for ALL inserts
-    const finalInsertCalledChangeHandler = new Promise((resolve, reject) => {
-      spyChangeHandler = {
-        changeHandler: function (items) {
-          if (spy.callCount === 1 + numConcurrentOperations) {
-            expect(items).to.have.lengthOf(numConcurrentOperations)
+              const { item, itemId } = actualItem
+              expect(item).to.equal((i + NUM_ITEMS + NUM_DELETES).toString())
+              expect(itemId).to.equal((i + NUM_DELETES).toString())
+            }
 
+            successful = true
+          }
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+
+        await this.test.userbase.transaction(dbName, insertOperations)
+        await this.test.userbase.transaction(dbName, updateOperations)
+        await this.test.userbase.transaction(dbName, deleteOperations)
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(4)
+        expect(successful, 'successful state').to.be.true
+      })
+
+      it('2 sequential Inserts, then transaction with 1 Insert, 1 Update, and 1 Delete', async function () {
+        const itemId1 = 'test-item1'
+        const item1ToInsert = {
+          key1: 'insert1'
+        }
+
+        const itemId2 = 'test-item2'
+        const item2ToInsert = {
+          key2: 'insert2'
+        }
+        const item2ToUpdate = {
+          updatedKey2: 'update2'
+        }
+
+        const itemId3 = 'test-item3'
+        const item3ToInsert = {
+          key3: 'insert3'
+        }
+
+        const operations = [
+          { command: 'Insert', item: item3ToInsert, id: itemId3 },
+          { command: 'Update', item: item2ToUpdate, id: itemId2 },
+          { command: 'Delete', id: itemId1 },
+        ]
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (changeHandlerCallCount === 4) {
+            expect(items).to.have.lengthOf(2)
+
+            const item2 = items[0]
+            expect(item2).to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(item2.itemId).to.equal(itemId2)
+            expect(item2.item).to.deep.equal(item2ToUpdate)
+
+            const item3 = items[1]
+            expect(item3).to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(item3.itemId).to.equal(itemId3)
+            expect(item3.item).to.deep.equal(item3ToInsert)
+
+            successful = true
+          }
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+
+        await this.test.userbase.insertItem(dbName, item1ToInsert, itemId1)
+        await this.test.userbase.insertItem(dbName, item2ToInsert, itemId2)
+        await this.test.userbase.transaction(dbName, operations)
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(4)
+        expect(successful, 'successful state').to.be.true
+      })
+    })
+
+    describe('Concurrent Tests', function () {
+      beforeEach(function () { beforeEachHook() })
+
+      it('10 concurrent Inserts', async function () {
+        const numConcurrentOperations = 10
+        const insertedItems = {}
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (items.length === numConcurrentOperations && !successful) {
             for (let i = 0; i < numConcurrentOperations; i++) {
               const insertedItem = items[i]
               expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
@@ -938,30 +757,1065 @@ describe('DB Correctness Tests', function () {
               expect(insertedItem).to.be.true
             }
 
-            resolve()
+            successful = true
           }
         }
-      }
 
-      const TEN_SECONDS = 10 * 1000
-      setTimeout(() => reject('Timeout waiting for final insert'), TEN_SECONDS)
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+
+        const inserts = []
+        for (let i = 0; i < numConcurrentOperations; i++) {
+          const item = i.toString()
+          const itemId = item
+          insertedItems[itemId] = false
+          inserts.push(this.test.userbase.insertItem(dbName, item, itemId))
+        }
+        await Promise.all(inserts)
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(1 + numConcurrentOperations)
+        expect(successful, 'successful state').to.be.true
+      })
+
+      it('10 concurrent Inserts, then concurrent 5 Updates & 5 Deletes', async function () {
+        const numConcurrentOperations = 10
+        expect(numConcurrentOperations % 2).to.be.equal(0)
+
+        const numUpdates = numConcurrentOperations / 2
+
+        const updatedItems = {}
+
+        let changeHandlerCallCount = 0
+        let succesfullyInsertedAllItems
+        let successfullyUpdatedAndDeletedAllItems
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (succesfullyInsertedAllItems && items.length === numUpdates && !successfullyUpdatedAndDeletedAllItems) {
+            expect(items).to.have.lengthOf(numUpdates)
+
+            for (let i = 0; i < numUpdates; i++) {
+              const insertedItem = items[i]
+              expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+
+              const { item, itemId } = insertedItem
+              expect(Number(item)).to.equal(Number(itemId) + numConcurrentOperations)
+
+              expect(updatedItems[itemId]).to.be.false
+              updatedItems[itemId] = true
+            }
+
+            for (let updatedItem of Object.values(updatedItems)) {
+              expect(updatedItem).to.be.true
+            }
+
+            successfullyUpdatedAndDeletedAllItems = true
+          }
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+
+        const inserts = []
+        for (let i = 0; i < numConcurrentOperations; i++) {
+          const item = i.toString()
+          const itemId = item
+          inserts.push(this.test.userbase.insertItem(dbName, item, itemId))
+        }
+        await Promise.all(inserts)
+
+        succesfullyInsertedAllItems = true
+
+        const updatesAndDeletes = []
+        for (let i = 0; i < numUpdates; i++) {
+          const item = (i + numConcurrentOperations).toString()
+          const itemId = i.toString()
+          updatedItems[itemId] = false
+          updatesAndDeletes.push(this.test.userbase.updateItem(dbName, item, itemId))
+        }
+
+        for (let i = numUpdates; i < numConcurrentOperations; i++) {
+          const itemId = i.toString()
+          updatesAndDeletes.push(this.test.userbase.deleteItem(dbName, itemId))
+        }
+        await Promise.all(updatesAndDeletes)
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(1 + (numConcurrentOperations * 2))
+        expect(successfullyUpdatedAndDeletedAllItems, 'successful state').to.be.true
+      })
+
+      it('10 concurrent Inserts with same Item ID', async function () {
+        const numConcurrentOperations = 10
+
+        const testItemId = 'test-id'
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+          if (items.length === 1 && !successful) {
+            const insertedItem = items[0]
+            expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+
+            const { item, itemId } = insertedItem
+            expect(itemId).to.equal(testItemId)
+            expect(item).to.be.within(0, numConcurrentOperations - 1)
+
+            successful = true
+          }
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+
+        let successCount = 0
+        let failureCount = 0
+
+        const inserts = []
+        for (let i = 0; i < numConcurrentOperations; i++) {
+          const item = i.toString()
+
+          const insert = async () => {
+            try {
+              await this.test.userbase.insertItem(dbName, item, testItemId)
+              successCount += 1
+            } catch (e) {
+              expect(e.name).to.be.equal('ItemAlreadyExists')
+              expect(e.message).to.be.equal('Item with the same id already exists.')
+              expect(e.status).to.be.equal(409)
+              failureCount += 1
+            }
+          }
+          inserts.push(insert())
+        }
+
+        await Promise.all(inserts)
+
+        expect(successCount).to.equal(1)
+        expect(failureCount).to.equal(numConcurrentOperations - 1)
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(1 + numConcurrentOperations)
+        expect(successful, 'successful state').to.be.true
+      })
+
+      it('2 concurrent Updates on same item', async function () {
+        const testItemId = 'test-id'
+        const itemToInsert = {
+          key1: 'Test',
+          key2: 123
+        }
+
+        const update1 = {
+          updatedKey: 'TestTest',
+        }
+
+        const update2 = {
+          updatedKey2: 456
+        }
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+          if (changeHandlerCallCount > 2 && !successful) {
+            expect(items).to.have.lengthOf(1)
+
+            const updatedItem = items[0]
+            expect(updatedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+
+            const { item, itemId } = updatedItem
+            expect(itemId).to.equal(testItemId)
+
+            if (Object.prototype.hasOwnProperty.call(item, 'updatedKey')) {
+              expect(item).to.deep.equal(update1)
+            } else {
+              expect(item).to.deep.equal(update2)
+            }
+
+            successful = true
+          }
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
+
+        try {
+          await Promise.all([
+            this.test.userbase.updateItem(dbName, update1, testItemId),
+            this.test.userbase.updateItem(dbName, update2, testItemId)
+          ])
+          throw new Error('Should have failed')
+        } catch (e) {
+          expect(e.name).to.equal('ItemUpdateConflict')
+          expect(e.message).to.equal('Item update conflict.')
+          expect(e.status).to.equal(409)
+        }
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(4)
+        expect(successful, 'successful state').to.be.true
+      })
+
+      it('Concurrent Update and Transaction on same item', async function () {
+        const testItemId = 'test-id'
+        const itemToInsert = {
+          key1: 'Test',
+          key2: 123
+        }
+
+        const update1 = {
+          updatedKey: 'TestTest',
+        }
+
+        const update2 = {
+          updatedKey2: 456
+        }
+        const operations = [
+          { command: 'Update', item: update2, id: testItemId }
+        ]
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (changeHandlerCallCount > 2 && !successful) {
+            expect(items).to.have.lengthOf(1)
+
+            const updatedItem = items[0]
+            expect(updatedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+
+            const { item, itemId } = updatedItem
+            expect(itemId).to.equal(testItemId)
+
+            if (Object.prototype.hasOwnProperty.call(item, 'updatedKey')) {
+              expect(item).to.deep.equal(update1)
+            } else {
+              expect(item).to.deep.equal(update2)
+            }
+
+            successful = true
+          }
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
+
+        try {
+          await Promise.all([
+            this.test.userbase.updateItem(dbName, update1, testItemId),
+            this.test.userbase.transaction(dbName, operations)
+          ])
+          throw new Error('Should have failed')
+        } catch (e) {
+          expect(e.name).to.equal('ItemUpdateConflict')
+          expect(e.message).to.equal('Item update conflict.')
+          expect(e.status).to.equal(409)
+        }
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(4)
+        expect(successful, 'successful state').to.be.true
+      })
+
+      it('2 concurrent Deletes on same item', async function () {
+        const testItemId = 'test-id'
+        const itemToInsert = {
+          key1: 'Test',
+          key2: 123
+        }
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (changeHandlerCallCount > 2 && !successful) {
+            expect(items).to.be.empty
+            successful = true
+          }
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
+
+        try {
+          await Promise.all([
+            this.test.userbase.deleteItem(dbName, testItemId),
+            this.test.userbase.deleteItem(dbName, testItemId)
+          ])
+          throw new Error('Should have failed')
+        } catch (e) {
+          expect(e.name).to.be.equal('ItemDoesNotExist')
+          expect(e.message).to.be.equal('Item with the provided id does not exist.')
+          expect(e.status).to.be.equal(404)
+        }
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(4)
+        expect(successful, 'successful state').to.be.true
+      })
+
+      it('Concurrent Update and Delete on same item', async function () {
+        const testItemId = 'test-id'
+        const itemToInsert = {
+          key1: 'Test',
+          key2: 123
+        }
+
+        const update = {
+          updatedKey: 'TestTest',
+        }
+
+        let winningTransaction
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (changeHandlerCallCount > 2 && !successful) {
+            expect(items.length).to.be.oneOf([0, 1])
+            winningTransaction = items.length ? 'Update' : 'Delete'
+
+            if (winningTransaction === 'Update') {
+              const updatedItem = items[0]
+              expect(updatedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+
+              const { item, itemId } = updatedItem
+              expect(item).to.deep.equal(update)
+              expect(itemId).to.equal(testItemId)
+            }
+
+            successful = true
+          }
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
+
+        try {
+          await Promise.all([
+            this.test.userbase.updateItem(dbName, update, testItemId),
+            this.test.userbase.deleteItem(dbName, testItemId)
+          ])
+          throw new Error('Should have failed')
+        } catch (e) {
+          if (e.message === 'Should have failed') throw e
+
+          if (winningTransaction === 'Update') {
+            expect(e.name).to.equal('ItemUpdateConflict')
+            expect(e.message).to.equal('Item update conflict.')
+            expect(e.status).to.equal(409)
+          } else if (winningTransaction === 'Delete') {
+            expect(e.name).to.be.equal('ItemDoesNotExist')
+            expect(e.message).to.be.equal('Item with the provided id does not exist.')
+            expect(e.status).to.be.equal(404)
+          } else {
+            throw new Error('Db handler not called')
+          }
+        }
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(4)
+        expect(successful, 'successful state').to.be.true
+      })
+
+      it('2 concurrent Inserts, 1 large item & 1 small item', async function () {
+        const largeItemId = 'large-item'
+        const NINE_KB = 9 * 1024
+        const largeItem = getStringOfByteLength(NINE_KB)
+
+        const smallItemId = 'small-item'
+        const smallItem = { test: 'test' }
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+          if (items.length === 2 && !successful) {
+            const item1 = items[0]
+            const item2 = items[1]
+
+            expect(item1).to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(item2).to.be.an('object').that.has.all.keys('item', 'itemId')
+
+            if (item1.itemId === largeItemId) {
+              expect(item1.item).to.deep.equal(largeItem)
+
+              expect(item2.itemId).to.equal(smallItemId)
+              expect(item2.item).to.deep.equal(smallItem)
+            } else {
+              expect(item1.itemId).to.equal(smallItemId)
+              expect(item1.item).to.deep.equal(smallItem)
+
+              expect(item2.itemId).to.equal(largeItemId)
+              expect(item2.item).to.deep.equal(largeItem)
+            }
+
+            successful = true
+          }
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+
+        await Promise.all([
+          this.test.userbase.insertItem(dbName, largeItem, largeItemId),
+          this.test.userbase.insertItem(dbName, smallItem, smallItemId)
+        ])
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(3)
+        expect(successful, 'successful state').to.be.true
+      })
+
+      it('Concurrent Insert and Transaction', async function () {
+        const insertItemId = 'insert-item'
+        const insertItem = { test1: 'test1' }
+
+        const transactionItem1Id = 'transaction-item1'
+        const transactionItem1 = { test2: 'test2' }
+
+        const transactionItem2Id = 'transaction-item2'
+        const transactionItem2 = { test3: 'test3' }
+
+        const operations = [
+          { command: 'Insert', item: transactionItem1, id: transactionItem1Id },
+          { command: 'Insert', item: transactionItem2, id: transactionItem2Id },
+        ]
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (items.length === 3 && !successful) {
+            const item1 = items[0]
+            const item2 = items[1]
+            const item3 = items[2]
+
+            expect(item1).to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(item2).to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(item3).to.be.an('object').that.has.all.keys('item', 'itemId')
+
+            if (item1.itemId === insertItemId) {
+              expect(item1.item).to.deep.equal(insertItem)
+
+              expect(item2.itemId).to.equal(transactionItem1Id)
+              expect(item2.item).to.deep.equal(transactionItem1)
+
+              expect(item3.itemId).to.equal(transactionItem2Id)
+              expect(item3.item).to.deep.equal(transactionItem2)
+            } else {
+              expect(item1.itemId).to.deep.equal(transactionItem1Id)
+              expect(item1.item).to.deep.equal(transactionItem1)
+
+              expect(item2.itemId).to.equal(transactionItem2Id)
+              expect(item2.item).to.deep.equal(transactionItem2)
+
+              expect(item3.itemId).to.equal(insertItemId)
+              expect(item3.item).to.deep.equal(insertItem)
+            }
+
+            successful = true
+          }
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+
+        await Promise.all([
+          this.test.userbase.insertItem(dbName, insertItem, insertItemId),
+          this.test.userbase.transaction(dbName, operations)
+        ])
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(3)
+        expect(successful, 'successful state').to.be.true
+      })
     })
-    const spy = cy.spy(spyChangeHandler, 'changeHandler')
 
-    await this.test.userbase.openDatabase(dbName, spyChangeHandler.changeHandler)
+  })
 
-    const inserts = []
-    for (let i = 0; i < numConcurrentOperations; i++) {
-      const item = i.toString()
-      const itemId = item
-      insertedItems[itemId] = false
-      inserts.push(this.test.userbase.insertItem(dbName, item, itemId))
-    }
-    await Promise.all(inserts)
+  describe('Bundling', function () {
 
-    await finalInsertCalledChangeHandler
+    describe('Synchronous Tests', function () {
+      beforeEach(function () { beforeEachHook() })
 
-    expect(spy.callCount).to.be.equal(1 + numConcurrentOperations)
+      // must check the server logs to verify bundling occurs
+      it('Bundle transaction log with a large Userbase transaction', async function () {
+        const BUNDLE_SIZE = 50 * 1024 // from src/userbase-server/ws.js
+
+        const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
+        const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
+        expect(numItemsNeededToTriggerBundle).to.be.lte(10) // max operations allowed in tx
+
+        const largeString = getStringOfByteLength(ITEM_SIZE)
+        const operations = []
+        for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
+          operations.push({ command: 'Insert', item: largeString, id: i.toString() })
+        }
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (changeHandlerCallCount === 2) {
+            expect(items).to.have.lengthOf(numItemsNeededToTriggerBundle)
+
+            for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
+              const insertedItem = items[i]
+              expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+
+              const { item, itemId } = insertedItem
+              expect(item).to.equal(largeString)
+              expect(itemId).to.equal(i.toString())
+            }
+
+            successful = true
+          }
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.transaction(dbName, operations)
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
+        expect(successful, 'successful state').to.be.true
+      })
+
+      // must check the server to verify reading bundle from S3 and not DDB
+      it('Read from bundled transaction log', async function () {
+        const BUNDLE_SIZE = 50 * 1024 // from src/userbase-server/ws.js
+
+        const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
+        const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
+        expect(numItemsNeededToTriggerBundle).to.be.lte(10) // max operations allowed in tx
+
+        const largeString = getStringOfByteLength(ITEM_SIZE)
+        const operations = []
+        for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
+          operations.push({ command: 'Insert', item: largeString, id: i.toString() })
+        }
+
+        await this.test.userbase.openDatabase(dbName, () => { })
+        await this.test.userbase.transaction(dbName, operations)
+
+        // give client sufficient time to finish the bundle
+        const THREE_SECONDS = 3 * 1000
+        await wait(THREE_SECONDS)
+
+        await this.test.userbase.signOut()
+        await this.test.userbase.signIn(this.test.username, this.test.password)
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (changeHandlerCallCount === 1) {
+            expect(items).to.have.lengthOf(numItemsNeededToTriggerBundle)
+
+            for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
+              const insertedItem = items[i]
+              expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+
+              const { item, itemId } = insertedItem
+              expect(item).to.equal(largeString)
+              expect(itemId).to.equal(i.toString())
+            }
+
+            successful = true
+          }
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+        expect(successful, 'successful state').to.be.true
+      })
+
+      // must check the server logs to verify bundling occurs
+      it('Bundle transaction log with regular inserts', async function () {
+        const BUNDLE_SIZE = 50 * 1024 // from src/userbase-server/ws.js
+
+        const ITEM_SIZE = 5 * 1024
+        const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
+        const largeString = getStringOfByteLength(ITEM_SIZE)
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (changeHandlerCallCount === 1 + numItemsNeededToTriggerBundle) {
+            expect(items).to.have.lengthOf(numItemsNeededToTriggerBundle)
+
+            for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
+              const insertedItem = items[i]
+              expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+
+              const { item, itemId } = insertedItem
+              expect(item).to.equal(largeString)
+              expect(itemId).to.equal(i.toString())
+            }
+
+            successful = true
+          }
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+
+        for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
+          const item = largeString
+          const itemId = i.toString()
+          await this.test.userbase.insertItem(dbName, item, itemId)
+        }
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1 + numItemsNeededToTriggerBundle)
+        expect(successful, 'successful state').to.be.true
+      })
+
+      // must check the server logs to verify bundling occurs
+      it('Read from bundled transaction log with regular inserts', async function () {
+        const BUNDLE_SIZE = 50 * 1024 // from src/userbase-server/ws.js
+
+        const ITEM_SIZE = 5 * 1024
+        const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
+        const largeString = getStringOfByteLength(ITEM_SIZE)
+
+        await this.test.userbase.openDatabase(dbName, () => { })
+
+        for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
+          const item = largeString
+          const itemId = i.toString()
+          await this.test.userbase.insertItem(dbName, item, itemId)
+        }
+
+        // give client sufficient time to finish the bundle
+        const THREE_SECONDS = 3 * 1000
+        await wait(THREE_SECONDS)
+
+        await this.test.userbase.signOut()
+        await this.test.userbase.signIn(this.test.username, this.test.password)
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (changeHandlerCallCount === 1) {
+            expect(items).to.have.lengthOf(numItemsNeededToTriggerBundle)
+
+            for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
+              const insertedItem = items[i]
+              expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+
+              const { item, itemId } = insertedItem
+              expect(item).to.equal(largeString)
+              expect(itemId).to.equal(i.toString())
+            }
+
+            successful = true
+          }
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+        expect(successful, 'successful state').to.be.true
+      })
+
+      // must check the server logs to verify bundling occurs
+      it('Bundle transaction log 5 times with 5 sequential large Userbase transactions', async function () {
+        const numBundles = 5
+
+        const BUNDLE_SIZE = 50 * 1024 // from src/userbase-server/ws.js
+
+        const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
+        const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
+        expect(numItemsNeededToTriggerBundle).to.be.lte(10) // max operations allowed in tx
+
+        const largeString = getStringOfByteLength(ITEM_SIZE)
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (changeHandlerCallCount === 1 + numBundles) {
+            expect(items).to.have.lengthOf(numBundles * numItemsNeededToTriggerBundle)
+
+            for (let i = 0; i < numBundles; i++) {
+              for (let j = 0; j < numItemsNeededToTriggerBundle; j++) {
+                const itemIndex = (i * numItemsNeededToTriggerBundle) + j
+
+                const insertedItem = items[itemIndex]
+                expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+
+                const { item, itemId } = insertedItem
+                expect(item).to.equal(largeString)
+                expect(itemId).to.equal(itemIndex.toString())
+              }
+            }
+
+            successful = true
+          }
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+
+        for (let i = 0; i < numBundles; i++) {
+          const operations = []
+          for (let j = 0; j < numItemsNeededToTriggerBundle; j++) {
+            const itemId = ((i * numItemsNeededToTriggerBundle) + j).toString()
+            operations.push({ command: 'Insert', item: largeString, id: itemId })
+          }
+          await this.test.userbase.transaction(dbName, operations)
+        }
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1 + numBundles)
+        expect(successful, 'successful state').to.be.true
+      })
+
+      // must check the server logs to verify bundling occurs
+      it('Read from bundled transaction after 5 sequential large Userbase transactions', async function () {
+        const numBundles = 5
+
+        const BUNDLE_SIZE = 50 * 1024 // from src/userbase-server/ws.js
+
+        const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
+        const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
+        expect(numItemsNeededToTriggerBundle).to.be.lte(10) // max operations allowed in tx
+
+        const largeString = getStringOfByteLength(ITEM_SIZE)
+
+        await this.test.userbase.openDatabase(dbName, () => { })
+
+        for (let i = 0; i < numBundles; i++) {
+          const operations = []
+          for (let j = 0; j < numItemsNeededToTriggerBundle; j++) {
+            const itemId = ((i * numItemsNeededToTriggerBundle) + j).toString()
+            operations.push({ command: 'Insert', item: largeString, id: itemId })
+          }
+          await this.test.userbase.transaction(dbName, operations)
+        }
+
+        // give client sufficient time to finish the bundle
+        const THREE_SECONDS = 3 * 1000
+        await wait(THREE_SECONDS)
+
+        await this.test.userbase.signOut()
+        await this.test.userbase.signIn(this.test.username, this.test.password)
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (changeHandlerCallCount === 1) {
+            expect(items).to.have.lengthOf(numBundles * numItemsNeededToTriggerBundle)
+
+            for (let i = 0; i < numBundles; i++) {
+              for (let j = 0; j < numItemsNeededToTriggerBundle; j++) {
+                const itemIndex = (i * numItemsNeededToTriggerBundle) + j
+
+                const insertedItem = items[itemIndex]
+                expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+
+                const { item, itemId } = insertedItem
+                expect(item).to.equal(largeString)
+                expect(itemId).to.equal(itemIndex.toString())
+              }
+            }
+
+            successful = true
+          }
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+        expect(successful, 'successful state').to.be.true
+      })
+    })
+
+    describe('Concurrent Tests', function () {
+      beforeEach(function () { beforeEachHook() })
+
+      // must check the server logs to verify bundling occurs
+      it('2 concurrent transactions, each trigger bundle process', async function () {
+        const BUNDLE_SIZE = 50 * 1024 // from src/userbase-server/ws.js
+
+        const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
+        const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
+        expect(numItemsNeededToTriggerBundle).to.be.lte(10) // max operations allowed in tx
+
+        const largeString = getStringOfByteLength(ITEM_SIZE)
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (!successful && items.length === 2 * numItemsNeededToTriggerBundle) {
+            for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
+              const itemIndex1 = i
+              const itemIndex2 = i + numItemsNeededToTriggerBundle
+
+              const insertedItem1 = items[itemIndex1]
+              const insertedItem2 = items[itemIndex2]
+
+              expect(insertedItem1).to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(insertedItem2).to.be.an('object').that.has.all.keys('item', 'itemId')
+
+              if (insertedItem1.itemId === itemIndex1.toString()) {
+                expect(insertedItem1.item).to.deep.equal(largeString)
+
+                expect(insertedItem2.itemId).to.equal(itemIndex2.toString())
+                expect(insertedItem2.item).to.deep.equal(largeString)
+              } else {
+                expect(insertedItem1.itemId).to.equal(itemIndex2.toString())
+                expect(insertedItem1.item).to.deep.equal(largeString)
+
+                expect(insertedItem2.itemId).to.equal(itemIndex1.toString())
+                expect(insertedItem2.item).to.deep.equal(largeString)
+              }
+            }
+
+            successful = true
+          }
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+
+        const operations1 = []
+        const operations2 = []
+
+        for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
+          operations1.push({ command: 'Insert', item: largeString, id: i.toString() })
+          operations2.push({ command: 'Insert', item: largeString, id: (i + numItemsNeededToTriggerBundle).toString() })
+        }
+
+        await Promise.all([
+          this.test.userbase.transaction(dbName, operations1),
+          this.test.userbase.transaction(dbName, operations2)
+        ])
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(3)
+        expect(successful, 'successful state').to.be.true
+      })
+
+      // must check the server logs to verify bundling occurs
+      it('Read from bundled transaction log after 2 concurrent transactions that each trigger bundle process', async function () {
+        const BUNDLE_SIZE = 50 * 1024 // from src/userbase-server/ws.js
+
+        const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
+        const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
+        expect(numItemsNeededToTriggerBundle).to.be.lte(10) // max operations allowed in tx
+
+        const largeString = getStringOfByteLength(ITEM_SIZE)
+
+        const operations1 = []
+        const operations2 = []
+        for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
+          operations1.push({ command: 'Insert', item: largeString, id: i.toString() })
+          operations2.push({ command: 'Insert', item: largeString, id: (i + numItemsNeededToTriggerBundle).toString() })
+        }
+
+        await this.test.userbase.openDatabase(dbName, () => { })
+
+        await Promise.all([
+          this.test.userbase.transaction(dbName, operations1),
+          this.test.userbase.transaction(dbName, operations2)
+        ])
+
+        // give client sufficient time to finish the bundle
+        const THREE_SECONDS = 3 * 1000
+        await wait(THREE_SECONDS)
+
+        await this.test.userbase.signOut()
+        await this.test.userbase.signIn(this.test.username, this.test.password)
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          expect(items).to.have.lengthOf(2 * numItemsNeededToTriggerBundle)
+
+          for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
+            const itemIndex1 = i
+            const itemIndex2 = i + numItemsNeededToTriggerBundle
+
+            const insertedItem1 = items[itemIndex1]
+            const insertedItem2 = items[itemIndex2]
+
+            expect(insertedItem1).to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(insertedItem2).to.be.an('object').that.has.all.keys('item', 'itemId')
+
+            if (insertedItem1.itemId === itemIndex1.toString()) {
+              expect(insertedItem1.item).to.deep.equal(largeString)
+
+              expect(insertedItem2.itemId).to.equal(itemIndex2.toString())
+              expect(insertedItem2.item).to.deep.equal(largeString)
+            } else {
+              expect(insertedItem1.itemId).to.equal(itemIndex2.toString())
+              expect(insertedItem1.item).to.deep.equal(largeString)
+
+              expect(insertedItem2.itemId).to.equal(itemIndex1.toString())
+              expect(insertedItem2.item).to.deep.equal(largeString)
+            }
+          }
+
+          successful = true
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+        expect(successful, 'successful state').to.be.true
+      })
+
+      // must check the server logs to verify bundling occurs. Failing to bundle is ok
+      it('5 concurrent transactions, each trigger bundle process', async function () {
+        const numBundles = 5
+
+        const BUNDLE_SIZE = 50 * 1024 // from src/userbase-server/ws.js
+
+        const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
+        const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
+        expect(numItemsNeededToTriggerBundle).to.be.lte(10) // max operations allowed in tx
+
+        const largeString = getStringOfByteLength(ITEM_SIZE)
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+          if (!successful && items.length === numBundles * numItemsNeededToTriggerBundle) {
+
+            for (let i = 0; i < numBundles; i++) {
+              let startingItemId
+
+              for (let j = 0; j < numItemsNeededToTriggerBundle; j++) {
+                const itemIndex = (i * numItemsNeededToTriggerBundle) + j
+
+                const insertedItem = items[itemIndex]
+                expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+
+                const { item, itemId } = insertedItem
+                expect(item).to.equal(largeString)
+
+                if (j === 0) {
+                  expect(Number(itemId) % numItemsNeededToTriggerBundle).to.equal(0)
+                  startingItemId = Number(itemId)
+                }
+
+                const expectedItemIndex = startingItemId + j
+                expect(itemId, 'expected item id').to.equal(expectedItemIndex.toString())
+              }
+            }
+
+            successful = true
+          }
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+
+        const transactions = []
+
+        for (let i = 0; i < numBundles; i++) {
+          const operations = []
+          for (let j = 0; j < numItemsNeededToTriggerBundle; j++) {
+            const itemId = ((i * numItemsNeededToTriggerBundle) + j).toString()
+            operations.push({ command: 'Insert', item: largeString, id: itemId })
+          }
+          transactions.push(this.test.userbase.transaction(dbName, operations))
+        }
+        await Promise.all(transactions)
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(1 + numBundles)
+        expect(successful, 'successful state').to.be.true
+      })
+
+      // must check the server logs to verify reading from bundle. Failing to bundle is ok
+      it('Read from bundled transaction log after 5 concurrent transactions that each trigger bundle process', async function () {
+        const numBundles = 5
+
+        const BUNDLE_SIZE = 50 * 1024 // from src/userbase-server/ws.js
+
+        const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
+        const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
+        expect(numItemsNeededToTriggerBundle).to.be.lte(10) // max operations allowed in tx
+
+        const largeString = getStringOfByteLength(ITEM_SIZE)
+
+        await this.test.userbase.openDatabase(dbName, () => { })
+
+        const transactions = []
+        for (let i = 0; i < numBundles; i++) {
+          const operations = []
+          for (let j = 0; j < numItemsNeededToTriggerBundle; j++) {
+            const itemId = ((i * numItemsNeededToTriggerBundle) + j).toString()
+            operations.push({ command: 'Insert', item: largeString, id: itemId })
+          }
+          transactions.push(this.test.userbase.transaction(dbName, operations))
+        }
+        await Promise.all(transactions)
+
+        // give client sufficient time to finish the bundle
+        const THREE_SECONDS = 3 * 1000
+        await wait(THREE_SECONDS)
+
+        await this.test.userbase.signOut()
+        await this.test.userbase.signIn(this.test.username, this.test.password)
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+          expect(items).to.have.lengthOf(numBundles * numItemsNeededToTriggerBundle)
+
+          for (let i = 0; i < numBundles; i++) {
+            let startingItemId
+
+            for (let j = 0; j < numItemsNeededToTriggerBundle; j++) {
+              const itemIndex = (i * numItemsNeededToTriggerBundle) + j
+
+              const insertedItem = items[itemIndex]
+              expect(insertedItem).to.be.an('object').that.has.all.keys('item', 'itemId')
+
+              const { item, itemId } = insertedItem
+              expect(item).to.equal(largeString)
+
+              if (j === 0) {
+                expect(Number(itemId) % numItemsNeededToTriggerBundle).to.equal(0)
+                startingItemId = Number(itemId)
+              }
+
+              const expectedItemIndex = startingItemId + j
+              expect(itemId).to.equal(expectedItemIndex.toString())
+            }
+          }
+
+          successful = true
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+        expect(successful, 'successful state').to.be.true
+      })
+
+    })
+
   })
 
 })
