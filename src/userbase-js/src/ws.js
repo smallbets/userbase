@@ -8,6 +8,7 @@ import statusCodes from './statusCodes'
 import config from './config'
 import errors from './errors'
 import icons from './icons'
+import * as styles from './styles'
 
 const wsAlreadyConnected = 'Web Socket already connected'
 
@@ -16,6 +17,7 @@ const MAX_RETRY_DELAY = 1000 * 30
 
 const SERVICE_RESTART = 1012
 const NO_PONG_RECEIVED = 3000
+
 
 class RequestFailed extends Error {
   constructor(action, e, ...params) {
@@ -310,36 +312,9 @@ class Connection {
           database.init = true
         }
 
-        break
-      }
-
-      case 'BuildBundle': {
-        const dbId = message.dbId
-        const dbNameHash = this.state.dbIdToHash[dbId]
-        const database = this.state.databases[dbNameHash]
-
-        if (!database) return
-
-        const bundle = {
-          items: database.items,
-          itemsIndex: database.itemsIndex.array
+        if (message.buildBundle) {
+          this.buildBundle(database)
         }
-
-        const itemKeys = []
-
-        for (let i = 0; i < bundle.itemsIndex.length; i++) {
-          const itemId = bundle.itemsIndex[i].itemId
-          const itemKey = await crypto.hmac.signString(this.keys.hmacKey, itemId)
-          itemKeys.push(itemKey)
-        }
-
-        const plaintextString = JSON.stringify(bundle)
-        const compressedString = LZString.compress(plaintextString)
-        const base64Bundle = await crypto.aesGcm.encryptString(database.dbKey, compressedString)
-
-        const action = 'Bundle'
-        const params = { dbId, seqNo: database.lastSeqNo, bundle: base64Bundle, keys: itemKeys }
-        this.request(action, params)
 
         break
       }
@@ -514,6 +489,30 @@ class Connection {
     return response
   }
 
+  async buildBundle(database) {
+    const bundle = {
+      items: database.items,
+      itemsIndex: database.itemsIndex.array
+    }
+    const dbId = database.dbId
+    const lastSeqNo = database.lastSeqNo
+
+    const itemKeyPromises = []
+    for (let i = 0; i < bundle.itemsIndex.length; i++) {
+      const itemId = bundle.itemsIndex[i].itemId
+      itemKeyPromises.push(crypto.hmac.signString(this.keys.hmacKey, itemId))
+    }
+    const itemKeys = await Promise.all(itemKeyPromises)
+
+    const plaintextString = JSON.stringify(bundle)
+    const compressedString = LZString.compress(plaintextString)
+    const base64Bundle = await crypto.aesGcm.encryptString(database.dbKey, compressedString)
+
+    const action = 'Bundle'
+    const params = { dbId, seqNo: lastSeqNo, bundle: base64Bundle, keys: itemKeys }
+    this.request(action, params)
+  }
+
   async requestSeed(username) {
     const seedRequest = localData.getSeedRequest(username) || await this.buildSeedRequest(username)
     this.seedRequest = seedRequest
@@ -559,54 +558,55 @@ class Connection {
 
   displaySeedRequestModal(username, deviceId) {
     const seedRequestModal = document.createElement('div')
-    seedRequestModal.className = 'userbase-modal'
+    seedRequestModal.className = `userbase-modal ${styles.modal}`
 
     seedRequestModal.innerHTML = `
-      <div class='userbase-container'>
+      <div class='userbase-container ${styles.container}'>
 
         <div>
           <div
             id='userbase-request-key-modal-close-button'
-            class='userbase-fa-times-circle'
+            class='userbase-fa-times-circle ${styles.requestKeyModalCloseButton} ${styles.faTimesCircle}'
           >
           ${icons.timesCircle.html}
           </div>
         </div>
 
-        <form id='userbase-request-key-form'>
+        <form id='userbase-request-key-form' class='${styles.requestKeyForm}'>
 
           <p id='userbase-request-key-form-first-line'>
             Whoops! We need your secret key to sign in.
           </p>
 
-          <div class='userbase-text-line'>
+          <div class='userbase-text-line ${styles.textLine}'>
             Sign in from a device you used before to send the secret key to this device.
           </div>
 
-          <div class='userbase-text-line'>
+          <div class='userbase-text-line ${styles.textLine}'>
             Before sending, please verify the Device ID matches:
           </div>
 
-          <div class='userbase-display-key'>
+          <div class='userbase-display-key ${styles.displayKey}'>
             ${deviceId}
           </div>
 
           <div>
-            <div class='userbase-loader-wrapper'>
-              <div class='userbase-loader' />
+            <div class='userbase-loader-wrapper ${styles.loaderWrapper}'>
+              <div class='userbase-loader ${styles.loader}' />
             </div>
           </div>
 
-          <div class='userbase-text-line'>
+          <div class='userbase-text-line ${styles.textLine}'>
             You can also manually enter the secret key below. You received your secret key when you created your account.
           </div>
 
-          <div id='userbase-manual-input-key-form'>
+          <div id='userbase-manual-input-key-form' class='${styles.manualInputKeyForm}'>
 
-            <div id='userbase-manual-input-key-outer-wrapper'>
-              <div class='userbase-manual-input-key-inner-wrapper'>
+            <div id='userbase-manual-input-key-outer-wrapper' class='${styles.manualInputKeyOuterWrapper}'>
+              <div class='userbase-manual-input-key-inner-wrapper' class='${styles.manualInputKeyInnerWrapper}'>
                 <input
                   id='userbase-secret-key-input'
+                  class='${styles.secretKeyInput}'
                   type='text'
                   autoComplete='off'
                   placeholder='Paste your secret key here'
@@ -615,14 +615,14 @@ class Connection {
             </div>
           </div>
 
-          <div id='userbase-submit-wrapper'>
-            <div id='userbase-submit-inner-wrapper'>
+          <div id='userbase-submit-wrapper' class='${styles.submitWrapper}'>
+            <div id='userbase-submit-inner-wrapper' class='${styles.submitInnerWrapper}'>
               <input
-                class='userbase-button'
+                class='userbase-button ${styles.button}'
                 type='submit'
                 value='Save'
               />
-              <div id='userbase-request-key-form-error' class='userbase-error'>
+              <div id='userbase-request-key-form-error' class='userbase-error ${styles.error}'>
               </div>
             </div>
           </div>

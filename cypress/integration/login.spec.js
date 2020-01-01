@@ -1,16 +1,13 @@
 /// <reference types="Cypress" />
 
 describe('Login - Signup Testing', function () {
-  let ephemeralLoginInfo = {}
   let info = {}
 
   beforeEach(() => {
     info = Cypress.env()
     cy.visit('./cypress/integration/index.html').then((win) => {
       expect(win).to.have.property('userbase')
-    })
-    cy.getLoginInfo().then((loginInfo) => {
-      ephemeralLoginInfo = loginInfo
+      cy.clearLocalStorage()
     })
   })
 
@@ -28,22 +25,28 @@ describe('Login - Signup Testing', function () {
     })
   })
 
-  it('Signup/Logout/Signin a new user in same browser', function () {
+  it('Signup/Logout/Signin a new user in same browser, rememberMe=true, backUpKey=true', function () {
     function showKeyHandler(seedString, rememberMe) {
       cy.log('seedString is:', seedString)
       cy.log('rememberMe is:', rememberMe)
       return
     }
+    let randomInfo
+    cy.getRandomInfoWithParams(showKeyHandler, null, null, true, true).then((loginInfo) => {
+      randomInfo = loginInfo
+    })
 
     cy.window().then(({ userbase }) => {
       userbase.init({ appId: info.appId, endpoint: info.endpoint })
-      return userbase.signUp(ephemeralLoginInfo.username, ephemeralLoginInfo.password, null, null, showKeyHandler, true).then((user) => {
+      return userbase.signUp(randomInfo.username, randomInfo.password, randomInfo.email, randomInfo.profile, randomInfo.showKeyHandler, randomInfo.rememberMe, randomInfo.backUpKey).then((user) => {
         cy.log(user)
         expect(user.username, 'user.username').to.exists
-        expect(user.username, 'user.username to be the one signed up').to.equal(ephemeralLoginInfo.username)
+        expect(user.username, 'user.username to be the one signed up').to.equal(randomInfo.username)
         expect(user.key, 'user has to be signed in').not.to.be.empty
         const currentSession = JSON.parse(localStorage.getItem('userbaseCurrentSession'))
         cy.log('session current user', localStorage.getItem('userbaseCurrentSession'))
+        expect(currentSession).to.exist
+        expect(currentSession).to.haveOwnProperty('signedIn')
         expect(currentSession.signedIn, 'signedIn should be true').to.be.true
         expect(currentSession.sessionId, 'sessionId should exists').to.be.not.null
         expect(currentSession.creationDate, 'creationDate should exists').to.be.not.null
@@ -55,12 +58,12 @@ describe('Login - Signup Testing', function () {
           cy.log(loggedOutSession)
 
           expect(loggedOutSession.signedIn, 'session should have signedIn set to false').to.be.false
-          expect(loggedOutSession.username, 'username should be the same after signout').to.equal(ephemeralLoginInfo.username)
+          expect(loggedOutSession.username, 'username should be the same after signout').to.equal(randomInfo.username)
 
           cy.clearLocalStorage()
-          return userbase.signIn(ephemeralLoginInfo.username, ephemeralLoginInfo.password).then((user) => {
+          return userbase.signIn(randomInfo.username, randomInfo.password).then((user) => {
             cy.log('user', user)
-            expect(user.username, 'login should set the username').to.exist.and.to.equal(ephemeralLoginInfo.username)
+            expect(user.username, 'login should set the username').to.exist.and.to.equal(randomInfo.username)
             expect(user.key, 'user key should be the same as before').to.be.not.null
           })
 
@@ -68,20 +71,68 @@ describe('Login - Signup Testing', function () {
       })
     })
   })
-  it('Login existing user in fresh browser', function () {
+
+  it('Signup/Logout/Signin a new user in same browser, rememberMe=false, backUpKey=true', function () {
+    const showKeyHandler = function showKeyHandler(seedString, rememberMe) {
+      cy.log('seedString is:', seedString)
+      cy.log('rememberMe is:', rememberMe)
+      return
+    }
+    let randomInfo
+    cy.getRandomInfoWithParams(showKeyHandler, null, null, false, true).then((loginInfo) => {
+      randomInfo = loginInfo
+    })
+
     cy.window().then(({ userbase }) => {
       userbase.init({ appId: info.appId, endpoint: info.endpoint })
-      userbase.signIn(info.username, info.password).then( (user) => {
-        cy.log('user content is:', user)
-        expect(user).to.exist
-        expect(user).to.haveOwnProperty('username')
-        expect(user.username).to.equal(info.username)
-       expect(user.key).to.equal(info.key)
+      return userbase.signUp(randomInfo.username, randomInfo.password, randomInfo.email, randomInfo.profile, randomInfo.showKeyHandler, randomInfo.rememberMe, randomInfo.backUpKey).then((user) => {
+        cy.log(user)
+        expect(user.username, 'user.username').to.exists
+        expect(user.username, 'user.username to be the one signed up').to.equal(randomInfo.username)
+        expect(user.key, 'user has to be signed in').to.be.not.empty
+        expect(localStorage.length, 'localstorage size').to.equal(0)
+        let signUpKey = user.key
+        return userbase.signOut().then(() => {
+          return userbase.signIn(randomInfo.username, randomInfo.password).then((user) => {
+            cy.log('user', user)
+            expect(user.username, 'login should set the username').to.exist.and.to.equal(randomInfo.username)
+            expect(user.key, 'user key should be the same as before').to.be.not.null
+            expect(user.key).to.be.equal(signUpKey)
+          })
+
+        })
       })
-      cy.get('#userbase-secret-key-input').should('exist')
-      cy.get('#userbase-secret-key-input').type(info.key)
-      cy.get('.userbase-button').click()
     })
   })
 
+  it('Signup/Logout/Signin a new user in same browser, rememberMe=false, backUpKey=false', function () {
+    let randomInfo
+    cy.getRandomInfoWithParams(null, null, null, false, false).then((loginInfo) => {
+      randomInfo = loginInfo
+    })
+    cy.window().then(({ userbase }) => {
+      userbase.init({ appId: info.appId, endpoint: info.endpoint })
+      // UI watchers
+      cy.get('.userbase-display-key').invoke('text').then((shownKey) => {
+        let readKey = shownKey.trim()
+        cy.get('#userbase-show-key-modal-close-button').click()
+        cy.get('#userbase-secret-key-input').should('exist')
+        cy.get('#userbase-secret-key-input').type(readKey)
+      })
+      cy.get('.userbase-button').click()
+      // Avoid returning the callbacks if we want the UI watchers to keep working
+      userbase.signUp(randomInfo.username, randomInfo.password, randomInfo.email, randomInfo.profile, randomInfo.showKeyHandler, randomInfo.rememberMe, randomInfo.backUpKey).then((user) => {
+        expect(user).to.exist
+        expect(user).to.haveOwnProperty('username')
+        expect(user.username).to.equal(randomInfo.username)
+        userbase.signOut().then(() => {
+          userbase.signIn(randomInfo.username, randomInfo.password).then((user) => {
+            expect(user, 'In signin').to.exist
+            expect(user, 'In signin').to.haveOwnProperty('username')
+            expect(user.username).to.equal(randomInfo.username)
+          })
+        })
+      })
+    })
+  })
 })

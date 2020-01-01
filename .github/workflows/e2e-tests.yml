@@ -1,10 +1,14 @@
 name: Integration tests
 
-# on:
-#   pull_request:
-#     branches:
-#       - master
-on: [push]
+on:
+  # Trigger the workflow on push or pull request,
+  # but only for the master branch
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
 
 jobs:
   integration-tests:
@@ -34,13 +38,13 @@ jobs:
       - name: Install dependencies and build
         run: |
           npm run ci:install
-          npm run test:setup-ci
+          npm run build:userbase-js:script
       - name: Cypress run
         uses: cypress-io/github-action@v1
         env:
           CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
         with:
-          start: npm run start
+          start: npm run ci:start
           wait-on: 'http://localhost:8080/ping'
           wait-on-timeout: 120
           record: true

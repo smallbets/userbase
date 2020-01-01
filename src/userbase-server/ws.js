@@ -3,7 +3,7 @@ import setup from './setup'
 import uuidv4 from 'uuid/v4'
 import db from './db'
 import logger from './logger'
-import { sizeOfDdbItem } from './utils'
+import { estimateSizeOfDdbItem } from './utils'
 
 const SECONDS_BEFORE_ROLLBACK_GAP_TRIGGERED = 1000 * 10 // 10s
 const TRANSACTION_SIZE_BUNDLE_TRIGGER = 1024 * 50 // 50 KB
@@ -47,7 +47,7 @@ class Connection {
     }
 
     const bundleSeqNo = database.bundleSeqNo
-    if (bundleSeqNo >= 0 && database.lastSeqNo < 0) {
+    if (bundleSeqNo >= 0 && database.lastSeqNo === 0) {
       const bundle = await db.getBundle(databaseId, bundleSeqNo)
       payload.bundeSeqNo = bundleSeqNo
       payload.bundle = bundle
@@ -80,7 +80,7 @@ class Connection {
         let transactionLogResponse = await ddbClient.query(params).promise()
 
         for (let i = 0; i < transactionLogResponse.Items.length && !gapInSeqNo; i++) {
-          size += sizeOfDdbItem(transactionLogResponse.Items[i])
+          size += estimateSizeOfDdbItem(transactionLogResponse.Items[i])
 
           // if there's a gap in sequence numbers and past rollback buffer, rollback all transactions in gap
           gapInSeqNo = transactionLogResponse.Items[i]['sequence-no'] > lastSeqNo + 1
@@ -151,17 +151,16 @@ class Connection {
   }
 
   sendPayload(payload, database, size) {
-    this.socket.send(JSON.stringify(payload))
+    const { transactionLog } = payload
 
-    const { transactionLog, dbId } = payload
-
-    database.lastSeqNo = transactionLog[transactionLog.length - 1]['seqNo']
-    database.transactionLogSize += size
-
-    if (database.transactionLogSize >= TRANSACTION_SIZE_BUNDLE_TRIGGER) {
-      this.socket.send(JSON.stringify({ dbId, route: 'BuildBundle' }))
+    if (database.transactionLogSize + size >= TRANSACTION_SIZE_BUNDLE_TRIGGER) {
+      this.socket.send(JSON.stringify({ ...payload, buildBundle: true }))
       database.transactionLogSize = 0
+    } else {
+      this.socket.send(JSON.stringify(payload))
+      database.transactionLogSize += size
     }
+    database.lastSeqNo = transactionLog[transactionLog.length - 1]['seqNo']
   }
 
   openSeedRequest(requesterPublicKey) {
@@ -241,7 +240,7 @@ export default class Connections {
           dbId: transaction['database-id']
         }
 
-        conn.sendPayload(payload, database, sizeOfDdbItem(transaction))
+        conn.sendPayload(payload, database, estimateSizeOfDdbItem(transaction))
       } else {
         conn.push(transaction['database-id'])
       }
