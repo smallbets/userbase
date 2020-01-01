@@ -28,8 +28,11 @@ const ADMIN_EMAIL = 'admin@userbase.dev'
 const ADMIN_ID = 'admin-id'
 const ADMIN_FULL_NAME = 'Default Admin'
 
-const APP_NAME = 'proof-of-concept'
-const APP_ID = 'poc-id'
+const POC_APP_NAME = 'proof-of-concept'
+const POC_APP_ID = 'poc-id'
+
+const TEST_APP_NAME = 'test-integration'
+const TEST_APP_ID = 'test-id'
 
 const CONFLICT_STATUS_CODE = 409
 
@@ -40,7 +43,7 @@ async function start() {
   await userbaseServer.start(express, app, userbaseConfig)
 
   await setupAdmin()
-  await setupApp()
+  await setupApps()
 }
 
 async function setupAdmin() {
@@ -60,9 +63,12 @@ async function setupAdmin() {
   }
 }
 
-async function setupApp() {
+async function setupApps() {
   try {
-    await userbaseServer.createApp(APP_NAME, ADMIN_ID, APP_ID)
+    await Promise.all([
+      userbaseServer.createApp(POC_APP_NAME, ADMIN_ID, POC_APP_ID),
+      userbaseServer.createApp(TEST_APP_NAME, ADMIN_ID, TEST_APP_ID),
+    ])
   } catch (e) {
     if (!e || e.status !== CONFLICT_STATUS_CODE) {
       console.log(`Failed to set up new app with ${JSON.stringify(e)}`)
