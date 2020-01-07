@@ -3,7 +3,7 @@ import errors from './errors'
 const VERSION = '/v1'
 
 let userbaseAppId = null
-let userbaseEndpoint = 'https://preview.userbase.dev' + VERSION
+let userbaseEndpoint = 'https://beta.userbase.dev' + VERSION
 let userbaseKeyNotFoundHandler = null
 
 const getAppId = () => {
