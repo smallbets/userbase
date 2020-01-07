@@ -1,7 +1,6 @@
 import aws from 'aws-sdk'
 import os from 'os'
 import logger from './logger'
-import memcache from './memcache'
 import crypto from './crypto'
 
 let awsAccountId
@@ -9,9 +8,25 @@ let initialized = false
 
 const defaultRegion = 'us-west-2'
 
+const defineUsername = () => {
+  let appUsername = ''
+  if (process.env.NODE_ENV == 'development') {
+    if (process.env.USERNAME) {
+      appUsername = process.env.USERNAME
+    } else {
+      appUsername = os.userInfo().username
+    }
+  } else {
+    appUsername = 'beta'
+  }
+  return appUsername
+}
+
+logger.info("Running as USER: " + defineUsername())
+
 // if running in dev mode, prefix the DynamoDB tables and S3 buckets with the username
-const resourceNamePrefix = 'userbase-' + ((process.env.NODE_ENV == 'development') ? os.userInfo().username : 'beta') + '-'
-const ddbTableGroup = 'userbase-' + ((process.env.NODE_ENV == 'development') ? os.userInfo().username : 'beta')
+const resourceNamePrefix = 'userbase-' + defineUsername() + '-'
+const ddbTableGroup = 'userbase-' + defineUsername()
 
 const adminTableName = resourceNamePrefix + 'admins'
 const appsTableName = resourceNamePrefix + 'apps'
@@ -22,6 +37,7 @@ const userDatabaseTableName = resourceNamePrefix + 'user-databases'
 const transactionsTableName = resourceNamePrefix + 'transactions'
 const seedExchangeTableName = resourceNamePrefix + 'seed-exchanges'
 const databaseAccessGrantsTableName = resourceNamePrefix + 'database-access-grants'
+
 const dbStatesBucketNamePrefix = resourceNamePrefix + 'database-states'
 const secretManagerSecretId = resourceNamePrefix + 'env'
 
@@ -102,10 +118,6 @@ exports.init = async function (userbaseConfig) {
   await setupS3()
   await setupSM()
   await setupSes()
-
-  logger.info('Eager loading in-memory transaction log cache')
-  await memcache.eagerLoad()
-  logger.info('Loaded transaction log cache successfully')
 }
 
 async function setupDdb() {
@@ -116,11 +128,11 @@ async function setupDdb() {
     TableName: adminTableName,
     BillingMode: 'PAY_PER_REQUEST',
     AttributeDefinitions: [
-      { AttributeName: 'admin-name', AttributeType: 'S' },
+      { AttributeName: 'email', AttributeType: 'S' },
       { AttributeName: 'admin-id', AttributeType: 'S' }
     ],
     KeySchema: [
-      { AttributeName: 'admin-name', KeyType: 'HASH' }
+      { AttributeName: 'email', KeyType: 'HASH' }
     ],
     GlobalSecondaryIndexes: [{
       IndexName: adminIdIndex,
@@ -302,7 +314,7 @@ async function setupDdb() {
     createTable(ddb, userDatabaseTableParams),
     createTable(ddb, transactionsTableParams),
     createTable(ddb, seedExchangeTableParams),
-    createTable(ddb, databaseAccessGrantsTableParams)
+    createTable(ddb, databaseAccessGrantsTableParams),
   ])
 
   logger.info('Setting time to live on tables if necessary')

@@ -19,7 +19,7 @@ module.exports = {
   "parser": "babel-eslint",
   "settings": {
     "react": {
-      "version": "detect",
+      "version": "^16.8.6",
     }
   }
 }

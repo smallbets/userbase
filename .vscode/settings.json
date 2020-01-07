@@ -8,5 +8,6 @@
     "files.insertFinalNewline": true,
     "files.trimFinalNewlines": true,
     "files.trimTrailingWhitespace": true,
-    "html.format.wrapLineLength": 0
+    "html.format.wrapLineLength": 0,
+    "eslint.autoFixOnSave": true,
 }

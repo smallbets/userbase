@@ -11,6 +11,7 @@ import setup from './setup'
 import admin from './admin'
 import user from './user'
 import db from './db'
+import appController from './app'
 import connections from './ws'
 import statusCodes from './statusCodes'
 import responseBuilder from './responseBuilder'
@@ -56,8 +57,8 @@ async function start(express, app, userbaseConfig = {}) {
       app(req, res)
     })
 
-    const heartbeat = function () {
-      this.isAlive = true
+    const heartbeat = function (ws) {
+      ws.isAlive = true
     }
 
     wss.on('connection', (ws, req, res) => {
@@ -84,10 +85,11 @@ async function start(express, app, userbaseConfig = {}) {
         encryptedValidationMessage
       }))
 
-      ws.on('pong', heartbeat)
       ws.on('close', () => connections.close(conn))
 
       ws.on('message', async (msg) => {
+        ws.isAlive = true
+
         try {
           if (msg.length > FOUR_HUNDRED_KB || msg.byteLength > FOUR_HUNDRED_KB) return ws.send('Message is too large')
 
@@ -99,7 +101,10 @@ async function start(express, app, userbaseConfig = {}) {
 
           let response
 
-          if (action === 'SignOut') {
+          if (action === 'Pong') {
+            heartbeat(ws)
+            return
+          } else if (action === 'SignOut') {
             response = await user.signOut(params.sessionId)
           } else if (!conn.keyValidated) {
 
@@ -148,18 +153,17 @@ async function start(express, app, userbaseConfig = {}) {
                 )
                 break
               }
-              case 'CreateDatabase': {
-                response = await db.createDatabase(
-                  userId,
-                  params.dbNameHash,
-                  params.dbId,
-                  params.encryptedDbName,
-                  params.encryptedDbKey
-                )
+              case 'DeleteUser': {
+                response = await user.deleteUserController(userId)
                 break
               }
               case 'OpenDatabase': {
-                response = await db.openDatabase(userId, connectionId, params.dbNameHash)
+                response = await db.openDatabase(
+                  userId,
+                  connectionId,
+                  params.dbNameHash,
+                  params.newDatabaseParams
+                )
                 break
               }
               case 'FindDatabases': {
@@ -253,51 +257,78 @@ async function start(express, app, userbaseConfig = {}) {
         if (ws.isAlive === false) return ws.terminate()
 
         ws.isAlive = false
-        ws.ping(() => { })
+        ws.send(JSON.stringify({ route: 'Ping' }))
       })
     }, 30000)
 
     app.use(expressLogger({ logger }))
-    app.use(bodyParser.json())
-    app.use(cookieParser())
+    app.get('/ping', function (req, res) {
+      res.send('Healthy')
+    })
 
-    app.get('/api', user.authenticateUser, (req, res) =>
+    // Userbase user API
+    const v1Api = express.Router()
+    app.use('/v1/api', v1Api)
+
+    v1Api.use(bodyParser.json())
+
+    v1Api.get('/', user.authenticateUser, (req, res) =>
       req.ws
         ? res.ws(socket => wss.emit('connection', socket, req, res))
         : res.send('Not a websocket!')
     )
+    v1Api.post('/auth/sign-up', user.signUp)
+    v1Api.get('/auth/get-password-salts', user.getPasswordSalts)
+    v1Api.post('/auth/sign-in', user.signIn)
+    v1Api.post('/auth/sign-in-with-session', user.authenticateUser, user.extendSession)
+    v1Api.get('/auth/server-public-key', user.getServerPublicKey)
+    v1Api.post('/auth/forgot-password', user.forgotPassword)
 
-    app.post('/api/auth/sign-up', user.signUp)
-    app.get('/api/auth/get-password-salts', user.getPasswordSalts)
-    app.post('/api/auth/sign-in', user.signIn)
-    app.post('/api/auth/sign-in-with-session', user.authenticateUser, user.extendSession)
-    app.get('/api/auth/server-public-key', user.getServerPublicKey)
-    app.post('/api/auth/forgot-password', user.forgotPassword)
-
+    // Userbase admin API
     app.use('/admin', express.static(path.join(__dirname + adminPanelDir)))
+    const v1Admin = express.Router()
+    app.use('/v1/admin', v1Admin)
 
-    app.post('/admin/create-admin', admin.createAdminController)
-    app.post('/admin/create-app', admin.authenticateAdmin, admin.createAppController)
-    app.post('/admin/sign-in', admin.signInAdmin)
-    app.post('/admin/sign-out', admin.authenticateAdmin, admin.signOutAdmin)
-    app.post('/admin/list-apps', admin.authenticateAdmin, admin.listApps)
-    app.post('/admin/list-app-users', admin.authenticateAdmin, admin.listAppUsers)
+    v1Admin.use(cookieParser())
 
-    app.get('/ping', function (req, res) {
-      res.send('Healthy')
+    v1Admin.post('/stripe/webhook', bodyParser.raw({ type: 'application/json' }), admin.handleStripeWebhook)
+
+    // must come after stripe/webhook to ensure parsing done correctly
+    v1Admin.use(bodyParser.json())
+
+    v1Admin.post('/create-admin', admin.createAdminController)
+    v1Admin.post('/sign-in', admin.signInAdmin)
+    v1Admin.post('/sign-out', admin.authenticateAdmin, admin.signOutAdmin)
+    v1Admin.post('/create-app', admin.authenticateAdmin, appController.createAppController)
+    v1Admin.post('/list-apps', admin.authenticateAdmin, appController.listApps)
+    v1Admin.post('/list-app-users', admin.authenticateAdmin, appController.listAppUsers)
+    v1Admin.post('/delete-app', admin.authenticateAdmin, appController.deleteApp)
+    v1Admin.post('/delete-user', admin.authenticateAdmin, admin.deleteUser)
+    v1Admin.post('/delete-admin', admin.authenticateAdmin, admin.getSaasSubscription, admin.deleteAdmin)
+    v1Admin.post('/update-admin', admin.authenticateAdmin, admin.updateAdmin)
+    v1Admin.post('/forgot-password', admin.forgotPassword)
+    v1Admin.get('/payment-status', admin.authenticateAdmin, admin.getSaasSubscription, (req, res) => {
+      const subscription = res.locals.subscription
+      if (!subscription) return res.end()
+      return res.send(subscription.cancel_at_period_end ? 'cancel_at_period_end' : subscription.status)
     })
+
+    v1Admin.post('/stripe/create-saas-payment-session', admin.authenticateAdmin, admin.createSaasPaymentSession)
+    v1Admin.post('/stripe/update-saas-payment-session', admin.authenticateAdmin, admin.getSaasSubscription, admin.updateSaasSubscriptionPaymentSession)
+    v1Admin.post('/stripe/cancel-saas-subscription', admin.authenticateAdmin, admin.getSaasSubscription, admin.cancelSaasSubscription)
+    v1Admin.post('/stripe/resume-saas-subscription', admin.authenticateAdmin, admin.getSaasSubscription, admin.resumeSaasSubscription)
 
   } catch (e) {
     logger.info(`Unhandled error while launching server: ${e}`)
   }
 }
 
-function createAdmin(adminName, password, adminId, storePasswordInSecretsManager = false) {
-  return admin.createAdmin(adminName, password, adminId, storePasswordInSecretsManager)
+function createAdmin(email, password, fullName, adminId, storePasswordInSecretsManager = false) {
+  return admin.createAdmin(email, password, fullName, adminId, storePasswordInSecretsManager)
 }
 
 function createApp(appName, adminId, appId) {
-  return admin.createApp(appName, adminId, appId)
+  return appController.createApp(appName, adminId, appId)
 }
 
 export default {

@@ -2,73 +2,189 @@ import connection from './connection'
 import setup from './setup'
 import statusCodes from './statusCodes'
 import responseBuilder from './responseBuilder'
-import memcache from './memcache'
 import connections from './ws'
 import logger from './logger'
 import userController from './user'
 
+const MAX_OPERATIONS_IN_TX = 10
+
 const getS3DbStateKey = (databaseId, bundleSeqNo) => `${databaseId}/${bundleSeqNo}`
 
-exports.createDatabase = async function (userId, dbNameHash, dbId, encryptedDbName, encryptedDbKey) {
-  if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
-  if (!dbId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
-  if (!encryptedDbName) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name')
-  if (!encryptedDbKey) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database key')
-
-  const database = {
-    'database-id': dbId,
-    'owner-id': userId,
-    'database-name': encryptedDbName
-  }
-
-  const userDatabase = {
-    'user-id': userId,
-    'database-name-hash': dbNameHash,
-    'database-id': dbId,
-    'encrypted-db-key': encryptedDbKey,
-  }
-
-  const params = {
-    TransactItems: [{
-      Put: {
-        TableName: setup.databaseTableName,
-        Item: database,
-        ConditionExpression: 'attribute_not_exists(#dbId)',
-        ExpressionAttributeNames: {
-          '#dbId': 'database-id',
-        }
-      }
-    }, {
-      Put: {
-        TableName: setup.userDatabaseTableName,
-        Item: userDatabase,
-        ConditionExpression: 'attribute_not_exists(#userId)',
-        ExpressionAttributeNames: {
-          '#userId': 'user-id',
-        }
-      }
-    }]
-  }
-
+const createDatabase = async function (userId, dbNameHash, dbId, encryptedDbName, encryptedDbKey) {
   try {
+    const user = await userController.getUserByUserId(userId)
+    if (!user || user['deleted']) throw new Error('UserNotFound')
+
+    const database = {
+      'database-id': dbId,
+      'owner-id': userId,
+      'database-name': encryptedDbName
+    }
+
+    const userDatabase = {
+      'user-id': userId,
+      'database-name-hash': dbNameHash,
+      'database-id': dbId,
+      'encrypted-db-key': encryptedDbKey,
+    }
+
+    const params = {
+      TransactItems: [{
+        Put: {
+          TableName: setup.databaseTableName,
+          Item: database,
+          ConditionExpression: 'attribute_not_exists(#dbId)',
+          ExpressionAttributeNames: {
+            '#dbId': 'database-id',
+          }
+        }
+      }, {
+        Put: {
+          TableName: setup.userDatabaseTableName,
+          Item: userDatabase,
+          ConditionExpression: 'attribute_not_exists(#userId)',
+          ExpressionAttributeNames: {
+            '#userId': 'user-id',
+          }
+        }
+      }]
+    }
+
     const ddbClient = connection.ddbClient()
     await ddbClient.transactWrite(params).promise()
 
-    memcache.initTransactionLog(dbId)
-
-    return responseBuilder.successResponse('Success!')
+    return { ...database, ...userDatabase }
   } catch (e) {
-    if (e.message && e.message.includes('ConditionalCheckFailed')) {
-      return responseBuilder.errorResponse(statusCodes['Conflict'], 'Database already exists')
-    } else if (e.message && e.message.includes('TransactionConflict')) {
-      return responseBuilder.errorResponse(statusCodes['Conflict'], 'Database already creating')
+
+    if (e.message) {
+      if (e.message.includes('UserNotFound')) {
+        return responseBuilder.errorResponse(statusCodes['Conflict'], 'UserNotFound')
+      } else if (e.message.includes('ConditionalCheckFailed')) {
+        return responseBuilder.errorResponse(statusCodes['Conflict'], 'Database already exists')
+      } else if (e.message.includes('TransactionConflict')) {
+        return responseBuilder.errorResponse(statusCodes['Conflict'], 'Database already creating')
+      }
     }
+
     logger.error(`Failed to create database for user ${userId} with ${e}`)
-    return responseBuilder.errorResponse(
-      statusCodes['Internal Server Error'],
-      'Failed to create database'
-    )
+    throw responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to create database')
   }
+}
+
+const getDatabase = async function (userId, dbNameHash) {
+  const userDatabaseParams = {
+    TableName: setup.userDatabaseTableName,
+    Key: {
+      'user-id': userId,
+      'database-name-hash': dbNameHash
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+  const userDbResponse = await ddbClient.get(userDatabaseParams).promise()
+  if (!userDbResponse || !userDbResponse.Item) return null
+
+  const userDb = userDbResponse.Item
+  const dbId = userDb['database-id']
+
+  const database = await findDatabaseByDatabaseId(dbId)
+  if (!database) return null
+
+  return { ...userDb, ...database }
+}
+
+exports.openDatabase = async function (userId, connectionId, dbNameHash, newDatabaseParams) {
+  if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
+
+  try {
+    let database
+    try {
+      database = await getDatabase(userId, dbNameHash)
+
+      if (!database && !newDatabaseParams) return responseBuilder.errorResponse(statusCodes['Not Found'], 'Database not found')
+      else if (!database) {
+        // attempt to create new database
+        const { dbId, encryptedDbName, encryptedDbKey } = newDatabaseParams
+        if (!dbId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
+        if (!encryptedDbName) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name')
+        if (!encryptedDbKey) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database key')
+
+        database = await createDatabase(userId, dbNameHash, dbId, encryptedDbName, encryptedDbKey)
+      }
+    } catch (e) {
+      if (e.data === 'Database already exists' || e.data === 'Database already creating') {
+        // User must have made a concurrent request to open db with same name for the first time.
+        // Can safely reattempt to get the database
+        database = await getDatabase(userId, dbNameHash)
+      }
+      else return responseBuilder.errorResponse(e.status, e.data)
+    }
+    if (!database) return responseBuilder.errorResponse(statusCodes['Not Found'], 'Database not found')
+
+    const dbId = database['database-id']
+    const bundleSeqNo = database['bundle-seq-no']
+    const dbKey = database['encrypted-db-key']
+
+    if (connections.openDatabase(userId, connectionId, dbId, bundleSeqNo, dbNameHash, dbKey)) {
+      return responseBuilder.successResponse('Success!')
+    } else {
+      throw new Error('Unable to open database')
+    }
+  } catch (e) {
+    logger.error(`Failed to open database for user ${userId} with ${e}`)
+    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to open database')
+  }
+}
+
+const putTransaction = async function (transaction, userId, dbNameHash, databaseId) {
+  const ddbClient = connection.ddbClient()
+
+  const incrementSeqNoParams = {
+    TableName: setup.databaseTableName,
+    Key: {
+      'database-id': databaseId
+    },
+    UpdateExpression: 'add #nextSeqNumber :num',
+    ExpressionAttributeNames: {
+      '#nextSeqNumber': 'next-seq-number'
+    },
+    ExpressionAttributeValues: {
+      ':num': 1
+    },
+    ReturnValues: 'UPDATED_NEW'
+  }
+
+  // atomically increments and gets the next sequence number for the database
+  try {
+    const db = await ddbClient.update(incrementSeqNoParams).promise()
+    transaction['sequence-no'] = db.Attributes['next-seq-number']
+    transaction['creation-date'] = new Date().toISOString()
+  } catch (e) {
+    throw new Error(`Failed to increment sequence number with ${e}.`)
+  }
+
+  // write the transaction using the next sequence number
+  const params = {
+    TableName: setup.transactionsTableName,
+    Item: transaction,
+    ConditionExpression: 'attribute_not_exists(#databaseId)',
+    ExpressionAttributeNames: {
+      '#databaseId': 'database-id'
+    }
+  }
+
+  try {
+    await ddbClient.put(params).promise()
+  } catch (e) {
+    // best effort rollback - if the rollback fails here, it will get attempted again when the transactions are read
+    await rollbackAttempt(transaction, ddbClient)
+    throw new Error(`Failed to put transaction with ${e}.`)
+  }
+
+  // notify all websocket connections that there's a database change
+  connections.push(transaction, userId)
+
+  return transaction['sequence-no']
 }
 
 exports.findUserDatabaseByDatabaseId = async function (dbId, userId) {
@@ -111,49 +227,6 @@ const findDatabaseByDatabaseId = async function (dbId) {
   return dbResponse.Item
 }
 exports.findDatabaseByDatabaseId = findDatabaseByDatabaseId
-
-const getDatabase = async function (userId, dbNameHash) {
-  const userDatabaseParams = {
-    TableName: setup.userDatabaseTableName,
-    Key: {
-      'user-id': userId,
-      'database-name-hash': dbNameHash
-    }
-  }
-
-  const ddbClient = connection.ddbClient()
-  const userDbResponse = await ddbClient.get(userDatabaseParams).promise()
-  if (!userDbResponse || !userDbResponse.Item) return null
-
-  const userDb = userDbResponse.Item
-  const dbId = userDb['database-id']
-
-  const database = await findDatabaseByDatabaseId(dbId)
-  if (!database) return null
-
-  return { ...userDb, ...database }
-}
-
-exports.openDatabase = async function (userId, connectionId, dbNameHash) {
-  if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
-
-  try {
-    const database = await getDatabase(userId, dbNameHash)
-    if (!database) return responseBuilder.errorResponse(statusCodes['Not Found'], 'Database not found')
-
-    const dbId = database['database-id']
-    const bundleSeqNo = database['bundle-seq-no']
-    const dbKey = database['encrypted-db-key']
-
-    if (connections.openDatabase(userId, connectionId, dbId, bundleSeqNo, dbNameHash, dbKey)) {
-      return responseBuilder.successResponse('Success!')
-    } else {
-      throw new Error(`Unable to open database`)
-    }
-  } catch (e) {
-    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to open database with ${e}`)
-  }
-}
 
 const findOtherUserDbsGrantedAccessToDb = async function (dbId, userId) {
   const otherUserDbGrantedAccessParamsLessThan = {
@@ -291,114 +364,26 @@ exports.findDatabases = async function (userId) {
   }
 }
 
-/**
- * Attempts to rollback a transaction that has not persisted to DDB
- * yet. Does not return anything because the caller does not need to
- * know whether or not this succeeds.
- *
- * @param {*} transaction
- */
-const rollbackTransaction = async function (transaction) {
-  const transactionWithRollbackCommand = {
-    'database-id': transaction['database-id'],
-    'sequence-no': transaction['sequence-no'],
-    'item-id': transaction['item-id'],
-    command: 'rollback'
-  }
-
-  const rollbackTransactionParams = {
+const rollbackAttempt = async function (transaction, ddbClient) {
+  const rollbackParams = {
     TableName: setup.transactionsTableName,
-    Item: transactionWithRollbackCommand,
-    // if database id + seq no does not exist, insert
-    // if it already exists and command is rollback, overwrite
-    // if it already exists and command isn't rollback, fail with ConditionalCheckFailedException
-    ConditionExpression: 'attribute_not_exists(#databaseId) or command = :command',
-    ExpressionAttributeNames: {
-      '#databaseId': 'database-id',
+    Item: {
+      'database-id': transaction['database-id'],
+      'sequence-no': transaction['sequence-no'],
+      'command': 'Rollback',
+      'creation-date': new Date().toISOString()
     },
-    ExpressionAttributeValues: {
-      ':command': 'rollback',
+    ConditionExpression: 'attribute_not_exists(#databaseId)',
+    ExpressionAttributeNames: {
+      '#databaseId': 'database-id'
     }
   }
 
   try {
-    const ddbClient = connection.ddbClient()
-    await ddbClient.put(rollbackTransactionParams).promise()
-
-    memcache.transactionRolledBack(transactionWithRollbackCommand)
+    await ddbClient.put(rollbackParams).promise()
   } catch (e) {
-    if (e.name === 'ConditionalCheckFailedException') {
-      // This is good -- must have been persisted to disk because it exists and was not rolled back
-      memcache.transactionPersistedToDdb(transaction)
-      logger.info('Failed to rollback -- transaction already persisted to disk')
-    } else {
-      // No need to throw, can fail gracefully and log error
-      logger.warn(`Failed to rollback with ${e}`)
-    }
+    throw new Error(`Failed to rollback with ${e}.`)
   }
-}
-
-exports.rollbackTransaction = rollbackTransaction
-
-const failedTxConditionCheckMsg = 'Make sure user has write permission to this db and the db id and hash are correct'
-const putTransaction = async function (transaction, userId, dbNameHash, databaseId) {
-  const transactionWithSequenceNo = memcache.pushTransaction(transaction)
-
-  const params = {
-    TransactItems: [{
-      ConditionCheck: {
-        TableName: setup.userDatabaseTableName,
-        Key: {
-          'user-id': userId,
-          'database-name-hash': dbNameHash
-        },
-        ConditionExpression: '#readOnly <> :readOnly and #dbId = :dbId',
-        ExpressionAttributeNames: {
-          '#readOnly': 'read-only',
-          '#dbId': 'database-id',
-        },
-        ExpressionAttributeValues: {
-          ':readOnly': true,
-          ':dbId': databaseId,
-        },
-      }
-    }, {
-      Put: {
-        TableName: setup.transactionsTableName,
-        Item: transactionWithSequenceNo,
-        ConditionExpression: 'attribute_not_exists(#databaseId)',
-        ExpressionAttributeNames: {
-          '#databaseId': 'database-id'
-        },
-      }
-    }]
-  }
-
-  try {
-    const ddbClient = connection.ddbClient()
-    await ddbClient.transactWrite(params).promise()
-
-    memcache.transactionPersistedToDdb(transactionWithSequenceNo)
-  } catch (e) {
-    if (e.name === 'TransactionCanceledException') {
-      memcache.transactionCancelled(transactionWithSequenceNo)
-
-      // impossible to determine which condition in the expression failed
-      if (e.message.includes('[ConditionalCheckFailed')) {
-        throw new Error(failedTxConditionCheckMsg)
-      }
-
-    } else {
-      logger.warn(`Transaction ${transactionWithSequenceNo['sequence-no']} failed for user ${userId} on db ${databaseId} with ${e}! Rolling back...`)
-      rollbackTransaction(transactionWithSequenceNo)
-    }
-
-    throw new Error(`Failed with ${e}.`)
-  }
-
-  connections.push(transaction['database-id'], userId)
-
-  return transactionWithSequenceNo['sequence-no']
 }
 
 exports.doCommand = async function (command, userId, dbNameHash, databaseId, key, record) {
@@ -418,8 +403,8 @@ exports.doCommand = async function (command, userId, dbNameHash, databaseId, key
     const sequenceNo = await putTransaction(transaction, userId, dbNameHash, databaseId)
     return responseBuilder.successResponse({ sequenceNo })
   } catch (e) {
-    if (e.message === failedTxConditionCheckMsg) return responseBuilder.errorResponse(statusCodes['Bad Request'], failedTxConditionCheckMsg)
-    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to ${command} with ${e}`)
+    logger.warn(`Failed command ${command} for user ${userId} with ${e}`)
+    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to ${command}`)
   }
 }
 
@@ -427,6 +412,11 @@ exports.batchTransaction = async function (userId, dbNameHash, databaseId, opera
   if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
   if (!databaseId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
   if (!operations || !operations.length) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing operations')
+
+  if (operations.length > MAX_OPERATIONS_IN_TX) return responseBuilder.errorResponse(statusCodes['Bad Request'], {
+    error: 'OperationsExceedLimit',
+    limit: MAX_OPERATIONS_IN_TX
+  })
 
   const ops = []
   for (let i = 0; i < operations.length; i++) {
@@ -458,8 +448,8 @@ exports.batchTransaction = async function (userId, dbNameHash, databaseId, opera
     const sequenceNo = await putTransaction(transaction, userId, dbNameHash, databaseId)
     return responseBuilder.successResponse({ sequenceNo })
   } catch (e) {
-    if (e.message === failedTxConditionCheckMsg) return responseBuilder.errorResponse(statusCodes['Bad Request'], failedTxConditionCheckMsg)
-    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to batch with ${e}`)
+    logger.warn(`Failed batch transaction for user ${userId} with ${e}`)
+    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to batch transaction')
   }
 }
 
@@ -489,7 +479,7 @@ exports.bundleTransactionLog = async function (databaseId, seqNo, bundle) {
     const s3 = setup.s3()
     await s3.upload(dbStateParams).promise()
 
-    logger.info('Setting bundle sequence number on user...')
+    logger.info(`Setting bundle sequence number ${bundleSeqNo} on database ${databaseId}...`)
 
     const bundleParams = {
       TableName: setup.databaseTableName,
@@ -509,12 +499,10 @@ exports.bundleTransactionLog = async function (databaseId, seqNo, bundle) {
     const ddbClient = connection.ddbClient()
     await ddbClient.update(bundleParams).promise()
 
-    memcache.setBundleSeqNo(databaseId, bundleSeqNo)
-
     return responseBuilder.successResponse({})
   } catch (e) {
-
-    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to bundle with ${e}`)
+    logger.error(`Failed to bundle database ${databaseId} at sequence number ${bundleSeqNo} with ${e}`)
+    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to bundle')
   }
 }
 

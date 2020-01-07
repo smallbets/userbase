@@ -1,6 +1,9 @@
 {
   "ignore": [
     "*.spec.js",
-    "cypress/*"
+    "cypress/**",
+    "src/userbase-js/",
+    "src/proof-of-concept/client/",
+    "docs/"
   ]
 }

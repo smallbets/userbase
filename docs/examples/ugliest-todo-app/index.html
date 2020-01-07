@@ -248,7 +248,7 @@
           todoDelete.innerHTML = 'X'
           todoDelete.style.display = 'inline-block'
           todoDelete.onclick = () => {
-            userbase.delete(todoListName, items[i].itemId)
+            userbase.deleteItem(todoListName, items[i].itemId)
               .catch((e) => document.getElementById('add-todo-error').innerHTML = e)
           }
 
@@ -259,7 +259,7 @@
           todoBox.checked = items[i].item.complete ? true : false
           todoBox.onclick = (e) => {
             e.preventDefault()
-            userbase.update(todoListName, {
+            userbase.updateItem(todoListName, {
               'todo': items[i].item.todo,
               'complete': !items[i].item.complete
             }, items[i].itemId)
@@ -349,7 +349,7 @@
       const todoListName = document.getElementById('todo-list-header').innerText
       const todo = document.getElementById('add-todo').value
 
-      userbase.insert(todoListName, { 'todo': todo })
+      userbase.insertItem(todoListName, { 'todo': todo })
         .then(() => document.getElementById('add-todo').value = '')
         .catch((e) => document.getElementById('add-todo-error').innerHTML = e)
     }
