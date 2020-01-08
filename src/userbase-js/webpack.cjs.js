@@ -12,11 +12,12 @@ module.exports = merge(common, {
   },
   target: 'node',
   externals: [
-    nodeExternals({ 
+    nodeExternals({
       whitelist: [
         '@fortawesome/fontawesome-svg-core',
-        '@fortawesome/free-solid-svg-icons'
-      ] 
+        '@fortawesome/free-solid-svg-icons',
+        'argon2-browser'
+      ]
     })
   ],
   optimization: {
