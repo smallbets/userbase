@@ -1056,7 +1056,7 @@ const setTempPasswordToken = async (username, appId, tempPasswordToken) => {
 
 // matches userbase-js password token generation
 const generateTempPasswordToken = async (tempPassword, passwordSalt, passwordTokenSalt) => {
-  const tempPasswordHash = await crypto.scrypt.hash(tempPassword, new Uint8Array(Buffer.from(passwordSalt, 'base64')))
+  const tempPasswordHash = await crypto.argon2.hash(tempPassword, Buffer.from(passwordSalt, 'base64'))
   const tempPasswordToken = await crypto.hkdf.getPasswordToken(tempPasswordHash, Buffer.from(passwordTokenSalt, 'base64'))
   return tempPasswordToken
 }

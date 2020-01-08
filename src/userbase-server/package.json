@@ -4,6 +4,7 @@
   },
   "dependencies": {
     "@babel/runtime": "^7.6.2",
+    "argon2": "^0.25.1",
     "aws-sdk": "^2.467.0",
     "babel-polyfill": "^6.26.0",
     "bcrypt": "^3.0.6",

@@ -4,7 +4,7 @@ import randomBytes from './randomBytes'
 import sha256 from './sha256'
 import bcrypt from './bcrypt'
 import hkdf from './hkdf'
-import scrypt from './scrypt'
+import argon2 from './argon2'
 
 export default {
   aesGcm,
@@ -13,5 +13,5 @@ export default {
   sha256,
   bcrypt,
   hkdf,
-  scrypt
+  argon2
 }

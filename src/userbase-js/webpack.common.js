@@ -1,8 +1,11 @@
 module.exports = {
   entry: {
-   main: './src/index.js'
+    main: './src/index.js'
   },
   devtool: 'source-map',
+  node: {
+    fs: 'empty'
+  },
   module: {
     rules: [
       {
@@ -23,6 +26,11 @@ module.exports = {
             ]
           }
         }
+      },
+      {
+        test: /\.wasm$/,
+        loaders: ['base64-loader'],
+        type: 'javascript/auto'
       }
     ]
   }

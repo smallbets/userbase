@@ -23,6 +23,9 @@ module.exports = (env, argv) => {
     resolve: {
       extensions: ['.js', '.jsx'],
     },
+    node: {
+      fs: 'empty',
+    },
     module: {
       rules: [
         {
@@ -79,6 +82,11 @@ module.exports = (env, argv) => {
         {
           test: /\.(woff|woff2|eot|ttf|otf|png|svg|jpg|gif)$/,
           use: [(argv.mode == 'development' ? 'file-loader' : { loader: 'url-loader' })]
+        },
+        {
+          test: /\.wasm$/,
+          loaders: ['base64-loader'],
+          type: 'javascript/auto'
         }
       ]
     },

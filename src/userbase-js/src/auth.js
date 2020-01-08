@@ -113,8 +113,8 @@ const _validateSignUpOrSignInInput = (username, password) => {
 }
 
 const _generatePasswordToken = async (password, backUpKey, seed) => {
-  const passwordSalt = crypto.scrypt.generateSalt()
-  const passwordHash = await crypto.scrypt.hash(password, passwordSalt)
+  const passwordSalt = crypto.argon2.generateSalt()
+  const passwordHash = await crypto.argon2.hash(password, passwordSalt)
 
   const passwordHkdfKey = await crypto.hkdf.importHkdfKeyFromString(passwordHash)
 
@@ -445,7 +445,7 @@ const _rebuildPasswordToken = async (username, password) => {
   }
   const { passwordSalt, passwordTokenSalt } = passwordSalts
 
-  const passwordHash = await crypto.scrypt.hash(password, new Uint8Array(base64.decode(passwordSalt)))
+  const passwordHash = await crypto.argon2.hash(password, new Uint8Array(base64.decode(passwordSalt)))
   const passwordHkdfKey = await crypto.hkdf.importHkdfKeyFromString(passwordHash)
   const passwordToken = await crypto.hkdf.getPasswordToken(passwordHkdfKey, base64.decode(passwordTokenSalt))
 
