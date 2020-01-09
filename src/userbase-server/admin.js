@@ -70,22 +70,13 @@ async function createAdmin(email, password, fullName, adminId = uuidv4(), storeP
 
     const passwordHash = await crypto.bcrypt.hash(password)
 
-    // There may be multiple Stripe customers with same admin ID. Only one that
-    // matters to us is the one that ultimately gets stored on the admin in DDB
-    const stripeCustomer = await stripe.getClient().customers.create({
-      email: email.toLowerCase(),
-      metadata: { adminId }
-    })
-    const stripeCustomerId = stripeCustomer.id
-
     try {
       const admin = {
         email: email.toLowerCase(),
         'password-hash': passwordHash,
         'full-name': fullName,
         'admin-id': adminId,
-        'creation-date': new Date().toISOString(),
-        'stripe-customer-id': stripeCustomerId
+        'creation-date': new Date().toISOString()
       }
 
       const params = {
@@ -98,8 +89,6 @@ async function createAdmin(email, password, fullName, adminId = uuidv4(), storeP
       await ddbClient.put(params).promise()
     } catch (e) {
       if (e && e.name === 'ConditionalCheckFailedException') {
-        await stripe.getClient().customers.del(stripeCustomerId)
-
         throw {
           status: statusCodes['Conflict'],
           data: 'Admin already exists'
@@ -574,12 +563,51 @@ exports.deleteAdmin = async function (req, res) {
   }
 }
 
+const createStripeCustomer = async function (email, adminId) {
+  // There may be multiple Stripe customers with same admin ID. Only one that
+  // matters to us is the one that ultimately gets stored on the admin in DDB
+  const stripeCustomer = await stripe.getClient().customers.create({
+    email,
+    metadata: { adminId }
+  })
+  const stripeCustomerId = stripeCustomer.id
+
+  const params = {
+    TableName: setup.adminTableName,
+    Key: {
+      email
+    },
+    UpdateExpression: 'set #stripeCustomerId = :stripeCustomerId',
+    // only 1 stripe customer id can ever be saved on an admin
+    ConditionExpression: 'attribute_not_exists(#stripeCustomerId)',
+    ExpressionAttributeNames: {
+      '#stripeCustomerId': 'stripe-customer-id',
+    },
+    ExpressionAttributeValues: {
+      ':stripeCustomerId': stripeCustomerId,
+    }
+  }
+
+  try {
+    const ddbClient = connection.ddbClient()
+    await ddbClient.update(params).promise()
+  } catch (e) {
+    if (e && e.name === 'ConditionalCheckFailedException') {
+      await stripe.getClient().customers.del(stripeCustomerId)
+    }
+    throw e
+  }
+
+  return stripeCustomerId
+}
+
 exports.createSaasPaymentSession = async function (req, res) {
   const admin = res.locals.admin
   const adminId = admin['admin-id']
-  const stripeCustomerId = admin['stripe-customer-id']
 
   try {
+    const stripeCustomerId = admin['stripe-customer-id'] || await createStripeCustomer(admin['email'], adminId)
+
     const session = await stripe.getClient().checkout.sessions.create({
       customer: stripeCustomerId,
       payment_method_types: ['card'],
