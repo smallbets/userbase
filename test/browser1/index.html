@@ -13,12 +13,12 @@
 </body>
 
 <script>
-  const test1 = () => {
-    console.log('%cTest 1: Browser 1 waits for Browser 2 to insert', 'font-size: large')
+  const test1 = (testNum) => {
+    console.log(`%cTest ${testNum}: Browser 1 waits for Browser 2 to insert`, 'font-size: large')
 
     userbase.init({ appId, endpoint })
 
-    const { username, password } = USERS[0]
+    const { username, password } = USERS[testNum - 1]
 
     const email = null
     const profile = null
@@ -64,7 +64,7 @@
                 assert(item, 'Hello world!', 'Item is correct')
                 assert(itemId, 'test-id', 'Item ID is correct')
 
-                completedTest(1)
+                completedTest(testNum)
               })
           })
           .catch((e) => console.assert(false, e))
@@ -72,14 +72,73 @@
       .catch((e) => console.assert(false, e))
   }
 
-  const test2 = () => {
-    console.log('%cTest 2: Browser 1 waits for Browser 2 to Insert 10 items concurrently', 'font-size: large')
+  const test2 = (testNum) => {
+    console.log(`%cTest ${testNum}: Browser 1 waits for Browser 2 to insert, then attempts to insert same item`, 'font-size: large')
+
+    userbase.init({ appId, endpoint })
+
+    const { username, password } = USERS[testNum - 1]
+
+    const email = null
+    const profile = null
+    const showKeyHandler = () => { }
+    const rememberMe = false
+    const backUpKey = true
+
+    userbase.signUp(username, password, email, profile, showKeyHandler, rememberMe, backUpKey)
+      .then(() => {
+        console.log('Signed up...')
+
+        // set up a promise to wait for another session to insert tx
+        let resolveFirstInsert
+        const waitForFirstInsert = new Promise(resolve => {
+          resolveFirstInsert = resolve
+        })
+
+        let database = []
+        let called = 0
+        let dbChangeHandler = (items) => {
+          database = items
+          called += 1
+
+          if (called === 2) {
+            resolveFirstInsert()
+          }
+        }
+
+        // open the database immediately after signing up
+        userbase.openDatabase(dbName, dbChangeHandler)
+          .then(() => {
+
+            console.log('Waiting for first insert...')
+            waitForFirstInsert
+              .then(() => {
+                userbase.insertItem(dbName, 'Hello world 2!', 'test-id')
+                  .then(() => assert(false, true, 'Should not have inserted successfully'))
+                  .catch((e) => {
+                    assert(e.name, 'ItemAlreadyExists', 'error name')
+                    assert(e.message, 'Item with the same id already exists.', 'error message')
+                    assert(e.status, 409, 'error status')
+
+                    console.log(JSON.stringify(database))
+
+                    completedTest(testNum)
+                  })
+              })
+          })
+          .catch((e) => console.assert(false, e))
+      })
+      .catch((e) => console.assert(false, e))
+  }
+
+  const test3 = (testNum) => {
+    console.log(`%cTest ${testNum}: Browser 1 waits for Browser 2 to Insert 10 items concurrently`, 'font-size: large')
 
     const NUM_INSERTS = 10
 
     userbase.init({ appId, endpoint })
 
-    const { username, password } = USERS[1]
+    const { username, password } = USERS[testNum - 1]
 
     const email = null
     const profile = null
@@ -135,7 +194,7 @@
                   assert(actualInserts[itemId], expectedInserts[itemId], 'Actual is same as expected')
                 }
 
-                completedTest(2)
+                completedTest(testNum)
               })
           })
           .catch((e) => console.assert(false, e))
@@ -143,15 +202,15 @@
       .catch((e) => console.assert(false, e))
   }
 
-  const test3 = () => {
-    console.log('%cTest 3: Browser 1 & Browser 2 each Insert 10 items concurrently', 'font-size: large')
+  const test4 = (testNum) => {
+    console.log(`%cTest ${testNum}: Browser 1 & Browser 2 each Insert 10 items concurrently`, 'font-size: large')
 
     const NUM_INSERTS = 10
     const TOTAL_INSERTS = NUM_INSERTS * 2
 
     userbase.init({ appId, endpoint })
 
-    const { username, password } = USERS[2]
+    const { username, password } = USERS[testNum - 1]
 
     const timeToInsert = (Date.now() + 10000).toString()
 
@@ -223,7 +282,7 @@
                       assert(actualInserts[itemId], expectedInserts[itemId], 'Actual is same as expected')
                     }
 
-                    completedTest(3)
+                    completedTest(testNum)
                   })
               })
           })
@@ -232,14 +291,14 @@
       .catch((e) => console.assert(false, e))
   }
 
-  const test4 = () => {
-    console.log('%cTest 4: Browser 1 & Browser 2 each Insert the same batch of 20 items concurrently', 'font-size: large')
+  const test5 = (testNum) => {
+    console.log(`%cTest ${testNum}: Browser 1 & Browser 2 each Insert the same batch of 20 items concurrently`, 'font-size: large')
 
     const NUM_INSERTS = 20
 
     userbase.init({ appId, endpoint })
 
-    const { username, password } = USERS[3]
+    const { username, password } = USERS[testNum - 1]
 
     const timeToInsert = (Date.now() + 10000).toString()
 
@@ -293,6 +352,10 @@
                     userbase.insertItem(dbName, item, i.toString())
                       .then(() => {
                         successfulInserts[i] = false
+
+                        const itemPresentInState = database.findIndex((item) => item.itemId === i.toString() && item.item.browser === 1)
+                        assert(itemPresentInState !== -1, true, `First spot: Successfully inserted item ${i.toString()} is present in state`)
+
                         resolve()
                       })
                       .catch((e) => {
@@ -308,11 +371,13 @@
 
                 Promise.all(inserts)
                   .then(() => {
+                    console.log('State after all inserts', JSON.stringify(database))
+
                     // at this point, all successful inserts should be in the state...
                     for (let successfulInsertIndex of Object.keys(successfulInserts)) {
                       const itemId = successfulInsertIndex.toString()
                       const itemPresentInState = database.findIndex((item) => item.itemId === itemId && item.item.browser === 1)
-                      console.assert(itemPresentInState !== -1, true, 'Successfully inserted item is present in state')
+                      assert(itemPresentInState !== -1, true, `Second spot: Successfully inserted item ${itemId} is present in state`)
                     }
 
                     console.log('Waiting for all inserts...')
@@ -364,7 +429,7 @@
                         console.log('Inserts from this Browser: ', numInsertsFromThisBrowser)
                         console.log('Inserts from other Browser: ', numInsertsFromOtherBrowser)
 
-                        completedTest(4)
+                        completedTest(testNum)
                       })
                   })
               })
@@ -377,19 +442,23 @@
   switch (location.hash) {
     case '':
       console.log('%cBrowser 1', 'font-size: x-large; font-weight: bold;')
-      test1()
+      test1(1)
       break
 
     case '#test2':
-      test2()
+      test2(2)
       break
 
     case '#test3':
-      test3()
+      test3(3)
       break
 
     case '#test4':
-      test4()
+      test4(4)
+      break
+
+    case '#test5':
+      test5(5)
       break
 
     case '#complete':

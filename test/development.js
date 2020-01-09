@@ -11,6 +11,6 @@ const assert = (actual, expected, errorMsg) => console.assert(actual === expecte
 
 const completedTest = (testNum) => {
   console.log(`%cCompleted test ${testNum}!`, 'color: green; font-size: large')
-  location.hash = '#test' + (testNum + 1)
+  location.hash = 'test' + (testNum + 1)
   location.reload(true)
 }

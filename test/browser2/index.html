@@ -15,10 +15,10 @@
 <script>
   const SIGN_UP_DELAY = 5000
 
-  const test1 = () => {
-    console.log('%cTest 1: Browser 1 waits for Browser 2 to insert', 'font-size: large')
+  const test1 = (testNum) => {
+    console.log(`%cTest ${testNum}: Browser 1 waits for Browser 2 to insert`, 'font-size: large')
 
-    const { username, password } = USERS[0]
+    const { username, password } = USERS[testNum - 1]
 
     userbase.init({ appId, endpoint })
 
@@ -31,7 +31,7 @@
             userbase.openDatabase(dbName, () => { })
               .then(() => {
                 userbase.insertItem(dbName, 'Hello world!', 'test-id')
-                  .then(() => completedTest(1))
+                  .then(() => completedTest(testNum))
               })
               .catch((e) => console.assert(false, e))
 
@@ -40,12 +40,37 @@
       })
   }
 
-  const test2 = () => {
-    console.log('%cTest 2: Browser 1 waits for Browser 2 to Insert 10 items concurrently', 'font-size: large')
+  const test2 = (testNum) => {
+    console.log(`%cTest ${testNum}: Browser 1 waits for Browser 2 to insert, then attempts to insert same item`, 'font-size: large')
+
+    const { username, password } = USERS[testNum - 1]
+
+    userbase.init({ appId, endpoint })
+
+    wait(SIGN_UP_DELAY)
+      .then(() => {
+        userbase.signIn(username, password)
+          .then(() => {
+            console.log('Signed in...')
+
+            userbase.openDatabase(dbName, () => { })
+              .then(() => {
+                userbase.insertItem(dbName, 'Hello world!', 'test-id')
+                  .then(() => completedTest(testNum))
+              })
+              .catch((e) => console.assert(false, e))
+
+          })
+          .catch((e) => console.assert(false, e))
+      })
+  }
+
+  const test3 = (testNum) => {
+    console.log(`%cTest ${testNum}: Browser 1 waits for Browser 2 to Insert 10 items concurrently`, 'font-size: large')
 
     const NUM_INSERTS = 10
 
-    const { username, password } = USERS[1]
+    const { username, password } = USERS[testNum - 1]
 
     userbase.init({ appId, endpoint })
 
@@ -62,7 +87,7 @@
                   userbase.insertItem(dbName, 'item-' + i, i.toString())
                 }
 
-                completedTest(2)
+                completedTest(testNum)
               })
               .catch((e) => console.assert(false, e))
 
@@ -71,12 +96,12 @@
       })
   }
 
-  const test3 = () => {
-    console.log('%cTest 3: Browser 1 & Browser 2 each Insert 10 items concurrently', 'font-size: large')
+  const test4 = (testNum) => {
+    console.log(`%cTest ${testNum}: Browser 1 & Browser 2 each Insert 10 items concurrently`, 'font-size: large')
 
     const NUM_INSERTS = 10
 
-    const { username, password } = USERS[2]
+    const { username, password } = USERS[testNum - 1]
 
     userbase.init({ appId, endpoint })
 
@@ -101,7 +126,7 @@
                       userbase.insertItem(dbName, 'item-' + (i + NUM_INSERTS), (i + NUM_INSERTS).toString())
                     }
 
-                    completedTest(3)
+                    completedTest(testNum)
                   })
 
               })
@@ -112,14 +137,14 @@
       })
   }
 
-  const test4 = () => {
-    console.log('%cTest 4: Browser 1 & Browser 2 each Insert the same batch of 20 items concurrently', 'font-size: large')
+  const test5 = (testNum) => {
+    console.log(`%cTest ${testNum}: Browser 1 & Browser 2 each Insert the same batch of 20 items concurrently`, 'font-size: large')
 
     const NUM_INSERTS = 20
 
     userbase.init({ appId, endpoint })
 
-    const { username, password } = USERS[3]
+    const { username, password } = USERS[testNum]
 
     wait(SIGN_UP_DELAY)
       .then(() => {
@@ -141,6 +166,7 @@
                     console.log('Inserting all items at ' + new Date())
 
                     const inserts = []
+                    const successfulInserts = {}
 
                     for (let i = 0; i < NUM_INSERTS; i++) {
                       const item = {
@@ -152,6 +178,7 @@
                         userbase.insertItem(dbName, item, i.toString())
                           .then(() => {
                             console.log(`Item with id ${i.toString()} succeeeded!`)
+                            successfulInserts[i] = false
                             resolve()
                           })
                           .catch((e) => {
@@ -167,8 +194,15 @@
 
                     Promise.all(inserts)
                       .then(() => {
+                        // at this point, all successful inserts should be in the state...
+                        for (let successfulInsertIndex of Object.keys(successfulInserts)) {
+                          const itemId = successfulInsertIndex.toString()
+                          const itemPresentInState = database.findIndex((item) => item.itemId === itemId && item.item.browser === 2)
+                          console.assert(itemPresentInState !== -1, true, 'Successfully inserted item is present in state')
+                        }
+
                         console.log("Final State after this browser's inserts completed: ", JSON.stringify(database))
-                        completedTest(4)
+                        completedTest(testNum)
                       })
                   })
               })
@@ -182,19 +216,23 @@
 
   switch (location.hash) {
     case '':
-      test1()
+      test1(1)
       break
 
     case '#test2':
-      test2()
+      test2(2)
       break
 
     case '#test3':
-      test3()
+      test3(3)
       break
 
     case '#test4':
-      test4()
+      test4(4)
+      break
+
+    case '#test5':
+      test5(5)
       break
 
     case '#complete':
