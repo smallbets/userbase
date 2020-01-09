@@ -92,7 +92,7 @@ class UnverifiedTransaction {
 }
 
 class Database {
-  constructor(changeHandler) {
+  constructor(changeHandler, receivedMessage) {
     this.onChange = changeHandler
 
     this.items = {}
@@ -111,6 +111,7 @@ class Database {
     this.unverifiedTransactions = []
     this.lastSeqNo = -1
     this.init = false
+    this.receivedMessage = receivedMessage
     this.dbKey = null
   }
 
@@ -128,6 +129,14 @@ class Database {
         }
         this.unverifiedTransactions[j].addTransaction(transactions[i], transactionCode)
       }
+
+      if (this.init && transactionCode === 'Success') {
+        this.onChange(this.getItems())
+      }
+    }
+
+    if (!this.init) {
+      this.onChange(this.getItems())
     }
   }
 
@@ -350,12 +359,7 @@ const _openDatabase = async (dbNameHash, changeHandler, newDatabaseParams) => {
       setTimeout(() => reject(new Error('timeout')), 5000)
     })
 
-    const handlerWrapper = (items) => {
-      changeHandler(items)
-      receivedMessage()
-    }
-
-    ws.state.databases[dbNameHash] = new Database(handlerWrapper) // eslint-disable-line require-atomic-updates
+    ws.state.databases[dbNameHash] = new Database(changeHandler, receivedMessage)
 
     const action = 'OpenDatabase'
     const params = { dbNameHash, newDatabaseParams }
