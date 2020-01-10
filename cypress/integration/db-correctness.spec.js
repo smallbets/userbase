@@ -1236,6 +1236,80 @@ describe('DB Correctness Tests', function () {
         expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
       })
 
+      it('10 concurrent Inserts across 5 open databases', async function () {
+        const numConcurrentOperations = 10
+        const insertedItems = {}
+
+        const numOpenDatabases = 5
+
+        let changeHandlerCallCounts = []
+        changeHandlerCallCounts.length = numOpenDatabases
+        changeHandlerCallCounts.fill(0)
+
+        let successfuls = []
+
+        let latestStates = []
+        let correctStates = []
+
+        const openDatabases = []
+        for (let i = 0; i < numOpenDatabases; i++) {
+          const changeHandler = function (items) {
+            changeHandlerCallCounts[i] += 1
+            latestStates[i] = items
+
+            if (items.length === numConcurrentOperations && !successfuls[i]) {
+
+              for (let j = 0; j < numConcurrentOperations; j++) {
+                const insertedItem = items[j]
+
+                const { itemId } = insertedItem
+
+                // order of inserted items not guaranteed, but every insert should only be
+                // inserted a single time
+                expect(insertedItems[i][itemId], 'item status before insert confirmed').to.be.false
+                insertedItems[i][itemId] = true
+              }
+
+              for (let insertedItem of Object.values(insertedItems[i])) {
+                expect(insertedItem, 'item status after insert confirmed').to.be.true
+              }
+
+              successfuls[i] = true
+              correctStates[i] = items
+            }
+          }
+
+          openDatabases.push(this.test.userbase.openDatabase(dbName + i, changeHandler))
+        }
+        await Promise.all(openDatabases)
+
+        const inserts = []
+        for (let i = 0; i < numOpenDatabases; i++) {
+          insertedItems[i] = {}
+
+          for (let j = 0; j < numConcurrentOperations; j++) {
+            const item = `${i} ${j}`
+            const itemId = item
+            insertedItems[i][itemId] = false
+            inserts.push(this.test.userbase.insertItem(dbName + i, item, itemId))
+          }
+        }
+        await Promise.all(inserts)
+
+        for (let i = 0; i < numOpenDatabases; i++) {
+          expect(changeHandlerCallCounts[i], 'changeHandler called correct number of times').to.be.lte(1 + numConcurrentOperations)
+          expect(successfuls[i], 'successful state').to.be.true
+        }
+
+        // give client time to process all inserts, then make sure state is still correct
+        const THREE_SECONDS = 3 * 1000
+        await wait(THREE_SECONDS)
+        for (let i = 0; i < numOpenDatabases; i++) {
+          expect(latestStates[i], 'successful state after waiting').to.deep.equal(correctStates[i])
+        }
+
+      })
+
       it('2 concurrent Updates on same item', async function () {
         const testItemId = 'test-id'
         const itemToInsert = {
