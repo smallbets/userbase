@@ -899,43 +899,130 @@ describe('DB Correctness Tests', function () {
         expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
       })
 
-      it('10 concurrent Inserts, then concurrent 5 Updates & 5 Deletes', async function () {
+      it('10 concurrent Inserts, then 10 concurrent Updates', async function () {
         const numConcurrentOperations = 10
         expect(numConcurrentOperations % 2).to.be.equal(0)
 
-        const numUpdates = numConcurrentOperations / 2
+        const accumulatedUpdatedItems = {}
+        let accumulatorChecked
 
         const updatedItems = {}
 
         let changeHandlerCallCount = 0
-        let succesfullyInsertedAllItems
-        let successfullyUpdatedAndDeletedAllItems
+        let successfulyInsertedAllItems
 
         let latestState
-        let correctState
 
         const changeHandler = function (items) {
           changeHandlerCallCount += 1
           latestState = items
 
-          if (succesfullyInsertedAllItems && items.length === numUpdates && !successfullyUpdatedAndDeletedAllItems) {
-            for (let i = 0; i < numUpdates; i++) {
-              const insertedItem = items[i]
-              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+          if (successfulyInsertedAllItems) {
+            for (let i = 0; i < items.length; i++) {
+              const thisItem = items[i]
+              const { itemId, item } = thisItem
 
-              const { item, itemId } = insertedItem
-              expect(Number(item), 'item in items array passed to changeHandler').to.equal(Number(itemId) + numConcurrentOperations)
-
-              expect(updatedItems[itemId], 'item status before update confirmed').to.be.false
-              updatedItems[itemId] = true
+              if (Number(item) === Number(itemId) + numConcurrentOperations) {
+                accumulatedUpdatedItems[itemId] = itemId
+              } else {
+                expect(accumulatedUpdatedItems[itemId], 'Updated item should not have reverted to old state').to.be.undefined
+              }
             }
 
-            for (let updatedItem of Object.values(updatedItems)) {
-              expect(updatedItem, 'item status after update confirmed').to.be.true
+            accumulatorChecked = true
+          }
+        }
+
+        // Set up the test
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+
+        const inserts = []
+        for (let i = 0; i < numConcurrentOperations; i++) {
+          const item = i.toString()
+          const itemId = item
+          inserts.push(this.test.userbase.insertItem(dbName, item, itemId))
+        }
+        await Promise.all(inserts)
+
+        successfulyInsertedAllItems = true
+
+        const updates = []
+        for (let i = 0; i < numConcurrentOperations; i++) {
+          const item = (i + numConcurrentOperations).toString()
+          const itemId = i.toString()
+          updatedItems[itemId] = false
+          updates.push(this.test.userbase.updateItem(dbName, item, itemId))
+        }
+        await Promise.all(updates)
+
+        // Assertions
+        expect(latestState).to.have.lengthOf(numConcurrentOperations)
+
+        for (let i = 0; i < numConcurrentOperations; i++) {
+          const insertedItem = latestState[i]
+          const { item, itemId } = insertedItem
+          expect(Number(item), 'item in items array passed to changeHandler').to.equal(Number(itemId) + numConcurrentOperations)
+
+          expect(updatedItems[itemId], 'item status before update confirmed').to.be.false
+          updatedItems[itemId] = true
+        }
+
+        for (let updatedItem of Object.values(updatedItems)) {
+          expect(updatedItem, 'item status after update confirmed').to.be.true
+        }
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(1 + (numConcurrentOperations * 2))
+
+        const correctState = latestState
+
+        // give client time to process all transactions, then make sure state is still correct
+        const THREE_SECONDS = 3 * 1000
+        await wait(THREE_SECONDS)
+        expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
+        expect(accumulatorChecked, 'accumulator was checked at least once').to.be.true
+      })
+
+      it('10 concurrent Inserts, then 10 concurrent Deletes', async function () {
+        const numConcurrentOperations = 10
+        expect(numConcurrentOperations % 2).to.be.equal(0)
+
+        const accumulatedDeletedItems = {}
+        let accumulatorChecked
+
+        let changeHandlerCallCount = 0
+        let successfulyInsertedAllItems
+
+        let latestState
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+          latestState = items
+
+          if (successfulyInsertedAllItems) {
+
+            // will keep track of items that have been deleted from this batch
+            const itemsDeletedInThisState = {}
+            for (let i = 0; i < numConcurrentOperations; i++) {
+              itemsDeletedInThisState[i.toString()] = true
             }
 
-            successfullyUpdatedAndDeletedAllItems = true
-            correctState = items
+            for (let i = 0; i < items.length; i++) {
+              const thisItem = items[i]
+
+              expect(accumulatedDeletedItems[thisItem.itemId], 'Deleted item should not have reverted to old state').to.be.undefined
+              itemsDeletedInThisState[thisItem.itemId] = false
+            }
+
+            for (let i = 0; i < numConcurrentOperations; i++) {
+              const itemId = i.toString()
+
+              // if it's still true, it must have been deleted in this state
+              if (itemsDeletedInThisState[itemId]) {
+                accumulatedDeletedItems[itemId] = itemId
+              }
+            }
+
+            accumulatorChecked = true
           }
         }
 
@@ -949,7 +1036,97 @@ describe('DB Correctness Tests', function () {
         }
         await Promise.all(inserts)
 
-        succesfullyInsertedAllItems = true
+        successfulyInsertedAllItems = true
+
+        const deletes = []
+        for (let i = 0; i < numConcurrentOperations; i++) {
+          const itemId = i.toString()
+          deletes.push(this.test.userbase.deleteItem(dbName, itemId))
+        }
+        await Promise.all(deletes)
+
+        expect(latestState).to.have.lengthOf(0)
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(1 + (numConcurrentOperations * 2))
+
+        const correctState = latestState
+
+        // give client time to process all transactions, then make sure state is still correct
+        const THREE_SECONDS = 3 * 1000
+        await wait(THREE_SECONDS)
+        expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
+        expect(accumulatorChecked, 'accumulator was checked at least once').to.be.true
+      })
+
+      it('10 concurrent Inserts, then concurrent 5 Updates & 5 Deletes', async function () {
+        const numConcurrentOperations = 10
+        expect(numConcurrentOperations % 2).to.be.equal(0)
+
+        const numUpdates = numConcurrentOperations / 2
+
+        const accumulatedUpdatedItems = {}
+        const accumulatedDeletedItems = {}
+        let accumulatorChecked
+
+        const updatedItems = {}
+
+        let changeHandlerCallCount = 0
+        let successfulyInsertedAllItems
+
+        let latestState
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+          latestState = items
+
+          if (successfulyInsertedAllItems) {
+
+            // will keep track of items that have been deleted from this batch
+            const itemsDeletedInThisState = {}
+            for (let i = numUpdates; i < numConcurrentOperations; i++) {
+              itemsDeletedInThisState[i.toString()] = true
+            }
+
+            for (let i = 0; i < items.length; i++) {
+              const thisItem = items[i]
+              const { item, itemId } = thisItem
+
+              if (Number(item) === Number(itemId) + numConcurrentOperations) {
+                accumulatedUpdatedItems[itemId] = itemId
+              } else {
+                expect(accumulatedUpdatedItems[itemId], 'Updated item should not have reverted to old state').to.be.undefined
+              }
+
+              if (Number(itemId) >= numUpdates) {
+                expect(accumulatedDeletedItems[itemId], 'Deleted item should not have reverted to old state').to.be.undefined
+                itemsDeletedInThisState[itemId] = false
+              }
+            }
+
+            for (let i = numUpdates; i < numConcurrentOperations; i++) {
+              const itemId = i.toString()
+
+              // if it's still true, it must have been deleted in this state
+              if (itemsDeletedInThisState[itemId]) {
+                accumulatedDeletedItems[itemId] = itemId
+              }
+            }
+
+            accumulatorChecked = true
+          }
+        }
+
+        // Set up test
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+
+        const inserts = []
+        for (let i = 0; i < numConcurrentOperations; i++) {
+          const item = i.toString()
+          const itemId = item
+          inserts.push(this.test.userbase.insertItem(dbName, item, itemId))
+        }
+        await Promise.all(inserts)
+
+        successfulyInsertedAllItems = true
 
         const updatesAndDeletes = []
         for (let i = 0; i < numUpdates; i++) {
@@ -965,13 +1142,31 @@ describe('DB Correctness Tests', function () {
         }
         await Promise.all(updatesAndDeletes)
 
+        // Assertions
+        expect(latestState).to.have.lengthOf(numUpdates)
+
+        for (let i = 0; i < numUpdates; i++) {
+          const insertedItem = latestState[i]
+          const { item, itemId } = insertedItem
+          expect(Number(item), 'item in items array passed to changeHandler').to.equal(Number(itemId) + numConcurrentOperations)
+
+          expect(updatedItems[itemId], 'item status before update confirmed').to.be.false
+          updatedItems[itemId] = true
+        }
+
+        for (let updatedItem of Object.values(updatedItems)) {
+          expect(updatedItem, 'item status after update confirmed').to.be.true
+        }
+
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(1 + (numConcurrentOperations * 2))
-        expect(successfullyUpdatedAndDeletedAllItems, 'successful state').to.be.true
+
+        const correctState = latestState
 
         // give client time to process all transactions, then make sure state is still correct
         const THREE_SECONDS = 3 * 1000
         await wait(THREE_SECONDS)
         expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
+        expect(accumulatorChecked, 'accumulator was checked at least once').to.be.true
       })
 
       it('10 concurrent Inserts with same Item ID', async function () {
@@ -999,6 +1194,8 @@ describe('DB Correctness Tests', function () {
 
             successful = true
             correctState = items
+          } else if (successful) {
+            expect(latestState, 'after successful insert, state remains constant').to.deep.equal(correctState)
           }
         }
 
