@@ -720,5 +720,4 @@ export default {
 
   // used internally
   getOpenDb,
-  close,
 }
