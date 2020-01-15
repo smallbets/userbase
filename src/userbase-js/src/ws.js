@@ -18,6 +18,7 @@ const MAX_RETRY_DELAY = 1000 * 30
 const SERVICE_RESTART = 1012
 const NO_PONG_RECEIVED = 3000
 
+const clientId = uuidv4() // only 1 client ID per browser tab (assumes code does not reload)
 
 class RequestFailed extends Error {
   constructor(action, e, ...params) {
@@ -104,7 +105,7 @@ class Connection {
       const host = removeProtocolFromEndpoint(config.getEndpoint())
       const protocol = getProtocolFromEndpoint(config.getEndpoint())
       const url = ((protocol === 'https') ?
-        'wss://' : 'ws://') + `${host}/api?appId=${appId}&sessionId=${sessionId}`
+        'wss://' : 'ws://') + `${host}/api?appId=${appId}&sessionId=${sessionId}&clientId=${clientId}`
 
       const ws = new WebSocket(url)
 

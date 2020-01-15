@@ -63,158 +63,162 @@ async function start(express, app, userbaseConfig = {}) {
 
     wss.on('connection', (ws, req, res) => {
       ws.isAlive = true
-
       const userId = res.locals.user['user-id']
       const userPublicKey = res.locals.user['public-key']
 
-      const conn = connections.register(userId, ws)
-      const connectionId = conn.id
+      const clientId = req.query.clientId
 
-      const salts = {
-        encryptionKeySalt: res.locals.user['encryption-key-salt'],
-        dhKeySalt: res.locals.user['diffie-hellman-key-salt'],
-        hmacKeySalt: res.locals.user['hmac-key-salt']
-      }
+      const conn = connections.register(userId, ws, clientId)
+      if (conn) {
+        const connectionId = conn.id
 
-      const { validationMessage, encryptedValidationMessage } = user.getValidationMessage(userPublicKey)
-
-      ws.send(JSON.stringify({
-        route: 'Connection',
-        salts,
-        encryptedValidationMessage
-      }))
-
-      ws.on('close', () => connections.close(conn))
-
-      ws.on('message', async (msg) => {
-        ws.isAlive = true
-
-        try {
-          if (msg.length > FOUR_HUNDRED_KB || msg.byteLength > FOUR_HUNDRED_KB) return ws.send('Message is too large')
-
-          const request = JSON.parse(msg)
-
-          const requestId = request.requestId
-          const action = request.action
-          const params = request.params
-
-          let response
-
-          if (action === 'Pong') {
-            heartbeat(ws)
-            return
-          } else if (action === 'SignOut') {
-            response = await user.signOut(params.sessionId)
-          } else if (!conn.keyValidated) {
-
-            switch (action) {
-              case 'ValidateKey': {
-                response = await user.validateKey(
-                  validationMessage,
-                  params.validationMessage,
-                  res.locals.user,
-                  conn
-                )
-                break
-              }
-              case 'RequestSeed': {
-                response = await user.requestSeed(
-                  userId,
-                  userPublicKey,
-                  connectionId,
-                  params.requesterPublicKey
-                )
-                break
-              }
-              default: {
-                response = responseBuilder.errorResponse(statusCodes['Unauthorized'], 'Key not validated')
-              }
-            }
-
-          } else {
-
-            switch (action) {
-              case 'ValidateKey':
-              case 'RequestSeed': {
-                response = responseBuilder.errorResponse(statusCodes['Bad Request'], 'Already validated key')
-                break
-              }
-              case 'UpdateUser': {
-                response = await user.updateUser(
-                  userId,
-                  params.username,
-                  params.passwordSecureHash,
-                  params.email,
-                  params.profile,
-                  params.pbkdfKeySalt,
-                  params.passwordEncryptedSeed
-                )
-                break
-              }
-              case 'DeleteUser': {
-                response = await user.deleteUserController(userId)
-                break
-              }
-              case 'OpenDatabase': {
-                response = await db.openDatabase(
-                  userId,
-                  connectionId,
-                  params.dbNameHash,
-                  params.newDatabaseParams
-                )
-                break
-              }
-              case 'Insert':
-              case 'Update':
-              case 'Delete': {
-                response = await db.doCommand(
-                  action,
-                  userId,
-                  params.dbNameHash,
-                  params.dbId,
-                  params.itemKey,
-                  params.encryptedItem
-                )
-                break
-              }
-              case 'BatchTransaction': {
-                response = await db.batchTransaction(userId, params.dbNameHash, params.dbId, params.operations)
-                break
-              }
-              case 'Bundle': {
-                response = await db.bundleTransactionLog(params.dbId, params.seqNo, params.bundle)
-                break
-              }
-              case 'GetRequestsForSeed': {
-                response = await user.querySeedRequests(userId)
-                break
-              }
-              case 'SendSeed': {
-                response = await user.sendSeed(
-                  userId,
-                  userPublicKey,
-                  params.requesterPublicKey,
-                  params.encryptedSeed
-                )
-                break
-              }
-              default: {
-                return ws.send(`Received unkown action ${action}`)
-              }
-            }
-          }
-
-          ws.send(JSON.stringify({
-            requestId,
-            response,
-            route: action
-          }))
-
-        } catch (e) {
-          logger.error(`Error ${e.name}: ${e.message} in Websocket handling the following message from user ${userId}: ${msg}`)
+        const salts = {
+          encryptionKeySalt: res.locals.user['encryption-key-salt'],
+          dhKeySalt: res.locals.user['diffie-hellman-key-salt'],
+          hmacKeySalt: res.locals.user['hmac-key-salt']
         }
 
-      })
+        const { validationMessage, encryptedValidationMessage } = user.getValidationMessage(userPublicKey)
+
+        ws.send(JSON.stringify({
+          route: 'Connection',
+          salts,
+          encryptedValidationMessage
+        }))
+
+        ws.on('close', () => connections.close(conn))
+
+        ws.on('message', async (msg) => {
+          ws.isAlive = true
+
+          try {
+            if (msg.length > FOUR_HUNDRED_KB || msg.byteLength > FOUR_HUNDRED_KB) return ws.send('Message is too large')
+
+            const request = JSON.parse(msg)
+
+            const requestId = request.requestId
+            const action = request.action
+            const params = request.params
+
+            let response
+
+            if (action === 'Pong') {
+              heartbeat(ws)
+              return
+            } else if (action === 'SignOut') {
+              response = await user.signOut(params.sessionId)
+            } else if (!conn.keyValidated) {
+
+              switch (action) {
+                case 'ValidateKey': {
+                  response = await user.validateKey(
+                    validationMessage,
+                    params.validationMessage,
+                    res.locals.user,
+                    conn
+                  )
+                  break
+                }
+                case 'RequestSeed': {
+                  response = await user.requestSeed(
+                    userId,
+                    userPublicKey,
+                    connectionId,
+                    params.requesterPublicKey
+                  )
+                  break
+                }
+                default: {
+                  response = responseBuilder.errorResponse(statusCodes['Unauthorized'], 'Key not validated')
+                }
+              }
+
+            } else {
+
+              switch (action) {
+                case 'ValidateKey':
+                case 'RequestSeed': {
+                  response = responseBuilder.errorResponse(statusCodes['Bad Request'], 'Already validated key')
+                  break
+                }
+                case 'UpdateUser': {
+                  response = await user.updateUser(
+                    userId,
+                    params.username,
+                    params.passwordSecureHash,
+                    params.email,
+                    params.profile,
+                    params.pbkdfKeySalt,
+                    params.passwordEncryptedSeed
+                  )
+                  break
+                }
+                case 'DeleteUser': {
+                  response = await user.deleteUserController(userId)
+                  break
+                }
+                case 'OpenDatabase': {
+                  response = await db.openDatabase(
+                    userId,
+                    connectionId,
+                    params.dbNameHash,
+                    params.newDatabaseParams,
+                )
+                  )
+                  break
+                }
+                case 'Insert':
+                case 'Update':
+                case 'Delete': {
+                  response = await db.doCommand(
+                    action,
+                    userId,
+                    params.dbNameHash,
+                    params.dbId,
+                    params.itemKey,
+                    params.encryptedItem
+                  )
+                  break
+                }
+                case 'BatchTransaction': {
+                  response = await db.batchTransaction(userId, params.dbNameHash, params.dbId, params.operations)
+                  break
+                }
+                case 'Bundle': {
+                  response = await db.bundleTransactionLog(params.dbId, params.seqNo, params.bundle)
+                  break
+                }
+                case 'GetRequestsForSeed': {
+                  response = await user.querySeedRequests(userId)
+                  break
+                }
+                case 'SendSeed': {
+                  response = await user.sendSeed(
+                    userId,
+                    userPublicKey,
+                    params.requesterPublicKey,
+                    params.encryptedSeed
+                  )
+                  break
+                }
+                default: {
+                  return ws.send(`Received unkown action ${action}`)
+                }
+              }
+            }
+
+            ws.send(JSON.stringify({
+              requestId,
+              response,
+              route: action
+            }))
+
+          } catch (e) {
+            logger.error(`Error ${e.name}: ${e.message} in Websocket handling the following message from user ${userId}: ${msg}`)
+          }
+
+        })
+      }
     })
 
     setInterval(function ping() {

@@ -4,5 +4,8 @@ export default {
   'Unauthorized': 401,
   'Not Found': 404,
   'Conflict': 409,
-  'Internal Server Error': 500
+  'Internal Server Error': 500,
+
+  // Custom ws close event codes
+  'Client Already Connected': 3001
 }

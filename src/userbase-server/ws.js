@@ -4,14 +4,16 @@ import uuidv4 from 'uuid/v4'
 import db from './db'
 import logger from './logger'
 import { estimateSizeOfDdbItem } from './utils'
+import statusCodes from './statusCodes'
 
 const SECONDS_BEFORE_ROLLBACK_GAP_TRIGGERED = 1000 * 10 // 10s
 const TRANSACTION_SIZE_BUNDLE_TRIGGER = 1024 * 50 // 50 KB
 
 class Connection {
-  constructor(userId, socket) {
+  constructor(userId, socket, clientId) {
     this.userId = userId
     this.socket = socket
+    this.clientId = clientId
     this.id = uuidv4()
     this.databases = {}
     this.keyValidated = false
@@ -196,11 +198,20 @@ class Connection {
 }
 
 export default class Connections {
-  static register(userId, socket) {
+  static register(userId, socket, clientId) {
     if (!Connections.sockets) Connections.sockets = {}
     if (!Connections.sockets[userId]) Connections.sockets[userId] = {}
 
-    const connection = new Connection(userId, socket)
+    if (!Connections.uniqueClients) Connections.uniqueClients = {}
+    if (!Connections.uniqueClients[clientId]) {
+      Connections.uniqueClients[clientId] = true
+    } else {
+      logger.warn(`User ${userId} attempted to open multiple socket connections from client ${clientId}`)
+      socket.close(statusCodes['Client Already Connected'])
+      return false
+    }
+
+    const connection = new Connection(userId, socket, clientId)
 
     Connections.sockets[userId][connection.id] = connection
     logger.info(`Websocket ${connection.id} connected from user ${userId}`)
@@ -268,5 +279,6 @@ export default class Connections {
 
   static close(connection) {
     delete Connections.sockets[connection.userId][connection.id]
+    delete Connections.uniqueClients[connection.clientId]
   }
 }
