@@ -373,13 +373,6 @@ const _openDatabase = async (dbNameHash, changeHandler, newDatabaseParams) => {
   try {
     const database = ws.state.databases[dbNameHash]
 
-    // cannot attempt to open database that's already initialized while transactions are being applied.
-    // this can happen if initial request times out while transactions are applying and user attempts
-    // to retry call to openDatabase. Should happen very rarely and safe for user to try again
-    if (database && !database.applyTransactionsQueue.isEmpty()) {
-      throw new errors.ServiceUnavailable
-    }
-
     let receivedMessage
 
     const firstMessageFromWebSocket = new Promise((resolve, reject) => {
