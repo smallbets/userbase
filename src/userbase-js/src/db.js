@@ -120,6 +120,12 @@ class Database {
       const transaction = transactions[i]
       const seqNo = transaction.seqNo
 
+      // client must only apply transcations in sequence
+      if (seqNo !== this.lastSeqNo + 1) {
+        console.warn(`Client attempted to apply transaction with seq no ${seqNo} when last seq no is ${this.lastSeqNo}`)
+        continue
+      }
+
       const transactionCode = await this.applyTransaction(this.dbKey, transaction)
       this.lastSeqNo = seqNo
 
@@ -141,6 +147,12 @@ class Database {
   }
 
   applyBundle(bundle, bundleSeqNo) {
+    // client must only apply bundle when opening state
+    if (this.lastSeqNo !== 0) {
+      console.warn(`Client attempted to apply bundle when last seq no is ${this.lastSeqNo}`)
+      return
+    }
+
     for (let i = 0; i < bundle.itemsIndex.length; i++) {
       const itemIndex = bundle.itemsIndex[i]
       const itemId = bundle.itemsIndex[i].itemId
