@@ -502,8 +502,11 @@ class Connection {
       items: database.items,
       itemsIndex: database.itemsIndex.array
     }
+    const plaintextString = JSON.stringify(bundle)
+
     const dbId = database.dbId
     const lastSeqNo = database.lastSeqNo
+    const dbKey = database.dbKey
 
     const itemKeyPromises = []
     for (let i = 0; i < bundle.itemsIndex.length; i++) {
@@ -512,9 +515,8 @@ class Connection {
     }
     const itemKeys = await Promise.all(itemKeyPromises)
 
-    const plaintextString = JSON.stringify(bundle)
     const compressedString = LZString.compress(plaintextString)
-    const base64Bundle = await crypto.aesGcm.encryptString(database.dbKey, compressedString)
+    const base64Bundle = await crypto.aesGcm.encryptString(dbKey, compressedString)
 
     const action = 'Bundle'
     const params = { dbId, seqNo: lastSeqNo, bundle: base64Bundle, keys: itemKeys }
