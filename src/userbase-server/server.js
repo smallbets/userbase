@@ -163,7 +163,7 @@ async function start(express, app, userbaseConfig = {}) {
                     connectionId,
                     params.dbNameHash,
                     params.newDatabaseParams,
-                )
+                    params.reopenAtSeqNo
                   )
                   break
                 }

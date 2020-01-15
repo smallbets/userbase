@@ -4,7 +4,7 @@ import crypto from './Crypto'
 import ws from './ws'
 import errors from './errors'
 import statusCodes from './statusCodes'
-import { byteSizeOfString } from './utils'
+import { byteSizeOfString, Queue } from './utils'
 
 const success = 'Success'
 
@@ -109,10 +109,13 @@ class Database {
 
     this.itemsIndex = new SortedArray([], compareItems)
     this.unverifiedTransactions = []
-    this.lastSeqNo = -1
+    this.lastSeqNo = 0
     this.init = false
-    this.receivedMessage = receivedMessage
     this.dbKey = null
+    this.receivedMessage = receivedMessage
+
+    // Queue that ensures 'ApplyTransactions' executes one at a time
+    this.applyTransactionsQueue = new Queue()
   }
 
   async applyTransactions(transactions) {
@@ -229,6 +232,16 @@ class Database {
         }
 
         return this.applyBatchTransaction(seqNo, batch, records)
+      }
+
+      case 'Rollback': {
+        // no-op
+        return
+      }
+
+      default: {
+        console.warn(`Unknown command: ${command}`)
+        return
       }
     }
   }
@@ -358,20 +371,43 @@ class Database {
 
 const _openDatabase = async (dbNameHash, changeHandler, newDatabaseParams) => {
   try {
-    if (ws.state.databases[dbNameHash] && ws.state.databases[dbNameHash].init) {
-      throw new errors.DatabaseAlreadyOpen
-    } else if (ws.state.databases[dbNameHash]) {
-      throw new errors.DatabaseAlreadyOpening
+    const database = ws.state.databases[dbNameHash]
+
+    // cannot attempt to open database that's already initialized while transactions are being applied.
+    // this can happen if initial request times out while transactions are applying and user attempts
+    // to retry call to openDatabase. Should happen very rarely and safe for user to try again
+    if (database && !database.applyTransactionsQueue.isEmpty()) {
+      throw new errors.ServiceUnavailable
     }
 
     let receivedMessage
 
     const firstMessageFromWebSocket = new Promise((resolve, reject) => {
       receivedMessage = resolve
-      setTimeout(() => reject(new Error('timeout')), 5000)
+      setTimeout(() => reject(new Error('timeout')), 20000)
     })
 
-    ws.state.databases[dbNameHash] = new Database(changeHandler, receivedMessage)
+    if (!database) {
+      ws.state.databases[dbNameHash] = new Database(changeHandler, receivedMessage)
+    } else {
+
+      // safe to replace -- enables idempotent calls to openDatabase
+      database.onChange = changeHandler
+
+      // if 1 call succeeds, all idempotent calls succeed
+      const currentReceivedMessage = database.receivedMessage
+      database.receivedMessage = () => {
+        currentReceivedMessage()
+        receivedMessage()
+      }
+
+      // database is already open, can return successfully
+      if (database.init) {
+        changeHandler(database.getItems())
+        database.receivedMessage()
+        return
+      }
+    }
 
     const action = 'OpenDatabase'
     const params = { dbNameHash, newDatabaseParams }
@@ -380,8 +416,6 @@ const _openDatabase = async (dbNameHash, changeHandler, newDatabaseParams) => {
       await ws.request(action, params)
       await firstMessageFromWebSocket
     } catch (e) {
-      delete ws.state.databases[dbNameHash]
-
       if (e.response && e.response.data === 'Database already creating') {
         throw new errors.DatabaseAlreadyOpening
       }
@@ -437,7 +471,6 @@ const openDatabase = async (dbName, changeHandler) => {
   } catch (e) {
 
     switch (e.name) {
-      case 'DatabaseAlreadyOpen':
       case 'DatabaseAlreadyOpening':
       case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
