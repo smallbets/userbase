@@ -1,5 +1,16 @@
 import statusCodes from '../statusCodes'
 
+class AppIdAlreadySet extends Error {
+  constructor(appId, ...params) {
+    super(appId, ...params)
+
+    this.name = 'AppIdAlreadySet'
+    this.message = 'Application ID already set.'
+    this.status = statusCodes['Conflict']
+    this.appId = appId
+  }
+}
+
 class AppIdMustBeString extends Error {
   constructor(...params) {
     super(...params)
@@ -19,7 +30,31 @@ class AppIdCannotBeBlank extends Error {
   }
 }
 
+class EndpointAlreadySet extends Error {
+  constructor(endpoint, ...params) {
+    super(endpoint, ...params)
+
+    this.name = 'EndpointAlreadySet'
+    this.message = 'Endpoint already set.'
+    this.status = statusCodes['Conflict']
+    this.endpoint = endpoint
+  }
+}
+
+class KeyNotFoundHandlerMustBeFunction extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'KeyNotFoundHandlerMustBeFunction'
+    this.message = 'Key not found handler must be a function.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
 export default {
+  AppIdAlreadySet,
   AppIdMustBeString,
   AppIdCannotBeBlank,
+  EndpointAlreadySet,
+  KeyNotFoundHandlerMustBeFunction,
 }

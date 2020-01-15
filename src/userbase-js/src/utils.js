@@ -34,3 +34,35 @@ export const byteSizeOfString = (string) => {
 export const objectHasOwnProperty = (object, property) => {
   return Object.prototype.hasOwnProperty.call(object, property)
 }
+
+// source: http://code.iamkate.com/javascript/queues
+export function Queue() {
+  let queue = []
+  let offset = 0
+
+  this.getLength = () => queue.length - offset
+
+  this.isEmpty = () => queue.length === 0
+
+  this.enqueue = (item) => {
+    queue.push(item)
+    return this.getLength()
+  }
+
+  this.dequeue = () => {
+    // get item from front of the queue
+    const item = queue[offset]
+
+    offset += 1
+
+    // garbage collect unused space in queue when it grows large
+    if (offset * 2 > queue.length) {
+      queue = queue.slice(offset)
+      offset = 0
+    }
+
+    return item
+  }
+
+  this.peek = () => queue[offset]
+}

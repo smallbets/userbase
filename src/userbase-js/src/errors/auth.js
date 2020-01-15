@@ -239,16 +239,6 @@ class ProfileValueTooLong extends Error {
   }
 }
 
-class KeyNotFoundHandlerMustBeFunction extends Error {
-  constructor(...params) {
-    super(...params)
-
-    this.name = 'KeyNotFoundHandlerMustBeFunction'
-    this.message = 'Key not found handler must be a function.'
-    this.status = statusCodes['Bad Request']
-  }
-}
-
 class KeyNotValid extends Error {
   constructor(username, ...params) {
     super(username, ...params)
@@ -334,7 +324,6 @@ export default {
   ProfileKeyTooLong,
   ProfileValueMustBeString,
   ProfileValueTooLong,
-  KeyNotFoundHandlerMustBeFunction,
   KeyNotValid,
   KeyCannotBeBlank,
   KeyMustBeString,

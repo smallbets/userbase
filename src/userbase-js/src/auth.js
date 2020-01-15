@@ -453,7 +453,6 @@ const getLastUsedUsername = () => {
 
 const init = async ({ appId, endpoint, keyNotFoundHandler }) => {
   try {
-    if (ws.connected) throw new errors.UserAlreadySignedIn(ws.username)
     config.configure({ appId, endpoint, keyNotFoundHandler })
 
     const session = await signInWithSession(appId)
@@ -461,9 +460,11 @@ const init = async ({ appId, endpoint, keyNotFoundHandler }) => {
   } catch (e) {
 
     switch (e.name) {
+      case 'AppIdAlreadySet':
       case 'AppIdMustBeString':
       case 'AppIdCannotBeBlank':
       case 'AppIdNotValid':
+      case 'EndpointAlreadySet':
       case 'KeyNotFoundHandlerMustBeFunction':
       case 'UserAlreadySignedIn':
       case 'UserCanceledSignIn':
@@ -498,6 +499,15 @@ const signInWithSession = async (appId) => {
       throw e
     }
     const { email, profile, passwordBasedBackup } = apiSignInWithSessionResult
+
+    // enable idempotent calls to init()
+    if (ws.connectionResolved) {
+      if (ws.username === username) {
+        return { user: _buildUserResult(username, ws.seedString, email, profile) }
+      } else {
+        throw new errors.UserAlreadySignedIn(ws.username)
+      }
+    }
 
     const savedSeedString = localData.getSeedString(username) // might be null if does not have seed saved
 
