@@ -304,12 +304,12 @@ class Connection {
 
         const newTransactions = message.transactionLog
         await database.applyTransactions(newTransactions)
-        database.onChange(database.getItems())
 
         if (!database.init) {
           this.state.dbIdToHash[dbId] = dbNameHash
           database.dbId = dbId
           database.init = true
+          database.receivedMessage()
         }
 
         if (message.buildBundle) {
