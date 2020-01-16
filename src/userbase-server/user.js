@@ -30,6 +30,8 @@ const MAX_PROFILE_OBJECT_KEY_CHAR_LENGTH = 20
 const MAX_PROFILE_OBJECT_VALUE_CHAR_LENGTH = 1000
 const MAX_PROFILE_OBJECT_KEYS = 100
 
+const LIMIT_NUM_TRIAL_USERS = 3
+
 const createSession = async function (userId, appId) {
   const sessionId = crypto
     .randomBytes(ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID)
@@ -207,6 +209,12 @@ exports.signUp = async function (req, res) {
     const admin = await adminController.findAdminByAdminId(app['admin-id'])
     if (!admin || admin['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
 
+    const subscription = await adminController.getSaasSubscription(admin['admin-id'], admin['stripe-customer-id'])
+    const unpaidSubscription = !subscription || subscription.cancel_at_period_end || subscription.status !== 'active'
+    if (unpaidSubscription && app['num-users'] >= LIMIT_NUM_TRIAL_USERS) {
+      return res.status(statusCodes['Payment Required']).send('TrialExceededLimit')
+    }
+
     const salts = { encryptionKeySalt, dhKeySalt, hmacKeySalt }
     const passwordBasedBackup = { pbkdfKeySalt, passwordEncryptedSeed }
 
@@ -222,6 +230,9 @@ exports.signUp = async function (req, res) {
       }
       throw e
     }
+
+    // best effort increment, no need to wait for response
+    appController.incrementNumAppUsers(admin['admin-id'], app['app-name'], appId)
 
     const session = await createSession(userId, appId)
     return res.send(session)
@@ -279,7 +290,10 @@ exports.authenticateUser = async function (req, res, next) {
     const admin = await adminController.findAdminByAdminId(app['admin-id'])
     if (!admin || admin['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
 
-    res.locals.user = user // makes user object available in next route
+    // makes all the following objects available in next route
+    res.locals.user = user
+    res.locals.admin = admin
+    res.locals.app = app
     next()
   } catch (e) {
     logger.error(`Failed to authenticate user session ${sessionId} with ${e}`)
@@ -944,7 +958,7 @@ exports.updateUser = async function (userId, username, passwordSecureHash, email
   }
 }
 
-const deleteUser = async (username, appId, userId) => {
+const deleteUser = async (username, appId, userId, adminId, appName) => {
   const params = conditionCheckUserExists(username, appId, userId)
 
   params.UpdateExpression = 'set deleted = :deleted'
@@ -952,15 +966,21 @@ const deleteUser = async (username, appId, userId) => {
 
   const ddbClient = connection.ddbClient()
   await ddbClient.update(params).promise()
+
+  // best effort decrement
+  appController.decrementNumAppUsers(adminId, appName, appId)
 }
 exports.deleteUser = deleteUser
 
-exports.deleteUserController = async function (userId) {
+exports.deleteUserController = async function (userId, adminId, appName) {
   try {
+    if (!userId || !adminId || !appName) return responseBuilder
+      .errorResponse(statusCodes['Bad Request'], 'Missing params')
+
     const user = await getUserByUserId(userId)
     if (!user || user['deleted']) return responseBuilder.errorResponse(statusCodes['Not Found'], 'UserNotFound')
 
-    await deleteUser(user['username'], user['app-id'], userId)
+    await deleteUser(user['username'], user['app-id'], userId, adminId, appName)
 
     return responseBuilder.successResponse()
   } catch (e) {

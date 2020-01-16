@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import { string } from 'prop-types'
+import { string, func } from 'prop-types'
 import adminLogic from './logic'
 
 export default class AdminForm extends Component {
@@ -48,7 +48,7 @@ export default class AdminForm extends Component {
   }
 
   async handleSubmit(event) {
-    const { formType } = this.props
+    const { formType, handleUpdatePaymentStatus } = this.props
     const { email, password, fullName } = this.state
     event.preventDefault()
 
@@ -57,9 +57,9 @@ export default class AdminForm extends Component {
     try {
       if (formType === 'Create Admin') {
         await adminLogic.createAdmin(email, password, fullName)
-        window.alert('You are using the free version of Userbase!')
       } else if (formType === 'Sign In') {
-        await adminLogic.signIn(email, password)
+        const paymentStatus = await adminLogic.signIn(email, password)
+        handleUpdatePaymentStatus(paymentStatus)
       } else {
         return console.error('Unknown form type')
       }
@@ -193,5 +193,6 @@ export default class AdminForm extends Component {
 
 AdminForm.propTypes = {
   formType: string,
-  placeholderEmail: string
+  placeholderEmail: string,
+  handleUpdatePaymentStatus: func
 }

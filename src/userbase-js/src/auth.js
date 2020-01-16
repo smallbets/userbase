@@ -62,6 +62,8 @@ const _parseUserResponseError = (e, username) => {
 
     if (data === 'UsernameAlreadyExists') {
       throw new errors.UsernameAlreadyExists(username)
+    } else if (data === 'TrialExceededLimit') {
+      throw new errors.TrialExceededLimit
     }
 
     switch (data.error) {
@@ -306,6 +308,7 @@ const signUp = async (username, password, email, profile, showKeyHandler, rememb
   } catch (e) {
 
     switch (e.name) {
+      case 'TrialExceededLimit':
       case 'UsernameAlreadyExists':
       case 'UsernameCannotBeBlank':
       case 'UsernameMustBeString':

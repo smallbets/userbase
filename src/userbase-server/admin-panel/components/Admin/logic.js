@@ -103,8 +103,9 @@ const signIn = async (email, password) => {
       },
       timeout: TEN_SECONDS_MS
     })
-    const fullName = signInResponse.data
+    const { fullName, paymentStatus } = signInResponse.data
     signInLocalSession(lowerCaseEmail, fullName)
+    return paymentStatus
   } catch (e) {
     errorHandler(e, false)
   }
@@ -191,11 +192,13 @@ const updateSaasPaymentMethod = async () => {
 
 const cancelSaasSubscription = async () => {
   try {
-    await axios({
+    const cancelResponse = await axios({
       method: 'POST',
       url: `/${VERSION}/admin/stripe/cancel-saas-subscription`,
       timeout: TEN_SECONDS_MS
     })
+    const paymentStatus = cancelResponse.data
+    return paymentStatus
   } catch (e) {
     errorHandler(e)
   }
@@ -203,11 +206,13 @@ const cancelSaasSubscription = async () => {
 
 const resumeSaasSubscription = async () => {
   try {
-    await axios({
+    const resumeResponse = await axios({
       method: 'POST',
       url: `/${VERSION}/admin/stripe/resume-saas-subscription`,
       timeout: TEN_SECONDS_MS
     })
+    const paymentStatus = resumeResponse.data
+    return paymentStatus
   } catch (e) {
     errorHandler(e)
   }

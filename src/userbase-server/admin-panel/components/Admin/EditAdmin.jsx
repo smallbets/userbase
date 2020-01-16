@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import { func } from 'prop-types'
+import { func, string } from 'prop-types'
 import adminLogic from './logic'
 
 export default class EditAdmin extends Component {
@@ -9,8 +9,7 @@ export default class EditAdmin extends Component {
       email: '',
       fullName: '',
       password: '',
-      paymentStatus: '',
-      loadingPaymentStatus: true,
+      loading: false,
       loadingUpdate: false,
       loadingDelete: false,
       errorUpdating: '',
@@ -27,14 +26,6 @@ export default class EditAdmin extends Component {
   async componentDidMount() {
     this._isMounted = true
     document.addEventListener('keydown', this.handleHitEnter, true)
-
-    try {
-      const paymentStatus = await adminLogic.getPaymentStatus()
-      if (this._isMounted) this.setState({ paymentStatus, loadingPaymentStatus: false })
-    } catch (e) {
-      if (this._isMounted) this.setState({ loadingPaymentStatus: false })
-      console.log(e.message)
-    }
   }
 
   componentWillUnmount() {
@@ -121,30 +112,36 @@ export default class EditAdmin extends Component {
 
     try {
       if (window.confirm('Are you sure you want to cancel your subscription?')) {
-        this.setState({ loadingPaymentStatus: true })
-        await adminLogic.cancelSaasSubscription()
-        if (this._isMounted) this.setState({ paymentStatus: 'cancel_at_period_end', loadingPaymentStatus: false })
+        this.setState({ loading: true })
+        const paymentStatus = await adminLogic.cancelSaasSubscription()
+
+        this.props.handleUpdatePaymentStatus(paymentStatus)
       }
     } catch (e) {
       console.log(JSON.stringify(e), e.message)
     }
+
+    if (this._isMounted) this.setState({ loading: false })
   }
 
   async handleResumeSubscription(event) {
     event.preventDefault()
 
     try {
-      this.setState({ loadingPaymentStatus: true })
+      this.setState({ loading: true })
       await adminLogic.resumeSaasSubscription()
       const paymentStatus = await adminLogic.getPaymentStatus()
-      if (this._isMounted) this.setState({ paymentStatus, loadingPaymentStatus: false })
+
+      this.props.handleUpdatePaymentStatus(paymentStatus)
     } catch (e) {
-      if (this._isMounted) this.setState({ loadingPaymentStatus: false })
       console.log(e.message)
     }
+
+    if (this._isMounted) this.setState({ loading: false })
   }
 
   render() {
+    const { paymentStatus } = this.props
     const {
       fullName,
       email,
@@ -153,14 +150,13 @@ export default class EditAdmin extends Component {
       loadingDelete,
       errorUpdating,
       errorDeleting,
-      paymentStatus,
-      loadingPaymentStatus
+      loading
     } = this.state
 
     return (
       <div className='container content text-xs xs:text-base text-center mb-8'>
 
-        {loadingPaymentStatus
+        {loading
           ? <div className='loader inline-block w-6 h-6' />
           : paymentStatus === 'active' || paymentStatus === 'past_due'
             ?
@@ -290,5 +286,7 @@ export default class EditAdmin extends Component {
 }
 
 EditAdmin.propTypes = {
-  handleUpdateAccount: func
+  handleUpdateAccount: func,
+  paymentStatus: string,
+  handleUpdatePaymentStatus: func
 }

@@ -154,7 +154,11 @@ async function start(express, app, userbaseConfig = {}) {
                   break
                 }
                 case 'DeleteUser': {
-                  response = await user.deleteUserController(userId)
+                  response = await user.deleteUserController(
+                    userId,
+                    res.locals.admin['admin-id'],
+                    res.locals.app['app-name']
+                  )
                   break
                 }
                 case 'OpenDatabase': {
@@ -267,24 +271,24 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.post('/create-admin', admin.createAdminController)
     v1Admin.post('/sign-in', admin.signInAdmin)
     v1Admin.post('/sign-out', admin.authenticateAdmin, admin.signOutAdmin)
-    v1Admin.post('/create-app', admin.authenticateAdmin, appController.createAppController)
+    v1Admin.post('/create-app', admin.authenticateAdmin, admin.getSaasSubscriptionController, appController.createAppController)
     v1Admin.post('/list-apps', admin.authenticateAdmin, appController.listApps)
     v1Admin.post('/list-app-users', admin.authenticateAdmin, appController.listAppUsers)
-    v1Admin.post('/delete-app', admin.authenticateAdmin, appController.deleteApp)
+    v1Admin.post('/delete-app', admin.authenticateAdmin, admin.getSaasSubscriptionController, appController.deleteApp)
     v1Admin.post('/delete-user', admin.authenticateAdmin, admin.deleteUser)
-    v1Admin.post('/delete-admin', admin.authenticateAdmin, admin.getSaasSubscription, admin.deleteAdmin)
+    v1Admin.post('/delete-admin', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.deleteAdmin)
     v1Admin.post('/update-admin', admin.authenticateAdmin, admin.updateAdmin)
     v1Admin.post('/forgot-password', admin.forgotPassword)
-    v1Admin.get('/payment-status', admin.authenticateAdmin, admin.getSaasSubscription, (req, res) => {
+    v1Admin.get('/payment-status', admin.authenticateAdmin, admin.getSaasSubscriptionController, (req, res) => {
       const subscription = res.locals.subscription
       if (!subscription) return res.end()
       return res.send(subscription.cancel_at_period_end ? 'cancel_at_period_end' : subscription.status)
     })
 
     v1Admin.post('/stripe/create-saas-payment-session', admin.authenticateAdmin, admin.createSaasPaymentSession)
-    v1Admin.post('/stripe/update-saas-payment-session', admin.authenticateAdmin, admin.getSaasSubscription, admin.updateSaasSubscriptionPaymentSession)
-    v1Admin.post('/stripe/cancel-saas-subscription', admin.authenticateAdmin, admin.getSaasSubscription, admin.cancelSaasSubscription)
-    v1Admin.post('/stripe/resume-saas-subscription', admin.authenticateAdmin, admin.getSaasSubscription, admin.resumeSaasSubscription)
+    v1Admin.post('/stripe/update-saas-payment-session', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.updateSaasSubscriptionPaymentSession)
+    v1Admin.post('/stripe/cancel-saas-subscription', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.cancelSaasSubscription)
+    v1Admin.post('/stripe/resume-saas-subscription', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.resumeSaasSubscription)
 
   } catch (e) {
     logger.info(`Unhandled error while launching server: ${e}`)
