@@ -300,6 +300,16 @@ class UserMissingExpectedProperties extends Error {
   }
 }
 
+class TrialExceededLimit extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'TrialExceededLimit'
+    this.message = 'Trial exceeded limit of users.'
+    this.status = statusCodes['Payment Required']
+  }
+}
+
 export default {
   UsernameAlreadyExists,
   UsernameCannotBeBlank,
@@ -330,4 +340,5 @@ export default {
   ShowKeyHandlerMustBeFunction,
   UserMustBeObject,
   UserMissingExpectedProperties,
+  TrialExceededLimit,
 }

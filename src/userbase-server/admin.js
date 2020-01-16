@@ -71,24 +71,49 @@ async function createAdmin(email, password, fullName, adminId = uuidv4(), storeP
     const passwordHash = await crypto.bcrypt.hash(password)
 
     try {
+      const creationDate = new Date().toISOString()
+
       const admin = {
         email: email.toLowerCase(),
         'password-hash': passwordHash,
         'full-name': fullName,
         'admin-id': adminId,
-        'creation-date': new Date().toISOString()
+        'creation-date': creationDate
       }
 
-      const params = {
+      const adminParams = {
         TableName: setup.adminTableName,
         Item: admin,
         ConditionExpression: 'attribute_not_exists(email)'
       }
 
+      const trialApp = {
+        'admin-id': adminId,
+        'app-name': 'Trial',
+        'app-id': uuidv4(),
+        'creation-date': creationDate
+      }
+
+      const trialAppParams = {
+        TableName: setup.appsTableName,
+        Item: trialApp,
+        ConditionExpression: 'attribute_not_exists(#adminId)',
+        ExpressionAttributeNames: {
+          '#adminId': 'admin-id'
+        },
+      }
+
+      const params = {
+        TransactItems: [
+          { Put: adminParams },
+          { Put: trialAppParams }
+        ]
+      }
+
       const ddbClient = connection.ddbClient()
-      await ddbClient.put(params).promise()
+      await ddbClient.transactWrite(params).promise()
     } catch (e) {
-      if (e && e.name === 'ConditionalCheckFailedException') {
+      if (e.message.includes('[ConditionalCheckFailed')) {
         throw {
           status: statusCodes['Conflict'],
           data: 'Admin already exists'
@@ -213,10 +238,19 @@ exports.signInAdmin = async function (req, res) {
         .send('Incorrect password')
     }
 
-    const sessionId = await createSession(admin['admin-id'])
+    const [sessionId, subscription] = await Promise.all([
+      createSession(admin['admin-id']),
+      getSaasSubscription(admin['admin-id'], admin['stripe-customer-id'])
+    ])
+
     setSessionCookie(res, sessionId)
 
-    return res.status(statusCodes['Success']).send(admin['full-name'])
+    return res
+      .status(statusCodes['Success'])
+      .send({
+        fullName: admin['full-name'],
+        paymentStatus: subscription && subscription.status
+      })
   } catch (e) {
     logger.error(`Admin '${email}' failed to sign in with ${e}`)
     return res
@@ -314,7 +348,7 @@ exports.deleteUser = async function (req, res) {
     const app = await appController.getApp(adminId, appName)
     if (!app || app['deleted']) return res.status(statusCodes['Not Found']).send('App not found')
 
-    await userController.deleteUser(username, app['app-id'], userId)
+    await userController.deleteUser(username, app['app-id'], userId, adminId, appName)
 
     return res.end()
   } catch (e) {
@@ -709,24 +743,28 @@ exports.handleStripeWebhook = async function (req, res) {
   }
 }
 
-exports.getSaasSubscription = async function (req, res, next) {
+const getSaasSubscription = async function (adminId, stripeCustomerId) {
+  if (!stripeCustomerId) return null
+
+  const customer = await stripe.getClient().customers.retrieve(stripeCustomerId)
+
+  if (customer.subscriptions.data.length > 1) {
+    logger.fatal(`Admin ${adminId} has more than 1 subscription (${customer.subscriptions.data.length} total)`)
+  }
+
+  return customer.subscriptions.data.find((subscription => {  // eslint-disable-line require-atomic-updates
+    return subscription.plan.id === stripe.getStripeSaasSubscriptionPlanId()
+  }))
+}
+exports.getSaasSubscription = getSaasSubscription
+
+exports.getSaasSubscriptionController = async function (req, res, next) {
   const admin = res.locals.admin
   const adminId = admin['admin-id']
   const stripeCustomerId = admin['stripe-customer-id']
 
   try {
-    const customer = await stripe.getClient().customers.retrieve(stripeCustomerId)
-
-    if (customer.subscriptions.data.length > 1) {
-      logger.fatal(`Admin ${adminId} has more than 1 subscription (${customer.subscriptions.data.length} total)`)
-    }
-
-    res.locals.subscription = customer.subscriptions.data.find((subscription => {  // eslint-disable-line require-atomic-updates
-      return subscription.plan.id === stripe.getStripeSaasSubscriptionPlanId()
-    }))
-
-    logger.info(res.locals.subscription)
-
+    res.locals.subscription = await getSaasSubscription(adminId, stripeCustomerId)
     next()
   } catch (e) {
     logger.error(`Failed to verify subscription payment for admin '${adminId}' with ${e}`)
@@ -742,9 +780,12 @@ exports.cancelSaasSubscription = async function (req, res) {
   if (subscription.cancel_at_period_end) return res.end()
 
   try {
-    await stripe.getClient().subscriptions.update(subscription.id, { cancel_at_period_end: true })
+    await stripe.getClient().subscriptions.update(subscription.id, {
+      cancel_at_period_end: true
+    })
 
-    return res.end()
+    // subscription status will remain active, but cancel_at_period_end boolean will be set to true
+    return res.send('cancel_at_period_end')
   } catch (e) {
     logger.error(`Failed to cancel subscription for admin '${adminId}' with ${e}`)
     return res.status(statusCodes['Internal Server Error']).send('Failed to cancel subscription')
@@ -759,7 +800,7 @@ exports.resumeSaasSubscription = async function (req, res) {
   if (!subscription.cancel_at_period_end) return res.end()
 
   try {
-    await stripe.getClient().subscriptions.update(subscription.id, {
+    const updatedSubscription = await stripe.getClient().subscriptions.update(subscription.id, {
       cancel_at_period_end: false,
       items: [{
         id: subscription.items.data[0].id,
@@ -767,7 +808,7 @@ exports.resumeSaasSubscription = async function (req, res) {
       }]
     })
 
-    return res.end()
+    return res.send(updatedSubscription.status)
   } catch (e) {
     logger.error(`Failed to resume subscription for admin '${adminId}' with ${e}`)
     return res.status(statusCodes['Internal Server Error']).send('Failed to resume subscription')

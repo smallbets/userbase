@@ -1,4 +1,5 @@
 import React, { Component } from 'react'
+import { string } from 'prop-types'
 import dashboardLogic from './logic'
 import adminLogic from '../Admin/logic'
 
@@ -72,6 +73,7 @@ export default class Dashboard extends Component {
   }
 
   render() {
+    const { paymentStatus } = this.props
     const { loading, apps, error, appName, loadingApp } = this.state
 
     return (
@@ -117,33 +119,37 @@ export default class Dashboard extends Component {
                 </table>
               }
 
-              <form className={`flex text-left ${(apps && apps.length) ? 'mt-8' : ''}`}>
-                <div className='flex-1'>
-                  <input
-                    className='input-text text-xs xs:text-sm w-36 xs:w-48'
-                    type='text'
-                    name='appName'
-                    autoComplete='off'
-                    value={appName}
-                    placeholder='New app'
-                    onChange={this.handleInputChange}
-                  />
-                </div>
+              {paymentStatus === 'active' &&
 
-                <div className='flex-1 text-center'>
-                  <input
-                    className='btn'
-                    type='submit'
-                    value='Add'
-                    disabled={!appName || loadingApp}
-                    onClick={this.handleCreateApp}
-                  />
-                </div>
+                <form className={`flex text-left ${(apps && apps.length) ? 'mt-8' : ''}`}>
+                  <div className='flex-1'>
+                    <input
+                      className='input-text text-xs xs:text-sm w-36 xs:w-48'
+                      type='text'
+                      name='appName'
+                      autoComplete='off'
+                      value={appName}
+                      placeholder='New app'
+                      onChange={this.handleInputChange}
+                    />
+                  </div>
 
-                <div className='flex-1 my-auto'>
-                  {loadingApp && <div className='loader w-6 h-6' />}
-                </div>
-              </form>
+                  <div className='flex-1 text-center'>
+                    <input
+                      className='btn'
+                      type='submit'
+                      value='Add'
+                      disabled={!appName || loadingApp}
+                      onClick={this.handleCreateApp}
+                    />
+                  </div>
+
+                  <div className='flex-1 my-auto'>
+                    {loadingApp && <div className='loader w-6 h-6' />}
+                  </div>
+                </form>
+              }
+
 
               {error && <div className='error text-left'>{error.message}</div>}
 
@@ -152,4 +158,8 @@ export default class Dashboard extends Component {
       </div>
     )
   }
+}
+
+Dashboard.propTypes = {
+  paymentStatus: string
 }

@@ -82,7 +82,7 @@ export default class AppUsersTable extends Component {
   }
 
   render() {
-    const { appName } = this.props
+    const { appName, paymentStatus } = this.props
     const { loading, appUsers, error } = this.state
 
     return (
@@ -91,15 +91,25 @@ export default class AppUsersTable extends Component {
         <div className='container content'>
 
           <div className='flex mb-6'>
-            <div className='flex-0 italic'>{appName}</div>
-            <div className='flex-1 text-right'>
-              <input
-                className='btn w-32'
-                type='button'
-                value='Delete App'
-                onClick={this.handleDeleteApp}
-              />
-            </div>
+            <span className='flex-0'>{appName}</span>
+            {
+              paymentStatus && <div className='flex-1 text-right'>
+                {
+                  paymentStatus === 'active'
+                    ?
+                    <input
+                      className='btn w-32'
+                      type='button'
+                      value='Delete App'
+                      onClick={this.handleDeleteApp}
+                    />
+                    :
+                    <span className='italic font-light ml-3 text-red-600'>
+                      {appName} app can only have 3 users
+                  </span>
+                }
+              </div>
+            }
           </div>
 
           {loading
@@ -169,5 +179,6 @@ export default class AppUsersTable extends Component {
 }
 
 AppUsersTable.propTypes = {
-  appName: string
+  appName: string,
+  paymentStatus: string
 }
