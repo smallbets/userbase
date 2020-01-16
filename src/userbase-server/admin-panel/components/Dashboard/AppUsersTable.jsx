@@ -92,24 +92,22 @@ export default class AppUsersTable extends Component {
 
           <div className='flex mb-6'>
             <span className='flex-0'>{appName}</span>
-            {
-              paymentStatus && <div className='flex-1 text-right'>
-                {
-                  paymentStatus === 'active'
-                    ?
-                    <input
-                      className='btn w-32'
-                      type='button'
-                      value='Delete App'
-                      onClick={this.handleDeleteApp}
-                    />
-                    :
-                    <span className='italic font-light ml-3 text-red-600'>
-                      {appName} app can only have 3 users
+            <div className='flex-1 text-right'>
+              {
+                paymentStatus === 'active'
+                  ?
+                  <input
+                    className='btn w-32'
+                    type='button'
+                    value='Delete App'
+                    onClick={this.handleDeleteApp}
+                  />
+                  :
+                  <span className='italic font-light ml-3 text-red-600'>
+                    {appName} app can only have 3 users
                   </span>
-                }
-              </div>
-            }
+              }
+            </div>
           </div>
 
           {loading

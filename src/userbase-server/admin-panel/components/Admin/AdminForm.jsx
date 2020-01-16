@@ -57,7 +57,6 @@ export default class AdminForm extends Component {
     try {
       if (formType === 'Create Admin') {
         await adminLogic.createAdmin(email, password, fullName)
-        window.alert('You are using the free version of Userbase!')
       } else if (formType === 'Sign In') {
         const paymentStatus = await adminLogic.signIn(email, password)
         handleUpdatePaymentStatus(paymentStatus)
