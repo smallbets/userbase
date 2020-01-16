@@ -17,12 +17,12 @@ const defineUsername = () => {
       appUsername = os.userInfo().username
     }
   } else {
-    appUsername = 'beta'
+    appUsername = 'prod-v1'
   }
   return appUsername
 }
 
-logger.info("Running as USER: " + defineUsername());
+logger.info("Running as USER: " + defineUsername())
 
 // if running in dev mode, prefix the DynamoDB tables and S3 buckets with the username
 const resourceNamePrefix = 'userbase-' + defineUsername() + '-'
