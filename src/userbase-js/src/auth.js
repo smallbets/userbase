@@ -393,12 +393,6 @@ const signIn = async (username, password, rememberMe = false) => {
   }
 }
 
-const getLastUsedUsername = () => {
-  const lastUsedSession = localData.getCurrentSession()
-  if (!lastUsedSession) return undefined
-  else return lastUsedSession.username
-}
-
 const init = async ({ appId, endpoint }) => {
   try {
     config.configure({ appId, endpoint })
@@ -612,7 +606,6 @@ export default {
   signUp,
   signOut,
   signIn,
-  getLastUsedUsername,
   init,
   updateUser,
   deleteUser

@@ -53,8 +53,6 @@ interface Userbase {
 
   deleteUser(): Promise<void>
 
-  getLastUsedUsername(): string | undefined
-
   openDatabase(dbName: string, changeHandler: (items: Item[]) => void): Promise<void>
 
   insertItem(dbName: string, item: any, id?: string): Promise<void>

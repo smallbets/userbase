@@ -9,7 +9,6 @@ export default {
   signOut: auth.signOut,
   updateUser: auth.updateUser,
   deleteUser: auth.deleteUser,
-  getLastUsedUsername: auth.getLastUsedUsername,
 
   openDatabase: db.openDatabase,
 
