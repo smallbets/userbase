@@ -4,7 +4,7 @@
   "description": "An end-to-end encrypted framework for web and mobile apps.",
   "main": "./proof-of-concept/server/app.js",
   "scripts": {
-    "postinstall": "if [[ $RUNNING_ENV != CI ]]; then npm-run-all -p install:sdk install:server install:admin-panel && npm run install:poc; fi;",
+    "postinstall": "if test \"$RUNNING_ENV\" != \"CI\"; then npm-run-all -p install:sdk install:server install:admin-panel && npm run install:poc; fi;",
     "install:sdk": "cd ./src/userbase-js && npm install",
     "install:server": "cd ./src/userbase-server && npm install",
     "install:admin-panel": "cd ./src/userbase-server/admin-panel && npm install",
