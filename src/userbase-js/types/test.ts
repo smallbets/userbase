@@ -5,11 +5,8 @@ const {
   signUp,
   signIn,
   signOut,
-  forgotPassword,
   updateUser,
   deleteUser,
-  importKey,
-  getLastUsedUsername,
   openDatabase,
   insertItem,
   updateItem,
@@ -25,7 +22,7 @@ init({ appId: 'tid' })
 init({ appId: 'tid', endpoint: 'tendpoint' })
 
 // $ExpectType Promise<Session>
-init({ appId: 'tid', keyNotFoundHandler: () => {} })
+init({ appId: 'tid' })
 
 // $ExpectError
 init({})
@@ -46,19 +43,16 @@ signUp('tuser', 'tpass', 'test@test.com', { tkey: 'tval' })
 signUp('tuser', 'tpass', 'test@test.com', { tkey: {} })
 
 // $ExpectType Promise<UserResult>
-signUp('tuser', 'tpass', 'test@test.com', { tkey: 'tval' }, () => {})
+signUp('tuser', 'tpass', 'test@test.com', { tkey: 'tval' }, () => { })
 
 // $ExpectType Promise<UserResult>
-signUp('tuser', 'tpass', 'test@test.com', { tkey: 'tval' }, () => new Promise(() => {}))
+signUp('tuser', 'tpass', 'test@test.com', { tkey: 'tval' }, () => new Promise(() => { }))
 
 // $ExpectError
 signUp('tuser', 'tpass', 'test@test.com', { tkey: 'tval' }, () => Promise.resolve(0))
 
 // $ExpectType Promise<UserResult>
-signUp('tuser', 'tpass', 'test@test.com', { tkey: 'tval' }, () => {}, true)
-
-// $ExpectType Promise<UserResult>
-signUp('tuser', 'tpass', 'test@test.com', { tkey: 'tval' }, () => {}, true, true)
+signUp('tuser', 'tpass', 'test@test.com', { tkey: 'tval' }, () => { }, true)
 
 // $ExpectError
 signUp('tuser')
@@ -77,12 +71,6 @@ signOut()
 
 // $ExpectError
 signOut('tuser')
-
-// $ExpectType Promise<void>
-forgotPassword('tuser')
-
-// $ExpectError
-forgotPassword()
 
 // $ExpectType Promise<void>
 updateUser({})
@@ -112,16 +100,7 @@ updateUser({ profile: 'invalid' })
 deleteUser()
 
 // $ExpectType Promise<void>
-importKey('tkey')
-
-// $ExpectError
-importKey()
-
-// $ExpectType string | undefined
-getLastUsedUsername()
-
-// $ExpectType Promise<void>
-openDatabase('tdb', (items) => {})
+openDatabase('tdb', (items) => { })
 
 // $ExpectError
 openDatabase('tdb')
@@ -143,7 +122,7 @@ updateItem('tdb', { name: 'tname' })
 
 // $ExpectType Promise<void>
 transaction('tdb', [
-  { command: 'Insert', item: { name: 'tname' }},
+  { command: 'Insert', item: { name: 'tname' } },
   { command: 'Update', item: { name: 'tname' }, id: 'tid' },
   { command: 'Delete', id: 'tid' }
 ])
@@ -155,7 +134,7 @@ transaction('tdb')
 transaction('tdb', [{ command: 'Insert' }])
 
 // $ExpectError
-transaction('tdb', [{ command: 'Update', item: { name: 'tname' }}])
+transaction('tdb', [{ command: 'Update', item: { name: 'tname' } }])
 
 // $ExpectError
 transaction('tdb', [{ command: 'Delete' }])
