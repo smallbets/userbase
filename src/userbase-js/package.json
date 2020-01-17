@@ -8,6 +8,7 @@
     "base64-arraybuffer": "^0.2.0",
     "diffie-hellman": "^5.0.3",
     "lz-string": "^1.4.4",
+    "scrypt-js": "^3.0.0",
     "sorted-array": "^2.0.4",
     "uuid": "^3.3.3"
   },

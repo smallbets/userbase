@@ -135,11 +135,11 @@ async function start(express, app, userbaseConfig = {}) {
                   response = await user.updateUser(
                     userId,
                     params.username,
-                    params.passwordSecureHash,
+                    params.passwordToken,
+                    params.passwordSalts,
                     params.email,
                     params.profile,
-                    params.pbkdfKeySalt,
-                    params.passwordEncryptedSeed
+                    params.passwordBasedBackup
                   )
                   break
                 }
@@ -231,7 +231,7 @@ async function start(express, app, userbaseConfig = {}) {
     v1Api.post('/auth/sign-in', user.signIn)
     v1Api.post('/auth/sign-in-with-session', user.authenticateUser, user.extendSession)
     v1Api.get('/auth/server-public-key', user.getServerPublicKey)
-    v1Api.post('/auth/forgot-password', user.forgotPassword)
+    v1Api.get('/auth/get-password-salts', user.getPasswordSalts)
 
     // Userbase admin API
     app.use('/admin', express.static(path.join(__dirname + adminPanelDir)))

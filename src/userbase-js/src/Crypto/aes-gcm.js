@@ -10,6 +10,8 @@ const RAW_KEY_TYPE = 'raw'
 
 const ENCRYPTION_KEY_NAME = 'encryption'
 
+const PASSWORD_BASED_ENCRYPTION_KEY = 'password-based-encryption'
+
 /**
  * NIST recommendation:
  *
@@ -170,6 +172,17 @@ const decryptString = async (key, encryptedString) => {
   return plaintextString
 }
 
+const getPasswordBasedEncryptionKey = async (hkdfKey, salt) => {
+  const encryptionKey = await window.crypto.subtle.deriveKey(
+    hkdf.getParams(PASSWORD_BASED_ENCRYPTION_KEY, salt),
+    hkdfKey,
+    getEncryptionKeyParams(),
+    !KEY_IS_EXTRACTABLE,
+    KEY_WILL_BE_USED_TO
+  )
+  return encryptionKey
+}
+
 export default {
   getEncryptionKeyParams,
   importKeyFromMaster,
@@ -184,4 +197,5 @@ export default {
   decrypt,
   decryptJson,
   decryptString,
+  getPasswordBasedEncryptionKey
 }

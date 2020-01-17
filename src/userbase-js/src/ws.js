@@ -394,7 +394,7 @@ class Connection {
     if (!this.seedString) this.seedString = seedString
 
     const seed = base64.decode(seedString)
-    const masterKey = await crypto.hkdf.importMasterKey(seed)
+    const masterKey = await crypto.hkdf.importHkdfKey(seed)
 
     const salts = this.keys.salts
     this.keys.encryptionKey = await crypto.aesGcm.importKeyFromMaster(masterKey, base64.decode(salts.encryptionKeySalt))
