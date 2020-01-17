@@ -17,7 +17,6 @@ class Connection {
     this.id = uuidv4()
     this.databases = {}
     this.keyValidated = false
-    this.requesterPublicKey = undefined
   }
 
   openDatabase(databaseId, bundleSeqNo, reopenAtSeqNo) {
@@ -228,37 +227,6 @@ class Connection {
     database.lastSeqNo = transactionLog[transactionLog.length - 1]['seqNo']
     database.init = true
   }
-
-  openSeedRequest(requesterPublicKey) {
-    this.requesterPublicKey = requesterPublicKey
-  }
-
-  sendSeedRequest(requesterPublicKey) {
-    if (!this.keyValidated) return
-
-    const payload = {
-      route: 'ReceiveRequestForSeed',
-      requesterPublicKey
-    }
-
-    this.socket.send(JSON.stringify(payload))
-  }
-
-  sendSeed(senderPublicKey, requesterPublicKey, encryptedSeed) {
-    if (this.requesterPublicKey !== requesterPublicKey) return
-
-    const payload = {
-      route: 'ReceiveSeed',
-      encryptedSeed,
-      senderPublicKey
-    }
-
-    this.socket.send(JSON.stringify(payload))
-  }
-
-  deleteSeedRequest() {
-    delete this.requesterPublicKey
-  }
 }
 
 export default class Connections {
@@ -315,25 +283,6 @@ export default class Connections {
       } else {
         conn.push(transaction['database-id'])
       }
-    }
-  }
-
-  static sendSeedRequest(userId, connectionId, requesterPublicKey) {
-    if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId][connectionId]) return
-
-    const conn = Connections.sockets[userId][connectionId]
-    conn.openSeedRequest(requesterPublicKey)
-
-    for (const connection of Object.values(Connections.sockets[userId])) {
-      connection.sendSeedRequest(requesterPublicKey)
-    }
-  }
-
-  static sendSeed(userId, senderPublicKey, requesterPublicKey, encryptedSeed) {
-    if (!Connections.sockets || !Connections.sockets[userId]) return
-
-    for (const conn of Object.values(Connections.sockets[userId])) {
-      conn.sendSeed(senderPublicKey, requesterPublicKey, encryptedSeed)
     }
   }
 

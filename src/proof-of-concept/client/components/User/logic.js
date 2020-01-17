@@ -41,28 +41,9 @@ const init = async (settings) => {
   }
 }
 
-const importKey = async (keyString) => {
-  try {
-    await userbase.importKey(keyString)
-  } catch (e) {
-    return _errorHandler(e, 'import key')
-  }
-}
-
-const forgotPassword = async (username) => {
-  try {
-    await userbase.forgotPassword(username)
-  } catch (e) {
-    _errorHandler(e, 'forgot password')
-    throw e
-  }
-}
-
 export default {
   signUp,
   signOut,
   signIn,
   init,
-  importKey,
-  forgotPassword
 }

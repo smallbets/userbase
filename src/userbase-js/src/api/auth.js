@@ -62,21 +62,9 @@ const getServerPublicKey = async () => {
   return serverPublicKey
 }
 
-const forgotPassword = async (username) => {
-  await axios({
-    method: 'POST',
-    url: `${config.getEndpoint()}/api/auth/forgot-password?appId=${config.getAppId()}`,
-    data: {
-      username
-    },
-    timeout: TEN_SECONDS_MS
-  })
-}
-
 export default {
   signUp,
   signIn,
   signInWithSession,
   getServerPublicKey,
-  forgotPassword
 }

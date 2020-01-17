@@ -12,14 +12,9 @@ interface UserProfile {
 
 interface UserResult {
   username: string
-  key: string
   email?: string
   profile?: UserProfile
 }
-
-type KeyNotFoundHandler = (username: string, deviceId: string) => void
-
-type ShowKeyHandler = (seedString: string, rememberMe: boolean, backUpKey: boolean) => void | Promise<void>
 
 type DatabaseOperation = InsertOperation | UpdateOperation | DeleteOperation
 
@@ -46,21 +41,17 @@ interface Item {
 }
 
 interface Userbase {
-  init(options: { appId: string, endpoint?: string, keyNotFoundHandler?: KeyNotFoundHandler }): Promise<Session>
+  init(options: { appId: string, endpoint?: string }): Promise<Session>
 
-  signUp(username: string, password: string, email?: string, profile?: UserProfile, showKeyHandler?: ShowKeyHandler, rememberMe?: boolean, backUpKey?: boolean): Promise<UserResult>
+  signUp(username: string, password: string, email?: string, profile?: UserProfile, rememberMe?: boolean): Promise<UserResult>
 
   signIn(username: string, password: string, rememberMe?: boolean): Promise<UserResult>
 
   signOut(): Promise<void>
 
-  forgotPassword(username: string): Promise<void>
-
   updateUser(user: { username?: string, password?: string, email?: string | null, profile?: UserProfile | null }): Promise<void>
 
   deleteUser(): Promise<void>
-
-  importKey(keyString: string): Promise<void>
 
   getLastUsedUsername(): string | undefined
 

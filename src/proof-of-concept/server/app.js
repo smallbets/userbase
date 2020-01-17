@@ -21,7 +21,6 @@ const userbaseConfig = {
   httpsCert,
   httpsPort,
   httpPort,
-  emailDomain: 'encrypted.dev'
 }
 
 const ADMIN_EMAIL = 'admin@userbase.dev'

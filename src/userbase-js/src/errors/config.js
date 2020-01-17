@@ -41,20 +41,9 @@ class EndpointAlreadySet extends Error {
   }
 }
 
-class KeyNotFoundHandlerMustBeFunction extends Error {
-  constructor(...params) {
-    super(...params)
-
-    this.name = 'KeyNotFoundHandlerMustBeFunction'
-    this.message = 'Key not found handler must be a function.'
-    this.status = statusCodes['Bad Request']
-  }
-}
-
 export default {
   AppIdAlreadySet,
   AppIdMustBeString,
   AppIdCannotBeBlank,
   EndpointAlreadySet,
-  KeyNotFoundHandlerMustBeFunction,
 }

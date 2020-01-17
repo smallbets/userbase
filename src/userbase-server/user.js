@@ -4,13 +4,10 @@ import setup from './setup'
 import statusCodes from './statusCodes'
 import responseBuilder from './responseBuilder'
 import crypto from './crypto'
-import connections from './ws'
 import logger from './logger'
 import { validateEmail, stringToArrayBuffer } from './utils'
 import appController from './app'
 import adminController from './admin'
-
-const getTtl = secondsToLive => Math.floor(Date.now() / 1000) + secondsToLive
 
 // source: https://github.com/OWASP/CheatSheetSeries/blob/master/cheatsheets/Session_Management_Cheat_Sheet.md#session-id-length
 const ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID = 16
@@ -184,7 +181,8 @@ exports.signUp = async function (req, res) {
   const pbkdfKeySalt = req.body.pbkdfKeySalt
   const passwordEncryptedSeed = req.body.passwordEncryptedSeed
 
-  if (!appId || !username || !passwordSecureHash || !publicKey || !encryptionKeySalt || !dhKeySalt || !hmacKeySalt) {
+  if (!appId || !username || !passwordSecureHash || !publicKey || !encryptionKeySalt || !dhKeySalt || !hmacKeySalt
+    || !pbkdfKeySalt || !passwordEncryptedSeed) {
     return res.status(statusCodes['Bad Request']).send('Missing required items')
   }
 
@@ -360,10 +358,6 @@ exports.validateKey = async function (validationMessage, userProvidedValidationM
 
           throw e
         }
-      } else {
-        // must be validating after requesting the seed. Clean up for safety --
-        // no need to keep storing this seed request in DDB
-        if (conn.requesterPublicKey) await deleteSeedRequest(userId, conn)
       }
 
       conn.validateKey()
@@ -470,156 +464,6 @@ exports.signOut = async function (sessionId) {
       statusCodes['Internal Server Error'],
       'Failed to sign out!'
     )
-  }
-}
-
-exports.requestSeed = async function (userId, senderPublicKey, connectionId, requesterPublicKey) {
-  if (!requesterPublicKey) return responseBuilder.errorResponse(
-    statusCodes['Bad Request'],
-    'Missing requester public key'
-  )
-
-  const seedExchangeKey = {
-    'user-id': userId,
-    'requester-public-key': requesterPublicKey
-  }
-
-  const params = {
-    TableName: setup.seedExchangeTableName,
-    Item: {
-      ...seedExchangeKey,
-      ttl: getTtl(SECONDS_IN_A_DAY)
-    },
-    // do not overwrite if already exists. especially important if encrypted-seed already exists,
-    // but no need to overwrite ever
-    ConditionExpression: 'attribute_not_exists(#userId)',
-    ExpressionAttributeNames: {
-      '#userId': 'user-id'
-    }
-  }
-
-  try {
-    const ddbClient = connection.ddbClient()
-
-    try {
-      await ddbClient.put(params).promise()
-      connections.sendSeedRequest(userId, connectionId, requesterPublicKey)
-    } catch (e) {
-
-      if (e.name === 'ConditionalCheckFailedException') {
-
-        const existingSeedExchangeParams = {
-          TableName: setup.seedExchangeTableName,
-          Key: seedExchangeKey
-        }
-
-        const existingSeedExchangeResponse = await ddbClient.get(existingSeedExchangeParams).promise()
-        const existingSeedExchange = existingSeedExchangeResponse.Item
-
-        const encryptedSeed = existingSeedExchange['encrypted-seed']
-        if (encryptedSeed) {
-          return responseBuilder.successResponse({ senderPublicKey, encryptedSeed })
-        } else {
-          connections.sendSeedRequest(userId, connectionId, requesterPublicKey)
-        }
-
-      } else {
-        throw e
-      }
-    }
-
-    return responseBuilder.successResponse('Successfully sent out request for seed!')
-  } catch (e) {
-    logger.error(`Failed to request seed for user ${userId} with ${e}`)
-    return responseBuilder.errorResponse(
-      statusCodes['Internal Server Error'],
-      `Failed to request seed with ${e}`
-    )
-  }
-}
-
-exports.querySeedRequests = async function (userId) {
-  const params = {
-    TableName: setup.seedExchangeTableName,
-    KeyName: '#userId',
-    KeyConditionExpression: '#userId = :userId',
-    FilterExpression: 'attribute_not_exists(#encryptedSeed)',
-    ExpressionAttributeNames: {
-      '#userId': 'user-id',
-      '#encryptedSeed': 'encrypted-seed'
-    },
-    ExpressionAttributeValues: {
-      ':userId': userId
-    },
-  }
-
-  try {
-    const ddbClient = connection.ddbClient()
-    const seedRequests = await ddbClient.query(params).promise()
-
-    return responseBuilder.successResponse({ seedRequests: seedRequests.Items })
-  } catch (e) {
-    return responseBuilder.errorResponse(
-      statusCodes['Internal Server Error'],
-      `Failed to get seed requests with ${e}`
-    )
-  }
-}
-
-exports.sendSeed = async function (userId, senderPublicKey, requesterPublicKey, encryptedSeed) {
-  if (!requesterPublicKey || !encryptedSeed) return responseBuilder.errorResponse(
-    statusCodes['Bad Request'],
-    'Missing required items'
-  )
-
-  const updateSeedExchangeParams = {
-    TableName: setup.seedExchangeTableName,
-    Key: {
-      'user-id': userId,
-      'requester-public-key': requesterPublicKey
-    },
-    UpdateExpression: 'set #encryptedSeed = :encryptedSeed',
-    ExpressionAttributeNames: {
-      '#encryptedSeed': 'encrypted-seed'
-    },
-    ExpressionAttributeValues: {
-      ':encryptedSeed': encryptedSeed
-    },
-  }
-
-  try {
-    const ddbClient = connection.ddbClient()
-    await ddbClient.update(updateSeedExchangeParams).promise()
-
-    connections.sendSeed(userId, senderPublicKey, requesterPublicKey, encryptedSeed)
-
-    return responseBuilder.successResponse('Success!')
-  } catch (e) {
-    return responseBuilder.errorResponse(
-      statusCodes['Internal Server Error'],
-      `Failed to send seed with ${e}`
-    )
-  }
-}
-
-const deleteSeedRequest = async function (userId, conn) {
-  const requesterPublicKey = conn.requesterPublicKey
-
-  const deleteSeedExchangeParams = {
-    TableName: setup.seedExchangeTableName,
-    Key: {
-      'user-id': userId,
-      'requester-public-key': requesterPublicKey
-    }
-  }
-
-  try {
-    const ddbClient = connection.ddbClient()
-    await ddbClient.delete(deleteSeedExchangeParams).promise()
-
-    conn.deleteSeedRequest()
-  } catch (e) {
-    logger.warn(`Failed to delete seed request for user ${userId} and public key ${requesterPublicKey} with ${e}`)
   }
 }
 

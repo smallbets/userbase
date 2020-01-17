@@ -5,7 +5,6 @@ const DEFAULT_ENDPOINT = 'https://preview.userbase.dev' + VERSION
 
 let userbaseAppId = null
 let userbaseEndpoint = DEFAULT_ENDPOINT
-let userbaseKeyNotFoundHandler = null
 
 const getAppId = () => {
   if (!userbaseAppId) throw new errors.AppIdNotSet
@@ -13,8 +12,6 @@ const getAppId = () => {
 }
 
 const getEndpoint = () => userbaseEndpoint
-
-const getKeyNotFoundHandler = () => userbaseKeyNotFoundHandler
 
 const setAppId = (appId) => {
   if (userbaseAppId && userbaseAppId !== appId) throw new errors.AppIdAlreadySet(userbaseAppId)
@@ -31,22 +28,13 @@ const setEndpoint = (newEndpoint) => {
   userbaseEndpoint = newEndpoint + VERSION
 }
 
-const setKeyNotFoundHandler = (keyNotFoundHandler) => {
-  if (keyNotFoundHandler !== undefined && typeof keyNotFoundHandler !== 'function') {
-    throw new errors.KeyNotFoundHandlerMustBeFunction
-  }
-  userbaseKeyNotFoundHandler = keyNotFoundHandler
-}
-
-const configure = ({ appId, endpoint, keyNotFoundHandler }) => {
+const configure = ({ appId, endpoint }) => {
   setAppId(appId)
   setEndpoint(endpoint)
-  setKeyNotFoundHandler(keyNotFoundHandler)
 }
 
 export default {
   getAppId,
   getEndpoint,
-  getKeyNotFoundHandler,
   configure,
 }
