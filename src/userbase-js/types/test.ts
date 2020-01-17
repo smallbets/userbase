@@ -10,7 +10,7 @@ const {
   openDatabase,
   insertItem,
   updateItem,
-  transaction
+  buildTransaction
 } = userbase
 
 // TypeScript Version: 2.1
@@ -121,20 +121,20 @@ updateItem('tdb', { name: 'tname' }, 'tid')
 updateItem('tdb', { name: 'tname' })
 
 // $ExpectType Promise<void>
-transaction('tdb', [
+buildTransaction('tdb', [
   { command: 'Insert', item: { name: 'tname' } },
   { command: 'Update', item: { name: 'tname' }, id: 'tid' },
   { command: 'Delete', id: 'tid' }
 ])
 
 // $ExpectError
-transaction('tdb')
+buildTransaction('tdb')
 
 // $ExpectError
-transaction('tdb', [{ command: 'Insert' }])
+buildTransaction('tdb', [{ command: 'Insert' }])
 
 // $ExpectError
-transaction('tdb', [{ command: 'Update', item: { name: 'tname' } }])
+buildTransaction('tdb', [{ command: 'Update', item: { name: 'tname' } }])
 
 // $ExpectError
-transaction('tdb', [{ command: 'Delete' }])
+buildTransaction('tdb', [{ command: 'Delete' }])

@@ -645,7 +645,7 @@ const _buildDeleteParams = async (database, itemId) => {
   return { itemKey, encryptedItem }
 }
 
-const transaction = async (dbName, operations) => {
+const buildTransaction = async (dbName, operations) => {
   try {
     _validateDbInput(dbName)
 
@@ -758,7 +758,7 @@ export default {
   insertItem,
   updateItem,
   deleteItem,
-  transaction,
+  buildTransaction,
 
   // used internally
   getOpenDb,

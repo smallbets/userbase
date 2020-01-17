@@ -61,7 +61,7 @@ interface Userbase {
 
   deleteItem(dbName: string, id: string): Promise<void>
 
-  transaction(dbName: string, operations: DatabaseOperation[]): Promise<void>
+  buildTransaction(dbName: string, operations: DatabaseOperation[]): Promise<void>
 }
 
 declare let userbase: Userbase
