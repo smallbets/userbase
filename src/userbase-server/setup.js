@@ -209,8 +209,7 @@ async function setupDdb() {
   const userDatabaseTableParams = {
     AttributeDefinitions: [
       { AttributeName: 'user-id', AttributeType: 'S' },
-      { AttributeName: 'database-name-hash', AttributeType: 'S' },
-      { AttributeName: 'database-id', AttributeType: 'S' }
+      { AttributeName: 'database-name-hash', AttributeType: 'S' }
     ],
     KeySchema: [
       { AttributeName: 'user-id', KeyType: 'HASH' },
