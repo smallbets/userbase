@@ -29,7 +29,7 @@ If you're building a web app, you will likely need a database and a backend. Use
 - And if you want to keep things really simple.
 
 ## How do I start?
-Userbase will become available on January 25th, 2020. You can [subscribe to the mailing list](https://userbase.dev/mailing-list) to receive important updates in your inbox.
+Userbase will become available on January 25th, 2020. You can [subscribe to the mailing list](https://userbase.com/mailing-list) to receive important updates in your inbox.
 
 ## Development
 
