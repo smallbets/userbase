@@ -614,14 +614,14 @@ const deleteItem = async (input) => {
   try {
     if (typeof input !== 'object') throw new errors.InputMustBeObject
 
-    const { databaseName, itemId } = input
+    const { databaseName, id } = input
 
     _validateDbInput(databaseName)
 
     const database = getOpenDb(databaseName)
 
     const action = 'Delete'
-    const params = await _buildDeleteParams(database, itemId)
+    const params = await _buildDeleteParams(database, id)
 
     await postTransaction(database, action, params)
   } catch (e) {

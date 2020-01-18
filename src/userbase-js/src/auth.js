@@ -234,7 +234,7 @@ const signUp = async (input) => {
 
     if (rememberMe) {
       localData.saveSeedString(appId, lowerCaseUsername, seedString)
-      localData.signInSession(session)
+      localData.signInSession(lowerCaseUsername, sessionId, creationDate)
     }
 
     await _connectWebSocket(session, seedString, rememberMe)
