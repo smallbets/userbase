@@ -11,7 +11,15 @@ const getAppId = () => {
   return userbaseAppId
 }
 
-const getEndpoint = () => window._userbaseEndpoint
+let cachedEndpoint
+const getEndpoint = () => {
+  // prevent unsafe override of window object by only allowing single endpoint to be used
+  if (cachedEndpoint && cachedEndpoint !== window._userbaseEndpoint) {
+    throw new errors.ServiceUnavailable
+  }
+  cachedEndpoint = window._userbaseEndpoint
+  return cachedEndpoint
+}
 
 const setAppId = (appId) => {
   if (userbaseAppId && userbaseAppId !== appId) throw new errors.AppIdAlreadySet(userbaseAppId)
