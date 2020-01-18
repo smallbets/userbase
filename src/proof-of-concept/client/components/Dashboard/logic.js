@@ -28,9 +28,7 @@ const insertTodo = async (username, todo, handleRemoveUserAuthentication) => {
 
 const deleteTodo = async (username, todo, handleRemoveUserAuthentication) => {
   try {
-    console.log(todo.itemId)
-
-    await userbase.deleteItem({ databaseName: getDbName(username), id: todo.itemId })
+    await userbase.deleteItem({ databaseName: getDbName(username), itemId: todo.itemId })
   } catch (e) {
     _errorHandler(e, 'delete todos', handleRemoveUserAuthentication)
   }
@@ -42,7 +40,7 @@ const toggleTodo = async (username, todo, handleRemoveUserAuthentication) => {
     await userbase.updateItem({
       databaseName: getDbName(username),
       item: { todo: todo.item.todo, completed: markingComplete },
-      id: todo.itemId
+      itemId: todo.itemId
     })
   } catch (e) {
     _errorHandler(e, 'toggle todos', handleRemoveUserAuthentication)
@@ -54,7 +52,7 @@ const updateTodo = async (username, todo, newTodoInput, handleRemoveUserAuthenti
     await userbase.updateItem({
       databaseName: getDbName(username),
       item: { todo: newTodoInput, completed: todo.item.completed },
-      id: todo.itemId
+      itemId: todo.itemId
     })
   } catch (e) {
     _errorHandler(e, 'update todo', handleRemoveUserAuthentication)

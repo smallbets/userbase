@@ -20,19 +20,19 @@ type DatabaseOperation = InsertOperation | UpdateOperation | DeleteOperation
 
 interface InsertOperation {
   command: 'Insert'
-  id?: string
+  itemId?: string
   item: any
 }
 
 interface UpdateOperation {
   command: 'Update'
-  id: string
+  itemId: string
   item: any
 }
 
 interface DeleteOperation {
   command: 'Delete'
-  id: string
+  itemId: string
 }
 
 interface Item {
@@ -55,11 +55,11 @@ interface Userbase {
 
   openDatabase(input: { databaseName: string, changeHandler: (items: Item[]) => void }): Promise<void>
 
-  insertItem(input: { databaseName: string, item: any, id?: string }): Promise<void>
+  insertItem(input: { databaseName: string, item: any, itemId?: string }): Promise<void>
 
-  updateItem(input: { databaseName: string, item: any, id: string }): Promise<void>
+  updateItem(input: { databaseName: string, item: any, itemId: string }): Promise<void>
 
-  deleteItem(input: { databaseName: string, id: string }): Promise<void>
+  deleteItem(input: { databaseName: string, itemId: string }): Promise<void>
 
   buildTransaction(input: { databaseName: string, operations: DatabaseOperation[] }): Promise<void>
 }

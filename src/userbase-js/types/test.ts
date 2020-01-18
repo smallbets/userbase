@@ -94,13 +94,13 @@ openDatabase({ databaseName: 'tdb' })
 insertItem({ databaseName: 'tdb', item: { name: 'tname' } })
 
 // $ExpectType Promise<void>
-insertItem({ databaseName: 'tdb', item: { name: 'tname' }, id: 'tid' })
+insertItem({ databaseName: 'tdb', item: { name: 'tname' }, itemId: 'tid' })
 
 // $ExpectError
-insertItem({ databaseName: 'tdb', item: { name: 'tname' }, id: 1 })
+insertItem({ databaseName: 'tdb', item: { name: 'tname' }, itemId: 1 })
 
 // $ExpectType Promise<void>
-updateItem({ databaseName: 'tdb', item: { name: 'tname' }, id: 'tid' })
+updateItem({ databaseName: 'tdb', item: { name: 'tname' }, itemId: 'tid' })
 
 // $ExpectError
 updateItem({ databaseName: 'tdb', item: { name: 'tname' } })
@@ -110,8 +110,8 @@ buildTransaction({
   databaseName: 'tdb',
   operations: [
     { command: 'Insert', item: { name: 'tname' } },
-    { command: 'Update', item: { name: 'tname' }, id: 'tid' },
-    { command: 'Delete', id: 'tid' }
+    { command: 'Update', item: { name: 'tname' }, itemId: 'tid' },
+    { command: 'Delete', itemId: 'tid' }
   ]
 })
 

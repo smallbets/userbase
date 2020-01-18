@@ -495,14 +495,14 @@ const insertItem = async (input) => {
   try {
     if (typeof input !== 'object') throw new errors.InputMustBeObject
 
-    const { databaseName, item, id } = input
+    const { databaseName, item, itemId } = input
 
     _validateDbInput(databaseName)
 
     const database = getOpenDb(databaseName)
 
     const action = 'Insert'
-    const params = await _buildInsertParams(database, item, id)
+    const params = await _buildInsertParams(database, item, itemId)
 
     await postTransaction(database, action, params)
 
@@ -554,14 +554,14 @@ const updateItem = async (input) => {
   try {
     if (typeof input !== 'object') throw new errors.InputMustBeObject
 
-    const { databaseName, item, id } = input
+    const { databaseName, item, itemId } = input
 
     _validateDbInput(databaseName)
 
     const database = getOpenDb(databaseName)
 
     const action = 'Update'
-    const params = await _buildUpdateParams(database, item, id)
+    const params = await _buildUpdateParams(database, item, itemId)
 
     await postTransaction(database, action, params)
   } catch (e) {
@@ -614,14 +614,14 @@ const deleteItem = async (input) => {
   try {
     if (typeof input !== 'object') throw new errors.InputMustBeObject
 
-    const { databaseName, id } = input
+    const { databaseName, itemId } = input
 
     _validateDbInput(databaseName)
 
     const database = getOpenDb(databaseName)
 
     const action = 'Delete'
-    const params = await _buildDeleteParams(database, id)
+    const params = await _buildDeleteParams(database, itemId)
 
     await postTransaction(database, action, params)
   } catch (e) {
@@ -680,26 +680,21 @@ const buildTransaction = async (input) => {
 
     const operationParamsPromises = operations.map(operation => {
       const command = operation.command
+      const itemId = operation.itemId
 
       switch (command) {
         case 'Insert': {
-          const id = operation.id
           const item = operation.item
-
-          return _buildInsertParams(database, item, id)
+          return _buildInsertParams(database, item, itemId)
         }
 
         case 'Update': {
-          const id = operation.id
           const item = operation.item
-
-          return _buildUpdateParams(database, item, id)
+          return _buildUpdateParams(database, item, itemId)
         }
 
         case 'Delete': {
-          const id = operation.id
-
-          return _buildDeleteParams(database, id)
+          return _buildDeleteParams(database, itemId)
         }
 
         default: throw new errors.CommandUnrecognized(command)
