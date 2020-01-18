@@ -58,7 +58,7 @@ npm install
 
 #### Windows WSL
 
-To bypass symlink issues on Windows, you need to disable symlinks on WSL. For more info, check WSL issues [#14](and https://github.com/Microsoft/WSL/issues/14) and [#26](https://github.com/MicrosoftDocs/WSL/issues/26).
+To bypass symlink issues on Windows, you need to disable symlinks on WSL. For more info, check WSL issues [#14](https://github.com/Microsoft/WSL/issues/14) and [#26](https://github.com/MicrosoftDocs/WSL/issues/26).
 
 ```
 npm install --no-bin-links
