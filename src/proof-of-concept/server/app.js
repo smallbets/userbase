@@ -23,7 +23,7 @@ const userbaseConfig = {
   httpPort,
 }
 
-const ADMIN_EMAIL = 'admin@userbase.dev'
+const ADMIN_EMAIL = 'admin@userbase.com'
 const ADMIN_ID = 'admin-id'
 const ADMIN_FULL_NAME = 'Default Admin'
 
