@@ -30,20 +30,8 @@ class AppIdCannotBeBlank extends Error {
   }
 }
 
-class EndpointAlreadySet extends Error {
-  constructor(endpoint, ...params) {
-    super(endpoint, ...params)
-
-    this.name = 'EndpointAlreadySet'
-    this.message = 'Endpoint already set.'
-    this.status = statusCodes['Conflict']
-    this.endpoint = endpoint
-  }
-}
-
 export default {
   AppIdAlreadySet,
   AppIdMustBeString,
   AppIdCannotBeBlank,
-  EndpointAlreadySet,
 }

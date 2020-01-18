@@ -31,12 +31,11 @@ export default class App extends Component {
   async componentDidMount() {
     window.addEventListener('hashchange', this.handleReadHash, false)
 
-    let endpoint
     // use our own server for development
-    if (window.location.host === 'localhost:3000') endpoint = 'http://localhost:3000'
-    else if (window.location.host === 'staging.encrypted.dev') endpoint = 'https://staging.encrypted.dev'
+    if (window.location.host === 'localhost:3000') window._userbaseEndpoint = 'http://localhost:3000/v1'
+    else if (window.location.host === 'staging.encrypted.dev') window._userbaseEndpoint = 'https://staging.encrypted.dev/v1'
 
-    const session = await userLogic.init({ appId: APP_ID, endpoint })
+    const session = await userLogic.init({ appId: APP_ID })
 
     if (session.user) {
       const { username } = session.user

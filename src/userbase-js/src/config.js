@@ -4,14 +4,14 @@ const VERSION = '/v1'
 const DEFAULT_ENDPOINT = 'https://preview.userbase.dev' + VERSION
 
 let userbaseAppId = null
-let userbaseEndpoint = DEFAULT_ENDPOINT
+window._userbaseEndpoint = DEFAULT_ENDPOINT
 
 const getAppId = () => {
   if (!userbaseAppId) throw new errors.AppIdNotSet
   return userbaseAppId
 }
 
-const getEndpoint = () => userbaseEndpoint
+const getEndpoint = () => window._userbaseEndpoint
 
 const setAppId = (appId) => {
   if (userbaseAppId && userbaseAppId !== appId) throw new errors.AppIdAlreadySet(userbaseAppId)
@@ -20,17 +20,8 @@ const setAppId = (appId) => {
   userbaseAppId = appId
 }
 
-const setEndpoint = (newEndpoint) => {
-  if (!newEndpoint) return
-  if (userbaseEndpoint !== DEFAULT_ENDPOINT && newEndpoint + VERSION !== userbaseEndpoint) {
-    throw new errors.EndpointAlreadySet(userbaseEndpoint)
-  }
-  userbaseEndpoint = newEndpoint + VERSION
-}
-
-const configure = ({ appId, endpoint }) => {
+const configure = ({ appId }) => {
   setAppId(appId)
-  setEndpoint(endpoint)
 }
 
 export default {

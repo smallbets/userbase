@@ -401,9 +401,9 @@ const signIn = async (username, password, rememberMe = false) => {
   }
 }
 
-const init = async ({ appId, endpoint }) => {
+const init = async ({ appId }) => {
   try {
-    config.configure({ appId, endpoint })
+    config.configure({ appId })
 
     const session = await signInWithSession(appId)
     return session
@@ -414,7 +414,6 @@ const init = async ({ appId, endpoint }) => {
       case 'AppIdMustBeString':
       case 'AppIdCannotBeBlank':
       case 'AppIdNotValid':
-      case 'EndpointAlreadySet':
       case 'UserAlreadySignedIn':
       case 'ServiceUnavailable':
         throw e
