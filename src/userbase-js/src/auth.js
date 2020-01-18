@@ -205,10 +205,16 @@ const _validateProfile = (profile) => {
   if (!keyExists) throw new errors.ProfileCannotBeEmpty
 }
 
-const signUp = async (username, password, email, profile, rememberMe = false) => {
+const signUp = async (input) => {
   try {
+    if (typeof input !== 'object') throw new errors.InputMustBeObject
+
+    const { username, password, email, profile, rememberMe = false } = input
+
     _validateSignUpOrSignInInput(username, password)
     if (profile) _validateProfile(profile)
+    if (email && typeof email !== 'string') throw new errors.EmailNotValid
+    if (typeof rememberMe !== 'boolean') throw new errors.RememberMeMustBeBoolean
 
     const appId = config.getAppId()
     const lowerCaseUsername = username.toLowerCase()
@@ -237,7 +243,7 @@ const signUp = async (username, password, email, profile, rememberMe = false) =>
   } catch (e) {
 
     switch (e.name) {
-      case 'TrialExceededLimit':
+      case 'InputMustBeObject':
       case 'UsernameAlreadyExists':
       case 'UsernameCannotBeBlank':
       case 'UsernameMustBeString':
@@ -254,6 +260,8 @@ const signUp = async (username, password, email, profile, rememberMe = false) =>
       case 'ProfileKeyTooLong':
       case 'ProfileValueMustBeString':
       case 'ProfileValueTooLong':
+      case 'RememberMeMustBeBoolean':
+      case 'TrialExceededLimit':
       case 'AppIdNotSet':
       case 'AppIdNotValid':
       case 'UserAlreadySignedIn':
@@ -346,9 +354,14 @@ const _rebuildPasswordToken = async (username, password) => {
   return { passwordHkdfKey, passwordToken }
 }
 
-const signIn = async (username, password, rememberMe = false) => {
+const signIn = async (input) => {
   try {
+    if (typeof input !== 'object') throw new errors.InputMustBeObject
+
+    const { username, password, rememberMe = false } = input
+
     _validateSignUpOrSignInInput(username, password)
+    if (typeof rememberMe !== 'boolean') throw new errors.RememberMeMustBeBoolean
 
     const appId = config.getAppId()
     const lowerCaseUsername = username.toLowerCase()
@@ -380,6 +393,7 @@ const signIn = async (username, password, rememberMe = false) => {
   } catch (e) {
 
     switch (e.name) {
+      case 'InputMustBeObject':
       case 'UsernameOrPasswordMismatch':
       case 'UsernameCannotBeBlank':
       case 'UsernameTooLong':
@@ -388,6 +402,7 @@ const signIn = async (username, password, rememberMe = false) => {
       case 'PasswordTooShort':
       case 'PasswordTooLong':
       case 'PasswordMustBeString':
+      case 'RememberMeMustBeBoolean':
       case 'AppIdNotSet':
       case 'AppIdNotValid':
       case 'UserAlreadySignedIn':
@@ -401,8 +416,12 @@ const signIn = async (username, password, rememberMe = false) => {
   }
 }
 
-const init = async ({ appId }) => {
+const init = async (input) => {
   try {
+    if (typeof input !== 'object') throw new errors.InputMustBeObject
+
+    const { appId } = input
+
     config.configure({ appId })
 
     const session = await signInWithSession(appId)
@@ -410,6 +429,7 @@ const init = async ({ appId }) => {
   } catch (e) {
 
     switch (e.name) {
+      case 'InputMustBeObject':
       case 'AppIdAlreadySet':
       case 'AppIdMustBeString':
       case 'AppIdCannotBeBlank':
@@ -468,26 +488,27 @@ const signInWithSession = async (appId) => {
   }
 }
 
-const _validateUpdatedUserInput = (user) => {
-  if (typeof user !== 'object') throw new errors.UserMustBeObject
-
-  const { username, password, profile } = user
-
-  if (!objectHasOwnProperty(user, 'username')
-    && !objectHasOwnProperty(user, 'password')
-    && !objectHasOwnProperty(user, 'email')
-    && !objectHasOwnProperty(user, 'profile')
+const _validateUpdatedUserInput = (input) => {
+  if (!objectHasOwnProperty(input, 'username')
+    && !objectHasOwnProperty(input, 'password')
+    && !objectHasOwnProperty(input, 'email')
+    && !objectHasOwnProperty(input, 'profile')
   ) {
     throw new errors.UserMissingExpectedProperties
   }
 
-  if (objectHasOwnProperty(user, 'username')) _validateUsername(username)
-  if (objectHasOwnProperty(user, 'password')) _validatePassword(password)
-  if (profile) _validateProfile(profile) // if profile is falsey, gets set to false
+  const { username, password, email, profile } = input
+
+  if (objectHasOwnProperty(input, 'username')) _validateUsername(username)
+  if (objectHasOwnProperty(input, 'password')) _validatePassword(password)
+
+  // if email or profile are falsey, will be set to false
+  if (email && typeof email !== 'string') throw new errors.EmailNotValid
+  if (profile) _validateProfile(profile)
 }
 
-const _buildUpdateUserParams = async (user) => {
-  const params = { ...user }
+const _buildUpdateUserParams = async (input) => {
+  const params = { ...input }
   if (params.username) params.username = params.username.toLowerCase()
 
   if (params.password) {
@@ -522,15 +543,17 @@ const _buildUpdateUserParams = async (user) => {
   return params
 }
 
-const updateUser = async (user) => {
+const updateUser = async (input) => {
   try {
-    _validateUpdatedUserInput(user)
+    if (typeof input !== 'object') throw new errors.InputMustBeObject
+
+    _validateUpdatedUserInput(input)
 
     if (!ws.keys.init) throw new errors.UserNotSignedIn
     const startingSeedString = ws.seedString
 
     const action = 'UpdateUser'
-    const params = await _buildUpdateUserParams(user)
+    const params = await _buildUpdateUserParams(input)
 
     if (ws.reconnecting) throw new errors.Reconnecting
     if (!ws.keys.init) throw new errors.UserNotSignedIn
@@ -563,7 +586,7 @@ const updateUser = async (user) => {
   } catch (e) {
 
     switch (e.name) {
-      case 'UserMustBeObject':
+      case 'InputMustBeObject':
       case 'UserMissingExpectedProperties':
       case 'UsernameAlreadyExists':
       case 'UsernameMustBeString':

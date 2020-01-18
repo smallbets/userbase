@@ -41,27 +41,27 @@ interface Item {
 }
 
 interface Userbase {
-  init(options: { appId: string }): Promise<Session>
+  init(input: { appId: string }): Promise<Session>
 
-  signUp(username: string, password: string, email?: string, profile?: UserProfile, rememberMe?: boolean): Promise<UserResult>
+  signUp(input: { username: string, password: string, email?: string, profile?: UserProfile, rememberMe?: boolean }): Promise<UserResult>
 
-  signIn(username: string, password: string, rememberMe?: boolean): Promise<UserResult>
+  signIn(input: { username: string, password: string, rememberMe?: boolean }): Promise<UserResult>
 
   signOut(): Promise<void>
 
-  updateUser(user: { username?: string, password?: string, email?: string | null, profile?: UserProfile | null }): Promise<void>
+  updateUser(input: { username?: string, password?: string, email?: string | null, profile?: UserProfile | null }): Promise<void>
 
   deleteUser(): Promise<void>
 
-  openDatabase(dbName: string, changeHandler: (items: Item[]) => void): Promise<void>
+  openDatabase(input: { databaseName: string, changeHandler: (items: Item[]) => void }): Promise<void>
 
-  insertItem(dbName: string, item: any, id?: string): Promise<void>
+  insertItem(input: { databaseName: string, item: any, id?: string }): Promise<void>
 
-  updateItem(dbName: string, item: any, id: string): Promise<void>
+  updateItem(input: { databaseName: string, item: any, id: string }): Promise<void>
 
-  deleteItem(dbName: string, id: string): Promise<void>
+  deleteItem(input: { databaseName: string, id: string }): Promise<void>
 
-  buildTransaction(dbName: string, operations: DatabaseOperation[]): Promise<void>
+  buildTransaction(input: { databaseName: string, operations: DatabaseOperation[] }): Promise<void>
 }
 
 declare let userbase: Userbase

@@ -218,12 +218,12 @@ class ProfileValueTooLong extends Error {
   }
 }
 
-class UserMustBeObject extends Error {
+class RememberMeMustBeBoolean extends Error {
   constructor(...params) {
     super(...params)
 
-    this.name = 'UserMustBeObject'
-    this.message = 'User must be an object.'
+    this.name = 'RememberMeMustBeBoolean'
+    this.message = 'Remember me value must be a boolean.'
     this.status = statusCodes['Bad Request']
   }
 }
@@ -270,7 +270,7 @@ export default {
   ProfileKeyTooLong,
   ProfileValueMustBeString,
   ProfileValueTooLong,
-  UserMustBeObject,
+  RememberMeMustBeBoolean,
   UserMissingExpectedProperties,
   TrialExceededLimit,
 }
