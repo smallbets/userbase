@@ -1,7 +1,7 @@
 import errors from './errors'
 
 const VERSION = '/v1'
-const DEFAULT_ENDPOINT = 'https://preview.userbase.dev' + VERSION
+const DEFAULT_ENDPOINT = 'https://v1.userbase.com' + VERSION
 
 let userbaseAppId = null
 window._userbaseEndpoint = DEFAULT_ENDPOINT
