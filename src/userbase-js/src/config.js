@@ -1,20 +1,17 @@
 import errors from './errors'
 
 const VERSION = '/v1'
-const DEFAULT_ENDPOINT = 'https://preview.userbase.dev' + VERSION
+const DEFAULT_ENDPOINT = 'https://v1.userbase.com' + VERSION
 
 let userbaseAppId = null
-let userbaseEndpoint = DEFAULT_ENDPOINT
-let userbaseKeyNotFoundHandler = null
+window._userbaseEndpoint = DEFAULT_ENDPOINT
 
 const getAppId = () => {
   if (!userbaseAppId) throw new errors.AppIdNotSet
   return userbaseAppId
 }
 
-const getEndpoint = () => userbaseEndpoint
-
-const getKeyNotFoundHandler = () => userbaseKeyNotFoundHandler
+const getEndpoint = () => window._userbaseEndpoint
 
 const setAppId = (appId) => {
   if (userbaseAppId && userbaseAppId !== appId) throw new errors.AppIdAlreadySet(userbaseAppId)
@@ -23,30 +20,12 @@ const setAppId = (appId) => {
   userbaseAppId = appId
 }
 
-const setEndpoint = (newEndpoint) => {
-  if (!newEndpoint) return
-  if (userbaseEndpoint !== DEFAULT_ENDPOINT && newEndpoint + VERSION !== userbaseEndpoint) {
-    throw new errors.EndpointAlreadySet(userbaseEndpoint)
-  }
-  userbaseEndpoint = newEndpoint + VERSION
-}
-
-const setKeyNotFoundHandler = (keyNotFoundHandler) => {
-  if (keyNotFoundHandler !== undefined && typeof keyNotFoundHandler !== 'function') {
-    throw new errors.KeyNotFoundHandlerMustBeFunction
-  }
-  userbaseKeyNotFoundHandler = keyNotFoundHandler
-}
-
-const configure = ({ appId, endpoint, keyNotFoundHandler }) => {
+const configure = ({ appId }) => {
   setAppId(appId)
-  setEndpoint(endpoint)
-  setKeyNotFoundHandler(keyNotFoundHandler)
 }
 
 export default {
   getAppId,
   getEndpoint,
-  getKeyNotFoundHandler,
   configure,
 }

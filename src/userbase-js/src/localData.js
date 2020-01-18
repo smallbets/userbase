@@ -9,16 +9,16 @@ const getCurrentSession = () => {
   return JSON.parse(currentSessionString)
 }
 
-const saveSeedString = (username, seedString) => {
-  localStorage.setItem('userbaseSeed.' + username, seedString)
+const saveSeedString = (appId, username, seedString) => {
+  localStorage.setItem(`userbaseSeed.${appId}.${username}`, seedString)
 }
 
-const removeSeedString = (username) => {
-  localStorage.removeItem('userbaseSeed.' + username)
+const removeSeedString = (appId, username) => {
+  localStorage.removeItem(`userbaseSeed.${appId}.${username}`)
 }
 
-const getSeedString = (username) => {
-  return localStorage.getItem('userbaseSeed.' + username)
+const getSeedString = (appId, username) => {
+  return localStorage.getItem(`userbaseSeed.${appId}.${username}`)
 }
 
 const signInSession = (username, sessionId, creationDate) => {
@@ -31,27 +31,9 @@ const signOutSession = (username) => {
   setCurrentSession(username, signedIn)
 }
 
-const setSeedRequest = (username, seedRequestPrivateKey, seedRequestPublicKey) => {
-  const seedRequest = seedRequestPrivateKey + '|' + seedRequestPublicKey
-  localStorage.setItem(`userbaseSeedRequest.${username}`, seedRequest)
+const removeCurrentSession = () => {
+  localStorage.removeItem('userbaseCurrentSession')
 }
-
-const getSeedRequest = (username) => {
-  const seedRequest = localStorage.getItem(`userbaseSeedRequest.${username}`)
-  if (!seedRequest) return null
-
-  const seedRequestArray = seedRequest.split('|')
-  const seedRequestPrivateKey = seedRequestArray[0]
-  const seedRequestPublicKey = seedRequestArray[1]
-
-  return { seedRequestPrivateKey, seedRequestPublicKey }
-}
-
-const removeSeedRequest = (username) => {
-  return localStorage.removeItem(`userbaseSeedRequest.${username}`)
-}
-
-const removeCurrentSession = () => localStorage.removeItem('userbaseCurrentSession')
 
 export default {
   signInSession,
@@ -60,8 +42,5 @@ export default {
   saveSeedString,
   removeSeedString,
   getSeedString,
-  setSeedRequest,
-  getSeedRequest,
-  removeSeedRequest,
   removeCurrentSession,
 }

@@ -12,32 +12,27 @@ interface UserProfile {
 
 interface UserResult {
   username: string
-  key: string
   email?: string
   profile?: UserProfile
 }
-
-type KeyNotFoundHandler = (username: string, deviceId: string) => void
-
-type ShowKeyHandler = (seedString: string, rememberMe: boolean, backUpKey: boolean) => void | Promise<void>
 
 type DatabaseOperation = InsertOperation | UpdateOperation | DeleteOperation
 
 interface InsertOperation {
   command: 'Insert'
-  id?: string
+  itemId?: string
   item: any
 }
 
 interface UpdateOperation {
   command: 'Update'
-  id: string
+  itemId: string
   item: any
 }
 
 interface DeleteOperation {
   command: 'Delete'
-  id: string
+  itemId: string
 }
 
 interface Item {
@@ -46,33 +41,27 @@ interface Item {
 }
 
 interface Userbase {
-  init(options: { appId: string, endpoint?: string, keyNotFoundHandler?: KeyNotFoundHandler }): Promise<Session>
+  init(input: { appId: string }): Promise<Session>
 
-  signUp(username: string, password: string, email?: string, profile?: UserProfile, showKeyHandler?: ShowKeyHandler, rememberMe?: boolean, backUpKey?: boolean): Promise<UserResult>
+  signUp(input: { username: string, password: string, email?: string, profile?: UserProfile, rememberMe?: boolean }): Promise<UserResult>
 
-  signIn(username: string, password: string, rememberMe?: boolean): Promise<UserResult>
+  signIn(input: { username: string, password: string, rememberMe?: boolean }): Promise<UserResult>
 
   signOut(): Promise<void>
 
-  forgotPassword(username: string): Promise<void>
-
-  updateUser(user: { username?: string, password?: string, email?: string | null, profile?: UserProfile | null }): Promise<void>
+  updateUser(input: { username?: string, password?: string, email?: string | null, profile?: UserProfile | null }): Promise<void>
 
   deleteUser(): Promise<void>
 
-  importKey(keyString: string): Promise<void>
+  openDatabase(input: { databaseName: string, changeHandler: (items: Item[]) => void }): Promise<void>
 
-  getLastUsedUsername(): string | undefined
+  insertItem(input: { databaseName: string, item: any, itemId?: string }): Promise<void>
 
-  openDatabase(dbName: string, changeHandler: (items: Item[]) => void): Promise<void>
+  updateItem(input: { databaseName: string, item: any, itemId: string }): Promise<void>
 
-  insertItem(dbName: string, item: any, id?: string): Promise<void>
+  deleteItem(input: { databaseName: string, itemId: string }): Promise<void>
 
-  updateItem(dbName: string, item: any, id: string): Promise<void>
-
-  deleteItem(dbName: string, id: string): Promise<void>
-
-  transaction(dbName: string, operations: DatabaseOperation[]): Promise<void>
+  buildTransaction(input: { databaseName: string, operations: DatabaseOperation[] }): Promise<void>
 }
 
 declare let userbase: Userbase

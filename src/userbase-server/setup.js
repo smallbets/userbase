@@ -35,7 +35,6 @@ const sessionsTableName = resourceNamePrefix + 'sessions'
 const databaseTableName = resourceNamePrefix + 'databases'
 const userDatabaseTableName = resourceNamePrefix + 'user-databases'
 const transactionsTableName = resourceNamePrefix + 'transactions'
-const seedExchangeTableName = resourceNamePrefix + 'seed-exchanges'
 const dbStatesBucketNamePrefix = resourceNamePrefix + 'database-states'
 const secretManagerSecretId = resourceNamePrefix + 'env'
 
@@ -46,17 +45,14 @@ exports.sessionsTableName = sessionsTableName
 exports.databaseTableName = databaseTableName
 exports.userDatabaseTableName = userDatabaseTableName
 exports.transactionsTableName = transactionsTableName
-exports.seedExchangeTableName = seedExchangeTableName
 
 const adminIdIndex = 'AdminIdIndex'
 const userIdIndex = 'UserIdIndex'
 const appIdIndex = 'AppIdIndex'
-const userDatabaseIdIndex = 'UserDatabaseIdIndex'
 
 exports.adminIdIndex = adminIdIndex
 exports.userIdIndex = userIdIndex
 exports.appIdIndex = appIdIndex
-exports.userDatabaseIdIndex = userDatabaseIdIndex
 
 const getDbStatesBucketName = function () {
   if (!initialized || !awsAccountId) {
@@ -72,14 +68,10 @@ exports.s3 = getS3Connection
 exports.getDbStatesBucketName = getDbStatesBucketName
 
 let sm
-let emailDomain
 exports.getSecrets = getSecrets
 exports.updateSecrets = updateSecrets
 
-let ses
-exports.sendEmail = sendEmail
-
-exports.init = async function (userbaseConfig) {
+exports.init = async function () {
   // look for AWS credentials under the 'encrypted' profile
   const profile = 'encrypted'
 
@@ -106,15 +98,11 @@ exports.init = async function (userbaseConfig) {
   awsAccountId = accountInfo.Account
   logger.info(`Running as Account ID: ${awsAccountId}`)
 
-  // remember the email domain
-  emailDomain = userbaseConfig.emailDomain
-
   initialized = true
 
   await setupDdb()
   await setupS3()
   await setupSM()
-  await setupSes()
 }
 
 async function setupDdb() {
@@ -221,28 +209,14 @@ async function setupDdb() {
   const userDatabaseTableParams = {
     AttributeDefinitions: [
       { AttributeName: 'user-id', AttributeType: 'S' },
-      { AttributeName: 'database-name-hash', AttributeType: 'S' },
-      { AttributeName: 'database-id', AttributeType: 'S' }
+      { AttributeName: 'database-name-hash', AttributeType: 'S' }
     ],
     KeySchema: [
       { AttributeName: 'user-id', KeyType: 'HASH' },
       { AttributeName: 'database-name-hash', KeyType: 'RANGE' }
     ],
     BillingMode: 'PAY_PER_REQUEST',
-    TableName: userDatabaseTableName,
-    GlobalSecondaryIndexes: [{
-      IndexName: userDatabaseIdIndex,
-      KeySchema: [
-        { AttributeName: 'database-id', KeyType: 'HASH' },
-        { AttributeName: 'user-id', KeyType: 'RANGE' },
-      ],
-      Projection: {
-        NonKeyAttributes: [
-          'database-id'
-        ],
-        ProjectionType: 'INCLUDE'
-      }
-    }]
+    TableName: userDatabaseTableName
   }
 
   // the transactions table holds a record per database transaction
@@ -259,27 +233,6 @@ async function setupDdb() {
     TableName: transactionsTableName
   }
 
-  // the key exchange table holds key data per user request
-  const seedExchangeTableParams = {
-    AttributeDefinitions: [
-      { AttributeName: 'user-id', AttributeType: 'S' },
-      { AttributeName: 'requester-public-key', AttributeType: 'S' }
-    ],
-    KeySchema: [
-      { AttributeName: 'user-id', KeyType: 'HASH' },
-      { AttributeName: 'requester-public-key', KeyType: 'RANGE' }
-    ],
-    BillingMode: 'PAY_PER_REQUEST',
-    TableName: seedExchangeTableName
-  }
-  const seedExchangeTimeToLive = {
-    TableName: seedExchangeTableName,
-    TimeToLiveSpecification: {
-      AttributeName: 'ttl',
-      Enabled: true
-    }
-  }
-
   logger.info('Creating DynamoDB tables if necessary')
   await Promise.all([
     createTable(ddb, adminTableParams),
@@ -289,11 +242,8 @@ async function setupDdb() {
     createTable(ddb, databaseTableParams),
     createTable(ddb, userDatabaseTableParams),
     createTable(ddb, transactionsTableParams),
-    createTable(ddb, seedExchangeTableParams),
   ])
 
-  logger.info('Setting time to live on tables if necessary')
-  await setTimeToLive(ddb, seedExchangeTimeToLive)
 }
 
 async function setupS3() {
@@ -336,17 +286,6 @@ async function createTable(ddb, params) {
   }
 
   enableBackup()
-}
-
-async function setTimeToLive(ddb, params) {
-  try {
-    await ddb.updateTimeToLive(params).promise()
-    logger.info(`Time to live set on ${params.TableName} successfully`)
-  } catch (e) {
-    if (!e.message.includes('TimeToLive is already enabled')) {
-      throw e
-    }
-  }
 }
 
 async function createBucket(s3, params) {
@@ -458,37 +397,5 @@ async function getEC2Region() {
   } catch {
     logger.info(`Not running on EC2 - Using default region: ${defaultRegion}`)
     return null
-  }
-}
-
-async function setupSes() {
-  logger.info('Setting up SES')
-  ses = new aws.SES()
-}
-
-async function sendEmail(to, subject, body) {
-
-  if (!emailDomain) {
-    throw new Error('Email domain not set')
-  }
-
-  const params = {
-    Source: 'no-reply@' + emailDomain,
-    Destination: { ToAddresses: [to] },
-    Message: {
-      Subject: { Data: subject, Charset: 'UTF-8' },
-      Body: {
-        Text: { Data: body, Charset: 'UTF-8' },
-        Html: { Data: body, Charset: 'UTF-8' }
-      }
-    }
-  }
-
-  try {
-    await ses.sendEmail(params).promise()
-    logger.info('Email sent successfully')
-  } catch (e) {
-    logger.error('Failed to send email')
-    throw e
   }
 }

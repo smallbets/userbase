@@ -90,17 +90,6 @@ class UsernameOrPasswordMismatch extends Error {
   }
 }
 
-class UserCanceledSignIn extends Error {
-  constructor(username, ...params) {
-    super(...params)
-
-    this.name = 'UserCanceledSignIn'
-    this.message = 'Canceled.'
-    this.status = statusCodes['Bad Request']
-    this.username = username
-  }
-}
-
 class UserAlreadySignedIn extends Error {
   constructor(username, ...params) {
     super(...params)
@@ -139,16 +128,6 @@ class UserNotFound extends Error {
 
     this.name = 'UserNotFound'
     this.message = 'User not found.'
-    this.status = statusCodes['Not Found']
-  }
-}
-
-class UserEmailNotFound extends Error {
-  constructor(...params) {
-    super(...params)
-
-    this.name = 'UserEmailNotFound'
-    this.message = 'Email not found.'
     this.status = statusCodes['Not Found']
   }
 }
@@ -239,53 +218,12 @@ class ProfileValueTooLong extends Error {
   }
 }
 
-class KeyNotValid extends Error {
-  constructor(username, ...params) {
-    super(username, ...params)
-
-    this.name = 'KeyNotValid'
-    this.message = 'Key not valid.'
-    this.status = statusCodes['Unauthorized']
-    this.username = username
-  }
-}
-
-class KeyCannotBeBlank extends Error {
+class RememberMeMustBeBoolean extends Error {
   constructor(...params) {
     super(...params)
 
-    this.name = 'KeyCannotBeBlank'
-    this.message = 'Key cannot be blank.'
-    this.status = statusCodes['Bad Request']
-  }
-}
-
-class KeyMustBeString extends Error {
-  constructor(...params) {
-    super(...params)
-
-    this.name = 'KeyMustBeString'
-    this.message = 'Key must be a string.'
-    this.status = statusCodes['Bad Request']
-  }
-}
-
-class ShowKeyHandlerMustBeFunction extends Error {
-  constructor(...params) {
-    super(...params)
-
-    this.name = 'ShowKeyHandlerMustBeFunction'
-    this.message = 'Show key handler must be a function.'
-    this.status = statusCodes['Bad Request']
-  }
-}
-
-class UserMustBeObject extends Error {
-  constructor(...params) {
-    super(...params)
-
-    this.name = 'UserMustBeObject'
-    this.message = 'User must be an object.'
+    this.name = 'RememberMeMustBeBoolean'
+    this.message = 'Remember me value must be a boolean.'
     this.status = statusCodes['Bad Request']
   }
 }
@@ -320,12 +258,10 @@ export default {
   PasswordTooLong,
   PasswordMustBeString,
   UsernameOrPasswordMismatch,
-  UserCanceledSignIn,
   UserAlreadySignedIn,
   AppIdNotValid,
   UserNotSignedIn,
   UserNotFound,
-  UserEmailNotFound,
   EmailNotValid,
   ProfileMustBeObject,
   ProfileCannotBeEmpty,
@@ -334,11 +270,7 @@ export default {
   ProfileKeyTooLong,
   ProfileValueMustBeString,
   ProfileValueTooLong,
-  KeyNotValid,
-  KeyCannotBeBlank,
-  KeyMustBeString,
-  ShowKeyHandlerMustBeFunction,
-  UserMustBeObject,
+  RememberMeMustBeBoolean,
   UserMissingExpectedProperties,
   TrialExceededLimit,
 }

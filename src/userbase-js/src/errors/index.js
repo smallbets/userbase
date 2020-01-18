@@ -47,6 +47,16 @@ class Reconnecting extends ServiceUnavailable {
   }
 }
 
+class InputMustBeObject extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'InputMustBeObject'
+    this.message = 'Input to function must be an object.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
 export default {
   ...auth,
   ...db,
@@ -55,5 +65,6 @@ export default {
   InternalServerError,
   ServiceUnavailable,
   Timeout,
-  Reconnecting
+  Reconnecting,
+  InputMustBeObject
 }

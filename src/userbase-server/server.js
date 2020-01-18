@@ -34,7 +34,7 @@ async function start(express, app, userbaseConfig = {}) {
       httpsCert
     } = userbaseConfig
 
-    await setup.init(userbaseConfig)
+    await setup.init()
 
     const certExists = httpsKey && httpsCert
     const httpPort = userbaseConfig.httpPort || 8080
@@ -119,15 +119,6 @@ async function start(express, app, userbaseConfig = {}) {
                   )
                   break
                 }
-                case 'RequestSeed': {
-                  response = await user.requestSeed(
-                    userId,
-                    userPublicKey,
-                    connectionId,
-                    params.requesterPublicKey
-                  )
-                  break
-                }
                 default: {
                   response = responseBuilder.errorResponse(statusCodes['Unauthorized'], 'Key not validated')
                 }
@@ -136,8 +127,7 @@ async function start(express, app, userbaseConfig = {}) {
             } else {
 
               switch (action) {
-                case 'ValidateKey':
-                case 'RequestSeed': {
+                case 'ValidateKey': {
                   response = responseBuilder.errorResponse(statusCodes['Bad Request'], 'Already validated key')
                   break
                 }
@@ -145,11 +135,11 @@ async function start(express, app, userbaseConfig = {}) {
                   response = await user.updateUser(
                     userId,
                     params.username,
-                    params.passwordSecureHash,
+                    params.passwordToken,
+                    params.passwordSalts,
                     params.email,
                     params.profile,
-                    params.pbkdfKeySalt,
-                    params.passwordEncryptedSeed
+                    params.passwordBasedBackup
                   )
                   break
                 }
@@ -190,19 +180,6 @@ async function start(express, app, userbaseConfig = {}) {
                 }
                 case 'Bundle': {
                   response = await db.bundleTransactionLog(params.dbId, params.seqNo, params.bundle)
-                  break
-                }
-                case 'GetRequestsForSeed': {
-                  response = await user.querySeedRequests(userId)
-                  break
-                }
-                case 'SendSeed': {
-                  response = await user.sendSeed(
-                    userId,
-                    userPublicKey,
-                    params.requesterPublicKey,
-                    params.encryptedSeed
-                  )
                   break
                 }
                 default: {
@@ -254,7 +231,7 @@ async function start(express, app, userbaseConfig = {}) {
     v1Api.post('/auth/sign-in', user.signIn)
     v1Api.post('/auth/sign-in-with-session', user.authenticateUser, user.extendSession)
     v1Api.get('/auth/server-public-key', user.getServerPublicKey)
-    v1Api.post('/auth/forgot-password', user.forgotPassword)
+    v1Api.get('/auth/get-password-salts', user.getPasswordSalts)
 
     // Userbase admin API
     app.use('/admin', express.static(path.join(__dirname + adminPanelDir)))
