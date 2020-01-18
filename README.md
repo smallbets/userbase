@@ -33,7 +33,7 @@ Userbase will become available on January 25th, 2020. You can [subscribe to the 
 
 ## Development
 
-### Setting up AWS Keys
+### Configure the AWS credentials
 Running the Userbase server requires an AWS account. You just need to provide your AWS credentials and the server will automatically create all the AWS resources it needs. To run the app locally, simply put your AWS credentials in `~/.aws/credentials` under a profile called `encrypted`:
 
 ```
@@ -51,18 +51,17 @@ git clone https://github.com/encrypted-dev/userbase.git
 
 ### Install the dependencies
 
-#### Windows WSL
-
-To bypass symlink issues we have to disable symlinks on WSL, more info available at: https://github.com/MicrosoftDocs/WSL/issues/26
-and https://github.com/Microsoft/WSL/issues/14
-
-```
-npm install --no-bin-links
-```
-
 #### Mac/Linux
 ```
 npm install
+```
+
+#### Windows WSL
+
+To bypass symlink issues on Windows, you need to disable symlinks on WSL. For more info, check WSL issues [#14](and https://github.com/Microsoft/WSL/issues/14) and [#26](https://github.com/MicrosoftDocs/WSL/issues/26).
+
+```
+npm install --no-bin-links
 ```
 
 ### Start the dev server
