@@ -41,7 +41,7 @@ interface Item {
 }
 
 interface Userbase {
-  init(options: { appId: string, endpoint?: string }): Promise<Session>
+  init(options: { appId: string }): Promise<Session>
 
   signUp(username: string, password: string, email?: string, profile?: UserProfile, rememberMe?: boolean): Promise<UserResult>
 

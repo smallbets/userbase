@@ -19,7 +19,7 @@ const {
 init({ appId: 'tid' })
 
 // $ExpectType Promise<Session>
-init({ appId: 'tid', endpoint: 'tendpoint' })
+init({ appId: 'tid' })
 
 // $ExpectType Promise<Session>
 init({ appId: 'tid' })
