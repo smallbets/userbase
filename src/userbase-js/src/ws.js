@@ -41,7 +41,7 @@ class Connection {
     this.init()
   }
 
-  init(resolveConnection, rejectConnection, username, sessionId, seedString, rememberMe, state) {
+  init(resolveConnection, rejectConnection, session, seedString, rememberMe, state) {
     if (this.pingTimeout) clearTimeout(this.pingTimeout)
 
     for (const property of Object.keys(this)) {
@@ -55,8 +55,11 @@ class Connection {
     this.rejectConnection = rejectConnection
     this.connectionResolved = false
 
-    this.username = username
-    this.sessionId = sessionId
+    this.session = {
+      username: session && session.username,
+      sessionId: session && session.sessionId,
+      creationDate: session && session.creationDate
+    }
 
     this.seedString = seedString
     this.keys = {
@@ -75,8 +78,8 @@ class Connection {
     }
   }
 
-  connect(appId, sessionId, username, seedString = null, rememberMe = false, reconnectDelay, state) {
-    if (this.connected) throw new WebSocketError(wsAlreadyConnected, this.username)
+  connect(session, seedString = null, rememberMe = false, reconnectDelay, state) {
+    if (this.connected) throw new WebSocketError(wsAlreadyConnected, this.session.username)
 
     return new Promise((resolve, reject) => {
       let timeout = false
@@ -94,7 +97,7 @@ class Connection {
       const host = removeProtocolFromEndpoint(config.getEndpoint())
       const protocol = getProtocolFromEndpoint(config.getEndpoint())
       const url = ((protocol === 'https') ?
-        'wss://' : 'ws://') + `${host}/api?appId=${appId}&sessionId=${sessionId}&clientId=${clientId}`
+        'wss://' : 'ws://') + `${host}/api?appId=${config.getAppId()}&sessionId=${session.sessionId}&clientId=${clientId}`
 
       const ws = new WebSocket(url)
 
@@ -120,7 +123,7 @@ class Connection {
             }
 
             case 'Connection': {
-              this.init(resolve, reject, username, sessionId, seedString, rememberMe, state)
+              this.init(resolve, reject, session, seedString, rememberMe, state)
               this.ws = ws
               this.heartbeat()
               this.connected = true
@@ -238,7 +241,7 @@ class Connection {
         } catch (e) {
           if (!this.connectionResolved) {
             this.close()
-            reject(new WebSocketError(e.message, username))
+            reject(new WebSocketError(e.message, session.username))
           } else {
             console.warn('Error handling message: ', e)
           }
@@ -258,9 +261,9 @@ class Connection {
             : (reconnectDelay ? reconnectDelay + BACKOFF_RETRY_DELAY : 1000)
 
           this.reconnecting = true
-          await this.reconnect(appId, resolve, reject, username, sessionId, seedString, rememberMe, delay, !this.reconnected && state)
+          await this.reconnect(resolve, reject, session, seedString, rememberMe, delay, !this.reconnected && state)
         } else if (e.code === statusCodes['Client Already Connected']) {
-          reject(new WebSocketError(wsAlreadyConnected, username))
+          reject(new WebSocketError(wsAlreadyConnected, session.username))
         } else {
           this.init()
         }
@@ -268,7 +271,7 @@ class Connection {
     })
   }
 
-  async reconnect(appId, resolveConnection, rejectConnection, username, sessionId, seedString, rememberMe, reconnectDelay, currentState) {
+  async reconnect(resolveConnection, rejectConnection, session, seedString, rememberMe, reconnectDelay, currentState) {
     try {
       const retryDelay = Math.min(reconnectDelay, MAX_RETRY_DELAY)
       console.log(`Connection to server lost. Attempting to reconnect in ${retryDelay / 1000} second${retryDelay !== 1000 ? 's' : ''}...`)
@@ -293,7 +296,7 @@ class Connection {
             this.init()
             this.reconnecting = true
 
-            const result = await this.connect(appId, sessionId, username, seedString, rememberMe, reconnectDelay, state)
+            const result = await this.connect(session, seedString, rememberMe, reconnectDelay, state)
 
             this.reconnected = true
 
@@ -357,14 +360,14 @@ class Connection {
   }
 
   async signOut() {
-    const username = this.username
+    const username = this.session.username
     const connectionResolved = this.connectionResolved
     const rejectConnection = this.rejectConnection
 
     try {
       if (this.rememberMe) localData.signOutSession(username)
 
-      const sessionId = this.sessionId
+      const sessionId = this.session.sessionId
 
       if (this.reconnecting) throw new errors.Reconnecting
 
@@ -389,8 +392,8 @@ class Connection {
 
   async setKeys(seedString) {
     if (this.keys.init) return
-    if (!seedString) throw new WebSocketError('Missing seed', this.username)
-    if (!this.keys.salts) throw new WebSocketError('Missing salts', this.username)
+    if (!seedString) throw new WebSocketError('Missing seed', this.session.username)
+    if (!this.keys.salts) throw new WebSocketError('Missing salts', this.session.username)
     if (!this.seedString) this.seedString = seedString
 
     const seed = base64.decode(seedString)

@@ -27,9 +27,9 @@ const _parseGenericErrors = (e) => {
   }
 }
 
-const _connectWebSocket = async (appId, sessionId, username, seed, rememberMe) => {
+const _connectWebSocket = async (session, seed, rememberMe) => {
   try {
-    await ws.connect(appId, sessionId, username, seed, rememberMe)
+    await ws.connect(session, seed, rememberMe)
   } catch (e) {
     _parseGenericErrors(e)
 
@@ -217,17 +217,21 @@ const signUp = async (username, password, email, profile, rememberMe = false) =>
 
     const lowerCaseEmail = email && email.toLowerCase()
 
-    const session = await _generateKeysAndSignUp(lowerCaseUsername, password, seed, lowerCaseEmail, profile)
-    const { sessionId, creationDate } = session
+    const { sessionId, creationDate } = await _generateKeysAndSignUp(lowerCaseUsername, password, seed, lowerCaseEmail, profile)
+    const session = {
+      username: lowerCaseUsername,
+      sessionId,
+      creationDate
+    }
 
     const seedString = base64.encode(seed)
 
     if (rememberMe) {
-      localData.saveSeedString(lowerCaseUsername, seedString)
-      localData.signInSession(lowerCaseUsername, sessionId, creationDate)
+      localData.saveSeedString(appId, lowerCaseUsername, seedString)
+      localData.signInSession(session)
     }
 
-    await _connectWebSocket(appId, sessionId, lowerCaseUsername, seedString, rememberMe)
+    await _connectWebSocket(session, seedString, rememberMe)
 
     return _buildUserResult(lowerCaseUsername, lowerCaseEmail, profile)
   } catch (e) {
@@ -266,7 +270,7 @@ const signUp = async (username, password, email, profile, rememberMe = false) =>
 
 const signOut = async () => {
   try {
-    if (!ws.username) throw new errors.UserNotSignedIn
+    if (!ws.session.username) throw new errors.UserNotSignedIn
 
     try {
       await ws.signOut()
@@ -306,8 +310,8 @@ const _getSeedStringFromPasswordBasedBackup = async (passwordHkdfKey, passwordBa
 
 const _signInWrapper = async (username, passwordToken) => {
   try {
-    const { session, email, profile, passwordBasedBackup } = await api.auth.signIn(username, passwordToken)
-    return { session, email, profile, passwordBasedBackup }
+    const apiSignInResult = await api.auth.signIn(username, passwordToken)
+    return apiSignInResult
   } catch (e) {
     _parseGenericErrors(e)
     _parseGenericUsernamePasswordError(e)
@@ -351,22 +355,26 @@ const signIn = async (username, password, rememberMe = false) => {
 
     const { passwordHkdfKey, passwordToken } = await _rebuildPasswordToken(username, password)
 
-    const { session, email, profile, passwordBasedBackup } = await _signInWrapper(lowerCaseUsername, passwordToken)
-    const { sessionId, creationDate } = session
+    const apiSignInResult = await _signInWrapper(lowerCaseUsername, passwordToken)
+    const { email, profile, passwordBasedBackup } = apiSignInResult
+    const session = {
+      ...apiSignInResult.session,
+      username: lowerCaseUsername
+    }
 
     const savedSeedString = localData.getSeedString(lowerCaseUsername)
 
     let seedStringFromBackup
     if (!savedSeedString) {
       seedStringFromBackup = await _getSeedStringFromPasswordBasedBackup(passwordHkdfKey, passwordBasedBackup)
-      if (rememberMe) localData.saveSeedString(lowerCaseUsername, seedStringFromBackup)
+      if (rememberMe) localData.saveSeedString(appId, lowerCaseUsername, seedStringFromBackup)
     }
 
     const seedString = savedSeedString || seedStringFromBackup
 
-    if (rememberMe) localData.signInSession(lowerCaseUsername, sessionId, creationDate)
+    if (rememberMe) localData.signInSession(lowerCaseUsername, session.sessionId, session.creationDate)
 
-    await _connectWebSocket(appId, sessionId, username, seedString, rememberMe)
+    await _connectWebSocket(session, seedString, rememberMe)
 
     return _buildUserResult(lowerCaseUsername, email, profile)
   } catch (e) {
@@ -424,7 +432,7 @@ const signInWithSession = async (appId) => {
     if (!currentSession) return {}
 
     const { signedIn, username, sessionId } = currentSession
-    const savedSeedString = localData.getSeedString(username)
+    const savedSeedString = localData.getSeedString(appId, username)
 
     if (!signedIn || !savedSeedString) return { lastUsedUsername: username }
 
@@ -444,15 +452,15 @@ const signInWithSession = async (appId) => {
 
     // enable idempotent calls to init()
     if (ws.connectionResolved) {
-      if (ws.username === username) {
+      if (ws.session.username === username) {
         return { user: _buildUserResult(username, email, profile) }
       } else {
-        throw new errors.UserAlreadySignedIn(ws.username)
+        throw new errors.UserAlreadySignedIn(ws.session.username)
       }
     }
 
     const rememberMe = false
-    await _connectWebSocket(appId, sessionId, username, savedSeedString, rememberMe)
+    await _connectWebSocket(currentSession, savedSeedString, rememberMe)
 
     return { user: _buildUserResult(username, email, profile) }
   } catch (e) {
@@ -519,17 +527,37 @@ const updateUser = async (user) => {
   try {
     _validateUpdatedUserInput(user)
 
+    if (!ws.keys.init) throw new errors.UserNotSignedIn
+    const startingSeedString = ws.seedString
+
     const action = 'UpdateUser'
     const params = await _buildUpdateUserParams(user)
 
     if (ws.reconnecting) throw new errors.Reconnecting
     if (!ws.keys.init) throw new errors.UserNotSignedIn
+
+    // ensures same user still attempting to update (seed should remain constant)
+    if (startingSeedString !== ws.seedString) throw new errors.ServiceUnavailable
+
     try {
-      if (ws.rememberMe && params.username) localData.saveSeedString(params.username, ws.seedString)
+      const rememberMe = ws.rememberMe
+      if (rememberMe && params.username) {
+        localData.saveSeedString(config.getAppId(), params.username, ws.seedString)
+        localData.removeCurrentSession()
+      }
 
       await ws.request(action, params)
 
-      if (params.username) ws.username = params.username // eslint-disable-line require-atomic-updates
+      // ensures same user still attempting to update (seed should remain constant)
+      if (startingSeedString !== ws.seedString) throw new errors.ServiceUnavailable
+
+      if (params.username) {
+        ws.session.username = params.username // eslint-disable-line require-atomic-updates
+
+        if (rememberMe) {
+          localData.signInSession(params.username, ws.session.sessionId, ws.session.creationDate)
+        }
+      }
     } catch (e) {
       _parseUserResponseError(e, params.username)
     }
@@ -573,7 +601,7 @@ const deleteUser = async () => {
     if (ws.reconnecting) throw new errors.Reconnecting
     if (!ws.keys.init) throw new errors.UserNotSignedIn
 
-    const username = ws.username
+    const username = ws.session.username
     localData.removeSeedString(username)
     localData.removeCurrentSession(username)
 

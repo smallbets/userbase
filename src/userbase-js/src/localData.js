@@ -9,16 +9,16 @@ const getCurrentSession = () => {
   return JSON.parse(currentSessionString)
 }
 
-const saveSeedString = (username, seedString) => {
-  localStorage.setItem('userbaseSeed.' + username, seedString)
+const saveSeedString = (appId, username, seedString) => {
+  localStorage.setItem(`userbaseSeed.${appId}.${username}`, seedString)
 }
 
-const removeSeedString = (username) => {
-  localStorage.removeItem('userbaseSeed.' + username)
+const removeSeedString = (appId, username) => {
+  localStorage.removeItem(`userbaseSeed.${appId}.${username}`)
 }
 
-const getSeedString = (username) => {
-  return localStorage.getItem('userbaseSeed.' + username)
+const getSeedString = (appId, username) => {
+  return localStorage.getItem(`userbaseSeed.${appId}.${username}`)
 }
 
 const signInSession = (username, sessionId, creationDate) => {
@@ -31,7 +31,9 @@ const signOutSession = (username) => {
   setCurrentSession(username, signedIn)
 }
 
-const removeCurrentSession = () => localStorage.removeItem('userbaseCurrentSession')
+const removeCurrentSession = () => {
+  localStorage.removeItem('userbaseCurrentSession')
+}
 
 export default {
   signInSession,
