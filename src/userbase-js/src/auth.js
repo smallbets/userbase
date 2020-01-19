@@ -205,11 +205,11 @@ const _validateProfile = (profile) => {
   if (!keyExists) throw new errors.ProfileCannotBeEmpty
 }
 
-const signUp = async (input) => {
+const signUp = async (params) => {
   try {
-    if (typeof input !== 'object') throw new errors.InputMustBeObject
+    if (typeof params !== 'object') throw new errors.ParamsMustBeObject
 
-    const { username, password, email, profile, rememberMe = false } = input
+    const { username, password, email, profile, rememberMe = false } = params
 
     _validateSignUpOrSignInInput(username, password)
     if (profile) _validateProfile(profile)
@@ -243,7 +243,7 @@ const signUp = async (input) => {
   } catch (e) {
 
     switch (e.name) {
-      case 'InputMustBeObject':
+      case 'ParamsMustBeObject':
       case 'UsernameAlreadyExists':
       case 'UsernameCannotBeBlank':
       case 'UsernameMustBeString':
@@ -354,11 +354,11 @@ const _rebuildPasswordToken = async (username, password) => {
   return { passwordHkdfKey, passwordToken }
 }
 
-const signIn = async (input) => {
+const signIn = async (params) => {
   try {
-    if (typeof input !== 'object') throw new errors.InputMustBeObject
+    if (typeof params !== 'object') throw new errors.ParamsMustBeObject
 
-    const { username, password, rememberMe = false } = input
+    const { username, password, rememberMe = false } = params
 
     _validateSignUpOrSignInInput(username, password)
     if (typeof rememberMe !== 'boolean') throw new errors.RememberMeMustBeBoolean
@@ -393,7 +393,7 @@ const signIn = async (input) => {
   } catch (e) {
 
     switch (e.name) {
-      case 'InputMustBeObject':
+      case 'ParamsMustBeObject':
       case 'UsernameOrPasswordMismatch':
       case 'UsernameCannotBeBlank':
       case 'UsernameTooLong':
@@ -416,11 +416,11 @@ const signIn = async (input) => {
   }
 }
 
-const init = async (input) => {
+const init = async (params) => {
   try {
-    if (typeof input !== 'object') throw new errors.InputMustBeObject
+    if (typeof params !== 'object') throw new errors.ParamsMustBeObject
 
-    const { appId } = input
+    const { appId } = params
 
     config.configure({ appId })
 
@@ -429,7 +429,7 @@ const init = async (input) => {
   } catch (e) {
 
     switch (e.name) {
-      case 'InputMustBeObject':
+      case 'ParamsMustBeObject':
       case 'AppIdAlreadySet':
       case 'AppIdMustBeString':
       case 'AppIdCannotBeBlank':
@@ -478,7 +478,7 @@ const signInWithSession = async (appId) => {
       }
     }
 
-    const rememberMe = false
+    const rememberMe = true
     await _connectWebSocket(currentSession, savedSeedString, rememberMe)
 
     return { user: _buildUserResult(username, email, profile) }
@@ -488,27 +488,26 @@ const signInWithSession = async (appId) => {
   }
 }
 
-const _validateUpdatedUserInput = (input) => {
-  if (!objectHasOwnProperty(input, 'username')
-    && !objectHasOwnProperty(input, 'password')
-    && !objectHasOwnProperty(input, 'email')
-    && !objectHasOwnProperty(input, 'profile')
+const _validateUpdatedUserInput = (params) => {
+  if (!objectHasOwnProperty(params, 'username')
+    && !objectHasOwnProperty(params, 'password')
+    && !objectHasOwnProperty(params, 'email')
+    && !objectHasOwnProperty(params, 'profile')
   ) {
     throw new errors.UserMissingExpectedProperties
   }
 
-  const { username, password, email, profile } = input
+  const { username, password, email, profile } = params
 
-  if (objectHasOwnProperty(input, 'username')) _validateUsername(username)
-  if (objectHasOwnProperty(input, 'password')) _validatePassword(password)
+  if (objectHasOwnProperty(params, 'username')) _validateUsername(username)
+  if (objectHasOwnProperty(params, 'password')) _validatePassword(password)
 
   // if email or profile are falsey, will be set to false
   if (email && typeof email !== 'string') throw new errors.EmailNotValid
   if (profile) _validateProfile(profile)
 }
 
-const _buildUpdateUserParams = async (input) => {
-  const params = { ...input }
+const _buildUpdateUserParams = async (params) => {
   if (params.username) params.username = params.username.toLowerCase()
 
   if (params.password) {
@@ -543,17 +542,17 @@ const _buildUpdateUserParams = async (input) => {
   return params
 }
 
-const updateUser = async (input) => {
+const updateUser = async (params) => {
   try {
-    if (typeof input !== 'object') throw new errors.InputMustBeObject
+    if (typeof params !== 'object') throw new errors.ParamsMustBeObject
 
-    _validateUpdatedUserInput(input)
+    _validateUpdatedUserInput(params)
 
     if (!ws.keys.init) throw new errors.UserNotSignedIn
     const startingSeedString = ws.seedString
 
     const action = 'UpdateUser'
-    const params = await _buildUpdateUserParams(input)
+    const finalParams = await _buildUpdateUserParams({ ...params })
 
     if (ws.reconnecting) throw new errors.Reconnecting
     if (!ws.keys.init) throw new errors.UserNotSignedIn
@@ -563,30 +562,30 @@ const updateUser = async (input) => {
 
     try {
       const rememberMe = ws.rememberMe
-      if (rememberMe && params.username) {
-        localData.saveSeedString(config.getAppId(), params.username, ws.seedString)
+      if (rememberMe && finalParams.username) {
+        localData.saveSeedString(config.getAppId(), finalParams.username, ws.seedString)
         localData.removeCurrentSession()
       }
 
-      await ws.request(action, params)
+      await ws.request(action, finalParams)
 
       // ensures same user still attempting to update (seed should remain constant)
       if (startingSeedString !== ws.seedString) throw new errors.ServiceUnavailable
 
-      if (params.username) {
-        ws.session.username = params.username // eslint-disable-line require-atomic-updates
+      if (finalParams.username) {
+        ws.session.username = finalParams.username // eslint-disable-line require-atomic-updates
 
         if (rememberMe) {
-          localData.signInSession(params.username, ws.session.sessionId, ws.session.creationDate)
+          localData.signInSession(finalParams.username, ws.session.sessionId, ws.session.creationDate)
         }
       }
     } catch (e) {
-      _parseUserResponseError(e, params.username)
+      _parseUserResponseError(e, finalParams.username)
     }
   } catch (e) {
 
     switch (e.name) {
-      case 'InputMustBeObject':
+      case 'ParamsMustBeObject':
       case 'UserMissingExpectedProperties':
       case 'UsernameAlreadyExists':
       case 'UsernameMustBeString':
