@@ -600,7 +600,7 @@ const _updateUserExcludingUsernameUpdate = async (user, userId, passwordToken, p
       updateUserParams.ExpressionAttributeNames['#passwordSalt'] = 'password-salt'
       updateUserParams.ExpressionAttributeNames['#passwordTokenSalt'] = 'password-token-salt'
 
-      updateUserParams.ExpressionAttributeValues[':passwordToken'] = passwordToken
+      updateUserParams.ExpressionAttributeValues[':passwordToken'] = crypto.sha256.hash(passwordToken)
       updateUserParams.ExpressionAttributeValues[':passwordSalt'] = passwordSalts.passwordSalt
       updateUserParams.ExpressionAttributeValues[':passwordTokenSalt'] = passwordSalts.passwordTokenSalt
 
@@ -662,7 +662,7 @@ const _updateUserIncludingUsernameUpdate = async (oldUser, userId, passwordToken
   }
 
   if (passwordToken) {
-    updatedUser['password-token'] = passwordToken
+    updatedUser['password-token'] = crypto.sha256.hash(passwordToken)
     updatedUser['password-salt'] = passwordSalts.passwordSalt
     updatedUser['password-token-salt'] = passwordSalts.passwordTokenSalt
 
