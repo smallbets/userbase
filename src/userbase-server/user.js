@@ -51,7 +51,7 @@ const createSession = async function (userId, appId) {
   return { sessionId, creationDate }
 }
 
-const _buildSignUpParams = async (username, passwordToken, appId, userId,
+const _buildSignUpParams = (username, passwordToken, appId, userId,
   publicKey, salts, email, profile, passwordBasedBackup) => {
 
   const {
@@ -66,7 +66,7 @@ const _buildSignUpParams = async (username, passwordToken, appId, userId,
 
   const user = {
     username: username.toLowerCase(),
-    'password-token': await crypto.sha256.hash(passwordToken),
+    'password-token': crypto.sha256.hash(passwordToken),
     'password-salt': passwordSalt,
     'password-token-salt': passwordTokenSalt,
     'app-id': appId,
@@ -96,10 +96,10 @@ const _buildSignUpParams = async (username, passwordToken, appId, userId,
   }
 }
 
-const _validatePassword = async (passwordToken, user) => {
+const _validatePassword = (passwordToken, user) => {
   if (!user || user['deleted']) throw new Error('User does not exist')
 
-  const passwordTokenHash = await crypto.sha256.hash(passwordToken)
+  const passwordTokenHash = crypto.sha256.hash(passwordToken)
 
   const passwordIsCorrect = passwordTokenHash.equals(user['password-token'])
 
@@ -209,7 +209,7 @@ exports.signUp = async function (req, res) {
       return res.status(statusCodes['Payment Required']).send('TrialExceededLimit')
     }
 
-    const params = await _buildSignUpParams(username, passwordToken, appId, userId,
+    const params = _buildSignUpParams(username, passwordToken, appId, userId,
       publicKey, salts, email, profile, passwordBasedBackup)
 
     try {
@@ -452,7 +452,7 @@ exports.signIn = async function (req, res) {
     const user = userResponse.Item
 
     try {
-      await _validatePassword(passwordToken, user)
+      _validatePassword(passwordToken, user)
     } catch (e) {
       return res.status(statusCodes['Unauthorized']).send('Invalid password')
     }
