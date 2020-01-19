@@ -450,11 +450,11 @@ const _validateDbInput = (dbName) => {
   if (!ws.keys.init) throw new errors.UserNotSignedIn
 }
 
-const openDatabase = async (input) => {
+const openDatabase = async (params) => {
   try {
-    if (typeof input !== 'object') throw new errors.InputMustBeObject
+    if (typeof params !== 'object') throw new errors.ParamsMustBeObject
 
-    const { databaseName, changeHandler } = input
+    const { databaseName, changeHandler } = params
 
     _validateDbInput(databaseName)
     if (typeof changeHandler !== 'function') throw new errors.ChangeHandlerMustBeFunction
@@ -467,7 +467,7 @@ const openDatabase = async (input) => {
   } catch (e) {
 
     switch (e.name) {
-      case 'InputMustBeObject':
+      case 'ParamsMustBeObject':
       case 'DatabaseAlreadyOpening':
       case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
@@ -491,25 +491,25 @@ const getOpenDb = (dbName) => {
   return database
 }
 
-const insertItem = async (input) => {
+const insertItem = async (params) => {
   try {
-    if (typeof input !== 'object') throw new errors.InputMustBeObject
+    if (typeof params !== 'object') throw new errors.ParamsMustBeObject
 
-    const { databaseName, item, itemId } = input
+    const { databaseName, item, itemId } = params
 
     _validateDbInput(databaseName)
 
     const database = getOpenDb(databaseName)
 
     const action = 'Insert'
-    const params = await _buildInsertParams(database, item, itemId)
+    const insertParams = await _buildInsertParams(database, item, itemId)
 
-    await postTransaction(database, action, params)
+    await postTransaction(database, action, insertParams)
 
   } catch (e) {
 
     switch (e.name) {
-      case 'InputMustBeObject':
+      case 'ParamsMustBeObject':
       case 'DatabaseNotOpen':
       case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
@@ -550,24 +550,24 @@ const _buildInsertParams = async (database, item, id) => {
   return { itemKey, encryptedItem }
 }
 
-const updateItem = async (input) => {
+const updateItem = async (params) => {
   try {
-    if (typeof input !== 'object') throw new errors.InputMustBeObject
+    if (typeof params !== 'object') throw new errors.ParamsMustBeObject
 
-    const { databaseName, item, itemId } = input
+    const { databaseName, item, itemId } = params
 
     _validateDbInput(databaseName)
 
     const database = getOpenDb(databaseName)
 
     const action = 'Update'
-    const params = await _buildUpdateParams(database, item, itemId)
+    const updateParams = await _buildUpdateParams(database, item, itemId)
 
-    await postTransaction(database, action, params)
+    await postTransaction(database, action, updateParams)
   } catch (e) {
 
     switch (e.name) {
-      case 'InputMustBeObject':
+      case 'ParamsMustBeObject':
       case 'DatabaseNotOpen':
       case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
@@ -610,24 +610,24 @@ const _buildUpdateParams = async (database, item, itemId) => {
   return { itemKey, encryptedItem }
 }
 
-const deleteItem = async (input) => {
+const deleteItem = async (params) => {
   try {
-    if (typeof input !== 'object') throw new errors.InputMustBeObject
+    if (typeof params !== 'object') throw new errors.ParamsMustBeObject
 
-    const { databaseName, itemId } = input
+    const { databaseName, itemId } = params
 
     _validateDbInput(databaseName)
 
     const database = getOpenDb(databaseName)
 
     const action = 'Delete'
-    const params = await _buildDeleteParams(database, itemId)
+    const deleteParams = await _buildDeleteParams(database, itemId)
 
-    await postTransaction(database, action, params)
+    await postTransaction(database, action, deleteParams)
   } catch (e) {
 
     switch (e.name) {
-      case 'InputMustBeObject':
+      case 'ParamsMustBeObject':
       case 'DatabaseNotOpen':
       case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
@@ -664,11 +664,11 @@ const _buildDeleteParams = async (database, itemId) => {
   return { itemKey, encryptedItem }
 }
 
-const buildTransaction = async (input) => {
+const buildTransaction = async (params) => {
   try {
-    if (typeof input !== 'object') throw new errors.InputMustBeObject
+    if (typeof params !== 'object') throw new errors.ParamsMustBeObject
 
-    const { databaseName, operations } = input
+    const { databaseName, operations } = params
 
     _validateDbInput(databaseName)
 
@@ -678,7 +678,7 @@ const buildTransaction = async (input) => {
 
     const action = 'BatchTransaction'
 
-    const operationParamsPromises = operations.map(operation => {
+    const operationParamsPromises = await Promise.all(operations.map(operation => {
       const command = operation.command
       const itemId = operation.itemId
 
@@ -699,18 +699,18 @@ const buildTransaction = async (input) => {
 
         default: throw new errors.CommandUnrecognized(command)
       }
-    })
-    const operationParams = await Promise.all(operationParamsPromises)
+    }))
+    const operationParamsPromiseResults = await Promise.all(operationParamsPromises)
 
-    const params = {
+    const operationParams = {
       operations: operations.map((operation, i) => ({
         command: operation.command,
-        ...operationParams[i]
+        ...operationParamsPromiseResults[i]
       }))
     }
 
     try {
-      await postTransaction(database, action, params)
+      await postTransaction(database, action, operationParams)
     } catch (e) {
       if (e.response && e.response.data.error === 'OperationsExceedLimit') {
         throw new errors.OperationsExceedLimit(e.response.data.limit)
@@ -721,7 +721,7 @@ const buildTransaction = async (input) => {
   } catch (e) {
 
     switch (e.name) {
-      case 'InputMustBeObject':
+      case 'ParamsMustBeObject':
       case 'DatabaseNotOpen':
       case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
