@@ -97,7 +97,7 @@ const _buildSignUpParams = async (username, passwordToken, appId, userId,
 }
 
 const _validatePassword = async (passwordToken, user) => {
-  if (!user) throw new Error('User does not exist')
+  if (!user || user['deleted']) throw new Error('User does not exist')
 
   const passwordTokenHash = await crypto.sha256.hash(passwordToken)
 
@@ -400,7 +400,7 @@ exports.getPasswordSalts = async function (req, res) {
 
     const user = userResponse.Item
 
-    if (!user) return res.status(statusCodes['Not Found']).send('User not found')
+    if (!user || user['deleted']) return res.status(statusCodes['Not Found']).send('User not found')
 
     const result = {
       passwordSalt: user['password-salt'],
