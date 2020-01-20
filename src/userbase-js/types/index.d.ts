@@ -1,46 +1,48 @@
 // Expose as userbase when loaded in an IIFE environment
-export as namespace userbase;
+export as namespace userbase
 
-interface Session {
+export interface Session {
   user?: UserResult
   lastUsedUsername?: string
 }
 
-interface UserProfile {
+export interface UserProfile {
   [key: string]: string
 }
 
-interface UserResult {
+export interface UserResult {
   username: string
   email?: string
   profile?: UserProfile
 }
 
-type DatabaseOperation = InsertOperation | UpdateOperation | DeleteOperation
+export type DatabaseChangeHandler = (items: Item[]) => void
 
-interface InsertOperation {
+export type DatabaseOperation = InsertOperation | UpdateOperation | DeleteOperation
+
+export interface InsertOperation {
   command: 'Insert'
   itemId?: string
   item: any
 }
 
-interface UpdateOperation {
+export interface UpdateOperation {
   command: 'Update'
   itemId: string
   item: any
 }
 
-interface DeleteOperation {
+export interface DeleteOperation {
   command: 'Delete'
   itemId: string
 }
 
-interface Item {
+export interface Item {
   itemId: string
   item: any
 }
 
-interface Userbase {
+export interface Userbase {
   init(params: { appId: string }): Promise<Session>
 
   signUp(params: { username: string, password: string, email?: string, profile?: UserProfile, rememberMe?: boolean }): Promise<UserResult>
@@ -53,7 +55,7 @@ interface Userbase {
 
   deleteUser(): Promise<void>
 
-  openDatabase(params: { databaseName: string, changeHandler: (items: Item[]) => void }): Promise<void>
+  openDatabase(params: { databaseName: string, changeHandler: DatabaseChangeHandler }): Promise<void>
 
   insertItem(params: { databaseName: string, item: any, itemId?: string }): Promise<void>
 
