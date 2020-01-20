@@ -388,8 +388,7 @@ async function getEC2Region() {
           reject(err)
           return
         }
-        // const ec2Region = JSON.parse(data).region
-        const ec2Region = 'eu-west-2'
+        const ec2Region = JSON.parse(data).region
         logger.info(`Running on EC2 in ${ec2Region}`)
         resolve(ec2Region)
       })
