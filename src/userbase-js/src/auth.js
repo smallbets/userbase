@@ -265,7 +265,6 @@ const signUp = async (params) => {
       case 'AppIdNotSet':
       case 'AppIdNotValid':
       case 'UserAlreadySignedIn':
-      case 'ShowKeyHandlerMustBeFunction':
       case 'ServiceUnavailable':
         throw e
 
@@ -494,7 +493,7 @@ const _validateUpdatedUserInput = (params) => {
     && !objectHasOwnProperty(params, 'email')
     && !objectHasOwnProperty(params, 'profile')
   ) {
-    throw new errors.UserMissingExpectedProperties
+    throw new errors.ParamsMissing
   }
 
   const { username, password, email, profile } = params
@@ -586,7 +585,7 @@ const updateUser = async (params) => {
 
     switch (e.name) {
       case 'ParamsMustBeObject':
-      case 'UserMissingExpectedProperties':
+      case 'ParamsMissing':
       case 'UsernameAlreadyExists':
       case 'UsernameMustBeString':
       case 'UsernameCannotBeBlank':

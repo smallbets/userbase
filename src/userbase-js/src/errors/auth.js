@@ -228,12 +228,12 @@ class RememberMeMustBeBoolean extends Error {
   }
 }
 
-class UserMissingExpectedProperties extends Error {
+class ParamsMissing extends Error {
   constructor(...params) {
     super(...params)
 
-    this.name = 'UserMissingExpectedProperties'
-    this.message = 'User missing expected properties.'
+    this.name = 'ParamsMissing'
+    this.message = 'Parameters expected are missing.'
     this.status = statusCodes['Bad Request']
   }
 }
@@ -271,6 +271,6 @@ export default {
   ProfileValueMustBeString,
   ProfileValueTooLong,
   RememberMeMustBeBoolean,
-  UserMissingExpectedProperties,
+  ParamsMissing,
   TrialExceededLimit,
 }
