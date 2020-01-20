@@ -141,7 +141,8 @@ export default class EditAdmin extends Component {
   }
 
   render() {
-    const { paymentStatus } = this.props
+    // comment for hackathon
+    // const { paymentStatus } = this.props
     const {
       fullName,
       email,
@@ -150,11 +151,14 @@ export default class EditAdmin extends Component {
       loadingDelete,
       errorUpdating,
       errorDeleting,
-      loading
+      // comment for hackathon
+      // loading
     } = this.state
 
     return (
       <div className='container content text-xs xs:text-base text-center mb-8'>
+
+        {/* comment for hackathon
 
         {loading
           ? <div className='loader inline-block w-6 h-6' />
@@ -206,6 +210,8 @@ export default class EditAdmin extends Component {
         }
 
         <hr className='border border-t-0 border-gray-400 mt-8 mb-4' />
+
+      */}
 
         <form onSubmit={this.handleUpdateAcount}>
           <div className='table'>
