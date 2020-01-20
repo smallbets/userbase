@@ -234,7 +234,7 @@ async function start(express, app, userbaseConfig = {}) {
     v1Api.get('/auth/get-password-salts', user.getPasswordSalts)
 
     // Userbase admin API
-    app.use('/admin', express.static(path.join(__dirname + adminPanelDir)))
+    app.use(express.static(path.join(__dirname + adminPanelDir)))
     const v1Admin = express.Router()
     app.use('/v1/admin', v1Admin)
 
