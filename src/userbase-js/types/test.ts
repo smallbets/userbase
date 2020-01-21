@@ -64,7 +64,7 @@ updateUser({})
 updateUser({ username: 'tusernew' })
 
 // $ExpectType Promise<void>
-updateUser({ password: 'tpassnew' })
+updateUser({ currentPassword: 'tpasscurrent', newPassword: 'tpassnew' })
 
 // $ExpectType Promise<void>
 updateUser({ email: 'testnew@test.com' })

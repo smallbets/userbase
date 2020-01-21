@@ -51,7 +51,7 @@ export interface Userbase {
 
   signOut(): Promise<void>
 
-  updateUser(params: { username?: string, password?: string, email?: string | null, profile?: UserProfile | null }): Promise<void>
+  updateUser(params: { username?: string, currentPassword?: string, newPassword?: string, email?: string | null, profile?: UserProfile | null }): Promise<void>
 
   deleteUser(): Promise<void>
 
