@@ -34,7 +34,7 @@ describe('Login - Signup Testing', function () {
     let loginInfo
     cy.getRandomInfoWithParams(null, null, true).then((userInfo) => {
       randomInfo = userInfo
-      loginInfo = {username: userInfo.username, password: userInfo.password}
+      loginInfo = { username: userInfo.username, password: userInfo.password }
     })
 
     cy.window().then(({ userbase, window }) => {
@@ -79,17 +79,25 @@ describe('Login - Signup Testing', function () {
     })
 
     cy.window().then(({ userbase, window }) => {
+      window.sessionStorage.clear()
+      cy.clearLocalStorage()
       window._userbaseEndpoint = info.endpoint
       userbase.init({ appId: info.appId })
       return userbase.signUp(randomInfo).then((user) => {
         cy.log(user)
         expect(user.username, 'user.username').to.exists
         expect(user.username, 'user.username to be the one signed up').to.equal(randomInfo.username)
-        expect(localStorage.length, 'localstorage size').to.equal(0)
+        expect(sessionStorage.length, 'sessionStorage size').to.equal(2)
         return userbase.signOut().then(() => {
+          const loggedOutSession = JSON.parse(sessionStorage.getItem('userbaseCurrentSession'))
+          cy.log(loggedOutSession)
+          expect(loggedOutSession.signedIn, 'session should have signedIn set to false').to.be.false
+          expect(loggedOutSession.username, 'username should be the same after signout').to.equal(randomInfo.username)
+          window.sessionStorage.clear()
           return userbase.signIn(loginInfo).then((user) => {
             cy.log('user', user)
             expect(user.username, 'login should set the username').to.exist.and.to.equal(randomInfo.username)
+            window.sessionStorage.clear()
           })
         })
       })

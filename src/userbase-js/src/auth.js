@@ -240,10 +240,8 @@ const signUp = async (params) => {
 
     const seedString = base64.encode(seed)
 
-    if (rememberMe) {
-      localData.saveSeedString(appId, lowerCaseUsername, seedString)
-      localData.signInSession(lowerCaseUsername, sessionId, creationDate)
-    }
+    localData.saveSeedString(rememberMe, appId, lowerCaseUsername, seedString)
+    localData.signInSession(rememberMe, lowerCaseUsername, sessionId, creationDate)
 
     await _connectWebSocket(session, seedString, rememberMe)
 
@@ -402,12 +400,12 @@ const signIn = async (params) => {
     let seedStringFromBackup
     if (!savedSeedString) {
       seedStringFromBackup = await _getSeedStringFromPasswordBasedBackup(passwordHkdfKey, passwordBasedBackup)
-      if (rememberMe) localData.saveSeedString(appId, lowerCaseUsername, seedStringFromBackup)
+      localData.saveSeedString(rememberMe, appId, lowerCaseUsername, seedStringFromBackup)
     }
 
     const seedString = savedSeedString || seedStringFromBackup
 
-    if (rememberMe) localData.signInSession(lowerCaseUsername, session.sessionId, session.creationDate)
+    localData.signInSession(rememberMe, lowerCaseUsername, session.sessionId, session.creationDate)
 
     await _connectWebSocket(session, seedString, rememberMe)
 
@@ -472,7 +470,7 @@ const signInWithSession = async (appId) => {
     const currentSession = localData.getCurrentSession()
     if (!currentSession) return {}
 
-    const { signedIn, sessionId, creationDate } = currentSession
+    const { signedIn, sessionId, creationDate, rememberMe } = currentSession
     const savedSeedString = localData.getSeedString(appId, currentSession.username)
 
     if (!signedIn || !savedSeedString) return { lastUsedUsername: currentSession.username }
@@ -493,9 +491,9 @@ const signInWithSession = async (appId) => {
 
     // overwrite local data if username has been changed on server
     if (username !== currentSession.username) {
-      localData.saveSeedString(appId, username, savedSeedString)
+      localData.saveSeedString(rememberMe, appId, username, savedSeedString)
       localData.removeSeedString(appId, currentSession.username)
-      localData.signInSession(username, sessionId, creationDate)
+      localData.signInSession(rememberMe, username, sessionId, creationDate)
     }
 
     // enable idempotent calls to init()
@@ -507,7 +505,6 @@ const signInWithSession = async (appId) => {
       }
     }
 
-    const rememberMe = true
     await _connectWebSocket(currentSession, savedSeedString, rememberMe)
 
     return { user: _buildUserResult(username, email, profile) }
@@ -589,8 +586,8 @@ const updateUser = async (params) => {
     if (startingSeedString !== ws.seedString) throw new errors.ServiceUnavailable
 
     try {
-      if (ws.rememberMe && finalParams.username) {
-        localData.saveSeedString(config.getAppId(), finalParams.username, ws.seedString)
+      if (finalParams.username) {
+        localData.saveSeedString(ws.rememberMe, config.getAppId(), finalParams.username, ws.seedString)
       }
 
       await ws.request(action, finalParams)

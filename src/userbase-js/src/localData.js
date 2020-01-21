@@ -1,37 +1,59 @@
-const setCurrentSession = (username, signedIn, sessionId, creationDate) => {
+const _getSeedName = (appId, username) => `userbaseSeed.${appId}.${username}`
+
+const setCurrentSession = (rememberMe, username, signedIn, sessionId, creationDate) => {
   const session = { username, signedIn, sessionId, creationDate }
   const sessionString = JSON.stringify(session)
-  localStorage.setItem('userbaseCurrentSession', sessionString)
+
+  if (rememberMe) {
+    localStorage.setItem('userbaseCurrentSession', sessionString)
+  } else {
+    sessionStorage.setItem('userbaseCurrentSession', sessionString)
+  }
 }
 
 const getCurrentSession = () => {
+  const sessionStorageCurrentSessionString = sessionStorage.getItem('userbaseCurrentSession')
+
+  if (sessionStorageCurrentSessionString) return JSON.parse(sessionStorageCurrentSessionString)
+
   const currentSessionString = localStorage.getItem('userbaseCurrentSession')
-  return JSON.parse(currentSessionString)
+  return currentSessionString && {
+    ...JSON.parse(currentSessionString),
+    rememberMe: true
+  }
 }
 
-const saveSeedString = (appId, username, seedString) => {
-  localStorage.setItem(`userbaseSeed.${appId}.${username}`, seedString)
+const saveSeedString = (rememberMe, appId, username, seedString) => {
+  if (rememberMe) {
+    localStorage.setItem(_getSeedName(appId, username), seedString)
+  } else {
+    sessionStorage.setItem(_getSeedName(appId, username), seedString)
+  }
 }
 
 const removeSeedString = (appId, username) => {
-  localStorage.removeItem(`userbaseSeed.${appId}.${username}`)
+  const seedName = _getSeedName(appId, username)
+  sessionStorage.removeItem(seedName)
+  localStorage.removeItem(seedName)
 }
 
 const getSeedString = (appId, username) => {
-  return localStorage.getItem(`userbaseSeed.${appId}.${username}`)
+  const seedName = _getSeedName(appId, username)
+  return sessionStorage.getItem(seedName) || localStorage.getItem(seedName)
 }
 
-const signInSession = (username, sessionId, creationDate) => {
+const signInSession = (rememberMe, username, sessionId, creationDate) => {
   const signedIn = true
-  setCurrentSession(username, signedIn, sessionId, creationDate)
+  setCurrentSession(rememberMe, username, signedIn, sessionId, creationDate)
 }
 
-const signOutSession = (username) => {
+const signOutSession = (rememberMe, username) => {
   const signedIn = false
-  setCurrentSession(username, signedIn)
+  setCurrentSession(rememberMe, username, signedIn)
 }
 
 const removeCurrentSession = () => {
+  sessionStorage.removeItem('userbaseCurrentSession')
   localStorage.removeItem('userbaseCurrentSession')
 }
 
