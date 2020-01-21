@@ -366,7 +366,7 @@ class Connection {
     const rejectConnection = this.rejectConnection
 
     try {
-      if (this.rememberMe) localData.signOutSession(username)
+      localData.signOutSession(this.rememberMe, username)
 
       const sessionId = this.session.sessionId
 
