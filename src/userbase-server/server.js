@@ -65,16 +65,17 @@ async function start(express, app, userbaseConfig = {}) {
       ws.isAlive = true
       const userId = res.locals.user['user-id']
       const userPublicKey = res.locals.user['public-key']
+      const adminId = res.locals.admin['admin-id']
 
       const clientId = req.query.clientId
 
-      const conn = connections.register(userId, ws, clientId)
+      const conn = connections.register(userId, ws, clientId, adminId)
       if (conn) {
         const connectionId = conn.id
 
         const { validationMessage, encryptedValidationMessage } = user.getValidationMessage(userPublicKey)
 
-        logger.child({ wsRes: { userId, connectionId, route: 'Connection' } }).info()
+        logger.child({ wsRes: { userId, connectionId, adminId, route: 'Connection' } }).info()
         ws.send(JSON.stringify({
           route: 'Connection',
           keySalts: {
@@ -92,7 +93,7 @@ async function start(express, app, userbaseConfig = {}) {
 
           try {
             if (msg.length > FOUR_HUNDRED_KB || msg.byteLength > FOUR_HUNDRED_KB) {
-              logger.child({ wsRes: { userId, connectionId, size: msg.length } }).error('Received large message')
+              logger.child({ wsRes: { userId, connectionId, adminId, size: msg.length } }).error('Received large message')
               return ws.send('Message is too large')
             }
 
@@ -102,7 +103,9 @@ async function start(express, app, userbaseConfig = {}) {
             const action = request.action
             const params = request.params
 
-            logger.child({ wsReq: { userId, connectionId, requestId, action, size: msg.length } }).info()
+            if (action !== 'Pong') {
+              logger.child({ wsReq: { userId, connectionId, adminId, requestId, action, size: msg.length } }).info()
+            }
 
             let response
 
@@ -151,7 +154,7 @@ async function start(express, app, userbaseConfig = {}) {
                 case 'DeleteUser': {
                   response = await user.deleteUserController(
                     userId,
-                    res.locals.admin['admin-id'],
+                    adminId,
                     res.locals.app['app-name']
                   )
                   break
@@ -192,7 +195,9 @@ async function start(express, app, userbaseConfig = {}) {
                   break
                 }
                 default: {
-                  logger.child({ wsRes: { userId, connectionId, route: action, requestId, statusCode: response.status, size: msg.length } }).error('Received unknown action')
+                  logger
+                    .child({ wsRes: { userId, connectionId, adminId, route: action, requestId, statusCode: response.status, size: msg.length } })
+                    .error('Received unknown action')
                   return ws.send(`Received unkown action ${action}`)
                 }
               }
@@ -209,6 +214,7 @@ async function start(express, app, userbaseConfig = {}) {
                 wsRes: {
                   userId,
                   connectionId,
+                  adminId,
                   route: action,
                   requestId,
                   statusCode: response.status,
@@ -221,7 +227,7 @@ async function start(express, app, userbaseConfig = {}) {
 
           } catch (e) {
             logger
-              .child({ userId, connectionId, errorName: e.name, errorMessage: e.message })
+              .child({ userId, connectionId, adminId, errorName: e.name, errorMessage: e.message })
               .error(`Error in Websocket handling the following message: ${msg}`)
           }
 

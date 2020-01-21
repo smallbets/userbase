@@ -10,11 +10,12 @@ const SECONDS_BEFORE_ROLLBACK_GAP_TRIGGERED = 1000 * 10 // 10s
 const TRANSACTION_SIZE_BUNDLE_TRIGGER = 1024 * 50 // 50 KB
 
 class Connection {
-  constructor(userId, socket, clientId) {
+  constructor(userId, socket, clientId, adminId) {
     this.userId = userId
     this.socket = socket
     this.clientId = clientId
     this.id = uuidv4()
+    this.adminId = adminId
     this.databases = {}
     this.keyValidated = false
   }
@@ -160,6 +161,7 @@ class Connection {
             wsRes: {
               connectionId: this.id,
               userId: this.userId,
+              adminId: this.adminId,
               databaseId: payload.dbId,
               route: payload.route,
               size: msg.length,
@@ -259,6 +261,7 @@ class Connection {
         wsRes: {
           connectionId: this.id,
           userId: this.userId,
+          adminId: this.adminId,
           databaseId: payload.dbId,
           route: payload.route,
           size: msg.length,
@@ -274,7 +277,7 @@ class Connection {
 }
 
 export default class Connections {
-  static register(userId, socket, clientId) {
+  static register(userId, socket, clientId, adminId) {
     if (!Connections.sockets) Connections.sockets = {}
     if (!Connections.sockets[userId]) Connections.sockets[userId] = {}
 
@@ -282,15 +285,15 @@ export default class Connections {
     if (!Connections.uniqueClients[clientId]) {
       Connections.uniqueClients[clientId] = true
     } else {
-      logger.child({ userId, clientId }).warn('User attempted to open multiple socket connections from client')
+      logger.child({ userId, clientId, adminId }).warn('User attempted to open multiple socket connections from client')
       socket.close(statusCodes['Client Already Connected'])
       return false
     }
 
-    const connection = new Connection(userId, socket, clientId)
+    const connection = new Connection(userId, socket, clientId, adminId)
 
     Connections.sockets[userId][connection.id] = connection
-    logger.child({ connectionId: connection.id, userId, clientId }).info('WebSocket connected')
+    logger.child({ connectionId: connection.id, userId, clientId, adminId }).info('WebSocket connected')
 
     return connection
   }
@@ -302,7 +305,7 @@ export default class Connections {
 
     if (!conn.databases[databaseId]) {
       conn.openDatabase(databaseId, bundleSeqNo, reopenAtSeqNo)
-      logger.child({ connectionId, databaseId }).info('Database opened')
+      logger.child({ connectionId, databaseId, adminId: conn.adminId }).info('Database opened')
     }
 
     conn.push(databaseId, dbNameHash, dbKey, reopenAtSeqNo)
@@ -331,10 +334,10 @@ export default class Connections {
   }
 
   static close(connection) {
-    const { userId, id, clientId } = connection
+    const { userId, id, clientId, adminId } = connection
     const connectionId = id
 
-    logger.child({ userId, connectionId, clientId }).info('WebSocket closing')
+    logger.child({ userId, connectionId, clientId, adminId }).info('WebSocket closing')
     delete Connections.sockets[userId][connectionId]
     delete Connections.uniqueClients[clientId]
   }
