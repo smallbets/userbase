@@ -583,7 +583,7 @@ exports.extendSession = async function (req, res) {
     const ddbClient = connection.ddbClient()
     await ddbClient.update(params).promise()
 
-    const result = { extendedDate }
+    const result = { extendedDate, username: user['username'] }
 
     if (user['email']) result.email = user['email']
     if (user['profile']) result.profile = user['profile']

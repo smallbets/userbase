@@ -472,10 +472,10 @@ const signInWithSession = async (appId) => {
     const currentSession = localData.getCurrentSession()
     if (!currentSession) return {}
 
-    const { signedIn, username, sessionId } = currentSession
-    const savedSeedString = localData.getSeedString(appId, username)
+    const { signedIn, sessionId, creationDate } = currentSession
+    const savedSeedString = localData.getSeedString(appId, currentSession.username)
 
-    if (!signedIn || !savedSeedString) return { lastUsedUsername: username }
+    if (!signedIn || !savedSeedString) return { lastUsedUsername: currentSession.username }
 
     let apiSignInWithSessionResult
     try {
@@ -484,16 +484,23 @@ const signInWithSession = async (appId) => {
       _parseGenericErrors(e)
 
       if (e.response && e.response.data === 'Session invalid') {
-        return { lastUsedUsername: username }
+        return { lastUsedUsername: currentSession.username }
       }
 
       throw e
     }
-    const { email, profile } = apiSignInWithSessionResult
+    const { username, email, profile } = apiSignInWithSessionResult
+
+    // overwrite local data if username has been changed on server
+    if (username !== currentSession.username) {
+      localData.saveSeedString(appId, username, savedSeedString)
+      localData.removeSeedString(appId, currentSession.username)
+      localData.signInSession(username, sessionId, creationDate)
+    }
 
     // enable idempotent calls to init()
     if (ws.connectionResolved) {
-      if (ws.session.username === username) {
+      if (ws.session.sessionId === sessionId) {
         return { user: _buildUserResult(username, email, profile) }
       } else {
         throw new errors.UserAlreadySignedIn(ws.session.username)
@@ -582,24 +589,11 @@ const updateUser = async (params) => {
     if (startingSeedString !== ws.seedString) throw new errors.ServiceUnavailable
 
     try {
-      const rememberMe = ws.rememberMe
-      if (rememberMe && finalParams.username) {
+      if (ws.rememberMe && finalParams.username) {
         localData.saveSeedString(config.getAppId(), finalParams.username, ws.seedString)
-        localData.removeCurrentSession()
       }
 
       await ws.request(action, finalParams)
-
-      // ensures same user still attempting to update (seed should remain constant)
-      if (startingSeedString !== ws.seedString) throw new errors.ServiceUnavailable
-
-      if (finalParams.username) {
-        ws.session.username = finalParams.username // eslint-disable-line require-atomic-updates
-
-        if (rememberMe) {
-          localData.signInSession(finalParams.username, ws.session.sessionId, ws.session.creationDate)
-        }
-      }
     } catch (e) {
       _parseUserResponseError(e, finalParams.username)
     }
@@ -647,7 +641,7 @@ const deleteUser = async () => {
 
     const username = ws.session.username
     localData.removeSeedString(username)
-    localData.removeCurrentSession(username)
+    localData.removeCurrentSession()
 
     try {
       const action = 'DeleteUser'
