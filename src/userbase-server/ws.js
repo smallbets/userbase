@@ -10,11 +10,12 @@ const SECONDS_BEFORE_ROLLBACK_GAP_TRIGGERED = 1000 * 10 // 10s
 const TRANSACTION_SIZE_BUNDLE_TRIGGER = 1024 * 50 // 50 KB
 
 class Connection {
-  constructor(userId, socket, clientId) {
+  constructor(userId, socket, clientId, adminId) {
     this.userId = userId
     this.socket = socket
     this.clientId = clientId
     this.id = uuidv4()
+    this.adminId = adminId
     this.databases = {}
     this.keyValidated = false
   }
@@ -124,29 +125,51 @@ class Connection {
     }
 
     if (openingDatabase && database.lastSeqNo !== 0) {
-      logger.warn(`When opening database ${databaseId}, must send client entire transaction log from tip`)
+      logger
+        .child({ databaseId, connectionId: this.id })
+        .warn('When opening database, must send client entire transaction log from tip')
       return
     }
 
     if (reopeningDatabase && database.lastSeqNo !== reopenAtSeqNo) {
-      logger.warn(`When reopening database ${databaseId}, must send client entire transaction log from requested seq no`)
+      logger
+        .child({ databaseId, connectionId: this.id })
+        .warn('When reopening database, must send client entire transaction log from requested seq no')
       return
     }
 
     if (!openingDatabase && !database.init) {
-      logger.warn(`Must finish opening database ${databaseId} before sending transactions to client`)
+      logger
+        .child({ databaseId, connectionId: this.id })
+        .warn('Must finish opening database before sending transactions to client')
       return
     }
 
     if (!ddbTransactionLog || ddbTransactionLog.length == 0) {
       if (openingDatabase || reopeningDatabase) {
-        this.socket.send(JSON.stringify(payload))
+        const msg = JSON.stringify(payload)
+        this.socket.send(msg)
 
         if (payload.bundle) {
           database.lastSeqNo = payload.bundleSeqNo
         }
 
         database.init = true
+
+        logger
+          .child({
+            wsRes: {
+              connectionId: this.id,
+              userId: this.userId,
+              adminId: this.adminId,
+              databaseId: payload.dbId,
+              route: payload.route,
+              size: msg.length,
+              bundleSeqNo: payload.bundleSeqNo,
+              seqNo: database.lastSeqNo
+            }
+          })
+          .info('Sent initial transactions to client')
       }
       return
     }
@@ -212,25 +235,49 @@ class Connection {
     if (transactionLog.length === 0) return
 
     // only send the payload if tx log starts with the next seqNo client is supposed to receive
-    if (transactionLog[0]['seqNo'] !== database.lastSeqNo + 1
-      && transactionLog[0]['seqNo'] !== payload.bundleSeqNo + 1) return
+    const startSeqNo = transactionLog[0]['seqNo']
+    if (startSeqNo !== database.lastSeqNo + 1
+      && startSeqNo !== payload.bundleSeqNo + 1) return
 
-    if (database.transactionLogSize + size >= TRANSACTION_SIZE_BUNDLE_TRIGGER) {
-      this.socket.send(JSON.stringify({ ...payload, transactionLog, buildBundle: true }))
+    let msg
+    const buildBundle = database.transactionLogSize + size >= TRANSACTION_SIZE_BUNDLE_TRIGGER
+    if (buildBundle) {
+      msg = JSON.stringify({ ...payload, transactionLog, buildBundle: true })
+      this.socket.send(msg)
       database.transactionLogSize = 0
     } else {
-      this.socket.send(JSON.stringify({ ...payload, transactionLog }))
+      msg = JSON.stringify({ ...payload, transactionLog })
+      this.socket.send(msg)
       database.transactionLogSize += size
     }
 
     // database.lastSeqNo should be strictly increasing
-    database.lastSeqNo = transactionLog[transactionLog.length - 1]['seqNo']
+    const endSeqNo = transactionLog[transactionLog.length - 1]['seqNo']
+    database.lastSeqNo = endSeqNo
     database.init = true
+
+    logger
+      .child({
+        wsRes: {
+          connectionId: this.id,
+          userId: this.userId,
+          adminId: this.adminId,
+          databaseId: payload.dbId,
+          route: payload.route,
+          size: msg.length,
+          bundleSeqNo: payload.bundleSeqNo,
+          transactionLogSize: database.transactionLogSize,
+          buildBundle,
+          startSeqNo,
+          endSeqNo
+        }
+      })
+      .info('Sent transactions to client')
   }
 }
 
 export default class Connections {
-  static register(userId, socket, clientId) {
+  static register(userId, socket, clientId, adminId) {
     if (!Connections.sockets) Connections.sockets = {}
     if (!Connections.sockets[userId]) Connections.sockets[userId] = {}
 
@@ -238,15 +285,15 @@ export default class Connections {
     if (!Connections.uniqueClients[clientId]) {
       Connections.uniqueClients[clientId] = true
     } else {
-      logger.warn(`User ${userId} attempted to open multiple socket connections from client ${clientId}`)
+      logger.child({ userId, clientId, adminId }).warn('User attempted to open multiple socket connections from client')
       socket.close(statusCodes['Client Already Connected'])
       return false
     }
 
-    const connection = new Connection(userId, socket, clientId)
+    const connection = new Connection(userId, socket, clientId, adminId)
 
     Connections.sockets[userId][connection.id] = connection
-    logger.info(`Websocket ${connection.id} connected from user ${userId}`)
+    logger.child({ connectionId: connection.id, userId, clientId, adminId }).info('WebSocket connected')
 
     return connection
   }
@@ -258,7 +305,7 @@ export default class Connections {
 
     if (!conn.databases[databaseId]) {
       conn.openDatabase(databaseId, bundleSeqNo, reopenAtSeqNo)
-      logger.info(`Database ${databaseId} opened on connection ${connectionId}`)
+      logger.child({ connectionId, databaseId, adminId: conn.adminId }).info('Database opened')
     }
 
     conn.push(databaseId, dbNameHash, dbKey, reopenAtSeqNo)
@@ -287,7 +334,11 @@ export default class Connections {
   }
 
   static close(connection) {
-    delete Connections.sockets[connection.userId][connection.id]
-    delete Connections.uniqueClients[connection.clientId]
+    const { userId, id, clientId, adminId } = connection
+    const connectionId = id
+
+    logger.child({ userId, connectionId, clientId, adminId }).info('WebSocket closing')
+    delete Connections.sockets[userId][connectionId]
+    delete Connections.uniqueClients[clientId]
   }
 }
