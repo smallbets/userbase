@@ -6,7 +6,7 @@ import crypto from './crypto'
 let awsAccountId
 let initialized = false
 
-const defaultRegion = 'us-west-2'
+const defaultRegion = process.env.NODE_ENV == 'development' ? 'us-west-2' : 'us-east-1'
 
 const defineUsername = () => {
   let appUsername = ''
@@ -89,9 +89,8 @@ exports.init = async function () {
   // eslint-disable-next-line require-atomic-updates
   aws.config.credentials = await chain.resolvePromise()
 
-  const region = await getEC2Region() || defaultRegion
-
-  aws.config.update({ region })
+  logger.info('Default AWS region: ' + defaultRegion)
+  aws.config.update({ region: defaultRegion })
 
   // get the AWS account id
   const accountInfo = await (new aws.STS({ apiVersion: '2011-06-15' })).getCallerIdentity({}).promise()
@@ -373,29 +372,4 @@ async function updateSecrets(secrets, secretKeyName, secretValue) {
   await sm.updateSecret(params).promise()
 
   process.env['sm.' + secretKeyName] = secretValue
-}
-
-async function getEC2Region() {
-  try {
-    return await new Promise((resolve, reject) => {
-      new aws.MetadataService({
-        httpOptions: {
-          timeout: 2000,
-          maxRetries: 0
-        }
-      }).request("/latest/dynamic/instance-identity/document", function (err, data) {
-        if (err) {
-          reject(err)
-          return
-        }
-        const ec2Region = JSON.parse(data).region
-        logger.info(`Running on EC2 in ${ec2Region}`)
-        resolve(ec2Region)
-      })
-      setTimeout(() => reject(new Error('timeout')), 5000)
-    })
-  } catch {
-    logger.info(`Not running on EC2 - Using default region: ${defaultRegion}`)
-    return null
-  }
 }
