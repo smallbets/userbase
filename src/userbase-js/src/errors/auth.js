@@ -248,6 +248,26 @@ class TrialExceededLimit extends Error {
   }
 }
 
+class CurrentPasswordMissing extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'CurrentPasswordMissing'
+    this.message = 'Current password missing.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class CurrentPasswordIncorrect extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'CurrentPasswordIncorrect'
+    this.message = 'Current password is incorrect.'
+    this.status = statusCodes['Unauthorized']
+  }
+}
+
 export default {
   UsernameAlreadyExists,
   UsernameCannotBeBlank,
@@ -273,4 +293,6 @@ export default {
   RememberMeMustBeBoolean,
   ParamsMissing,
   TrialExceededLimit,
+  CurrentPasswordMissing,
+  CurrentPasswordIncorrect
 }

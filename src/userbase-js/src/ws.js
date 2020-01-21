@@ -129,11 +129,11 @@ class Connection {
               this.connected = true
 
               const {
-                salts,
+                keySalts,
                 encryptedValidationMessage
               } = message
 
-              this.keys.salts = salts
+              this.keys.salts = keySalts
               this.encryptedValidationMessage = new Uint8Array(encryptedValidationMessage.data)
 
               await this.setKeys(this.seedString)
@@ -216,7 +216,8 @@ class Connection {
             case 'Delete':
             case 'BatchTransaction':
             case 'Bundle':
-            case 'ValidateKey': {
+            case 'ValidateKey':
+            case 'GetPasswordSalts': {
               const requestId = message.requestId
 
               if (!requestId) return console.warn('Missing request id')

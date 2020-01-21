@@ -72,17 +72,15 @@ async function start(express, app, userbaseConfig = {}) {
       if (conn) {
         const connectionId = conn.id
 
-        const salts = {
-          encryptionKeySalt: res.locals.user['encryption-key-salt'],
-          dhKeySalt: res.locals.user['diffie-hellman-key-salt'],
-          hmacKeySalt: res.locals.user['hmac-key-salt']
-        }
-
         const { validationMessage, encryptedValidationMessage } = user.getValidationMessage(userPublicKey)
 
         ws.send(JSON.stringify({
           route: 'Connection',
-          salts,
+          keySalts: {
+            encryptionKeySalt: res.locals.user['encryption-key-salt'],
+            dhKeySalt: res.locals.user['diffie-hellman-key-salt'],
+            hmacKeySalt: res.locals.user['hmac-key-salt'],
+          },
           encryptedValidationMessage
         }))
 
@@ -135,6 +133,7 @@ async function start(express, app, userbaseConfig = {}) {
                   response = await user.updateUser(
                     userId,
                     params.username,
+                    params.currentPasswordToken,
                     params.passwordToken,
                     params.passwordSalts,
                     params.email,
@@ -180,6 +179,10 @@ async function start(express, app, userbaseConfig = {}) {
                 }
                 case 'Bundle': {
                   response = await db.bundleTransactionLog(params.dbId, params.seqNo, params.bundle)
+                  break
+                }
+                case 'GetPasswordSalts': {
+                  response = await user.getPasswordSaltsByUserId(userId)
                   break
                 }
                 default: {
@@ -231,7 +234,7 @@ async function start(express, app, userbaseConfig = {}) {
     v1Api.post('/auth/sign-in', user.signIn)
     v1Api.post('/auth/sign-in-with-session', user.authenticateUser, user.extendSession)
     v1Api.get('/auth/server-public-key', user.getServerPublicKey)
-    v1Api.get('/auth/get-password-salts', user.getPasswordSalts)
+    v1Api.get('/auth/get-password-salts', user.getPasswordSaltsController)
 
     // Userbase admin API
     app.use(express.static(path.join(__dirname + adminPanelDir)))
