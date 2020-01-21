@@ -54,10 +54,18 @@ const _parseUserResponseError = (e, username) => {
   if (e.response) {
     const data = e.response.data
 
-    if (data === 'UsernameAlreadyExists') {
-      throw new errors.UsernameAlreadyExists(username)
-    } else if (data === 'TrialExceededLimit') {
-      throw new errors.TrialExceededLimit
+    switch (data) {
+      case 'UsernameAlreadyExists':
+        throw new errors.UsernameAlreadyExists(username)
+
+      case 'TrialExceededLimit':
+        throw new errors.TrialExceededLimit
+
+      case 'CurrentPasswordIncorrect':
+        throw new errors.CurrentPasswordIncorrect
+
+      default:
+      // continue
     }
 
     switch (data.error) {
@@ -122,22 +130,28 @@ const _generatePasswordToken = async (password, seed) => {
 
   const passwordEncryptedSeed = await crypto.aesGcm.encrypt(passwordBasedEncryptionKey, seed)
 
+  const passwordSalts = {
+    passwordSalt: base64.encode(passwordSalt),
+    passwordTokenSalt: base64.encode(passwordTokenSalt)
+  }
+
+  const passwordBasedBackup = {
+    passwordBasedEncryptionKeySalt: base64.encode(passwordBasedEncryptionKeySalt),
+    passwordEncryptedSeed: base64.encode(passwordEncryptedSeed)
+  }
+
   return {
-    passwordSalt,
-    passwordTokenSalt,
     passwordToken,
-    passwordBasedEncryptionKeySalt,
-    passwordEncryptedSeed
+    passwordSalts,
+    passwordBasedBackup
   }
 }
 
 const _generateKeysAndSignUp = async (username, password, seed, email, profile) => {
   const {
-    passwordSalt,
-    passwordTokenSalt,
     passwordToken,
-    passwordBasedEncryptionKeySalt,
-    passwordEncryptedSeed
+    passwordSalts,
+    passwordBasedBackup
   } = await _generatePasswordToken(password, seed)
 
   const masterKey = await crypto.hkdf.importHkdfKey(seed)
@@ -149,17 +163,10 @@ const _generateKeysAndSignUp = async (username, password, seed, email, profile) 
   const dhPrivateKey = await crypto.diffieHellman.importKeyFromMaster(masterKey, dhKeySalt)
   const publicKey = crypto.diffieHellman.getPublicKey(dhPrivateKey)
 
-  const salts = {
-    passwordSalt: base64.encode(passwordSalt),
-    passwordTokenSalt: base64.encode(passwordTokenSalt),
+  const keySalts = {
     encryptionKeySalt: base64.encode(encryptionKeySalt),
     dhKeySalt: base64.encode(dhKeySalt),
     hmacKeySalt: base64.encode(hmacKeySalt),
-  }
-
-  const passwordBasedBackup = {
-    passwordBasedEncryptionKeySalt: base64.encode(passwordBasedEncryptionKeySalt),
-    passwordEncryptedSeed: base64.encode(passwordEncryptedSeed)
   }
 
   try {
@@ -167,7 +174,8 @@ const _generateKeysAndSignUp = async (username, password, seed, email, profile) 
       username,
       passwordToken,
       publicKey,
-      salts,
+      passwordSalts,
+      keySalts,
       email,
       profile,
       passwordBasedBackup
@@ -331,10 +339,10 @@ const _signInWrapper = async (username, passwordToken) => {
   }
 }
 
-const _rebuildPasswordToken = async (username, password) => {
-  let passwordSalts
+const _getPasswordSaltsOverRestEndpoint = async (username) => {
   try {
-    passwordSalts = await api.auth.getPasswordSalts(username)
+    const passwordSalts = await api.auth.getPasswordSalts(username)
+    return passwordSalts
   } catch (e) {
     _parseGenericErrors(e)
 
@@ -344,6 +352,20 @@ const _rebuildPasswordToken = async (username, password) => {
 
     throw e
   }
+}
+
+const _getPasswordSaltsOverWebSocket = async () => {
+  try {
+    const action = 'GetPasswordSalts'
+    const passwordSaltsResponse = await ws.request(action)
+    return passwordSaltsResponse.data
+  } catch (e) {
+    _parseGenericErrors(e)
+    throw e
+  }
+}
+
+const _rebuildPasswordToken = async (password, passwordSalts) => {
   const { passwordSalt, passwordTokenSalt } = passwordSalts
 
   const passwordHash = await crypto.scrypt.hash(password, new Uint8Array(base64.decode(passwordSalt)))
@@ -365,7 +387,8 @@ const signIn = async (params) => {
     const appId = config.getAppId()
     const lowerCaseUsername = username.toLowerCase()
 
-    const { passwordHkdfKey, passwordToken } = await _rebuildPasswordToken(username, password)
+    const passwordSalts = await _getPasswordSaltsOverRestEndpoint(lowerCaseUsername)
+    const { passwordHkdfKey, passwordToken } = await _rebuildPasswordToken(password, passwordSalts)
 
     const apiSignInResult = await _signInWrapper(lowerCaseUsername, passwordToken)
     const { email, profile, passwordBasedBackup } = apiSignInResult
@@ -489,17 +512,22 @@ const signInWithSession = async (appId) => {
 
 const _validateUpdatedUserInput = (params) => {
   if (!objectHasOwnProperty(params, 'username')
-    && !objectHasOwnProperty(params, 'password')
+    && !objectHasOwnProperty(params, 'newPassword')
     && !objectHasOwnProperty(params, 'email')
     && !objectHasOwnProperty(params, 'profile')
   ) {
     throw new errors.ParamsMissing
   }
 
-  const { username, password, email, profile } = params
+  const { username, currentPassword, newPassword, email, profile } = params
 
   if (objectHasOwnProperty(params, 'username')) _validateUsername(username)
-  if (objectHasOwnProperty(params, 'password')) _validatePassword(password)
+  if (objectHasOwnProperty(params, 'newPassword')) {
+    if (!currentPassword) throw new errors.CurrentPasswordMissing
+
+    _validatePassword(currentPassword)
+    _validatePassword(newPassword)
+  }
 
   // if email or profile are falsey, will be set to false
   if (email && typeof email !== 'string') throw new errors.EmailNotValid
@@ -509,28 +537,22 @@ const _validateUpdatedUserInput = (params) => {
 const _buildUpdateUserParams = async (params) => {
   if (params.username) params.username = params.username.toLowerCase()
 
-  if (params.password) {
-    const {
-      passwordSalt,
-      passwordTokenSalt,
-      passwordToken,
-      passwordBasedEncryptionKeySalt,
-      passwordEncryptedSeed
-    } = await _generatePasswordToken(params.password, base64.decode(ws.seedString))
+  if (params.newPassword) {
+    const [currentPasswordSalts, newPasswordPromise] = await Promise.all([
+      _getPasswordSaltsOverWebSocket(),
+      _generatePasswordToken(params.newPassword, base64.decode(ws.seedString))
+    ])
 
-    params.passwordToken = passwordToken
+    // current password
+    const { passwordToken } = await _rebuildPasswordToken(params.currentPassword, currentPasswordSalts)
+    params.currentPasswordToken = passwordToken
+    delete params.currentPassword
 
-    params.passwordSalts = {
-      passwordSalt: base64.encode(passwordSalt),
-      passwordTokenSalt: base64.encode(passwordTokenSalt)
-    }
-
-    params.passwordBasedBackup = {
-      passwordBasedEncryptionKeySalt: base64.encode(passwordBasedEncryptionKeySalt),
-      passwordEncryptedSeed: base64.encode(passwordEncryptedSeed)
-    }
-
-    delete params.password
+    // new password
+    params.passwordToken = newPasswordPromise.passwordToken
+    params.passwordSalts = newPasswordPromise.passwordSalts
+    params.passwordBasedBackup = newPasswordPromise.passwordBasedBackup
+    delete params.newPassword
   }
 
   if (params.email) params.email = params.email.toLowerCase()
@@ -590,6 +612,8 @@ const updateUser = async (params) => {
       case 'UsernameMustBeString':
       case 'UsernameCannotBeBlank':
       case 'UsernameTooLong':
+      case 'CurrentPasswordMissing':
+      case 'CurrentPasswordIncorrect':
       case 'PasswordMustBeString':
       case 'PasswordCannotBeBlank':
       case 'PasswordTooShort':

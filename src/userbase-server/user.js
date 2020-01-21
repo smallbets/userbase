@@ -52,15 +52,18 @@ const createSession = async function (userId, appId) {
 }
 
 const _buildSignUpParams = (username, passwordToken, appId, userId,
-  publicKey, salts, email, profile, passwordBasedBackup) => {
+  publicKey, passwordSalts, keySalts, email, profile, passwordBasedBackup) => {
 
   const {
     passwordSalt,
-    passwordTokenSalt,
+    passwordTokenSalt
+  } = passwordSalts
+
+  const {
     encryptionKeySalt,
     dhKeySalt,
     hmacKeySalt
-  } = salts
+  } = keySalts
 
   const { passwordBasedEncryptionKeySalt, passwordEncryptedSeed } = passwordBasedBackup
 
@@ -101,11 +104,7 @@ const _validatePassword = (passwordToken, user) => {
 
   const passwordTokenHash = crypto.sha256.hash(passwordToken)
 
-  const passwordIsCorrect = passwordTokenHash.equals(user['password-token'])
-
-  if (!passwordIsCorrect) {
-    throw new Error('Incorrect password')
-  }
+  if (!passwordTokenHash.equals(user['password-token'])) throw new Error('Incorrect password')
 }
 
 const _validateProfile = (profile) => {
@@ -154,23 +153,27 @@ exports.signUp = async function (req, res) {
 
   const publicKey = req.body.publicKey
 
-  const salts = req.body.salts
+  const passwordSalts = req.body.passwordSalts
+  const keySalts = req.body.keySalts
 
   const email = req.body.email
   const profile = req.body.profile
   const passwordBasedBackup = req.body.passwordBasedBackup
 
-  if (!appId || !username || !passwordToken || !publicKey || !salts || !passwordBasedBackup) {
+  if (!appId || !username || !passwordToken || !publicKey || !passwordSalts || !keySalts || !passwordBasedBackup) {
     return res.status(statusCodes['Bad Request']).send('Missing required items')
   }
 
   const {
     passwordSalt,
-    passwordTokenSalt,
+    passwordTokenSalt
+  } = passwordSalts
+
+  const {
     encryptionKeySalt,
     dhKeySalt,
     hmacKeySalt
-  } = salts
+  } = keySalts
 
   if (!passwordSalt || !passwordTokenSalt || !encryptionKeySalt || !dhKeySalt || !hmacKeySalt) {
     return res.status(statusCodes['Bad Request']).send('Missing required salts')
@@ -210,7 +213,7 @@ exports.signUp = async function (req, res) {
     }
 
     const params = _buildSignUpParams(username, passwordToken, appId, userId,
-      publicKey, salts, email, profile, passwordBasedBackup)
+      publicKey, passwordSalts, keySalts, email, profile, passwordBasedBackup)
 
     try {
       const ddbClient = connection.ddbClient()
@@ -368,7 +371,27 @@ exports.validateKey = async function (validationMessage, userProvidedValidationM
   }
 }
 
-exports.getPasswordSalts = async function (req, res) {
+exports.getPasswordSaltsByUserId = async function (userId) {
+  try {
+    const user = await getUserByUserId(userId)
+    if (!user || user['deleted']) return responseBuilder.errorResponse(
+      statusCodes['Not Found'],
+      'User not found'
+    )
+
+    const result = {
+      passwordSalt: user['password-salt'],
+      passwordTokenSalt: user['password-token-salt']
+    }
+
+    return responseBuilder.successResponse(result)
+  } catch (e) {
+    logger.error(`User id '${userId}' failed to get password salts with ${e}`)
+    return responseBuilder.errorResponse(statusCodes['Internal Server Error'])
+  }
+}
+
+exports.getPasswordSaltsController = async function (req, res) {
   const appId = req.query.appId
   const username = req.query.username
 
@@ -708,14 +731,26 @@ const _updateUserIncludingUsernameUpdate = async (oldUser, userId, passwordToken
   }
 }
 
-exports.updateUser = async function (userId, username, passwordToken, passwordSalts,
+exports.updateUser = async function (userId, username, currentPasswordToken, passwordToken, passwordSalts,
   email, profile, passwordBasedBackup) {
-  if (!username && !passwordToken && !email && !profile && email !== false && profile !== false) {
+  if (!username && !currentPasswordToken && !passwordToken && !email && !profile && email !== false && profile !== false) {
     return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing all params')
   }
 
-  if (passwordToken && (!passwordSalts || !passwordSalts.passwordSalt || !passwordSalts.passwordTokenSalt)) {
-    return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing password salts')
+  if (passwordToken) {
+    if (!passwordSalts || !passwordSalts.passwordSalt || !passwordSalts.passwordTokenSalt) {
+      return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing password salts')
+
+    } else if (!passwordBasedBackup || !passwordBasedBackup.passwordBasedEncryptionKeySalt
+      || !passwordBasedBackup.passwordEncryptedSeed) {
+
+      return responseBuilder
+        .errorResponse(statusCodes['Bad Request'], 'Missing password-based key backup')
+
+    } else if (!currentPasswordToken) {
+      return responseBuilder
+        .errorResponse(statusCodes['Bad Request'], 'Missing current password token')
+    }
   }
 
   try {
@@ -730,22 +765,26 @@ exports.updateUser = async function (userId, username, passwordToken, passwordSa
     const user = await getUserByUserId(userId)
     if (!user || user['deleted']) throw new Error('UserNotFound')
 
-    if (passwordToken && (!passwordBasedBackup
-      || !passwordBasedBackup.passwordBasedEncryptionKeySalt
-      || !passwordBasedBackup.passwordEncryptedSeed)) {
-
-      return responseBuilder
-        .errorResponse(statusCodes['Bad Request'], 'Missing password-based key backup')
+    if (passwordToken) {
+      try {
+        _validatePassword(currentPasswordToken, user)
+      } catch (e) {
+        return responseBuilder.errorResponse(statusCodes['Bad Request'], 'CurrentPasswordIncorrect')
+      }
     }
 
     if (username && username.toLowerCase() !== user['username']) {
+
       await _updateUserIncludingUsernameUpdate(
         user, userId, passwordToken, passwordSalts, email, profile, passwordBasedBackup, username
       )
-    } else {
+
+    } else if (passwordToken || (email || email === false) || (profile || profile === false)) {
+
       await _updateUserExcludingUsernameUpdate(
         user, userId, passwordToken, passwordSalts, email, profile, passwordBasedBackup
       )
+
     }
 
     return responseBuilder.successResponse()
