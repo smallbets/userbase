@@ -2,6 +2,7 @@ import React, { Component } from 'react'
 import { string } from 'prop-types'
 import dashboardLogic from './logic'
 import adminLogic from '../Admin/logic'
+import UnknownError from '../Admin/UnknownError'
 
 export default class Dashboard extends Component {
   constructor(props) {
@@ -26,7 +27,7 @@ export default class Dashboard extends Component {
       const apps = await dashboardLogic.listApps()
       if (this._isMounted) this.setState({ apps, loading: false })
     } catch (e) {
-      if (this._isMounted) this.setState({ error: e, loading: false })
+      if (this._isMounted) this.setState({ error: e.message, loading: false })
     }
   }
 
@@ -56,7 +57,7 @@ export default class Dashboard extends Component {
 
       if (this._isMounted) this.setState({ apps: apps.concat(app), appName: '', error: '', loadingApp: false })
     } catch (err) {
-      if (this._isMounted) this.setState({ error: err, loadingApp: false })
+      if (this._isMounted) this.setState({ error: err.message, loadingApp: false })
     }
   }
 
@@ -150,8 +151,14 @@ export default class Dashboard extends Component {
                 </form>
               }
 
-
-              {error && <div className='error text-left'>{error.message}</div>}
+              {error &&
+                <div className='text-left'>
+                  {error === 'Unknown Error'
+                    ? <UnknownError />
+                    : <div className='error'>{error}</div>
+                  }
+                </div>
+              }
 
             </div>
         }

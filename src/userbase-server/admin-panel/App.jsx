@@ -4,6 +4,7 @@ import adminLogic from './components/Admin/logic'
 import Dashboard from './components/Dashboard/Dashboard'
 import AppUsersTable from './components/Dashboard/AppUsersTable'
 import EditAdmin from './components/Admin/EditAdmin'
+import UnknownError from './components/Admin/UnknownError'
 
 export default class App extends Component {
   constructor(props) {
@@ -15,7 +16,8 @@ export default class App extends Component {
       email: undefined,
       fullName: undefined,
       paymentStatus: undefined,
-      loadingPaymentStatus: true
+      loadingPaymentStatus: true,
+      errorGettingPaymentStatus: false,
     }
 
     this.handleSignOut = this.handleSignOut.bind(this)
@@ -38,7 +40,7 @@ export default class App extends Component {
         }
 
       } catch (e) {
-        // do nothing
+        this.setState({ errorGettingPaymentStatus: true })
       }
     }
 
@@ -75,6 +77,11 @@ export default class App extends Component {
 
     if (fullName !== this.state.fullName) {
       updatedState.fullName = fullName
+    }
+
+    if (!signedIn && this.state.signedIn) {
+      updatedState.paymentStatus = undefined
+      updatedState.errorGettingPaymentStatus = false
     }
 
     const hashRoute = window.location.hash.substring(1)
@@ -121,7 +128,7 @@ export default class App extends Component {
   }
 
   render() {
-    const { mode, signedIn, email, fullName, paymentStatus, loadingPaymentStatus } = this.state
+    const { mode, signedIn, email, fullName, paymentStatus, loadingPaymentStatus, errorGettingPaymentStatus } = this.state
 
     if (!mode) {
       return <div />
@@ -153,52 +160,53 @@ export default class App extends Component {
           </div>
         </nav>
 
-        {loadingPaymentStatus
-          ? <div className='text-center'><div className='loader w-6 h-6 inline-block' /></div>
-          :
+        {errorGettingPaymentStatus
+          ? <div className='container content text-xs xs:text-base'>
+            <UnknownError noMarginTop />
+          </div>
+          : loadingPaymentStatus
+            ? <div className='text-center'>< div className='loader w-6 h-6 inline-block' /></div>
+            : (() => {
+              switch (mode) {
+                case 'create-admin':
+                  return <AdminForm
+                    formType='Create Admin'
+                    key='create-admin'
+                    placeholderEmail=''
+                  />
 
-          (() => {
-            switch (mode) {
-              case 'create-admin':
-                return <AdminForm
-                  formType='Create Admin'
-                  key='create-admin'
-                  placeholderEmail=''
-                />
+                case 'sign-in':
+                  return <AdminForm
+                    formType='Sign In'
+                    key='sign-in'
+                    placeholderEmail={email}
+                    handleUpdatePaymentStatus={this.handleUpdatePaymentStatus}
+                  />
 
-              case 'sign-in':
-                return <AdminForm
-                  formType='Sign In'
-                  key='sign-in'
-                  placeholderEmail={email}
-                  handleUpdatePaymentStatus={this.handleUpdatePaymentStatus}
-                />
+                case 'dashboard':
+                  return <Dashboard paymentStatus={paymentStatus} />
 
-              case 'dashboard':
-                return <Dashboard paymentStatus={paymentStatus} />
+                case 'app-users-table':
+                  return <AppUsersTable
+                    appName={decodeURIComponent(window.location.hash.substring(5))}
+                    paymentStatus={paymentStatus}
+                    key={window.location.hash} // re-renders on hash change
+                  />
 
-              case 'app-users-table':
-                return <AppUsersTable
-                  appName={decodeURIComponent(window.location.hash.substring(5))}
-                  paymentStatus={paymentStatus}
-                  key={window.location.hash} // re-renders on hash change
-                />
+                case 'edit-account':
+                  return <EditAdmin
+                    paymentStatus={paymentStatus}
+                    handleUpdateAccount={this.handleUpdateAccount}
+                    handleUpdatePaymentStatus={this.handleUpdatePaymentStatus}
+                  />
 
-              case 'edit-account':
-                return <EditAdmin
-                  paymentStatus={paymentStatus}
-                  handleUpdateAccount={this.handleUpdateAccount}
-                  handleUpdatePaymentStatus={this.handleUpdatePaymentStatus}
-                />
-
-              default:
-                return null
-            }
-          })()
-
+                default:
+                  return null
+              }
+            })()
         }
 
-      </div>
+      </div >
     )
   }
 }

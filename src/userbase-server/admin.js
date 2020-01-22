@@ -249,7 +249,7 @@ exports.signInAdmin = async function (req, res) {
       .status(statusCodes['Success'])
       .send({
         fullName: admin['full-name'],
-        paymentStatus: subscription && subscription.status
+        paymentStatus: subscription && (subscription.cancel_at_period_end ? 'cancel_at_period_end' : subscription.status)
       })
   } catch (e) {
     logger.error(`Admin '${email}' failed to sign in with ${e}`)
@@ -672,6 +672,10 @@ exports.updateSaasSubscriptionPaymentSession = async function (req, res) {
   const stripeCustomerId = admin['stripe-customer-id']
 
   try {
+    if (!stripeCustomerId) {
+      return res.status(statusCodes['Payment Required']).send('Must purchase subscription first')
+    }
+
     const session = await stripe.getClient().checkout.sessions.create({
       payment_method_types: ['card'],
       mode: 'setup',
