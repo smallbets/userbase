@@ -31,8 +31,11 @@ async function start(express, app, userbaseConfig = {}) {
   try {
     const {
       httpsKey,
-      httpsCert
+      httpsCert,
+      stripeRedirectUrl
     } = userbaseConfig
+
+    if (stripeRedirectUrl) process.env['STRIPE_REDIRECT_URL'] = stripeRedirectUrl
 
     await setup.init()
 
@@ -290,19 +293,15 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.post('/update-admin', admin.authenticateAdmin, admin.updateAdmin)
     v1Admin.post('/forgot-password', admin.forgotPassword)
     v1Admin.get('/payment-status', admin.authenticateAdmin, admin.getSaasSubscriptionController, (req, res) => {
-      return res.send('active')
-
-      // temporary comment for hackathon
-      // const subscription = res.locals.subscription
-      // if (!subscription) return res.end()
-      // return res.send(subscription.cancel_at_period_end ? 'cancel_at_period_end' : subscription.status)
+      const subscription = res.locals.subscription
+      if (!subscription) return res.end()
+      return res.send(subscription.cancel_at_period_end ? 'cancel_at_period_end' : subscription.status)
     })
 
-    // temporary comment for hackathon
-    // v1Admin.post('/stripe/create-saas-payment-session', admin.authenticateAdmin, admin.createSaasPaymentSession)
-    // v1Admin.post('/stripe/update-saas-payment-session', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.updateSaasSubscriptionPaymentSession)
-    // v1Admin.post('/stripe/cancel-saas-subscription', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.cancelSaasSubscription)
-    // v1Admin.post('/stripe/resume-saas-subscription', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.resumeSaasSubscription)
+    v1Admin.post('/stripe/create-saas-payment-session', admin.authenticateAdmin, admin.createSaasPaymentSession)
+    v1Admin.post('/stripe/update-saas-payment-session', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.updateSaasSubscriptionPaymentSession)
+    v1Admin.post('/stripe/cancel-saas-subscription', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.cancelSaasSubscription)
+    v1Admin.post('/stripe/resume-saas-subscription', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.resumeSaasSubscription)
 
   } catch (e) {
     logger.info(`Unhandled error while launching server: ${e}`)
