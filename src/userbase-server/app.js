@@ -198,6 +198,73 @@ exports.deleteApp = async function (req, res) {
   }
 }
 
+exports.permanentDeleteApp = async function (req, res) {
+  const subscription = res.locals.subscription
+
+  if (!subscription || subscription.cancel_at_period_end || subscription.status !== 'active') return res
+    .status(statusCodes['Payment Required'])
+    .send('Pay subscription fee to permanently delete an app.')
+
+  const appName = req.query.appName
+  const appId = req.query.appId
+
+  const admin = res.locals.admin
+  const adminId = admin['admin-id']
+
+  if (!appName || !appId || !adminId) return res
+    .status(statusCodes['Bad Request'])
+    .send('Missing required items')
+
+  try {
+    const existingAppParams = {
+      TableName: setup.appsTableName,
+      Key: {
+        'admin-id': adminId,
+        'app-name': appName
+      },
+      ConditionExpression: 'attribute_exists(deleted) and #appId = :appId',
+      ExpressionAttributeNames: {
+        '#appId': 'app-id'
+      },
+      ExpressionAttributeValues: {
+        ':appId': appId
+      }
+    }
+
+    const permanentDeletedAppParams = {
+      TableName: setup.deletedAppsTableName,
+      Item: {
+        'app-id': appId,
+        'admin-id': adminId,
+        'app-name': appName
+      },
+      ConditionExpression: 'attribute_not_exists(#appId)',
+      ExpressionAttributeNames: {
+        '#appId': 'app-id'
+      },
+    }
+
+    const transactionParams = {
+      TransactItems: [
+        { Delete: existingAppParams },
+        { Put: permanentDeletedAppParams }
+      ]
+    }
+
+    const ddbClient = connection.ddbClient()
+    await ddbClient.transactWrite(transactionParams).promise()
+
+    return res.end()
+  } catch (e) {
+    if (e.message.includes('ConditionalCheckFailed]')) {
+      return res.status(statusCodes['Conflict']).send('App already permanently deleted')
+    }
+
+    logger.error(`Failed to permanently delete app ${appName} for admin ${adminId} with ${e}`)
+    return res.status(statusCodes['Internal Server Error']).send('Failed to permanently delete app')
+  }
+}
+
 exports.listAppUsers = async function (req, res) {
   const appName = req.query.appName
 
