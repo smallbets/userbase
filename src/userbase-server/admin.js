@@ -249,7 +249,7 @@ exports.signInAdmin = async function (req, res) {
       .status(statusCodes['Success'])
       .send({
         fullName: admin['full-name'],
-        paymentStatus: subscription && subscription.status
+        paymentStatus: subscription && (subscription.cancel_at_period_end ? 'cancel_at_period_end' : subscription.status)
       })
   } catch (e) {
     logger.error(`Admin '${email}' failed to sign in with ${e}`)

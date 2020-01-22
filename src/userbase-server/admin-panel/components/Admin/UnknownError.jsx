@@ -1,9 +1,9 @@
 import React from 'react'
-import { string } from 'prop-types'
+import { string, bool } from 'prop-types'
 
-export default function UnknownError({ action }) {
+export default function UnknownError({ action, noMarginTop }) {
   return (
-    <div className='error'>
+    <div className={`error ${noMarginTop ? 'mt-0' : ''}`}>
       {`Oops! Something went wrong${action ? (' ' + action) : ''}. Please hit refresh and try again!`}
       <br />
       <br />
@@ -13,6 +13,6 @@ export default function UnknownError({ action }) {
 }
 
 UnknownError.propTypes = {
-  error: string,
-  action: string
+  action: string,
+  noMarginTop: bool
 }
