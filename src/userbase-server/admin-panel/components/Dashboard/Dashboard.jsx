@@ -9,7 +9,9 @@ export default class Dashboard extends Component {
     super(props)
     this.state = {
       error: '',
-      apps: [],
+      activeApps: [],
+      deletedApps: [],
+      showDeletedApps: false,
       appName: '',
       loading: true,
       loadingApp: false
@@ -17,6 +19,8 @@ export default class Dashboard extends Component {
 
     this.handleCreateApp = this.handleCreateApp.bind(this)
     this.handleInputChange = this.handleInputChange.bind(this)
+    this.handleShowDeletedApps = this.handleShowDeletedApps.bind(this)
+    this.handleHideDeletedApps = this.handleHideDeletedApps.bind(this)
   }
 
   async componentDidMount() {
@@ -25,7 +29,18 @@ export default class Dashboard extends Component {
       document.addEventListener('keydown', this.handleHitEnter, true)
 
       const apps = await dashboardLogic.listApps()
-      if (this._isMounted) this.setState({ apps, loading: false })
+
+      const activeApps = []
+      const deletedApps = []
+
+      for (let i = 0; i < apps.length; i++) {
+        const app = apps[i]
+
+        if (app['deleted']) deletedApps.push(app)
+        else activeApps.push(app)
+      }
+
+      if (this._isMounted) this.setState({ activeApps, deletedApps, loading: false })
     } catch (e) {
       if (this._isMounted) this.setState({ error: e.message, loading: false })
     }
@@ -46,7 +61,7 @@ export default class Dashboard extends Component {
 
   async handleCreateApp(e) {
     e.preventDefault()
-    const { appName, apps, loadingApp } = this.state
+    const { appName, activeApps, loadingApp } = this.state
 
     if (loadingApp) return
 
@@ -55,7 +70,7 @@ export default class Dashboard extends Component {
 
       const app = await adminLogic.createApp(appName)
 
-      if (this._isMounted) this.setState({ apps: apps.concat(app), appName: '', error: '', loadingApp: false })
+      if (this._isMounted) this.setState({ activeApps: activeApps.concat(app), appName: '', error: '', loadingApp: false })
     } catch (err) {
       if (this._isMounted) this.setState({ error: err.message, loadingApp: false })
     }
@@ -73,9 +88,19 @@ export default class Dashboard extends Component {
     })
   }
 
+  handleShowDeletedApps(e) {
+    e.preventDefault()
+    this.setState({ showDeletedApps: true })
+  }
+
+  handleHideDeletedApps(e) {
+    e.preventDefault()
+    this.setState({ showDeletedApps: false })
+  }
+
   render() {
     const { paymentStatus } = this.props
-    const { loading, apps, error, appName, loadingApp } = this.state
+    const { loading, activeApps, deletedApps, showDeletedApps, error, appName, loadingApp } = this.state
 
     return (
       <div className='text-xs xs:text-base'>
@@ -86,7 +111,7 @@ export default class Dashboard extends Component {
 
             <div className='container content text-center'>
 
-              {apps && apps.length !== 0 &&
+              {activeApps && activeApps.length > 0 &&
                 <table className='table-auto w-full border-collapse border-2 border-gray-500 mx-auto'>
 
                   <thead>
@@ -98,18 +123,10 @@ export default class Dashboard extends Component {
 
                   <tbody>
 
-                    {apps.map((app) => (
+                    {activeApps.map((app) => (
                       <tr key={app['app-id']}>
                         <td className='border border-gray-400 px-4 py-2 font-light'>
-
-                          {app['deleted']
-                            ? <span>
-                              {app['app-name'] + ' '}
-                              <span className='italic text-red-600'>(Deleted)</span>
-                            </span>
-                            : <a href={`#app=${app['app-name']}`}>{app['app-name']}</a>
-                          }
-
+                          <a href={`#app=${app['app-name']}`}>{app['app-name']}</a>
                         </td>
                         <td className='border border-gray-400 px-4 py-2 font-light'>{app['app-id']}</td>
                       </tr>
@@ -122,7 +139,7 @@ export default class Dashboard extends Component {
 
               {paymentStatus === 'active' &&
 
-                <form className={`flex text-left ${(apps && apps.length) ? 'mt-8' : ''}`}>
+                <form className={`flex text-left ${(activeApps && activeApps.length) ? 'mt-8' : ''}`}>
                   <div className='flex-1'>
                     <input
                       className='input-text text-xs xs:text-sm w-36 xs:w-48'
@@ -149,6 +166,43 @@ export default class Dashboard extends Component {
                     {loadingApp && <div className='loader w-6 h-6' />}
                   </div>
                 </form>
+              }
+
+              {deletedApps && deletedApps.length > 0 &&
+
+                <div>
+                  <div className='mt-6 text-left'>
+                    <a className='select-none italic font-light cursor-pointer' onClick={showDeletedApps ? this.handleHideDeletedApps : this.handleShowDeletedApps}>
+                      {showDeletedApps ? 'Hide' : 'Show'} apps pending deletion
+                   </a>
+                  </div>
+
+                  {showDeletedApps &&
+                    <table className='mt-6 table-auto w-full border-collapse border-2 border-gray-500 mx-auto'>
+
+                      <thead>
+                        <tr>
+                          <th className='border border-gray-400 px-4 py-2 text-gray-800'>App</th>
+                          <th className='border border-gray-400 px-4 py-2 text-gray-800'>App ID</th>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+
+                        {deletedApps.map((app) => (
+                          <tr key={app['app-id']}>
+                            <td className='border border-gray-400 px-4 py-2 font-light text-red-700'>{app['app-name']}</td>
+                            <td className='border border-gray-400 px-4 py-2 font-light'>{app['app-id']}</td>
+                          </tr>
+                        ))}
+
+                      </tbody>
+
+                    </table>
+
+                  }
+
+                </div>
               }
 
               {error &&
