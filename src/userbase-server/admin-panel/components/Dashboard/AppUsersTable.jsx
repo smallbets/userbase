@@ -8,12 +8,16 @@ export default class AppUsersTable extends Component {
     super(props)
     this.state = {
       error: '',
-      appUsers: [],
-      loading: true
+      activeUsers: [],
+      deletedUsers: [],
+      loading: true,
+      showDeletedUsers: false
     }
 
     this.handleDeleteApp = this.handleDeleteApp.bind(this)
     this.handleDeleteUser = this.handleDeleteUser.bind(this)
+    this.handleShowDeletedUsers = this.handleShowDeletedUsers.bind(this)
+    this.handleHideDeletedUsers = this.handleHideDeletedUsers.bind(this)
   }
 
   async componentDidMount() {
@@ -23,7 +27,18 @@ export default class AppUsersTable extends Component {
 
     try {
       const appUsers = await dashboardLogic.listAppUsers(appName)
-      if (this._isMounted) this.setState({ appUsers, loading: false })
+
+      const activeUsers = []
+      const deletedUsers = []
+
+      for (let i = 0; i < appUsers.length; i++) {
+        const appUser = appUsers[i]
+
+        if (appUser['deleted']) deletedUsers.push(appUser)
+        else activeUsers.push(appUser)
+      }
+
+      if (this._isMounted) this.setState({ activeUsers, deletedUsers, loading: false })
     } catch (e) {
       if (this._isMounted) this.setState({ error: e.message, loading: false })
     }
@@ -50,41 +65,54 @@ export default class AppUsersTable extends Component {
 
   async handleDeleteUser(user) {
     const { appName } = this.props
-    const { appUsers } = this.state
+    const { activeUsers } = this.state
 
     const userId = user['user-id']
     const username = user['username']
 
-    const getUserIndex = () => this.state.appUsers.findIndex((appUser) => appUser['user-id'] === userId)
+    const getUserIndex = () => this.state.activeUsers.findIndex((user) => user['user-id'] === userId)
 
     try {
       if (window.confirm(`Are you sure you want to delete user '${username}'?`)) {
 
-        appUsers[getUserIndex()].deleting = true
-        this.setState({ appUsers })
+        activeUsers[getUserIndex()].deleting = true
+        this.setState({ activeUsers })
 
         await dashboardLogic.deleteUser(userId, appName, username)
 
         if (this._isMounted) {
-          const { appUsers } = this.state
+          const { activeUsers, deletedUsers } = this.state
           const userIndex = getUserIndex()
-          appUsers[userIndex].deleting = undefined
-          appUsers[userIndex].deleted = true
-          this.setState({ appUsers })
+
+          const deletedUser = activeUsers.splice(userIndex, 1)[0]
+          deletedUser.deleting = undefined
+          deletedUser.deleted = true
+
+          this.setState({ activeUsers, deletedUsers: deletedUsers.concat(deletedUser) })
         }
       }
     } catch (e) {
       if (this._isMounted) {
-        const { appUsers } = this.state
-        appUsers[getUserIndex()].deleting = undefined
-        this.setState({ error: e.message, appUsers })
+        const { activeUsers } = this.state
+        activeUsers[getUserIndex()].deleting = undefined
+        this.setState({ error: e.message, activeUsers })
       }
     }
   }
 
+  handleShowDeletedUsers(e) {
+    e.preventDefault()
+    this.setState({ showDeletedUsers: true })
+  }
+
+  handleHideDeletedUsers(e) {
+    e.preventDefault()
+    this.setState({ showDeletedUsers: false })
+  }
+
   render() {
     const { appName, paymentStatus } = this.props
-    const { loading, appUsers, error } = this.state
+    const { loading, activeUsers, deletedUsers, error, showDeletedUsers } = this.state
 
     return (
       <div className='text-xs xs:text-base'>
@@ -113,55 +141,80 @@ export default class AppUsersTable extends Component {
 
           {loading
             ? <div className='text-center'><div className='loader w-6 h-6 inline-block' /></div>
-            : appUsers && appUsers.length
+            : (activeUsers && activeUsers.length) || (deletedUsers && deletedUsers.length)
 
-              ? <div className='text-center'>
-                <table className='table-auto w-full border-collapse border-2 border-gray-500 mx-auto'>
+              ?
+              <div>
+                {activeUsers && activeUsers.length > 0 &&
+                  <div className='text-center'>
+                    <table className='table-auto w-full border-collapse border-2 border-gray-500 mx-auto'>
 
-                  <thead>
-                    <tr>
-                      <th className='border border-gray-400 px-4 py-2 text-gray-800'>Username</th>
-                      <th className='border border-gray-400 px-4 py-2 text-gray-800'>Created</th>
-                      <th className='border border-gray-400 px-4 py-2'></th>
-                    </tr>
-                  </thead>
+                      <thead>
+                        <tr>
+                          <th className='border border-gray-400 px-4 py-2 text-gray-800'>Username</th>
+                          <th className='border border-gray-400 px-4 py-2 text-gray-800'>Created</th>
+                          <th className='border border-gray-400 px-4 py-2'></th>
+                        </tr>
+                      </thead>
 
-                  <tbody>
+                      <tbody>
 
-                    {appUsers.map((user) => (
-                      <tr key={user['user-id']}>
-                        <td className='border border-gray-400 px-4 py-2 font-light'>
+                        {activeUsers.map((user) => (
+                          <tr key={user['user-id']}>
+                            <td className='border border-gray-400 px-4 py-2 font-light'>{user['username']}</td>
+                            <td className='border border-gray-400 px-4 py-2 font-light'>{user['creation-date']}</td>
+                            <td className='border border-gray-400 px-4 py-2 font-light'>
 
-                          {user['deleted']
-                            ? <span>
-                              {user['username'] + ' '}
-                              <span className='italic text-red-600'>(Deleted)</span>
-                            </span>
-                            : user['username']
-                          }
+                              {user['deleting']
+                                ? <div className='loader w-4 h-4 inline-block' />
+                                : <div
+                                  className='fas fa-trash-alt font-normal text-lg cursor-pointer text-yellow-700'
+                                  onClick={() => this.handleDeleteUser(user)}
+                                />
+                              }
 
-                        </td>
-                        <td className='border border-gray-400 px-4 py-2 font-light'>{user['creation-date']}</td>
-                        <td className='border border-gray-400 px-4 py-2 font-light'>
+                            </td>
+                          </tr>
+                        ))}
 
-                          {!user['deleted'] && !user['deleting'] &&
-                            <div
-                              className='fas fa-trash-alt font-normal text-lg cursor-pointer text-yellow-700'
-                              onClick={() => this.handleDeleteUser(user)}
-                            />
-                          }
+                      </tbody>
+                    </table>
+                  </div>
+                }
 
-                          {user['deleting'] &&
-                            <div className='loader w-4 h-4 inline-block' />
-                          }
+                {deletedUsers && deletedUsers.length > 0 &&
+                  <div className='mt-6'>
+                    <a className='select-none italic font-light cursor-pointer' onClick={showDeletedUsers ? this.handleHideDeletedUsers : this.handleShowDeletedUsers}>
+                      {showDeletedUsers ? 'Hide' : 'Show'} users pending deletion
+                  </a>
 
-                        </td>
-                      </tr>
-                    ))}
+                    {showDeletedUsers &&
 
-                  </tbody>
+                      <table className='mt-6 text-center table-auto w-full border-collapse border-2 border-gray-500 mx-auto'>
 
-                </table>
+                        <thead>
+                          <tr>
+                            <th className='border border-gray-400 px-4 py-2 text-gray-800'>Username</th>
+                            <th className='border border-gray-400 px-4 py-2 text-gray-800'>Created</th>
+                            <th className='border border-gray-400 px-4 py-2'></th>
+                          </tr>
+                        </thead>
+
+                        <tbody>
+
+                          {deletedUsers.map((user) => (
+                            <tr key={user['user-id']}>
+                              <td className='border border-gray-400 px-4 py-2 font-light text-red-700'>{user['username']}</td>
+                              <td className='border border-gray-400 px-4 py-2 font-light'>{user['creation-date']}</td>
+                              <td className='border border-gray-400 px-4 py-2 font-light'></td>
+                            </tr>
+                          ))}
+
+                        </tbody>
+                      </table>
+                    }
+                  </div>
+                }
 
               </div>
 
