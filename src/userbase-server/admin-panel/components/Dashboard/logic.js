@@ -45,6 +45,19 @@ const deleteApp = async (appName) => {
     adminLogic.errorHandler(e)
   }
 }
+
+const permanentDeleteApp = async (appId, appName) => {
+  try {
+    await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/permanent-delete-app?appId=${appId}&appName=${appName}`,
+      timeout: TEN_SECONDS_MS
+    })
+  } catch (e) {
+    adminLogic.errorHandler(e)
+  }
+}
+
 const deleteUser = async (userId, appName, username) => {
   try {
     await axios({
@@ -62,9 +75,28 @@ const deleteUser = async (userId, appName, username) => {
   }
 }
 
+const permanentDeleteUser = async (userId, appName, username) => {
+  try {
+    await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/permanent-delete-user`,
+      data: {
+        userId,
+        appName,
+        username
+      },
+      timeout: TEN_SECONDS_MS
+    })
+  } catch (e) {
+    adminLogic.errorHandler(e)
+  }
+}
+
 export default {
   listApps,
   listAppUsers,
   deleteApp,
-  deleteUser
+  permanentDeleteApp,
+  deleteUser,
+  permanentDeleteUser
 }

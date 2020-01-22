@@ -361,6 +361,72 @@ exports.deleteUser = async function (req, res) {
   }
 }
 
+exports.permanentDeleteUser = async function (req, res) {
+  const appName = req.body.appName
+  const username = req.body.username
+  const userId = req.body.userId
+
+  const adminId = res.locals.admin['admin-id']
+
+  if (!appName || !username) return res
+    .status(statusCodes['Bad Request'])
+    .send('Missing required items')
+
+  try {
+    const [app, user] = await Promise.all([
+      appController.getApp(adminId, appName),
+      userController.getUserByUserId(userId)
+    ])
+    if (!app || app['deleted']) return res.status(statusCodes['Not Found']).send('App not found')
+    if (!user || user['app-id'] !== app['app-id']) return res.status(statusCodes['Not Found']).send('User not found')
+
+    const existingUserParams = {
+      TableName: setup.usersTableName,
+      Key: {
+        username,
+        'app-id': app['app-id']
+      },
+      ConditionExpression: 'attribute_exists(deleted) and #userId = :userId',
+      ExpressionAttributeNames: {
+        '#userId': 'user-id'
+      },
+      ExpressionAttributeValues: {
+        ':userId': userId
+      }
+    }
+
+    const permanentDeletedUserParams = {
+      TableName: setup.deletedUsersTableName,
+      Item: {
+        ...user // still technically can recover user before data is purged, though more difficult
+      },
+      ConditionExpression: 'attribute_not_exists(#userId)',
+      ExpressionAttributeNames: {
+        '#userId': 'user-id'
+      },
+    }
+
+    const transactionParams = {
+      TransactItems: [
+        { Delete: existingUserParams },
+        { Put: permanentDeletedUserParams }
+      ]
+    }
+
+    const ddbClient = connection.ddbClient()
+    await ddbClient.transactWrite(transactionParams).promise()
+
+    return res.end()
+  } catch (e) {
+    if (e.message.includes('ConditionalCheckFailed]')) {
+      return res.status(statusCodes['Conflict']).send('User already permanently deleted')
+    }
+
+    logger.error(`Failed to permanently delete user '${userId}' from admin '${adminId}' with ${e}`)
+    return res.status(statusCodes['Internal Server Error']).send('Failed to permanently delete user')
+  }
+}
+
 const setTempPassword = async (email, tempPassword) => {
   const params = {
     TableName: setup.adminTableName,

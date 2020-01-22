@@ -35,6 +35,8 @@ const sessionsTableName = resourceNamePrefix + 'sessions'
 const databaseTableName = resourceNamePrefix + 'databases'
 const userDatabaseTableName = resourceNamePrefix + 'user-databases'
 const transactionsTableName = resourceNamePrefix + 'transactions'
+const deletedUsersTableName = resourceNamePrefix + 'deleted-users'
+const deletedAppsTableName = resourceNamePrefix + 'deleted-apps'
 const dbStatesBucketNamePrefix = resourceNamePrefix + 'database-states'
 const secretManagerSecretId = resourceNamePrefix + 'env'
 
@@ -45,6 +47,8 @@ exports.sessionsTableName = sessionsTableName
 exports.databaseTableName = databaseTableName
 exports.userDatabaseTableName = userDatabaseTableName
 exports.transactionsTableName = transactionsTableName
+exports.deletedUsersTableName = deletedUsersTableName
+exports.deletedAppsTableName = deletedAppsTableName
 
 const adminIdIndex = 'AdminIdIndex'
 const userIdIndex = 'UserIdIndex'
@@ -232,6 +236,30 @@ async function setupDdb() {
     TableName: transactionsTableName
   }
 
+  // the deleted users table holds a record per deleted user
+  const deletedUsersTableParams = {
+    TableName: deletedUsersTableName,
+    BillingMode: 'PAY_PER_REQUEST',
+    AttributeDefinitions: [
+      { AttributeName: 'user-id', AttributeType: 'S' }
+    ],
+    KeySchema: [
+      { AttributeName: 'user-id', KeyType: 'HASH' }
+    ]
+  }
+
+  // the deleted apps table holds a record per deleted app
+  const deletedAppsTableParams = {
+    TableName: deletedAppsTableName,
+    BillingMode: 'PAY_PER_REQUEST',
+    AttributeDefinitions: [
+      { AttributeName: 'app-id', AttributeType: 'S' }
+    ],
+    KeySchema: [
+      { AttributeName: 'app-id', KeyType: 'HASH' }
+    ]
+  }
+
   logger.info('Creating DynamoDB tables if necessary')
   await Promise.all([
     createTable(ddb, adminTableParams),
@@ -241,6 +269,8 @@ async function setupDdb() {
     createTable(ddb, databaseTableParams),
     createTable(ddb, userDatabaseTableParams),
     createTable(ddb, transactionsTableParams),
+    createTable(ddb, deletedUsersTableParams),
+    createTable(ddb, deletedAppsTableParams),
   ])
 
 }

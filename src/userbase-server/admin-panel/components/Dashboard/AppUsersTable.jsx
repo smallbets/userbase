@@ -16,6 +16,7 @@ export default class AppUsersTable extends Component {
 
     this.handleDeleteApp = this.handleDeleteApp.bind(this)
     this.handleDeleteUser = this.handleDeleteUser.bind(this)
+    this.handlePermanentDeleteUser = this.handlePermanentDeleteUser.bind(this)
     this.handleShowDeletedUsers = this.handleShowDeletedUsers.bind(this)
     this.handleHideDeletedUsers = this.handleHideDeletedUsers.bind(this)
   }
@@ -96,6 +97,39 @@ export default class AppUsersTable extends Component {
         const { activeUsers } = this.state
         activeUsers[getUserIndex()].deleting = undefined
         this.setState({ error: e.message, activeUsers })
+      }
+    }
+  }
+
+  async handlePermanentDeleteUser(user) {
+    const { appName } = this.props
+    const { deletedUsers } = this.state
+
+    const userId = user['user-id']
+    const username = user['username']
+
+    const getUserIndex = () => this.state.deletedUsers.findIndex((user) => user['user-id'] === userId)
+
+    try {
+      if (window.confirm(`Are you sure you want to permanently delete user '${username}'? There is no guarantee the account can be recovered after this.`)) {
+
+        deletedUsers[getUserIndex()].permanentDeleting = true
+        this.setState({ deletedUsers })
+
+        await dashboardLogic.permanentDeleteUser(userId, appName, username)
+
+        if (this._isMounted) {
+          const { deletedUsers } = this.state
+          const userIndex = getUserIndex()
+          deletedUsers.splice(userIndex, 1)
+          this.setState({ deletedUsers })
+        }
+      }
+    } catch (e) {
+      if (this._isMounted) {
+        const { deletedUsers } = this.state
+        deletedUsers[getUserIndex()].permanentDeleting = undefined
+        this.setState({ error: e.message, deletedUsers })
       }
     }
   }
@@ -186,7 +220,7 @@ export default class AppUsersTable extends Component {
                   <div className='mt-6'>
                     <a className='select-none italic font-light cursor-pointer' onClick={showDeletedUsers ? this.handleHideDeletedUsers : this.handleShowDeletedUsers}>
                       {showDeletedUsers ? 'Hide' : 'Show'} users pending deletion
-                  </a>
+                    </a>
 
                     {showDeletedUsers &&
 
@@ -206,7 +240,17 @@ export default class AppUsersTable extends Component {
                             <tr key={user['user-id']}>
                               <td className='border border-gray-400 px-4 py-2 font-light text-red-700'>{user['username']}</td>
                               <td className='border border-gray-400 px-4 py-2 font-light'>{user['creation-date']}</td>
-                              <td className='border border-gray-400 px-4 py-2 font-light'></td>
+                              <td className='border border-gray-400 px-4 py-2 font-light'>
+
+                                {user['permanentDeleting']
+                                  ? <div className='loader w-4 h-4 inline-block' />
+                                  : <div
+                                    className='fas fa-trash-alt font-normal text-lg cursor-pointer text-yellow-700'
+                                    onClick={() => this.handlePermanentDeleteUser(user)}
+                                  />
+                                }
+
+                              </td>
                             </tr>
                           ))}
 

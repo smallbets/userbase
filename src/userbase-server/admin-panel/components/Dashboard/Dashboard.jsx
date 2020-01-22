@@ -21,6 +21,7 @@ export default class Dashboard extends Component {
     this.handleInputChange = this.handleInputChange.bind(this)
     this.handleShowDeletedApps = this.handleShowDeletedApps.bind(this)
     this.handleHideDeletedApps = this.handleHideDeletedApps.bind(this)
+    this.handlePermanentDeleteApp = this.handlePermanentDeleteApp.bind(this)
   }
 
   async componentDidMount() {
@@ -96,6 +97,38 @@ export default class Dashboard extends Component {
   handleHideDeletedApps(e) {
     e.preventDefault()
     this.setState({ showDeletedApps: false })
+  }
+
+  async handlePermanentDeleteApp(app) {
+    const { deletedApps } = this.state
+
+    const appId = app['app-id']
+    const appName = app['app-name']
+
+    const getAppIndex = () => this.state.deletedApps.findIndex((app) => app['app-id'] === appId)
+
+    try {
+      if (window.confirm(`Are you sure you want to permanently delete app '${appName}'? There is no guarantee the app can be recovered after this.`)) {
+
+        deletedApps[getAppIndex()].permanentDeleting = true
+        this.setState({ deletedApps })
+
+        await dashboardLogic.permanentDeleteApp(appId, appName)
+
+        if (this._isMounted) {
+          const { deletedApps } = this.state
+          const appIndex = getAppIndex()
+          deletedApps.splice(appIndex, 1)
+          this.setState({ deletedApps })
+        }
+      }
+    } catch (e) {
+      if (this._isMounted) {
+        const { deletedApps } = this.state
+        deletedApps[getAppIndex()].permanentDeleting = undefined
+        this.setState({ error: e.message, deletedApps })
+      }
+    }
   }
 
   render() {
@@ -184,6 +217,7 @@ export default class Dashboard extends Component {
                         <tr>
                           <th className='border border-gray-400 px-4 py-2 text-gray-800'>App</th>
                           <th className='border border-gray-400 px-4 py-2 text-gray-800'>App ID</th>
+                          <th className='border border-gray-400 px-4 py-2'></th>
                         </tr>
                       </thead>
 
@@ -193,6 +227,17 @@ export default class Dashboard extends Component {
                           <tr key={app['app-id']}>
                             <td className='border border-gray-400 px-4 py-2 font-light text-red-700'>{app['app-name']}</td>
                             <td className='border border-gray-400 px-4 py-2 font-light'>{app['app-id']}</td>
+                            <td className='border border-gray-400 px-4 py-2 font-light'>
+
+                              {app['permanentDeleting']
+                                ? <div className='loader w-4 h-4 inline-block' />
+                                : <div
+                                  className='fas fa-trash-alt font-normal text-lg cursor-pointer text-yellow-700'
+                                  onClick={() => this.handlePermanentDeleteApp(app)}
+                                />
+                              }
+
+                            </td>
                           </tr>
                         ))}
 
