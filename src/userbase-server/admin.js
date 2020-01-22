@@ -560,13 +560,12 @@ exports.deleteAdmin = async function (req, res) {
   const email = admin['email']
   const adminId = admin['admin-id']
 
-  // const subscription = res.locals.subscription
+  const subscription = res.locals.subscription
 
   try {
-    // comment for hackathon
-    // if (subscription && !subscription.cancel_at_period_end) {
-    //   await stripe.getClient().subscriptions.update(subscription.id, { cancel_at_period_end: true })
-    // }
+    if (subscription && !subscription.cancel_at_period_end) {
+      await stripe.getClient().subscriptions.update(subscription.id, { cancel_at_period_end: true })
+    }
 
     const params = {
       TableName: setup.adminTableName,
@@ -744,21 +743,18 @@ exports.handleStripeWebhook = async function (req, res) {
   }
 }
 
-const getSaasSubscription = async function () {
-  return { status: 'active' }
+const getSaasSubscription = async function (adminId, stripeCustomerId) {
+  if (!stripeCustomerId) return null
 
-  // comment for hackathon
-  // if (!stripeCustomerId) return null
+  const customer = await stripe.getClient().customers.retrieve(stripeCustomerId)
 
-  // const customer = await stripe.getClient().customers.retrieve(stripeCustomerId)
+  if (customer.subscriptions.data.length > 1) {
+    logger.fatal(`Admin ${adminId} has more than 1 subscription (${customer.subscriptions.data.length} total)`)
+  }
 
-  // if (customer.subscriptions.data.length > 1) {
-  //   logger.fatal(`Admin ${adminId} has more than 1 subscription (${customer.subscriptions.data.length} total)`)
-  // }
-
-  // return customer.subscriptions.data.find((subscription => {  // eslint-disable-line require-atomic-updates
-  //   return subscription.plan.id === stripe.getStripeSaasSubscriptionPlanId()
-  // }))
+  return customer.subscriptions.data.find((subscription => {  // eslint-disable-line require-atomic-updates
+    return subscription.plan.id === stripe.getStripeSaasSubscriptionPlanId()
+  }))
 }
 exports.getSaasSubscription = getSaasSubscription
 
