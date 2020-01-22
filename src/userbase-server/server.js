@@ -31,8 +31,11 @@ async function start(express, app, userbaseConfig = {}) {
   try {
     const {
       httpsKey,
-      httpsCert
+      httpsCert,
+      stripeRedirectUrl
     } = userbaseConfig
+
+    if (stripeRedirectUrl) process.env['STRIPE_REDIRECT_URL'] = stripeRedirectUrl
 
     await setup.init()
 

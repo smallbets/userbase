@@ -650,8 +650,8 @@ exports.createSaasPaymentSession = async function (req, res) {
           plan: stripe.getStripeSaasSubscriptionPlanId(),
         }]
       },
-      success_url: `${req.headers.origin || req.headers.referer}/#success`,
-      cancel_url: `${req.headers.origin || req.headers.referer}/#edit-account`,
+      success_url: `${process.env['STRIPE_REDIRECT_URL'] || req.headers.referer}#success`,
+      cancel_url: `${process.env['STRIPE_REDIRECT_URL'] || req.headers.referer}#edit-account`,
     },
       {
         idempotency_key: stripeCustomerId // admin can only checkout a single subscription plan
@@ -682,8 +682,8 @@ exports.updateSaasSubscriptionPaymentSession = async function (req, res) {
           subscription_id: res.locals.subscription.id
         },
       },
-      success_url: `${req.headers.origin || req.headers.referer}/#update-success`,
-      cancel_url: `${req.headers.origin || req.headers.referer}/#edit-account`,
+      success_url: `${process.env['STRIPE_REDIRECT_URL'] || req.headers.referer}#update-success`,
+      cancel_url: `${process.env['STRIPE_REDIRECT_URL'] || req.headers.referer}#edit-account`,
     })
 
     return res.send(session.id)
