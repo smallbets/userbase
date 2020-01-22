@@ -1,6 +1,7 @@
 import React, { Component } from 'react'
 import { string, func } from 'prop-types'
 import adminLogic from './logic'
+import UnknownError from './UnknownError'
 
 export default class AdminForm extends Component {
   constructor(props) {
@@ -163,7 +164,7 @@ export default class AdminForm extends Component {
 
           </div>
 
-          <div className='text-center mt-3 h-16'>
+          <div className={`text-center mt-3 ${!error ? 'h-16' : ''}`}>
             <div className='h-6'>
               {loading
                 ? <div className='loader inline-block w-6 h-6' />
@@ -176,7 +177,11 @@ export default class AdminForm extends Component {
               }
             </div>
 
-            <div className='error'>{error}</div>
+            {error && (error === 'Unknown Error'
+              ? <UnknownError />
+              : <div className='error'>{error}</div>
+            )}
+
           </div>
 
           {formType === 'Sign In' && <div>

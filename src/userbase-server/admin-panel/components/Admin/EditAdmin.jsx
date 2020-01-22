@@ -10,14 +10,14 @@ export default class EditAdmin extends Component {
       email: '',
       fullName: '',
       password: '',
-      loadingUpdate: false,
-      loadingDelete: false,
+      loadingUpdateAdmin: false,
+      loadingDeleteAdmin: false,
       loadingCheckout: false,
       loadingCancel: false,
       loadingUpdatePaymentMethod: false,
       loadingResumeSubscription: false,
-      errorUpdating: '',
-      errorDeleting: '',
+      errorUpdatingAdmin: '',
+      errorDeletingAdmin: '',
       errorCheckingOut: false,
       errorCancelling: false,
       errorUpdatingPaymentMethod: false,
@@ -52,8 +52,8 @@ export default class EditAdmin extends Component {
   }
 
   handleInputChange(event) {
-    if (this.state.errorUpdating || this.state.errorDeleting) {
-      this.setState({ errorUpdating: undefined, errorDeleting: undefined })
+    if (this.state.errorUpdatingAdmin || this.state.errorDeletingAdmin) {
+      this.setState({ errorUpdatingAdmin: undefined, errorDeletingAdmin: undefined })
     }
 
     const target = event.target
@@ -71,29 +71,29 @@ export default class EditAdmin extends Component {
 
     if (!email && !password && !fullName) return
 
-    this.setState({ loadingUpdate: true })
+    this.setState({ loadingUpdateAdmin: true })
 
     try {
       await adminLogic.updateAdmin({ email, password, fullName })
       if (email || fullName) this.props.handleUpdateAccount(email, fullName)
-      if (this._isMounted) this.setState({ email: '', password: '', fullName: '', loadingUpdate: false })
+      if (this._isMounted) this.setState({ email: '', password: '', fullName: '', loadingUpdateAdmin: false })
     } catch (e) {
-      if (this._isMounted) this.setState({ errorUpdating: e.message, loadingUpdate: false })
+      if (this._isMounted) this.setState({ errorUpdatingAdmin: e.message, loadingUpdateAdmin: false })
     }
   }
 
   async handleDeleteAccount(event) {
     event.preventDefault()
 
-    this.setState({ errorDeleting: '' })
+    this.setState({ errorDeletingAdmin: '' })
 
     try {
       if (window.confirm('Are you sure you want to delete your account?')) {
-        this.setState({ loadingDelete: true })
+        this.setState({ loadingDeleteAdmin: true })
         await adminLogic.deleteAdmin()
       }
     } catch (e) {
-      if (this._isMounted) this.setState({ errorDeleting: e.message, loadingDelete: false })
+      if (this._isMounted) this.setState({ errorDeletingAdmin: e.message, loadingDeleteAdmin: false })
     }
   }
 
@@ -168,14 +168,14 @@ export default class EditAdmin extends Component {
       fullName,
       email,
       password,
-      loadingUpdate,
-      loadingDelete,
+      loadingUpdateAdmin,
+      loadingDeleteAdmin,
       loadingCheckout,
       loadingCancel,
       loadingUpdatePaymentMethod,
       loadingResumeSubscription,
-      errorUpdating,
-      errorDeleting,
+      errorUpdatingAdmin,
+      errorDeletingAdmin,
       errorCheckingOut,
       errorCancelling,
       errorUpdatingPaymentMethod,
@@ -301,11 +301,16 @@ export default class EditAdmin extends Component {
             <input
               className='btn w-40 mt-4'
               type='submit'
-              value={loadingUpdate ? 'Updating...' : 'Update Account'}
-              disabled={(!fullName && !email && !password) || loadingDelete || loadingUpdate}
+              value={loadingUpdateAdmin ? 'Updating...' : 'Update Account'}
+              disabled={(!fullName && !email && !password) || loadingDeleteAdmin || loadingUpdateAdmin}
             />
 
-            <div className='error'>{errorUpdating}</div>
+            {errorUpdatingAdmin && (
+              errorUpdatingAdmin === 'Unknown Error'
+                ? <UnknownError action='updating your account' />
+                : <div className='error'>{errorUpdatingAdmin}</div>
+            )}
+
           </div>
 
         </form>
@@ -315,12 +320,16 @@ export default class EditAdmin extends Component {
         <input
           className='btn w-40'
           type='button'
-          value={loadingDelete ? 'Deleting...' : 'Delete Account'}
-          disabled={loadingDelete}
+          value={loadingDeleteAdmin ? 'Deleting...' : 'Delete Account'}
+          disabled={loadingDeleteAdmin}
           onClick={this.handleDeleteAccount}
         />
 
-        {errorDeleting && <div className='error'>{errorDeleting}</div>}
+        {errorDeletingAdmin && (
+          errorDeletingAdmin === 'Unknown Error'
+            ? <UnknownError action='deleting your account' />
+            : <div className='error'>{errorDeletingAdmin}</div>
+        )}
 
       </div>
     )

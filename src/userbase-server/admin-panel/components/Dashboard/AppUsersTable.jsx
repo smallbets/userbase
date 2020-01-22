@@ -1,6 +1,7 @@
 import React, { Component } from 'react'
 import { string } from 'prop-types'
 import dashboardLogic from './logic'
+import UnknownError from '../Admin/UnknownError'
 
 export default class AppUsersTable extends Component {
   constructor(props) {
@@ -24,7 +25,7 @@ export default class AppUsersTable extends Component {
       const appUsers = await dashboardLogic.listAppUsers(appName)
       if (this._isMounted) this.setState({ appUsers, loading: false })
     } catch (e) {
-      if (this._isMounted) this.setState({ error: e, loading: false })
+      if (this._isMounted) this.setState({ error: e.message, loading: false })
     }
   }
 
@@ -43,7 +44,7 @@ export default class AppUsersTable extends Component {
         window.location.hash = '' // eslint-disable-line require-atomic-updates
       }
     } catch (e) {
-      if (this._isMounted) this.setState({ loading: false, error: e })
+      if (this._isMounted) this.setState({ loading: false, error: e.message })
     }
   }
 
@@ -76,7 +77,7 @@ export default class AppUsersTable extends Component {
       if (this._isMounted) {
         const { appUsers } = this.state
         appUsers[getUserIndex()].deleting = undefined
-        this.setState({ error: e, appUsers })
+        this.setState({ error: e.message, appUsers })
       }
     }
   }
@@ -167,7 +168,11 @@ export default class AppUsersTable extends Component {
               : !error && <p className='italic font-light'>No users yet.</p>
           }
 
-          {error && <div className='error'>{error.message}</div>}
+          {error && (
+            error === 'Unknown Error'
+              ? <UnknownError />
+              : <div className='error'>{error}</div>
+          )}
 
         </div>
 
