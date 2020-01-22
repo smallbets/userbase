@@ -672,6 +672,10 @@ exports.updateSaasSubscriptionPaymentSession = async function (req, res) {
   const stripeCustomerId = admin['stripe-customer-id']
 
   try {
+    if (!stripeCustomerId) {
+      return res.status(statusCodes['Payment Required']).send('Must purchase subscription first')
+    }
+
     const session = await stripe.getClient().checkout.sessions.create({
       payment_method_types: ['card'],
       mode: 'setup',

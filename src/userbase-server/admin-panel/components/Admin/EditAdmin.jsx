@@ -1,6 +1,7 @@
 import React, { Component } from 'react'
 import { func, string } from 'prop-types'
 import adminLogic from './logic'
+import UnknownError from './UnknownError'
 
 export default class EditAdmin extends Component {
   constructor(props) {
@@ -9,11 +10,18 @@ export default class EditAdmin extends Component {
       email: '',
       fullName: '',
       password: '',
-      loading: false,
       loadingUpdate: false,
       loadingDelete: false,
+      loadingCheckout: false,
+      loadingCancel: false,
+      loadingUpdatePaymentMethod: false,
+      loadingResumeSubscription: false,
       errorUpdating: '',
-      errorDeleting: ''
+      errorDeleting: '',
+      errorCheckingOut: false,
+      errorCancelling: false,
+      errorUpdatingPaymentMethod: false,
+      errorResumingSubscription: false
     }
 
     this.handleInputChange = this.handleInputChange.bind(this)
@@ -21,6 +29,8 @@ export default class EditAdmin extends Component {
     this.handleDeleteAccount = this.handleDeleteAccount.bind(this)
     this.handleCancelSubscription = this.handleCancelSubscription.bind(this)
     this.handleResumeSubscription = this.handleResumeSubscription.bind(this)
+    this.handleCheckout = this.handleCheckout.bind(this)
+    this.handleUpdatePaymentMethod = this.handleUpdatePaymentMethod.bind(this)
   }
 
   async componentDidMount() {
@@ -90,54 +100,66 @@ export default class EditAdmin extends Component {
   async handleCheckout(event) {
     event.preventDefault()
 
+    this.setState({ loadingCheckout: true, errorCheckingOut: false })
     try {
       await adminLogic.subscribeToSaas()
+      if (this._isMounted) this.setState({ loadingCheckout: false })
     } catch (e) {
-      console.log(e.message)
+      if (this._isMounted) this.setState({ loadingCheckout: false, errorCheckingOut: true })
     }
   }
 
   async handleUpdatePaymentMethod(event) {
     event.preventDefault()
 
+    if (this.state.loadingUpdatePaymentMethod) return
+
+    this.setState({ loadingUpdatePaymentMethod: true, errorUpdatingPaymentMethod: false, errorCancelling: false })
     try {
       await adminLogic.updateSaasPaymentMethod()
+
+      if (this._isMounted) this.setState({ loadingUpdatePaymentMethod: false })
     } catch (e) {
-      console.log(e.message)
+      if (this._isMounted) this.setState({ loadingUpdatePaymentMethod: false, errorUpdatingPaymentMethod: true })
     }
   }
 
   async handleCancelSubscription(event) {
     event.preventDefault()
 
+    if (this.state.loadingCancel) return
+
+    this.setState({ errorCancelling: false, errorUpdatingPaymentMethod: false })
+
     try {
       if (window.confirm('Are you sure you want to cancel your subscription?')) {
-        this.setState({ loading: true })
+        this.setState({ loadingCancel: true })
         const paymentStatus = await adminLogic.cancelSaasSubscription()
 
         this.props.handleUpdatePaymentStatus(paymentStatus)
+
+        if (this._isMounted) this.setState({ loadingCancel: false })
       }
     } catch (e) {
-      console.log(JSON.stringify(e), e.message)
+      if (this._isMounted) this.setState({ loadingCancel: false, errorCancelling: true })
     }
-
-    if (this._isMounted) this.setState({ loading: false })
   }
 
   async handleResumeSubscription(event) {
     event.preventDefault()
 
     try {
-      this.setState({ loading: true })
+      this.setState({ loadingResumeSubscription: true, errorResumingSubscription: false })
+
       await adminLogic.resumeSaasSubscription()
       const paymentStatus = await adminLogic.getPaymentStatus()
 
       this.props.handleUpdatePaymentStatus(paymentStatus)
-    } catch (e) {
-      console.log(e.message)
-    }
 
-    if (this._isMounted) this.setState({ loading: false })
+      if (this._isMounted) this.setState({ loadingResumeSubscription: false })
+    } catch (e) {
+      if (this._isMounted) this.setState({ loadingResumeSubscription: false, errorResumingSubscription: true })
+    }
   }
 
   render() {
@@ -148,8 +170,16 @@ export default class EditAdmin extends Component {
       password,
       loadingUpdate,
       loadingDelete,
+      loadingCheckout,
+      loadingCancel,
+      loadingUpdatePaymentMethod,
+      loadingResumeSubscription,
       errorUpdating,
       errorDeleting,
+      errorCheckingOut,
+      errorCancelling,
+      errorUpdatingPaymentMethod,
+      errorResumingSubscription,
       loading
     } = this.state
 
@@ -165,7 +195,8 @@ export default class EditAdmin extends Component {
                 className='btn w-56 text-center'
                 type='button'
                 role='link'
-                value='Update Payment Method'
+                value={loadingUpdatePaymentMethod ? 'Loading...' : 'Update Payment Method'}
+                disabled={loadingCancel || loadingUpdatePaymentMethod}
                 onClick={this.handleUpdatePaymentMethod}
               />
 
@@ -176,9 +207,14 @@ export default class EditAdmin extends Component {
                 className='btn w-56 text-center'
                 type='button'
                 role='link'
-                value='Cancel Subscription'
+                value={loadingCancel ? 'Cancelling Subscription...' : 'Cancel Subscription'}
+                disabled={loadingCancel || loadingUpdatePaymentMethod}
                 onClick={this.handleCancelSubscription}
               />
+
+              {errorCancelling && <UnknownError action='cancelling your subscription' />}
+              {errorUpdatingPaymentMethod && <UnknownError action='loading the form to update your payment method' />}
+
             </div>
             :
             <div>
@@ -191,17 +227,23 @@ export default class EditAdmin extends Component {
                   className='btn w-56 text-center'
                   type='button'
                   role='link'
-                  value='Resume Subscription'
+                  value={loadingResumeSubscription ? 'Resuming Subscription...' : 'Resume Subscription'}
+                  disabled={loadingResumeSubscription}
                   onClick={this.handleResumeSubscription}
                 />
                 : <input
                   className='btn w-56 text-center'
                   type='button'
                   role='link'
-                  value='Purchase Subscription'
+                  disabled={loadingCheckout}
+                  value={loadingCheckout ? 'Loading...' : 'Purchase Subscription'}
                   onClick={this.handleCheckout}
                 />
               }
+
+              {errorCheckingOut && <UnknownError action='loading the checkout form' />}
+              {errorResumingSubscription && <UnknownError action='resuming your subscription' />}
+
             </div>
         }
 
