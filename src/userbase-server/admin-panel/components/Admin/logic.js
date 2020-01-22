@@ -48,7 +48,7 @@ const removeLocalSession = () => {
   localStorage.removeItem('adminSession')
 }
 
-const createAdmin = async (email, password, fullName) => {
+const createAdmin = async (email, password, fullName, receiveEmailUpdates) => {
   try {
     const lowerCaseEmail = email.toLowerCase()
     await axios({
@@ -57,7 +57,8 @@ const createAdmin = async (email, password, fullName) => {
       data: {
         email: lowerCaseEmail,
         password,
-        fullName
+        fullName,
+        receiveEmailUpdates
       },
       timeout: TEN_SECONDS_MS
     })

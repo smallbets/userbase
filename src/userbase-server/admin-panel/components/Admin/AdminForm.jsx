@@ -10,6 +10,7 @@ export default class AdminForm extends Component {
       email: this.props.placeholderEmail,
       password: '',
       fullName: '',
+      receiveEmailUpdates: false,
       error: '',
       loading: false
     }
@@ -17,6 +18,8 @@ export default class AdminForm extends Component {
     this.handleInputChange = this.handleInputChange.bind(this)
     this.handleSubmit = this.handleSubmit.bind(this)
     this.handleForgotPassword = this.handleForgotPassword.bind(this)
+    this.handleReceiveEmailUpdates = this.handleReceiveEmailUpdates.bind(this)
+    this.handleDoNotReceiveEmailUpdates = this.handleDoNotReceiveEmailUpdates.bind(this)
   }
 
   // prevent last pass error in console: https://github.com/KillerCodeMonkey/ngx-quill/issues/351
@@ -50,14 +53,14 @@ export default class AdminForm extends Component {
 
   async handleSubmit(event) {
     const { formType, handleUpdatePaymentStatus } = this.props
-    const { email, password, fullName } = this.state
+    const { email, password, fullName, receiveEmailUpdates } = this.state
     event.preventDefault()
 
     this.setState({ loading: true })
 
     try {
       if (formType === 'Create Admin') {
-        await adminLogic.createAdmin(email, password, fullName)
+        await adminLogic.createAdmin(email, password, fullName, receiveEmailUpdates)
       } else if (formType === 'Sign In') {
         const paymentStatus = await adminLogic.signIn(email, password)
         handleUpdatePaymentStatus(paymentStatus)
@@ -87,8 +90,18 @@ export default class AdminForm extends Component {
     }
   }
 
+  handleReceiveEmailUpdates(event) {
+    event.preventDefault()
+    this.setState({ receiveEmailUpdates: true })
+  }
+
+  handleDoNotReceiveEmailUpdates(event) {
+    event.preventDefault()
+    this.setState({ receiveEmailUpdates: false })
+  }
+
   render() {
-    const { email, password, fullName, error, loading } = this.state
+    const { email, password, fullName, receiveEmailUpdates, error, loading } = this.state
     const { formType } = this.props
 
     const disabled = !email || !password || (formType === 'Create Admin' && (!fullName))
@@ -96,7 +109,7 @@ export default class AdminForm extends Component {
     return (
       <form onSubmit={this.handleSubmit}>
 
-        <div className='container content text-xs xs:text-base'>
+        <div className={`container content text-xs xs:text-base ${formType === 'Create Admin' ? 'max-w-xl' : ''}`}>
 
           {formType === 'Sign In'
             ? <div className="font-normal mb-4">Sign in with your email and password:</div>
@@ -107,10 +120,10 @@ export default class AdminForm extends Component {
 
             {formType === 'Create Admin' &&
               <div className='table-row'>
-                <div className='table-cell p-2 text-right'>Full Name</div>
+                <div className='table-cell p-2 text-right whitespace-no-wrap'>Full Name</div>
                 <div className='table-cell p-2'>
                   <input
-                    className='font-light text-xs xs:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
+                    className='font-light text-xs xs:text-sm w-full h-8 p-2 border border-gray-500 outline-none'
                     type='text'
                     name='fullName'
                     autoComplete='name'
@@ -124,7 +137,7 @@ export default class AdminForm extends Component {
               <div className='table-cell p-2 text-right'>Email</div>
               <div className='table-cell p-2'>
                 <input
-                  className='font-light text-xs xs:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
+                  className={`font-light text-xs xs:text-sm h-8 p-2 border border-gray-500 outline-none ${formType === 'Create Admin' ? 'w-full' : 'w-48 sm:w-84'}`}
                   type='email'
                   name='email'
                   autoComplete='email'
@@ -138,7 +151,7 @@ export default class AdminForm extends Component {
               <div className='table-cell p-2 text-right'>Password</div>
               <div className='table-cell p-2'>
                 <input
-                  className='font-light text-xs xs:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
+                  className={`font-light text-xs xs:text-sm h-8 p-2 border border-gray-500 outline-none ${formType === 'Create Admin' ? 'w-full' : 'w-48 sm:w-84'}`}
                   type='password'
                   name='password'
                   autoComplete='new-password'
@@ -161,6 +174,35 @@ export default class AdminForm extends Component {
                 </div>
               </div>
             }
+
+            {formType === 'Create Admin' &&
+              <div className='table-row'>
+                <div className='table-cell p-2 pt-0'>
+                </div>
+
+                <div className='table-cell p-2 pt-0 text-left'>
+                  <span className='mt-2 block select-none'>
+                    <span className='mr-2'>
+                      <div
+                        className={`m-0 cursor-pointer ${receiveEmailUpdates ? 'checkbox-checked fa-check' : 'checkbox fa-check-empty'}`}
+                        onClick={receiveEmailUpdates ? this.handleDoNotReceiveEmailUpdates : this.handleReceiveEmailUpdates}
+                      />
+                    </span>
+
+                    <span>
+                      <a
+                        className='italic cursor-pointer no-underline font-light text-xs xs:text-sm'
+                        onClick={receiveEmailUpdates ? this.handleDoNotReceiveEmailUpdates : this.handleReceiveEmailUpdates}
+                      >
+                        Receive email updates about new Userbase features
+                      </a>
+                    </span>
+
+                  </span>
+                </div>
+              </div>
+            }
+
 
           </div>
 
@@ -191,7 +233,7 @@ export default class AdminForm extends Component {
 
         </div>
 
-      </form>
+      </form >
     )
   }
 }
