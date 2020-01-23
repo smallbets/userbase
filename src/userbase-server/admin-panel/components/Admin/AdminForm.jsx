@@ -79,6 +79,8 @@ export default class AdminForm extends Component {
 
     const { email } = this.state
 
+    if (!email) return this.setState({ error: 'Enter your email' })
+
     this.setState({ loading: true })
 
     try {

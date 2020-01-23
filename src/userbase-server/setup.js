@@ -75,7 +75,11 @@ let sm
 exports.getSecrets = getSecrets
 exports.updateSecrets = updateSecrets
 
-exports.init = async function () {
+let emailDomain
+let ses
+exports.sendEmail = sendEmail
+
+exports.init = async function (userbaseConfig) {
   // look for AWS credentials under the 'encrypted' profile
   const profile = 'encrypted'
 
@@ -101,11 +105,15 @@ exports.init = async function () {
   awsAccountId = accountInfo.Account
   logger.info(`Running as Account ID: ${awsAccountId}`)
 
+  // remember the email domain
+  emailDomain = userbaseConfig.emailDomain
+
   initialized = true
 
   await setupDdb()
   await setupS3()
   await setupSM()
+  await setupSes()
 }
 
 async function setupDdb() {
@@ -402,4 +410,36 @@ async function updateSecrets(secrets, secretKeyName, secretValue) {
   await sm.updateSecret(params).promise()
 
   process.env['sm.' + secretKeyName] = secretValue
+}
+
+async function setupSes() {
+  logger.info('Setting up SES')
+  ses = new aws.SES()
+}
+
+async function sendEmail(to, subject, body) {
+
+  if (!emailDomain) {
+    throw new Error('Email domain not set')
+  }
+
+  const params = {
+    Source: 'no-reply@' + emailDomain,
+    Destination: { ToAddresses: [to] },
+    Message: {
+      Subject: { Data: subject, Charset: 'UTF-8' },
+      Body: {
+        Text: { Data: body, Charset: 'UTF-8' },
+        Html: { Data: body, Charset: 'UTF-8' }
+      }
+    }
+  }
+
+  try {
+    await ses.sendEmail(params).promise()
+    logger.info('Email sent successfully')
+  } catch (e) {
+    logger.error('Failed to send email')
+    throw e
+  }
 }

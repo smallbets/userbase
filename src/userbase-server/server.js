@@ -37,7 +37,7 @@ async function start(express, app, userbaseConfig = {}) {
 
     if (stripeRedirectUrl) process.env['STRIPE_REDIRECT_URL'] = stripeRedirectUrl
 
-    await setup.init()
+    await setup.init(userbaseConfig)
 
     const certExists = httpsKey && httpsCert
     const httpPort = userbaseConfig.httpPort || 8080
@@ -293,6 +293,7 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.post('/permanent-delete-user', admin.authenticateAdmin, admin.permanentDeleteUser)
     v1Admin.post('/delete-admin', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.deleteAdmin)
     v1Admin.post('/update-admin', admin.authenticateAdmin, admin.updateAdmin)
+    v1Admin.post('/change-password', admin.authenticateAdmin, admin.changePassword)
     v1Admin.post('/forgot-password', admin.forgotPassword)
     v1Admin.get('/payment-status', admin.authenticateAdmin, admin.getSaasSubscriptionController, (req, res) => {
       const subscription = res.locals.subscription
