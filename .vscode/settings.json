@@ -10,4 +10,7 @@
     "files.trimTrailingWhitespace": true,
     "html.format.wrapLineLength": 0,
     "eslint.autoFixOnSave": true,
+    "editor.codeActionsOnSave": {
+        "source.fixAll.eslint": true
+    },
 }

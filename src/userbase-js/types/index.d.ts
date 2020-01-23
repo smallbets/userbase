@@ -1,78 +1,69 @@
 // Expose as userbase when loaded in an IIFE environment
-export as namespace userbase;
+export as namespace userbase
 
-interface Session {
+export interface Session {
   user?: UserResult
   lastUsedUsername?: string
 }
 
-interface UserProfile {
+export interface UserProfile {
   [key: string]: string
 }
 
-interface UserResult {
+export interface UserResult {
   username: string
-  key: string
   email?: string
   profile?: UserProfile
 }
 
-type KeyNotFoundHandler = (username: string, deviceId: string) => void
+export type DatabaseChangeHandler = (items: Item[]) => void
 
-type ShowKeyHandler = (seedString: string, rememberMe: boolean, backUpKey: boolean) => void | Promise<void>
+export type DatabaseOperation = InsertOperation | UpdateOperation | DeleteOperation
 
-type DatabaseOperation = InsertOperation | UpdateOperation | DeleteOperation
-
-interface InsertOperation {
+export interface InsertOperation {
   command: 'Insert'
-  id?: string
+  itemId?: string
   item: any
 }
 
-interface UpdateOperation {
+export interface UpdateOperation {
   command: 'Update'
-  id: string
-  item: any
-}
-
-interface DeleteOperation {
-  command: 'Delete'
-  id: string
-}
-
-interface Item {
   itemId: string
   item: any
 }
 
-interface Userbase {
-  init(options: { appId: string, endpoint?: string, keyNotFoundHandler?: KeyNotFoundHandler }): Promise<Session>
+export interface DeleteOperation {
+  command: 'Delete'
+  itemId: string
+}
 
-  signUp(username: string, password: string, email?: string, profile?: UserProfile, showKeyHandler?: ShowKeyHandler, rememberMe?: boolean, backUpKey?: boolean): Promise<UserResult>
+export interface Item {
+  itemId: string
+  item: any
+}
 
-  signIn(username: string, password: string, rememberMe?: boolean): Promise<UserResult>
+export interface Userbase {
+  init(params: { appId: string }): Promise<Session>
+
+  signUp(params: { username: string, password: string, email?: string, profile?: UserProfile, rememberMe?: boolean }): Promise<UserResult>
+
+  signIn(params: { username: string, password: string, rememberMe?: boolean }): Promise<UserResult>
 
   signOut(): Promise<void>
 
-  forgotPassword(username: string): Promise<void>
-
-  updateUser(user: { username?: string, password?: string, email?: string | null, profile?: UserProfile | null }): Promise<void>
+  updateUser(params: { username?: string, currentPassword?: string, newPassword?: string, email?: string | null, profile?: UserProfile | null }): Promise<void>
 
   deleteUser(): Promise<void>
 
-  importKey(keyString: string): Promise<void>
+  openDatabase(params: { databaseName: string, changeHandler: DatabaseChangeHandler }): Promise<void>
 
-  getLastUsedUsername(): string | undefined
+  insertItem(params: { databaseName: string, item: any, itemId?: string }): Promise<void>
 
-  openDatabase(dbName: string, changeHandler: (items: Item[]) => void): Promise<void>
+  updateItem(params: { databaseName: string, item: any, itemId: string }): Promise<void>
 
-  insertItem(dbName: string, item: any, id?: string): Promise<void>
+  deleteItem(params: { databaseName: string, itemId: string }): Promise<void>
 
-  updateItem(dbName: string, item: any, id: string): Promise<void>
-
-  deleteItem(dbName: string, id: string): Promise<void>
-
-  transaction(dbName: string, operations: DatabaseOperation[]): Promise<void>
+  buildTransaction(params: { databaseName: string, operations: DatabaseOperation[] }): Promise<void>
 }
 
 declare let userbase: Userbase

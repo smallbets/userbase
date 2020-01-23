@@ -4,13 +4,10 @@ import setup from './setup'
 import statusCodes from './statusCodes'
 import responseBuilder from './responseBuilder'
 import crypto from './crypto'
-import connections from './ws'
 import logger from './logger'
-import { validateEmail, stringToArrayBuffer } from './utils'
+import { validateEmail } from './utils'
 import appController from './app'
 import adminController from './admin'
-
-const getTtl = secondsToLive => Math.floor(Date.now() / 1000) + secondsToLive
 
 // source: https://github.com/OWASP/CheatSheetSeries/blob/master/cheatsheets/Session_Management_Cheat_Sheet.md#session-id-length
 const ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID = 16
@@ -24,11 +21,11 @@ const SESSION_LENGTH = MS_IN_A_DAY
 
 const MAX_USERNAME_CHAR_LENGTH = 100
 
-const PASSWORD_HASH_CHAR_LENGTH = 44
-
 const MAX_PROFILE_OBJECT_KEY_CHAR_LENGTH = 20
 const MAX_PROFILE_OBJECT_VALUE_CHAR_LENGTH = 1000
 const MAX_PROFILE_OBJECT_KEYS = 100
+
+const LIMIT_NUM_TRIAL_USERS = 3
 
 const createSession = async function (userId, appId) {
   const sessionId = crypto
@@ -54,16 +51,27 @@ const createSession = async function (userId, appId) {
   return { sessionId, creationDate }
 }
 
-const _buildSignUpParams = async (username, passwordSecureHash, appId, userId,
-  publicKey, salts, email, profile, passwordBasedBackup) => {
-  const passwordHash = await crypto.bcrypt.hash(passwordSecureHash)
+const _buildSignUpParams = (username, passwordToken, appId, userId,
+  publicKey, passwordSalts, keySalts, email, profile, passwordBasedBackup) => {
 
-  const { encryptionKeySalt, dhKeySalt, hmacKeySalt } = salts
-  const { pbkdfKeySalt, passwordEncryptedSeed } = passwordBasedBackup
+  const {
+    passwordSalt,
+    passwordTokenSalt
+  } = passwordSalts
+
+  const {
+    encryptionKeySalt,
+    dhKeySalt,
+    hmacKeySalt
+  } = keySalts
+
+  const { passwordBasedEncryptionKeySalt, passwordEncryptedSeed } = passwordBasedBackup
 
   const user = {
     username: username.toLowerCase(),
-    'password-hash': passwordHash,
+    'password-token': crypto.sha256.hash(passwordToken),
+    'password-salt': passwordSalt,
+    'password-token-salt': passwordTokenSalt,
     'app-id': appId,
     'user-id': userId,
     'public-key': publicKey,
@@ -74,8 +82,8 @@ const _buildSignUpParams = async (username, passwordSecureHash, appId, userId,
     'creation-date': new Date().toISOString(),
     email: email ? email.toLowerCase() : undefined,
     profile: profile || undefined,
-    'pbkdf-key-salt': pbkdfKeySalt || undefined,
-    'password-encrypted-seed': passwordEncryptedSeed || undefined
+    'password-based-encryption-key-salt': passwordBasedEncryptionKeySalt,
+    'password-encrypted-seed': passwordEncryptedSeed
   }
 
   return {
@@ -91,24 +99,12 @@ const _buildSignUpParams = async (username, passwordSecureHash, appId, userId,
   }
 }
 
-const _validatePassword = async (passwordSecureHash, user) => {
-  if (!user || user['deleted']) throw new Error('UserNotFound')
+const _validatePassword = (passwordToken, user) => {
+  if (!user || user['deleted']) throw new Error('User does not exist')
 
-  const passwordIsCorrect = await crypto.bcrypt.compare(passwordSecureHash, user['password-hash'])
+  const passwordTokenHash = crypto.sha256.hash(passwordToken)
 
-  if (!passwordIsCorrect && !user['temp-password']) {
-    throw new Error('Incorrect password')
-  } else if (!passwordIsCorrect && user['temp-password']) {
-    const tempPasswordIsCorrect = await crypto.bcrypt.compare(passwordSecureHash, user['temp-password'])
-
-    if (!tempPasswordIsCorrect) {
-      throw new Error('Incorrect password or temp password')
-    } else {
-      if (new Date() - new Date(user['temp-password-creation-date']) > MS_IN_A_DAY) {
-        throw new Error('Temp password expired')
-      }
-    }
-  }
+  if (!passwordTokenHash.equals(user['password-token'])) throw new Error('Incorrect password')
 }
 
 const _validateProfile = (profile) => {
@@ -138,17 +134,6 @@ const _validateProfile = (profile) => {
   if (!counter) throw { error: 'ProfileCannotBeEmpty' }
 }
 
-const _validatePasswordInput = (passwordSecureHash) => {
-  if (typeof passwordSecureHash !== 'string') throw {
-    error: 'PasswordHashMustBeString'
-  }
-
-  if (passwordSecureHash.length !== PASSWORD_HASH_CHAR_LENGTH) throw {
-    error: 'PasswordHashMustBeCorrectLength',
-    len: PASSWORD_HASH_CHAR_LENGTH
-  }
-}
-
 const _validateUsernameInput = (username) => {
   if (typeof username !== 'string') throw {
     error: 'UsernameMustBeString'
@@ -160,34 +145,48 @@ const _validateUsernameInput = (username) => {
   }
 }
 
-const _validateUsernameAndPasswordInput = (username, passwordSecureHash) => {
-  _validateUsernameInput(username)
-  _validatePasswordInput(passwordSecureHash)
-}
-
 exports.signUp = async function (req, res) {
   const appId = req.query.appId
 
   const username = req.body.username
-  const passwordSecureHash = req.body.passwordSecureHash
+  const passwordToken = req.body.passwordToken
 
   const publicKey = req.body.publicKey
-  const encryptionKeySalt = req.body.encryptionKeySalt
-  const dhKeySalt = req.body.dhKeySalt
-  const hmacKeySalt = req.body.hmacKeySalt
+
+  const passwordSalts = req.body.passwordSalts
+  const keySalts = req.body.keySalts
 
   const email = req.body.email
   const profile = req.body.profile
+  const passwordBasedBackup = req.body.passwordBasedBackup
 
-  const pbkdfKeySalt = req.body.pbkdfKeySalt
-  const passwordEncryptedSeed = req.body.passwordEncryptedSeed
-
-  if (!appId || !username || !passwordSecureHash || !publicKey || !encryptionKeySalt || !dhKeySalt || !hmacKeySalt) {
+  if (!appId || !username || !passwordToken || !publicKey || !passwordSalts || !keySalts || !passwordBasedBackup) {
     return res.status(statusCodes['Bad Request']).send('Missing required items')
   }
 
+  const {
+    passwordSalt,
+    passwordTokenSalt
+  } = passwordSalts
+
+  const {
+    encryptionKeySalt,
+    dhKeySalt,
+    hmacKeySalt
+  } = keySalts
+
+  if (!passwordSalt || !passwordTokenSalt || !encryptionKeySalt || !dhKeySalt || !hmacKeySalt) {
+    return res.status(statusCodes['Bad Request']).send('Missing required salts')
+  }
+
+  const { passwordBasedEncryptionKeySalt, passwordEncryptedSeed } = passwordBasedBackup
+
+  if (!passwordBasedEncryptionKeySalt || !passwordEncryptedSeed) {
+    return res.status(statusCodes['Bad Request']).send('Missing password-based backup items')
+  }
+
   try {
-    _validateUsernameAndPasswordInput(username, passwordSecureHash)
+    _validateUsernameInput(username)
 
     if (email && !validateEmail(email)) return res.status(statusCodes['Bad Request'])
       .send({ error: 'EmailNotValid' })
@@ -207,11 +206,14 @@ exports.signUp = async function (req, res) {
     const admin = await adminController.findAdminByAdminId(app['admin-id'])
     if (!admin || admin['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
 
-    const salts = { encryptionKeySalt, dhKeySalt, hmacKeySalt }
-    const passwordBasedBackup = { pbkdfKeySalt, passwordEncryptedSeed }
+    const subscription = await adminController.getSaasSubscription(admin['admin-id'], admin['stripe-customer-id'])
+    const unpaidSubscription = !subscription || subscription.cancel_at_period_end || subscription.status !== 'active'
+    if (unpaidSubscription && app['num-users'] >= LIMIT_NUM_TRIAL_USERS) {
+      return res.status(statusCodes['Payment Required']).send('TrialExceededLimit')
+    }
 
-    const params = await _buildSignUpParams(username, passwordSecureHash, appId, userId,
-      publicKey, salts, email, profile, passwordBasedBackup)
+    const params = _buildSignUpParams(username, passwordToken, appId, userId,
+      publicKey, passwordSalts, keySalts, email, profile, passwordBasedBackup)
 
     try {
       const ddbClient = connection.ddbClient()
@@ -222,6 +224,9 @@ exports.signUp = async function (req, res) {
       }
       throw e
     }
+
+    // best effort increment, no need to wait for response
+    appController.incrementNumAppUsers(admin['admin-id'], app['app-name'], appId)
 
     const session = await createSession(userId, appId)
     return res.send(session)
@@ -279,7 +284,10 @@ exports.authenticateUser = async function (req, res, next) {
     const admin = await adminController.findAdminByAdminId(app['admin-id'])
     if (!admin || admin['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
 
-    res.locals.user = user // makes user object available in next route
+    // makes all the following objects available in next route
+    res.locals.user = user
+    res.locals.admin = admin
+    res.locals.app = app
     next()
   } catch (e) {
     logger.error(`Failed to authenticate user session ${sessionId} with ${e}`)
@@ -346,10 +354,6 @@ exports.validateKey = async function (validationMessage, userProvidedValidationM
 
           throw e
         }
-      } else {
-        // must be validating after requesting the seed. Clean up for safety --
-        // no need to keep storing this seed request in DDB
-        if (conn.requesterPublicKey) await deleteSeedRequest(userId, conn)
       }
 
       conn.validateKey()
@@ -367,18 +371,84 @@ exports.validateKey = async function (validationMessage, userProvidedValidationM
   }
 }
 
-exports.signIn = async function (req, res) {
+exports.getPasswordSaltsByUserId = async function (userId) {
+  try {
+    const user = await getUserByUserId(userId)
+    if (!user || user['deleted']) return responseBuilder.errorResponse(
+      statusCodes['Not Found'],
+      'User not found'
+    )
+
+    const result = {
+      passwordSalt: user['password-salt'],
+      passwordTokenSalt: user['password-token-salt']
+    }
+
+    return responseBuilder.successResponse(result)
+  } catch (e) {
+    logger.error(`User id '${userId}' failed to get password salts with ${e}`)
+    return responseBuilder.errorResponse(statusCodes['Internal Server Error'])
+  }
+}
+
+exports.getPasswordSaltsController = async function (req, res) {
   const appId = req.query.appId
+  const username = req.query.username
 
-  const username = req.body.username
-  const passwordSecureHash = req.body.passwordSecureHash
-
-  if (!appId || !username || !passwordSecureHash) return res
+  if (!appId || !username) return res
     .status(statusCodes['Bad Request'])
     .send('Missing required items')
 
   try {
-    _validateUsernameAndPasswordInput(username, passwordSecureHash)
+    _validateUsernameInput(username)
+  } catch (e) {
+    return res.status(statusCodes['Bad Request']).send(e)
+  }
+
+  try {
+    // Warning: uses secondary index here. It's possible index won't be up to date and this fails
+    const app = await appController.getAppByAppId(appId)
+    if (!app) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
+
+    const params = {
+      TableName: setup.usersTableName,
+      Key: {
+        username: username.toLowerCase(),
+        'app-id': appId
+      },
+    }
+
+    const ddbClient = connection.ddbClient()
+    const userResponse = await ddbClient.get(params).promise()
+
+    const user = userResponse.Item
+
+    if (!user || user['deleted']) return res.status(statusCodes['Not Found']).send('User not found')
+
+    const result = {
+      passwordSalt: user['password-salt'],
+      passwordTokenSalt: user['password-token-salt']
+    }
+
+    return res.send(result)
+  } catch (e) {
+    logger.error(`Username '${username}' failed to get password salts with ${e}`)
+    return res.status(statusCodes['Internal Server Error']).end()
+  }
+}
+
+exports.signIn = async function (req, res) {
+  const appId = req.query.appId
+
+  const username = req.body.username
+  const passwordToken = req.body.passwordToken
+
+  if (!appId || !username || !passwordToken) return res
+    .status(statusCodes['Bad Request'])
+    .send('Missing required items')
+
+  try {
+    _validateUsernameInput(username)
   } catch (e) {
     return res.status(statusCodes['Bad Request']).send(e)
   }
@@ -405,7 +475,7 @@ exports.signIn = async function (req, res) {
     const user = userResponse.Item
 
     try {
-      await _validatePassword(passwordSecureHash, user)
+      _validatePassword(passwordToken, user)
     } catch (e) {
       return res.status(statusCodes['Unauthorized']).send('Invalid password')
     }
@@ -416,8 +486,8 @@ exports.signIn = async function (req, res) {
 
     if (user['email']) result.email = user['email']
     if (user['profile']) result.profile = user['profile']
-    if (user['pbkdf-key-salt'] && user['password-encrypted-seed']) result.passwordBasedBackup = {
-      pbkdfKeySalt: user['pbkdf-key-salt'],
+    if (user['password-based-encryption-key-salt'] && user['password-encrypted-seed']) result.passwordBasedBackup = {
+      passwordBasedEncryptionKeySalt: user['password-based-encryption-key-salt'],
       passwordEncryptedSeed: user['password-encrypted-seed']
     }
 
@@ -456,156 +526,6 @@ exports.signOut = async function (sessionId) {
       statusCodes['Internal Server Error'],
       'Failed to sign out!'
     )
-  }
-}
-
-exports.requestSeed = async function (userId, senderPublicKey, connectionId, requesterPublicKey) {
-  if (!requesterPublicKey) return responseBuilder.errorResponse(
-    statusCodes['Bad Request'],
-    'Missing requester public key'
-  )
-
-  const seedExchangeKey = {
-    'user-id': userId,
-    'requester-public-key': requesterPublicKey
-  }
-
-  const params = {
-    TableName: setup.seedExchangeTableName,
-    Item: {
-      ...seedExchangeKey,
-      ttl: getTtl(SECONDS_IN_A_DAY)
-    },
-    // do not overwrite if already exists. especially important if encrypted-seed already exists,
-    // but no need to overwrite ever
-    ConditionExpression: 'attribute_not_exists(#userId)',
-    ExpressionAttributeNames: {
-      '#userId': 'user-id'
-    }
-  }
-
-  try {
-    const ddbClient = connection.ddbClient()
-
-    try {
-      await ddbClient.put(params).promise()
-      connections.sendSeedRequest(userId, connectionId, requesterPublicKey)
-    } catch (e) {
-
-      if (e.name === 'ConditionalCheckFailedException') {
-
-        const existingSeedExchangeParams = {
-          TableName: setup.seedExchangeTableName,
-          Key: seedExchangeKey
-        }
-
-        const existingSeedExchangeResponse = await ddbClient.get(existingSeedExchangeParams).promise()
-        const existingSeedExchange = existingSeedExchangeResponse.Item
-
-        const encryptedSeed = existingSeedExchange['encrypted-seed']
-        if (encryptedSeed) {
-          return responseBuilder.successResponse({ senderPublicKey, encryptedSeed })
-        } else {
-          connections.sendSeedRequest(userId, connectionId, requesterPublicKey)
-        }
-
-      } else {
-        throw e
-      }
-    }
-
-    return responseBuilder.successResponse('Successfully sent out request for seed!')
-  } catch (e) {
-    logger.error(`Failed to request seed for user ${userId} with ${e}`)
-    return responseBuilder.errorResponse(
-      statusCodes['Internal Server Error'],
-      `Failed to request seed with ${e}`
-    )
-  }
-}
-
-exports.querySeedRequests = async function (userId) {
-  const params = {
-    TableName: setup.seedExchangeTableName,
-    KeyName: '#userId',
-    KeyConditionExpression: '#userId = :userId',
-    FilterExpression: 'attribute_not_exists(#encryptedSeed)',
-    ExpressionAttributeNames: {
-      '#userId': 'user-id',
-      '#encryptedSeed': 'encrypted-seed'
-    },
-    ExpressionAttributeValues: {
-      ':userId': userId
-    },
-  }
-
-  try {
-    const ddbClient = connection.ddbClient()
-    const seedRequests = await ddbClient.query(params).promise()
-
-    return responseBuilder.successResponse({ seedRequests: seedRequests.Items })
-  } catch (e) {
-    return responseBuilder.errorResponse(
-      statusCodes['Internal Server Error'],
-      `Failed to get seed requests with ${e}`
-    )
-  }
-}
-
-exports.sendSeed = async function (userId, senderPublicKey, requesterPublicKey, encryptedSeed) {
-  if (!requesterPublicKey || !encryptedSeed) return responseBuilder.errorResponse(
-    statusCodes['Bad Request'],
-    'Missing required items'
-  )
-
-  const updateSeedExchangeParams = {
-    TableName: setup.seedExchangeTableName,
-    Key: {
-      'user-id': userId,
-      'requester-public-key': requesterPublicKey
-    },
-    UpdateExpression: 'set #encryptedSeed = :encryptedSeed',
-    ExpressionAttributeNames: {
-      '#encryptedSeed': 'encrypted-seed'
-    },
-    ExpressionAttributeValues: {
-      ':encryptedSeed': encryptedSeed
-    },
-  }
-
-  try {
-    const ddbClient = connection.ddbClient()
-    await ddbClient.update(updateSeedExchangeParams).promise()
-
-    connections.sendSeed(userId, senderPublicKey, requesterPublicKey, encryptedSeed)
-
-    return responseBuilder.successResponse('Success!')
-  } catch (e) {
-    return responseBuilder.errorResponse(
-      statusCodes['Internal Server Error'],
-      `Failed to send seed with ${e}`
-    )
-  }
-}
-
-const deleteSeedRequest = async function (userId, conn) {
-  const requesterPublicKey = conn.requesterPublicKey
-
-  const deleteSeedExchangeParams = {
-    TableName: setup.seedExchangeTableName,
-    Key: {
-      'user-id': userId,
-      'requester-public-key': requesterPublicKey
-    }
-  }
-
-  try {
-    const ddbClient = connection.ddbClient()
-    await ddbClient.delete(deleteSeedExchangeParams).promise()
-
-    conn.deleteSeedRequest()
-  } catch (e) {
-    logger.warn(`Failed to delete seed request for user ${userId} and public key ${requesterPublicKey} with ${e}`)
   }
 }
 
@@ -663,14 +583,11 @@ exports.extendSession = async function (req, res) {
     const ddbClient = connection.ddbClient()
     await ddbClient.update(params).promise()
 
-    const result = { extendedDate }
+    const result = { extendedDate, username: user['username'] }
 
     if (user['email']) result.email = user['email']
     if (user['profile']) result.profile = user['profile']
-    if (user['pbkdf-key-salt'] && user['password-encrypted-seed']) result.passwordBasedBackup = {
-      pbkdfKeySalt: user['pbkdf-key-salt'],
-      passwordEncryptedSeed: user['password-encrypted-seed']
-    }
+    result.backUpKey = (user['password-based-encryption-key-salt'] && user['password-encrypted-seed']) ? true : false
 
     return res.send(result)
   } catch (e) {
@@ -690,128 +607,44 @@ exports.getServerPublicKey = async function (_, res) {
   }
 }
 
-const _getPasswordHashFromString = async (password) => {
-  const passwordArrayBuffer = stringToArrayBuffer(password)
-  const passwordSecureHash = crypto.sha256.hash(passwordArrayBuffer).toString('base64')
-  const passwordHash = await crypto.bcrypt.hash(passwordSecureHash)
-  return passwordHash
-}
-
-const setTempPassword = async (username, appId, tempPassword) => {
-  const params = {
-    TableName: setup.usersTableName,
-    Key: {
-      username,
-      'app-id': appId
-    },
-    UpdateExpression: 'set #tempPassword = :tempPassword, #tempPasswordCreationDate = :tempPasswordCreationDate',
-    ConditionExpression: 'attribute_exists(username) and attribute_not_exists(deleted)',
-    ExpressionAttributeNames: {
-      '#tempPassword': 'temp-password',
-      '#tempPasswordCreationDate': 'temp-password-creation-date'
-    },
-    ExpressionAttributeValues: {
-      ':tempPassword': await _getPasswordHashFromString(tempPassword),
-      ':tempPasswordCreationDate': new Date().toISOString()
-    },
-    ReturnValues: 'ALL_NEW'
-  }
-
-  const ddbClient = connection.ddbClient()
-
-  try {
-    const userResponse = await ddbClient.update(params).promise()
-    return userResponse.Attributes
-  } catch (e) {
-    if (e.name === 'ConditionalCheckFailedException') {
-      return null
-    }
-    throw e
-  }
-}
-
-exports.forgotPassword = async function (req, res) {
-  const appId = req.query.appId
-  const username = req.body.username && req.body.username.toLowerCase()
-
-  if (!appId || !username) return res
-    .status(statusCodes['Bad Request'])
-    .send('Missing required items')
-
-  try {
-    // Warning: uses secondary index here. It's possible index won't be up to date and this fails
-    const app = await appController.getAppByAppId(appId)
-    if (!app || app['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
-
-    const admin = await adminController.findAdminByAdminId(app['admin-id'])
-    if (!admin || admin['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
-
-    const tempPassword = crypto
-      .randomBytes(ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID)
-      .toString('base64')
-
-    const user = await setTempPassword(username, appId, tempPassword)
-    if (!user) return res.status(statusCodes['Not Found']).send('UserNotFound')
-
-    const email = user['email']
-    if (!email) return res.status(statusCodes['Not Found']).send('UserEmailNotFound')
-
-    const subject = `Forgot password - ${app['app-name']}`
-    const body = `Hello, ${username}!`
-      + '<br />'
-      + '<br />'
-      + `Someone has requested you forgot your password to ${app['app-name']}!`
-      + '<br />'
-      + '<br />'
-      + 'If you did not make this request, you can safely ignore this email.'
-      + '<br />'
-      + '<br />'
-      + `Here is your temporary password you can use to log in: ${tempPassword}`
-      + '<br />'
-      + '<br />'
-      + `This password will expire in ${HOURS_IN_A_DAY} hours.`
-
-    await setup.sendEmail(email, subject, body)
-
-    return res.end()
-  } catch (e) {
-    logger.error(`Failed to forget password for user '${username}' of app '${appId}' with ${e}`)
-    return res.status(statusCodes['Internal Server Error']).send('Failed to forget password')
-  }
-}
-
-const _updateUserExcludingUsernameUpdate = async (user, userId, passwordSecureHash, email, profile, passwordBasedBackup) => {
+const _updateUserExcludingUsernameUpdate = async (user, userId, passwordToken, passwordSalts,
+  email, profile, passwordBasedBackup) => {
   const updateUserParams = conditionCheckUserExists(user['username'], user['app-id'], userId)
 
   let UpdateExpression = ''
 
-  if (passwordSecureHash || email || profile) {
+  if (passwordToken || email || profile) {
     UpdateExpression = 'SET '
 
-    if (passwordSecureHash) {
-      UpdateExpression += '#passwordHash = :passwordHash'
-      updateUserParams.ExpressionAttributeNames['#passwordHash'] = 'password-hash'
-      updateUserParams.ExpressionAttributeValues[':passwordHash'] = await crypto.bcrypt.hash(passwordSecureHash)
+    if (passwordToken) {
+      UpdateExpression += '#passwordToken = :passwordToken, #passwordSalt = :passwordSalt, #passwordTokenSalt = :passwordTokenSalt'
+
+      updateUserParams.ExpressionAttributeNames['#passwordToken'] = 'password-token'
+      updateUserParams.ExpressionAttributeNames['#passwordSalt'] = 'password-salt'
+      updateUserParams.ExpressionAttributeNames['#passwordTokenSalt'] = 'password-token-salt'
+
+      updateUserParams.ExpressionAttributeValues[':passwordToken'] = crypto.sha256.hash(passwordToken)
+      updateUserParams.ExpressionAttributeValues[':passwordSalt'] = passwordSalts.passwordSalt
+      updateUserParams.ExpressionAttributeValues[':passwordTokenSalt'] = passwordSalts.passwordTokenSalt
+
+      // password-based backup
+      UpdateExpression += ', #passwordBasedEncryptionKeySalt = :passwordBasedEncryptionKeySalt, #passwordEncryptedSeed = :passwordEncryptedSeed'
+
+      updateUserParams.ExpressionAttributeNames['#passwordBasedEncryptionKeySalt'] = 'password-based-encryption-key-salt'
+      updateUserParams.ExpressionAttributeNames['#passwordEncryptedSeed'] = 'password-encrypted-seed'
+
+      updateUserParams.ExpressionAttributeValues[':passwordBasedEncryptionKeySalt'] = passwordBasedBackup.passwordBasedEncryptionKeySalt
+      updateUserParams.ExpressionAttributeValues[':passwordEncryptedSeed'] = passwordBasedBackup.passwordEncryptedSeed
     }
 
     if (email) {
-      UpdateExpression += (passwordSecureHash ? ', ' : '') + 'email = :email'
+      UpdateExpression += (passwordToken ? ', ' : '') + 'email = :email'
       updateUserParams.ExpressionAttributeValues[':email'] = email.toLowerCase()
     }
 
     if (profile) {
-      UpdateExpression += ((passwordSecureHash || email) ? ', ' : '') + 'profile = :profile'
+      UpdateExpression += ((passwordToken || email) ? ', ' : '') + 'profile = :profile'
       updateUserParams.ExpressionAttributeValues[':profile'] = profile
-    }
-
-    if (passwordBasedBackup) {
-      UpdateExpression += ', #pbkdfKeySalt = :pbkdfKeySalt, #passwordEncryptedSeed = :passwordEncryptedSeed'
-
-      updateUserParams.ExpressionAttributeNames['#pbkdfKeySalt'] = 'pbkdf-key-salt'
-      updateUserParams.ExpressionAttributeNames['#passwordEncryptedSeed'] = 'password-encrypted-seed'
-
-      updateUserParams.ExpressionAttributeValues[':pbkdfKeySalt'] = passwordBasedBackup.pbkdfKeySalt
-      updateUserParams.ExpressionAttributeValues[':passwordEncryptedSeed'] = passwordBasedBackup.passwordEncryptedSeed
     }
   }
 
@@ -840,7 +673,9 @@ const _updateUserExcludingUsernameUpdate = async (user, userId, passwordSecureHa
   }
 }
 
-const _updateUserIncludingUsernameUpdate = async (oldUser, userId, username, passwordSecureHash, email, profile, passwordBasedBackup) => {
+const _updateUserIncludingUsernameUpdate = async (oldUser, userId, passwordToken,
+  passwordSalts, email, profile, passwordBasedBackup, username) => {
+
   // if updating username, need to Delete existing DDB item and Put new one because username is partition key
   const deleteUserParams = conditionCheckUserExists(oldUser['username'], oldUser['app-id'], userId)
 
@@ -849,18 +684,20 @@ const _updateUserIncludingUsernameUpdate = async (oldUser, userId, username, pas
     username: username.toLowerCase()
   }
 
-  if (passwordSecureHash) updatedUser['password-hash'] = await crypto.bcrypt.hash(passwordSecureHash)
+  if (passwordToken) {
+    updatedUser['password-token'] = crypto.sha256.hash(passwordToken)
+    updatedUser['password-salt'] = passwordSalts.passwordSalt
+    updatedUser['password-token-salt'] = passwordSalts.passwordTokenSalt
+
+    updatedUser['password-based-encryption-key-salt'] = passwordBasedBackup.passwordBasedEncryptionKeySalt
+    updatedUser['password-encrypted-seed'] = passwordBasedBackup.passwordEncryptedSeed
+  }
 
   if (email) updatedUser.email = email.toLowerCase()
   else if (email === false) delete updatedUser.email
 
   if (profile) updatedUser.profile = profile
   else if (profile === false) delete updatedUser.profile
-
-  if (passwordBasedBackup) {
-    updatedUser['pbkdf-key-salt'] = passwordBasedBackup.pbkdfKeySalt
-    updatedUser['password-encrypted-seed'] = passwordBasedBackup.passwordEncryptedSeed
-  }
 
   const updateUserParams = {
     TableName: setup.usersTableName,
@@ -894,14 +731,30 @@ const _updateUserIncludingUsernameUpdate = async (oldUser, userId, username, pas
   }
 }
 
-exports.updateUser = async function (userId, username, passwordSecureHash, email, profile, pbkdfKeySalt, passwordEncryptedSeed) {
-  if (!username && !passwordSecureHash && !email && !profile && email !== false && profile !== false) {
+exports.updateUser = async function (userId, username, currentPasswordToken, passwordToken, passwordSalts,
+  email, profile, passwordBasedBackup) {
+  if (!username && !currentPasswordToken && !passwordToken && !email && !profile && email !== false && profile !== false) {
     return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing all params')
+  }
+
+  if (passwordToken) {
+    if (!passwordSalts || !passwordSalts.passwordSalt || !passwordSalts.passwordTokenSalt) {
+      return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing password salts')
+
+    } else if (!passwordBasedBackup || !passwordBasedBackup.passwordBasedEncryptionKeySalt
+      || !passwordBasedBackup.passwordEncryptedSeed) {
+
+      return responseBuilder
+        .errorResponse(statusCodes['Bad Request'], 'Missing password-based key backup')
+
+    } else if (!currentPasswordToken) {
+      return responseBuilder
+        .errorResponse(statusCodes['Bad Request'], 'Missing current password token')
+    }
   }
 
   try {
     if (username) _validateUsernameInput(username)
-    if (passwordSecureHash) _validatePasswordInput(passwordSecureHash)
     if (email && !validateEmail(email)) throw { error: 'EmailNotValid' }
     if (profile) _validateProfile(profile)
   } catch (e) {
@@ -912,26 +765,26 @@ exports.updateUser = async function (userId, username, passwordSecureHash, email
     const user = await getUserByUserId(userId)
     if (!user || user['deleted']) throw new Error('UserNotFound')
 
-    const passwordBasedBackup = user['pbkdf-key-salt'] // password-based key recovery must be enabled
-      && pbkdfKeySalt && passwordEncryptedSeed && { pbkdfKeySalt, passwordEncryptedSeed }
-
-    if (!passwordBasedBackup && passwordSecureHash) return responseBuilder
-      .errorResponse(statusCodes['Bad Request'], 'Missing password-based key recovery items')
+    if (passwordToken) {
+      try {
+        _validatePassword(currentPasswordToken, user)
+      } catch (e) {
+        return responseBuilder.errorResponse(statusCodes['Bad Request'], 'CurrentPasswordIncorrect')
+      }
+    }
 
     if (username && username.toLowerCase() !== user['username']) {
-      try {
-        await _updateUserIncludingUsernameUpdate(user, userId, username, passwordSecureHash, email, profile, passwordBasedBackup)
-      } catch (e) {
 
-        if (e.message.includes('ConditionalCheckFailed]')) {
-          return responseBuilder.errorResponse(statusCodes['Conflict'], 'UsernameAlreadyExists')
-        }
+      await _updateUserIncludingUsernameUpdate(
+        user, userId, passwordToken, passwordSalts, email, profile, passwordBasedBackup, username
+      )
 
-        throw e
-      }
+    } else if (passwordToken || (email || email === false) || (profile || profile === false)) {
 
-    } else {
-      await _updateUserExcludingUsernameUpdate(user, userId, passwordSecureHash, email, profile, passwordBasedBackup)
+      await _updateUserExcludingUsernameUpdate(
+        user, userId, passwordToken, passwordSalts, email, profile, passwordBasedBackup
+      )
+
     }
 
     return responseBuilder.successResponse()
@@ -944,7 +797,7 @@ exports.updateUser = async function (userId, username, passwordSecureHash, email
   }
 }
 
-const deleteUser = async (username, appId, userId) => {
+const deleteUser = async (username, appId, userId, adminId, appName) => {
   const params = conditionCheckUserExists(username, appId, userId)
 
   params.UpdateExpression = 'set deleted = :deleted'
@@ -952,15 +805,21 @@ const deleteUser = async (username, appId, userId) => {
 
   const ddbClient = connection.ddbClient()
   await ddbClient.update(params).promise()
+
+  // best effort decrement
+  appController.decrementNumAppUsers(adminId, appName, appId)
 }
 exports.deleteUser = deleteUser
 
-exports.deleteUserController = async function (userId) {
+exports.deleteUserController = async function (userId, adminId, appName) {
   try {
+    if (!userId || !adminId || !appName) return responseBuilder
+      .errorResponse(statusCodes['Bad Request'], 'Missing params')
+
     const user = await getUserByUserId(userId)
     if (!user || user['deleted']) return responseBuilder.errorResponse(statusCodes['Not Found'], 'UserNotFound')
 
-    await deleteUser(user['username'], user['app-id'], userId)
+    await deleteUser(user['username'], user['app-id'], userId, adminId, appName)
 
     return responseBuilder.successResponse()
   } catch (e) {

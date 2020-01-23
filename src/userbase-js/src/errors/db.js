@@ -30,16 +30,6 @@ class DatabaseNameTooLong extends Error {
   }
 }
 
-class DatabaseAlreadyOpen extends Error {
-  constructor(...params) {
-    super(...params)
-
-    this.name = 'DatabaseAlreadyOpen'
-    this.message = 'Database is already open.'
-    this.status = statusCodes['Bad Request']
-  }
-}
-
 class DatabaseAlreadyOpening extends Error {
   constructor(...params) {
     super(...params)
@@ -194,7 +184,6 @@ export default {
   DatabaseNameCannotBeBlank,
   DatabaseNameMustBeString,
   DatabaseNameTooLong,
-  DatabaseAlreadyOpen,
   DatabaseAlreadyOpening,
   ChangeHandlerMustBeFunction,
   DatabaseNotOpen,

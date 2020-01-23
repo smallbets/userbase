@@ -4,7 +4,7 @@ import crypto from './Crypto'
 import ws from './ws'
 import errors from './errors'
 import statusCodes from './statusCodes'
-import { byteSizeOfString } from './utils'
+import { byteSizeOfString, Queue } from './utils'
 
 const success = 'Success'
 
@@ -92,7 +92,7 @@ class UnverifiedTransaction {
 }
 
 class Database {
-  constructor(changeHandler) {
+  constructor(changeHandler, receivedMessage) {
     this.onChange = changeHandler
 
     this.items = {}
@@ -109,15 +109,25 @@ class Database {
 
     this.itemsIndex = new SortedArray([], compareItems)
     this.unverifiedTransactions = []
-    this.lastSeqNo = -1
+    this.lastSeqNo = 0
     this.init = false
     this.dbKey = null
+    this.receivedMessage = receivedMessage
+
+    // Queue that ensures 'ApplyTransactions' executes one at a time
+    this.applyTransactionsQueue = new Queue()
   }
 
   async applyTransactions(transactions) {
     for (let i = 0; i < transactions.length; i++) {
       const transaction = transactions[i]
       const seqNo = transaction.seqNo
+
+      // client must only apply transcations in sequence
+      if (seqNo !== this.lastSeqNo + 1) {
+        console.warn(`Client attempted to apply transaction with seq no ${seqNo} when last seq no is ${this.lastSeqNo}`)
+        continue
+      }
 
       const transactionCode = await this.applyTransaction(this.dbKey, transaction)
       this.lastSeqNo = seqNo
@@ -128,10 +138,24 @@ class Database {
         }
         this.unverifiedTransactions[j].addTransaction(transactions[i], transactionCode)
       }
+
+      if (this.init && transactionCode === 'Success') {
+        this.onChange(this.getItems())
+      }
+    }
+
+    if (!this.init) {
+      this.onChange(this.getItems())
     }
   }
 
   applyBundle(bundle, bundleSeqNo) {
+    // client must only apply bundle when opening state
+    if (this.lastSeqNo !== 0) {
+      console.warn(`Client attempted to apply bundle when last seq no is ${this.lastSeqNo}`)
+      return
+    }
+
     for (let i = 0; i < bundle.itemsIndex.length; i++) {
       const itemIndex = bundle.itemsIndex[i]
       const itemId = bundle.itemsIndex[i].itemId
@@ -208,6 +232,16 @@ class Database {
         }
 
         return this.applyBatchTransaction(seqNo, batch, records)
+      }
+
+      case 'Rollback': {
+        // no-op
+        return
+      }
+
+      default: {
+        console.warn(`Unknown command: ${command}`)
+        return
       }
     }
   }
@@ -337,25 +371,36 @@ class Database {
 
 const _openDatabase = async (dbNameHash, changeHandler, newDatabaseParams) => {
   try {
-    if (ws.state.databases[dbNameHash] && ws.state.databases[dbNameHash].init) {
-      throw new errors.DatabaseAlreadyOpen
-    } else if (ws.state.databases[dbNameHash]) {
-      throw new errors.DatabaseAlreadyOpening
-    }
+    const database = ws.state.databases[dbNameHash]
 
     let receivedMessage
 
     const firstMessageFromWebSocket = new Promise((resolve, reject) => {
       receivedMessage = resolve
-      setTimeout(() => reject(new Error('timeout')), 5000)
+      setTimeout(() => reject(new Error('timeout')), 20000)
     })
 
-    const handlerWrapper = (items) => {
-      changeHandler(items)
-      receivedMessage()
-    }
+    if (!database) {
+      ws.state.databases[dbNameHash] = new Database(changeHandler, receivedMessage)
+    } else {
 
-    ws.state.databases[dbNameHash] = new Database(handlerWrapper) // eslint-disable-line require-atomic-updates
+      // safe to replace -- enables idempotent calls to openDatabase
+      database.onChange = changeHandler
+
+      // if 1 call succeeds, all idempotent calls succeed
+      const currentReceivedMessage = database.receivedMessage
+      database.receivedMessage = () => {
+        currentReceivedMessage()
+        receivedMessage()
+      }
+
+      // database is already open, can return successfully
+      if (database.init) {
+        changeHandler(database.getItems())
+        database.receivedMessage()
+        return
+      }
+    }
 
     const action = 'OpenDatabase'
     const params = { dbNameHash, newDatabaseParams }
@@ -364,8 +409,6 @@ const _openDatabase = async (dbNameHash, changeHandler, newDatabaseParams) => {
       await ws.request(action, params)
       await firstMessageFromWebSocket
     } catch (e) {
-      delete ws.state.databases[dbNameHash]
-
       if (e.response && e.response.data === 'Database already creating') {
         throw new errors.DatabaseAlreadyOpening
       }
@@ -407,21 +450,24 @@ const _validateDbInput = (dbName) => {
   if (!ws.keys.init) throw new errors.UserNotSignedIn
 }
 
-const openDatabase = async (dbName, changeHandler) => {
+const openDatabase = async (params) => {
   try {
-    _validateDbInput(dbName)
+    if (typeof params !== 'object') throw new errors.ParamsMustBeObject
 
+    const { databaseName, changeHandler } = params
+
+    _validateDbInput(databaseName)
     if (typeof changeHandler !== 'function') throw new errors.ChangeHandlerMustBeFunction
 
-    const dbNameHash = ws.state.dbNameToHash[dbName] || await crypto.hmac.signString(ws.keys.hmacKey, dbName)
-    ws.state.dbNameToHash[dbName] = dbNameHash // eslint-disable-line require-atomic-updates
+    const dbNameHash = ws.state.dbNameToHash[databaseName] || await crypto.hmac.signString(ws.keys.hmacKey, databaseName)
+    ws.state.dbNameToHash[databaseName] = dbNameHash // eslint-disable-line require-atomic-updates
 
-    const newDatabaseParams = await _createDatabase(dbName)
+    const newDatabaseParams = await _createDatabase(databaseName)
     await _openDatabase(dbNameHash, changeHandler, newDatabaseParams)
   } catch (e) {
 
     switch (e.name) {
-      case 'DatabaseAlreadyOpen':
+      case 'ParamsMustBeObject':
       case 'DatabaseAlreadyOpening':
       case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
@@ -445,20 +491,25 @@ const getOpenDb = (dbName) => {
   return database
 }
 
-const insertItem = async (dbName, item, id) => {
+const insertItem = async (params) => {
   try {
-    _validateDbInput(dbName)
+    if (typeof params !== 'object') throw new errors.ParamsMustBeObject
 
-    const database = getOpenDb(dbName)
+    const { databaseName, item, itemId } = params
+
+    _validateDbInput(databaseName)
+
+    const database = getOpenDb(databaseName)
 
     const action = 'Insert'
-    const params = await _buildInsertParams(database, item, id)
+    const insertParams = await _buildInsertParams(database, item, itemId)
 
-    await postTransaction(database, action, params)
+    await postTransaction(database, action, insertParams)
 
   } catch (e) {
 
     switch (e.name) {
+      case 'ParamsMustBeObject':
       case 'DatabaseNotOpen':
       case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
@@ -499,19 +550,24 @@ const _buildInsertParams = async (database, item, id) => {
   return { itemKey, encryptedItem }
 }
 
-const updateItem = async (dbName, item, id) => {
+const updateItem = async (params) => {
   try {
-    _validateDbInput(dbName)
+    if (typeof params !== 'object') throw new errors.ParamsMustBeObject
 
-    const database = getOpenDb(dbName)
+    const { databaseName, item, itemId } = params
+
+    _validateDbInput(databaseName)
+
+    const database = getOpenDb(databaseName)
 
     const action = 'Update'
-    const params = await _buildUpdateParams(database, item, id)
+    const updateParams = await _buildUpdateParams(database, item, itemId)
 
-    await postTransaction(database, action, params)
+    await postTransaction(database, action, updateParams)
   } catch (e) {
 
     switch (e.name) {
+      case 'ParamsMustBeObject':
       case 'DatabaseNotOpen':
       case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
@@ -554,19 +610,24 @@ const _buildUpdateParams = async (database, item, itemId) => {
   return { itemKey, encryptedItem }
 }
 
-const deleteItem = async (dbName, itemId) => {
+const deleteItem = async (params) => {
   try {
-    _validateDbInput(dbName)
+    if (typeof params !== 'object') throw new errors.ParamsMustBeObject
 
-    const database = getOpenDb(dbName)
+    const { databaseName, itemId } = params
+
+    _validateDbInput(databaseName)
+
+    const database = getOpenDb(databaseName)
 
     const action = 'Delete'
-    const params = await _buildDeleteParams(database, itemId)
+    const deleteParams = await _buildDeleteParams(database, itemId)
 
-    await postTransaction(database, action, params)
+    await postTransaction(database, action, deleteParams)
   } catch (e) {
 
     switch (e.name) {
+      case 'ParamsMustBeObject':
       case 'DatabaseNotOpen':
       case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
@@ -603,54 +664,53 @@ const _buildDeleteParams = async (database, itemId) => {
   return { itemKey, encryptedItem }
 }
 
-const transaction = async (dbName, operations) => {
+const buildTransaction = async (params) => {
   try {
-    _validateDbInput(dbName)
+    if (typeof params !== 'object') throw new errors.ParamsMustBeObject
+
+    const { databaseName, operations } = params
+
+    _validateDbInput(databaseName)
 
     if (!Array.isArray(operations)) throw new errors.OperationsMustBeArray
 
-    const database = getOpenDb(dbName)
+    const database = getOpenDb(databaseName)
 
     const action = 'BatchTransaction'
 
-    const operationParamsPromises = operations.map(operation => {
+    const operationParamsPromises = await Promise.all(operations.map(operation => {
       const command = operation.command
+      const itemId = operation.itemId
 
       switch (command) {
         case 'Insert': {
-          const id = operation.id
           const item = operation.item
-
-          return _buildInsertParams(database, item, id)
+          return _buildInsertParams(database, item, itemId)
         }
 
         case 'Update': {
-          const id = operation.id
           const item = operation.item
-
-          return _buildUpdateParams(database, item, id)
+          return _buildUpdateParams(database, item, itemId)
         }
 
         case 'Delete': {
-          const id = operation.id
-
-          return _buildDeleteParams(database, id)
+          return _buildDeleteParams(database, itemId)
         }
 
         default: throw new errors.CommandUnrecognized(command)
       }
-    })
-    const operationParams = await Promise.all(operationParamsPromises)
+    }))
+    const operationParamsPromiseResults = await Promise.all(operationParamsPromises)
 
-    const params = {
+    const operationParams = {
       operations: operations.map((operation, i) => ({
         command: operation.command,
-        ...operationParams[i]
+        ...operationParamsPromiseResults[i]
       }))
     }
 
     try {
-      await postTransaction(database, action, params)
+      await postTransaction(database, action, operationParams)
     } catch (e) {
       if (e.response && e.response.data.error === 'OperationsExceedLimit') {
         throw new errors.OperationsExceedLimit(e.response.data.limit)
@@ -661,6 +721,7 @@ const transaction = async (dbName, operations) => {
   } catch (e) {
 
     switch (e.name) {
+      case 'ParamsMustBeObject':
       case 'DatabaseNotOpen':
       case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
@@ -716,9 +777,5 @@ export default {
   insertItem,
   updateItem,
   deleteItem,
-  transaction,
-
-  // used internally
-  getOpenDb,
-  close,
+  buildTransaction,
 }

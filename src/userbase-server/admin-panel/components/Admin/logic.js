@@ -9,12 +9,14 @@ const errorHandler = (e, signOutUnauthorized = true) => {
   if (e && e.response) {
     if (signOutUnauthorized && e.response.status === UNAUTHORIZED) {
       handleSignOut()
+      throw new Error(e.response.data)
+    } else if (e.response.status >= 500) {
+      throw new Error('Unknown Error')
     } else {
       throw new Error(e.response.data)
     }
-  } else {
-    throw e
   }
+  throw new Error('Unknown Error')
 }
 
 const handleSignOut = () => {
@@ -47,7 +49,7 @@ const removeLocalSession = () => {
   localStorage.removeItem('adminSession')
 }
 
-const createAdmin = async (email, password, fullName) => {
+const createAdmin = async (email, password, fullName, receiveEmailUpdates) => {
   try {
     const lowerCaseEmail = email.toLowerCase()
     await axios({
@@ -56,7 +58,8 @@ const createAdmin = async (email, password, fullName) => {
       data: {
         email: lowerCaseEmail,
         password,
-        fullName
+        fullName,
+        receiveEmailUpdates
       },
       timeout: TEN_SECONDS_MS
     })
@@ -103,8 +106,9 @@ const signIn = async (email, password) => {
       },
       timeout: TEN_SECONDS_MS
     })
-    const fullName = signInResponse.data
+    const { fullName, paymentStatus } = signInResponse.data
     signInLocalSession(lowerCaseEmail, fullName)
+    return paymentStatus
   } catch (e) {
     errorHandler(e, false)
   }
@@ -123,21 +127,36 @@ const forgotPassword = async (email) => {
   }
 }
 
-const updateAdmin = async ({ email, password, fullName }) => {
+const updateAdmin = async ({ email, fullName }) => {
   try {
     await axios({
       method: 'POST',
       url: `/${VERSION}/admin/update-admin`,
       data: {
         email,
-        password,
         fullName
       },
       timeout: TEN_SECONDS_MS
     })
-    if (email || fullName) updateLocalSession(email, fullName)
+    updateLocalSession(email, fullName)
   } catch (e) {
     errorHandler(e)
+  }
+}
+
+const changePassword = async ({ currentPassword, newPassword }) => {
+  try {
+    await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/change-password`,
+      data: {
+        currentPassword,
+        newPassword
+      },
+      timeout: TEN_SECONDS_MS
+    })
+  } catch (e) {
+    errorHandler(e, false)
   }
 }
 
@@ -191,11 +210,13 @@ const updateSaasPaymentMethod = async () => {
 
 const cancelSaasSubscription = async () => {
   try {
-    await axios({
+    const cancelResponse = await axios({
       method: 'POST',
       url: `/${VERSION}/admin/stripe/cancel-saas-subscription`,
       timeout: TEN_SECONDS_MS
     })
+    const paymentStatus = cancelResponse.data
+    return paymentStatus
   } catch (e) {
     errorHandler(e)
   }
@@ -203,11 +224,13 @@ const cancelSaasSubscription = async () => {
 
 const resumeSaasSubscription = async () => {
   try {
-    await axios({
+    const resumeResponse = await axios({
       method: 'POST',
       url: `/${VERSION}/admin/stripe/resume-saas-subscription`,
       timeout: TEN_SECONDS_MS
     })
+    const paymentStatus = resumeResponse.data
+    return paymentStatus
   } catch (e) {
     errorHandler(e)
   }
@@ -236,6 +259,7 @@ export default {
   errorHandler,
   forgotPassword,
   updateAdmin,
+  changePassword,
   deleteAdmin,
   subscribeToSaas,
   updateSaasPaymentMethod,

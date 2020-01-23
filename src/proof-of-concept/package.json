@@ -13,13 +13,12 @@
   "dependencies": {
     "@babel/runtime": "^7.7.6",
     "babel-polyfill": "^6.26.0",
-    "copy-to-clipboard": "^3.2.0",
     "cors": "^2.8.5",
     "express": "^4.17.1",
     "react": "^16.8.6",
     "react-dom": "^16.8.6",
-    "userbase-js": "../userbase-js",
-    "userbase-server": "../userbase-server"
+    "userbase-js": "file:../userbase-js",
+    "userbase-server": "file:../userbase-server"
   },
   "devDependencies": {
     "@babel/cli": "^7.4.4",
@@ -51,7 +50,8 @@
     "webpack-merge": "^4.2.1"
   },
   "scripts": {
-    "build:client": "webpack --mode production --config webpack.config.js",
+    "build:client": "npm run build:userbase-js && webpack --mode production --config webpack.config.js",
+    "build:userbase-js": "cd ../userbase-js && npm run build && cd ../proof-of-concept",
     "build:server": "babel ./server -d build --presets=@babel/preset-env && npm run build:userbase-server && npm run install:userbase-server",
     "build:userbase-server": "babel ../userbase-server -d build/node_modules/userbase-server --ignore ../userbase-server/node_modules,../userbase-server/admin-panel --presets=@babel/preset-env --plugins=@babel/transform-runtime",
     "install:userbase-server": "cp ../userbase-server/package.json build/node_modules/userbase-server/ && cd ./build/node_modules/userbase-server && npm install",

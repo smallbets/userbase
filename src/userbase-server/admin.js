@@ -51,7 +51,7 @@ const setSessionCookie = (res, sessionId) => {
   res.cookie(SESSION_COOKIE_NAME, sessionId, cookieResponseHeaders)
 }
 
-async function createAdmin(email, password, fullName, adminId = uuidv4(), storePasswordInSecretsManager = false) {
+async function createAdmin(email, password, fullName, adminId = uuidv4(), receiveEmailUpdates, storePasswordInSecretsManager = false) {
   if (!email || !password || !fullName) throw {
     status: statusCodes['Bad Request'],
     data: 'Missing required items'
@@ -70,36 +70,51 @@ async function createAdmin(email, password, fullName, adminId = uuidv4(), storeP
 
     const passwordHash = await crypto.bcrypt.hash(password)
 
-    // There may be multiple Stripe customers with same admin ID. Only one that
-    // matters to us is the one that ultimately gets stored on the admin in DDB
-    const stripeCustomer = await stripe.getClient().customers.create({
-      email: email.toLowerCase(),
-      metadata: { adminId }
-    })
-    const stripeCustomerId = stripeCustomer.id
-
     try {
+      const creationDate = new Date().toISOString()
+
       const admin = {
         email: email.toLowerCase(),
         'password-hash': passwordHash,
         'full-name': fullName,
         'admin-id': adminId,
-        'creation-date': new Date().toISOString(),
-        'stripe-customer-id': stripeCustomerId
+        'creation-date': creationDate,
+        'receive-email-updates': receiveEmailUpdates ? true : false
       }
 
-      const params = {
+      const adminParams = {
         TableName: setup.adminTableName,
         Item: admin,
         ConditionExpression: 'attribute_not_exists(email)'
       }
 
-      const ddbClient = connection.ddbClient()
-      await ddbClient.put(params).promise()
-    } catch (e) {
-      if (e && e.name === 'ConditionalCheckFailedException') {
-        await stripe.getClient().customers.del(stripeCustomerId)
+      const trialApp = {
+        'admin-id': adminId,
+        'app-name': 'Trial',
+        'app-id': uuidv4(),
+        'creation-date': creationDate
+      }
 
+      const trialAppParams = {
+        TableName: setup.appsTableName,
+        Item: trialApp,
+        ConditionExpression: 'attribute_not_exists(#adminId)',
+        ExpressionAttributeNames: {
+          '#adminId': 'admin-id'
+        },
+      }
+
+      const params = {
+        TransactItems: [
+          { Put: adminParams },
+          { Put: trialAppParams }
+        ]
+      }
+
+      const ddbClient = connection.ddbClient()
+      await ddbClient.transactWrite(params).promise()
+    } catch (e) {
+      if (e.message.includes('[ConditionalCheckFailed')) {
         throw {
           status: statusCodes['Conflict'],
           data: 'Admin already exists'
@@ -125,11 +140,12 @@ exports.createAdminController = async function (req, res) {
   const email = req.body.email
   const password = req.body.password
   const fullName = req.body.fullName
+  const receiveEmailUpdates = req.body.receiveEmailUpdates
 
   const adminId = uuidv4()
   try {
     const storePasswordInSecretsManager = false
-    await createAdmin(email, password, fullName, adminId, storePasswordInSecretsManager)
+    await createAdmin(email, password, fullName, adminId, receiveEmailUpdates, storePasswordInSecretsManager)
   } catch (e) {
     return res
       .status(e.status)
@@ -224,10 +240,19 @@ exports.signInAdmin = async function (req, res) {
         .send('Incorrect password')
     }
 
-    const sessionId = await createSession(admin['admin-id'])
+    const [sessionId, subscription] = await Promise.all([
+      createSession(admin['admin-id']),
+      getSaasSubscription(admin['admin-id'], admin['stripe-customer-id'])
+    ])
+
     setSessionCookie(res, sessionId)
 
-    return res.status(statusCodes['Success']).send(admin['full-name'])
+    return res
+      .status(statusCodes['Success'])
+      .send({
+        fullName: admin['full-name'],
+        paymentStatus: subscription && (subscription.cancel_at_period_end ? 'cancel_at_period_end' : subscription.status)
+      })
   } catch (e) {
     logger.error(`Admin '${email}' failed to sign in with ${e}`)
     return res
@@ -325,7 +350,7 @@ exports.deleteUser = async function (req, res) {
     const app = await appController.getApp(adminId, appName)
     if (!app || app['deleted']) return res.status(statusCodes['Not Found']).send('App not found')
 
-    await userController.deleteUser(username, app['app-id'], userId)
+    await userController.deleteUser(username, app['app-id'], userId, adminId, appName)
 
     return res.end()
   } catch (e) {
@@ -335,6 +360,72 @@ exports.deleteUser = async function (req, res) {
 
     logger.error(`Failed to delete user '${userId}' from admin '${adminId}' with ${e}`)
     return res.status(statusCodes['Internal Server Error']).send('Failed to delete user')
+  }
+}
+
+exports.permanentDeleteUser = async function (req, res) {
+  const appName = req.body.appName
+  const username = req.body.username
+  const userId = req.body.userId
+
+  const adminId = res.locals.admin['admin-id']
+
+  if (!appName || !username) return res
+    .status(statusCodes['Bad Request'])
+    .send('Missing required items')
+
+  try {
+    const [app, user] = await Promise.all([
+      appController.getApp(adminId, appName),
+      userController.getUserByUserId(userId)
+    ])
+    if (!app || app['deleted']) return res.status(statusCodes['Not Found']).send('App not found')
+    if (!user || user['app-id'] !== app['app-id']) return res.status(statusCodes['Not Found']).send('User not found')
+
+    const existingUserParams = {
+      TableName: setup.usersTableName,
+      Key: {
+        username,
+        'app-id': app['app-id']
+      },
+      ConditionExpression: 'attribute_exists(deleted) and #userId = :userId',
+      ExpressionAttributeNames: {
+        '#userId': 'user-id'
+      },
+      ExpressionAttributeValues: {
+        ':userId': userId
+      }
+    }
+
+    const permanentDeletedUserParams = {
+      TableName: setup.deletedUsersTableName,
+      Item: {
+        ...user // still technically can recover user before data is purged, though more difficult
+      },
+      ConditionExpression: 'attribute_not_exists(#userId)',
+      ExpressionAttributeNames: {
+        '#userId': 'user-id'
+      },
+    }
+
+    const transactionParams = {
+      TransactItems: [
+        { Delete: existingUserParams },
+        { Put: permanentDeletedUserParams }
+      ]
+    }
+
+    const ddbClient = connection.ddbClient()
+    await ddbClient.transactWrite(transactionParams).promise()
+
+    return res.end()
+  } catch (e) {
+    if (e.message.includes('ConditionalCheckFailed]')) {
+      return res.status(statusCodes['Conflict']).send('User already permanently deleted')
+    }
+
+    logger.error(`Failed to permanently delete user '${userId}' from admin '${adminId}' with ${e}`)
+    return res.status(statusCodes['Internal Server Error']).send('Failed to permanently delete user')
   }
 }
 
@@ -425,19 +516,13 @@ const conditionExpressionAdminExists = (email, adminId) => {
   }
 }
 
-const _updateAdminExcludingEmailUpdate = async (oldAdmin, adminId, password, fullName) => {
+const _updateAdminExcludingEmailUpdate = async (oldAdmin, adminId, fullName) => {
   const params = conditionExpressionAdminExists(oldAdmin['email'], adminId)
 
   let UpdateExpression = 'SET '
 
-  if (password) {
-    UpdateExpression += '#passwordHash = :passwordHash'
-    params.ExpressionAttributeNames['#passwordHash'] = 'password-hash'
-    params.ExpressionAttributeValues[':passwordHash'] = await crypto.bcrypt.hash(password)
-  }
-
   if (fullName) {
-    UpdateExpression += (password ? ', ' : '') + '#fullName = :fullName'
+    UpdateExpression += '#fullName = :fullName'
     params.ExpressionAttributeNames['#fullName'] = 'full-name'
     params.ExpressionAttributeValues[':fullName'] = fullName
   }
@@ -455,7 +540,7 @@ const _updateAdminExcludingEmailUpdate = async (oldAdmin, adminId, password, ful
   }
 }
 
-const _updateAdminIncludingEmailUpdate = async (oldAdmin, adminId, email, password, fullName) => {
+const _updateAdminIncludingEmailUpdate = async (oldAdmin, adminId, email, fullName) => {
   // if updating email, need to Delete existing DDB item and Put new one because email is partition key
   const deleteAdminParams = conditionExpressionAdminExists(oldAdmin['email'], adminId)
 
@@ -463,8 +548,6 @@ const _updateAdminIncludingEmailUpdate = async (oldAdmin, adminId, email, passwo
     ...oldAdmin,
     email
   }
-
-  if (password) updatedAdmin['password-hash'] = await crypto.bcrypt.hash(password)
 
   if (fullName) updatedAdmin['full-name'] = fullName
 
@@ -501,22 +584,30 @@ exports.updateAdmin = async function (req, res) {
 
   try {
     const email = req.body.email && req.body.email.toLowerCase()
-    const password = req.body.password
     const fullName = req.body.fullName
 
     if (email) {
       if (email === admin['email']) return res.status(statusCodes['Conflict']).send('Email must be different')
       if (!validateEmail(email)) return res.status(statusCodes['Bad Request']).send('Invalid Email')
 
+      const updateStripeCustomer = async () => {
+        try {
+          await stripe.getClient().customers.update(stripeCustomerId, { email })
+        } catch (e) {
+          //failure ok
+          logger.warn(`Failed to update admin ${adminId}'s email in Stripe`)
+        }
+      }
+
       // ok if 1 fails and other succeeds. It's undesirable, but ok if they are out of sync since
       // Stripe Checkout allows for customers to change their email at the point of checkout anyway
       await Promise.all([
-        _updateAdminIncludingEmailUpdate(admin, adminId, email, password, fullName),
-        stripe.getClient().customers.update(stripeCustomerId, { email })
+        _updateAdminIncludingEmailUpdate(admin, adminId, email, fullName),
+        stripeCustomerId && updateStripeCustomer()
       ])
     } else {
-      if (!password && !fullName) return res.status(statusCodes['Bad Request']).send('Missing required items')
-      await _updateAdminExcludingEmailUpdate(admin, adminId, password, fullName)
+      if (!fullName) return res.status(statusCodes['Bad Request']).send('Missing required items')
+      await _updateAdminExcludingEmailUpdate(admin, adminId, fullName)
     }
 
     return res.end()
@@ -529,6 +620,55 @@ exports.updateAdmin = async function (req, res) {
 
     logger.error(`Failed to update admin '${adminId}' with ${e}`)
     return res.status(statusCodes['Internal Server Error']).send('Failed to update admin')
+  }
+}
+
+const _changePassword = async (admin, adminId, password) => {
+  const params = conditionExpressionAdminExists(admin['email'], adminId)
+
+  params.UpdateExpression = 'SET #passwordHash = :passwordHash'
+  params.ExpressionAttributeNames['#passwordHash'] = 'password-hash'
+  params.ExpressionAttributeValues[':passwordHash'] = await crypto.bcrypt.hash(password)
+
+  try {
+    const ddbClient = connection.ddbClient()
+    await ddbClient.update(params).promise()
+  } catch (e) {
+    if (e.name === 'ConditionalCheckFailedException') {
+      throw new Error('Admin not found')
+    }
+    throw e
+  }
+}
+
+exports.changePassword = async function (req, res) {
+  const admin = res.locals.admin
+  const adminId = admin['admin-id']
+
+  try {
+    const currentPassword = req.body.currentPassword
+    const newPassword = req.body.newPassword
+
+    if (!currentPassword && !newPassword) return res.status(statusCodes['Bad Request']).send('Missing required items')
+
+    try {
+      await _validateAdminPassword(currentPassword, admin)
+    } catch (e) {
+      return res
+        .status(statusCodes['Unauthorized'])
+        .send('Incorrect password')
+    }
+
+    await _changePassword(admin, adminId, newPassword)
+
+    return res.end()
+  } catch (e) {
+    if (e.message === 'Admin not found') {
+      return res.status(statusCodes['Not Found']).send('Admin not found')
+    }
+
+    logger.error(`Failed to change password for '${adminId}' with ${e}`)
+    return res.status(statusCodes['Internal Server Error']).send('Failed to change password')
   }
 }
 
@@ -574,12 +714,51 @@ exports.deleteAdmin = async function (req, res) {
   }
 }
 
+const createStripeCustomer = async function (email, adminId) {
+  // There may be multiple Stripe customers with same admin ID. Only one that
+  // matters to us is the one that ultimately gets stored on the admin in DDB
+  const stripeCustomer = await stripe.getClient().customers.create({
+    email,
+    metadata: { adminId }
+  })
+  const stripeCustomerId = stripeCustomer.id
+
+  const params = {
+    TableName: setup.adminTableName,
+    Key: {
+      email
+    },
+    UpdateExpression: 'set #stripeCustomerId = :stripeCustomerId',
+    // only 1 stripe customer id can ever be saved on an admin
+    ConditionExpression: 'attribute_not_exists(#stripeCustomerId)',
+    ExpressionAttributeNames: {
+      '#stripeCustomerId': 'stripe-customer-id',
+    },
+    ExpressionAttributeValues: {
+      ':stripeCustomerId': stripeCustomerId,
+    }
+  }
+
+  try {
+    const ddbClient = connection.ddbClient()
+    await ddbClient.update(params).promise()
+  } catch (e) {
+    if (e && e.name === 'ConditionalCheckFailedException') {
+      await stripe.getClient().customers.del(stripeCustomerId)
+    }
+    throw e
+  }
+
+  return stripeCustomerId
+}
+
 exports.createSaasPaymentSession = async function (req, res) {
   const admin = res.locals.admin
   const adminId = admin['admin-id']
-  const stripeCustomerId = admin['stripe-customer-id']
 
   try {
+    const stripeCustomerId = admin['stripe-customer-id'] || await createStripeCustomer(admin['email'], adminId)
+
     const session = await stripe.getClient().checkout.sessions.create({
       customer: stripeCustomerId,
       payment_method_types: ['card'],
@@ -588,8 +767,8 @@ exports.createSaasPaymentSession = async function (req, res) {
           plan: stripe.getStripeSaasSubscriptionPlanId(),
         }]
       },
-      success_url: `${req.headers.origin || req.headers.referer}/#success`,
-      cancel_url: `${req.headers.origin || req.headers.referer}/#edit-account`,
+      success_url: `${process.env['STRIPE_REDIRECT_URL'] || req.headers.referer}#success`,
+      cancel_url: `${process.env['STRIPE_REDIRECT_URL'] || req.headers.referer}#edit-account`,
     },
       {
         idempotency_key: stripeCustomerId // admin can only checkout a single subscription plan
@@ -610,6 +789,10 @@ exports.updateSaasSubscriptionPaymentSession = async function (req, res) {
   const stripeCustomerId = admin['stripe-customer-id']
 
   try {
+    if (!stripeCustomerId) {
+      return res.status(statusCodes['Payment Required']).send('Must purchase subscription first')
+    }
+
     const session = await stripe.getClient().checkout.sessions.create({
       payment_method_types: ['card'],
       mode: 'setup',
@@ -620,8 +803,8 @@ exports.updateSaasSubscriptionPaymentSession = async function (req, res) {
           subscription_id: res.locals.subscription.id
         },
       },
-      success_url: `${req.headers.origin || req.headers.referer}/#update-success`,
-      cancel_url: `${req.headers.origin || req.headers.referer}/#edit-account`,
+      success_url: `${process.env['STRIPE_REDIRECT_URL'] || req.headers.referer}#update-success`,
+      cancel_url: `${process.env['STRIPE_REDIRECT_URL'] || req.headers.referer}#edit-account`,
     })
 
     return res.send(session.id)
@@ -681,24 +864,28 @@ exports.handleStripeWebhook = async function (req, res) {
   }
 }
 
-exports.getSaasSubscription = async function (req, res, next) {
+const getSaasSubscription = async function (adminId, stripeCustomerId) {
+  if (!stripeCustomerId) return null
+
+  const customer = await stripe.getClient().customers.retrieve(stripeCustomerId)
+
+  if (customer.subscriptions.data.length > 1) {
+    logger.fatal(`Admin ${adminId} has more than 1 subscription (${customer.subscriptions.data.length} total)`)
+  }
+
+  return customer.subscriptions.data.find((subscription => {  // eslint-disable-line require-atomic-updates
+    return subscription.plan.id === stripe.getStripeSaasSubscriptionPlanId()
+  }))
+}
+exports.getSaasSubscription = getSaasSubscription
+
+exports.getSaasSubscriptionController = async function (req, res, next) {
   const admin = res.locals.admin
   const adminId = admin['admin-id']
   const stripeCustomerId = admin['stripe-customer-id']
 
   try {
-    const customer = await stripe.getClient().customers.retrieve(stripeCustomerId)
-
-    if (customer.subscriptions.data.length > 1) {
-      logger.fatal(`Admin ${adminId} has more than 1 subscription (${customer.subscriptions.data.length} total)`)
-    }
-
-    res.locals.subscription = customer.subscriptions.data.find((subscription => {  // eslint-disable-line require-atomic-updates
-      return subscription.plan.id === stripe.getStripeSaasSubscriptionPlanId()
-    }))
-
-    logger.info(res.locals.subscription)
-
+    res.locals.subscription = await getSaasSubscription(adminId, stripeCustomerId)
     next()
   } catch (e) {
     logger.error(`Failed to verify subscription payment for admin '${adminId}' with ${e}`)
@@ -714,9 +901,12 @@ exports.cancelSaasSubscription = async function (req, res) {
   if (subscription.cancel_at_period_end) return res.end()
 
   try {
-    await stripe.getClient().subscriptions.update(subscription.id, { cancel_at_period_end: true })
+    await stripe.getClient().subscriptions.update(subscription.id, {
+      cancel_at_period_end: true
+    })
 
-    return res.end()
+    // subscription status will remain active, but cancel_at_period_end boolean will be set to true
+    return res.send('cancel_at_period_end')
   } catch (e) {
     logger.error(`Failed to cancel subscription for admin '${adminId}' with ${e}`)
     return res.status(statusCodes['Internal Server Error']).send('Failed to cancel subscription')
@@ -731,7 +921,7 @@ exports.resumeSaasSubscription = async function (req, res) {
   if (!subscription.cancel_at_period_end) return res.end()
 
   try {
-    await stripe.getClient().subscriptions.update(subscription.id, {
+    const updatedSubscription = await stripe.getClient().subscriptions.update(subscription.id, {
       cancel_at_period_end: false,
       items: [{
         id: subscription.items.data[0].id,
@@ -739,7 +929,7 @@ exports.resumeSaasSubscription = async function (req, res) {
       }]
     })
 
-    return res.end()
+    return res.send(updatedSubscription.status)
   } catch (e) {
     logger.error(`Failed to resume subscription for admin '${adminId}' with ${e}`)
     return res.status(statusCodes['Internal Server Error']).send('Failed to resume subscription')

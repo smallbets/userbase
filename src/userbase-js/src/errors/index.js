@@ -47,6 +47,16 @@ class Reconnecting extends ServiceUnavailable {
   }
 }
 
+class ParamsMustBeObject extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'ParamsMustBeObject'
+    this.message = 'Parameters passed to function must be placed inside an object.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
 export default {
   ...auth,
   ...db,
@@ -55,5 +65,6 @@ export default {
   InternalServerError,
   ServiceUnavailable,
   Timeout,
-  Reconnecting
+  Reconnecting,
+  ParamsMustBeObject
 }

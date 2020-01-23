@@ -3,22 +3,19 @@ import config from '../config'
 
 const TEN_SECONDS_MS = 10 * 1000
 
-const signUp = async (username, passwordSecureHash, publicKey, encryptionKeySalt,
-  dhKeySalt, hmacKeySalt, email, profile, pbkdfKeySalt, passwordEncryptedSeed) => {
+const signUp = async (username, passwordToken, publicKey, passwordSalts, keySalts, email, profile, passwordBasedBackup) => {
   const signUpResponse = await axios({
     method: 'POST',
     url: `${config.getEndpoint()}/api/auth/sign-up?appId=${config.getAppId()}`,
     data: {
       username,
-      passwordSecureHash,
+      passwordToken,
       publicKey,
-      encryptionKeySalt,
-      dhKeySalt,
-      hmacKeySalt,
+      passwordSalts,
+      keySalts,
       email,
       profile,
-      pbkdfKeySalt,
-      passwordEncryptedSeed
+      passwordBasedBackup
     },
     timeout: TEN_SECONDS_MS
   })
@@ -26,13 +23,22 @@ const signUp = async (username, passwordSecureHash, publicKey, encryptionKeySalt
   return signUpResponse.data
 }
 
-const signIn = async (username, passwordSecureHash) => {
+const getPasswordSalts = async (username) => {
+  const passwordSaltsResponse = await axios({
+    method: 'GET',
+    url: `${config.getEndpoint()}/api/auth/get-password-salts?appId=${config.getAppId()}&username=${username}`,
+    timeout: TEN_SECONDS_MS
+  })
+  return passwordSaltsResponse.data
+}
+
+const signIn = async (username, passwordToken) => {
   const signInResponse = await axios({
     method: 'POST',
     url: `${config.getEndpoint()}/api/auth/sign-in?appId=${config.getAppId()}`,
     data: {
       username,
-      passwordSecureHash,
+      passwordToken,
     },
     timeout: TEN_SECONDS_MS
   })
@@ -62,21 +68,10 @@ const getServerPublicKey = async () => {
   return serverPublicKey
 }
 
-const forgotPassword = async (username) => {
-  await axios({
-    method: 'POST',
-    url: `${config.getEndpoint()}/api/auth/forgot-password?appId=${config.getAppId()}`,
-    data: {
-      username
-    },
-    timeout: TEN_SECONDS_MS
-  })
-}
-
 export default {
   signUp,
+  getPasswordSalts,
   signIn,
   signInWithSession,
   getServerPublicKey,
-  forgotPassword
 }

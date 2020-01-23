@@ -4,6 +4,7 @@ import adminLogic from './components/Admin/logic'
 import Dashboard from './components/Dashboard/Dashboard'
 import AppUsersTable from './components/Dashboard/AppUsersTable'
 import EditAdmin from './components/Admin/EditAdmin'
+import UnknownError from './components/Admin/UnknownError'
 
 export default class App extends Component {
   constructor(props) {
@@ -13,30 +14,37 @@ export default class App extends Component {
       mode: undefined,
       signedIn: undefined,
       email: undefined,
-      fullName: undefined
+      fullName: undefined,
+      paymentStatus: undefined,
+      loadingPaymentStatus: true,
+      errorGettingPaymentStatus: false,
     }
 
     this.handleSignOut = this.handleSignOut.bind(this)
     this.handleUpdateAccount = this.handleUpdateAccount.bind(this)
     this.handleReadHash = this.handleReadHash.bind(this)
+    this.handleUpdatePaymentStatus = this.handleUpdatePaymentStatus.bind(this)
   }
 
   async componentDidMount() {
     window.addEventListener('hashchange', this.handleReadHash, false)
-    this.handleReadHash()
+    const signedIn = this.handleReadHash()
 
-    try {
-      const paymentStatus = await adminLogic.getPaymentStatus()
-      if (this.state.signedIn && paymentStatus !== 'active') {
-        if (paymentStatus === 'past_due') {
+    let paymentStatus = undefined
+    if (signedIn) {
+      try {
+        paymentStatus = await adminLogic.getPaymentStatus()
+
+        if (this.state.signedIn && paymentStatus === 'past_due') {
           window.alert('Please update your payment method!')
-        } else {
-          window.alert('You are using the free version of Userbase!')
         }
+
+      } catch (e) {
+        this.setState({ errorGettingPaymentStatus: true })
       }
-    } catch (e) {
-      // do nothing
     }
+
+    this.setState({ paymentStatus, loadingPaymentStatus: false })
   }
 
   componentWillUnmount() {
@@ -61,14 +69,19 @@ export default class App extends Component {
     const email = session && session.email
     const fullName = session && session.fullName
 
-    this.setState({ signedIn })
+    const updatedState = { signedIn }
 
     if (email !== this.state.email) {
-      this.setState({ email })
+      updatedState.email = email
     }
 
     if (fullName !== this.state.fullName) {
-      this.setState({ fullName })
+      updatedState.fullName = fullName
+    }
+
+    if (!signedIn && this.state.signedIn) {
+      updatedState.paymentStatus = undefined
+      updatedState.errorGettingPaymentStatus = false
     }
 
     const hashRoute = window.location.hash.substring(1)
@@ -76,36 +89,46 @@ export default class App extends Component {
     switch (hashRoute) {
       case 'create-admin':
       case 'sign-in':
-        return signedIn
+        signedIn
           ? window.location.hash = ''
-          : this.setState({ mode: hashRoute })
+          : this.setState({ mode: hashRoute, ...updatedState })
+        break
 
       case 'edit-account':
-        return signedIn
-          ? this.setState({ mode: hashRoute })
+        signedIn
+          ? this.setState({ mode: hashRoute, ...updatedState })
           : window.location.hash = ''
+        break
 
       case 'success':
         window.alert('Payment successful!')
-        return window.location.hash = ''
+        window.location.hash = ''
+        break
 
       case 'update-success':
         window.alert('Payment method saved!')
-        return window.location.hash = ''
+        window.location.hash = ''
+        break
 
       default:
         if (hashRoute && hashRoute.substring(0, 4) === 'app=' && signedIn) {
-          return this.setState({ mode: 'app-users-table' })
+          this.setState({ mode: 'app-users-table', ...updatedState })
+        } else {
+          signedIn
+            ? this.setState({ mode: 'dashboard', ...updatedState })
+            : window.location.hash = session ? 'sign-in' : 'create-admin'
         }
-
-        return signedIn
-          ? this.setState({ mode: 'dashboard' })
-          : window.location.hash = session ? 'sign-in' : 'create-admin'
     }
+
+    return signedIn
+  }
+
+  handleUpdatePaymentStatus(paymentStatus) {
+    this.setState({ paymentStatus })
   }
 
   render() {
-    const { mode, signedIn, email, fullName } = this.state
+    const { mode, signedIn, email, fullName, paymentStatus, loadingPaymentStatus, errorGettingPaymentStatus } = this.state
 
     if (!mode) {
       return <div />
@@ -137,40 +160,55 @@ export default class App extends Component {
           </div>
         </nav>
 
-        {(() => {
-          switch (mode) {
-            case 'create-admin':
-              return <AdminForm
-                formType='Create Admin'
-                key='create-admin'
-                placeholderEmail=''
-              />
+        {errorGettingPaymentStatus
+          ? <div className='container content text-xs xs:text-base'>
+            <UnknownError noMarginTop />
+          </div>
+          : loadingPaymentStatus
+            ? <div className='text-center'>< div className='loader w-6 h-6 inline-block' /></div>
+            : (() => {
+              switch (mode) {
+                case 'create-admin':
+                  return <AdminForm
+                    formType='Create Admin'
+                    key='create-admin'
+                    placeholderEmail=''
+                  />
 
-            case 'sign-in':
-              return <AdminForm
-                formType='Sign In'
-                key='sign-in'
-                placeholderEmail={email}
-              />
+                case 'sign-in':
+                  return <AdminForm
+                    formType='Sign In'
+                    key='sign-in'
+                    placeholderEmail={email}
+                    handleUpdatePaymentStatus={this.handleUpdatePaymentStatus}
+                  />
 
-            case 'dashboard':
-              return <Dashboard />
+                case 'dashboard':
+                  return <Dashboard paymentStatus={paymentStatus} />
 
-            case 'app-users-table':
-              return <AppUsersTable
-                appName={decodeURIComponent(window.location.hash.substring(5))}
-                key={window.location.hash} // re-renders on hash change
-              />
+                case 'app-users-table':
+                  return <AppUsersTable
+                    appName={decodeURIComponent(window.location.hash.substring(5))}
+                    paymentStatus={paymentStatus}
+                    key={window.location.hash} // re-renders on hash change
+                  />
 
-            case 'edit-account':
-              return <EditAdmin handleUpdateAccount={this.handleUpdateAccount} />
+                case 'edit-account':
+                  return <EditAdmin
+                    paymentStatus={paymentStatus}
+                    handleUpdateAccount={this.handleUpdateAccount}
+                    handleUpdatePaymentStatus={this.handleUpdatePaymentStatus}
+                    fullName={fullName}
+                    email={email}
+                  />
 
-            default:
-              return null
-          }
-        })()}
+                default:
+                  return null
+              }
+            })()
+        }
 
-      </div>
+      </div >
     )
   }
 }

@@ -5,15 +5,12 @@ const {
   signUp,
   signIn,
   signOut,
-  forgotPassword,
   updateUser,
   deleteUser,
-  importKey,
-  getLastUsedUsername,
   openDatabase,
   insertItem,
   updateItem,
-  transaction
+  buildTransaction
 } = userbase
 
 // TypeScript Version: 2.1
@@ -21,56 +18,38 @@ const {
 // $ExpectType Promise<Session>
 init({ appId: 'tid' })
 
-// $ExpectType Promise<Session>
-init({ appId: 'tid', endpoint: 'tendpoint' })
-
-// $ExpectType Promise<Session>
-init({ appId: 'tid', keyNotFoundHandler: () => {} })
-
 // $ExpectError
 init({})
 
 // $ExpectType Promise<UserResult>
-signUp('tuser', 'tpass')
+signUp({ username: 'tuser', password: 'tpass' })
 
 // $ExpectType Promise<UserResult>
-signUp('tuser', 'tpass', 'test@test.com')
+signUp({ username: 'tuser', password: 'tpass', email: 'test@test.com' })
 
 // $ExpectType Promise<UserResult>
-signUp('tuser', 'tpass', 'test@test.com', {})
+signUp({ username: 'tuser', password: 'tpass', email: 'test@test.com', profile: {} })
 
 // $ExpectType Promise<UserResult>
-signUp('tuser', 'tpass', 'test@test.com', { tkey: 'tval' })
+signUp({ username: 'tuser', password: 'tpass', email: 'test@test.com', profile: { tkey: 'tval' } })
 
 // $ExpectError
-signUp('tuser', 'tpass', 'test@test.com', { tkey: {} })
-
-// $ExpectType Promise<UserResult>
-signUp('tuser', 'tpass', 'test@test.com', { tkey: 'tval' }, () => {})
-
-// $ExpectType Promise<UserResult>
-signUp('tuser', 'tpass', 'test@test.com', { tkey: 'tval' }, () => new Promise(() => {}))
+signUp({ username: 'tuser', password: 'tpass', email: 'test@test.com', profile: { tkey: {} } })
 
 // $ExpectError
-signUp('tuser', 'tpass', 'test@test.com', { tkey: 'tval' }, () => Promise.resolve(0))
-
-// $ExpectType Promise<UserResult>
-signUp('tuser', 'tpass', 'test@test.com', { tkey: 'tval' }, () => {}, true)
-
-// $ExpectType Promise<UserResult>
-signUp('tuser', 'tpass', 'test@test.com', { tkey: 'tval' }, () => {}, true, true)
+signUp({ username: 'tuser' })
 
 // $ExpectError
-signUp('tuser')
+signUp({})
 
 // $ExpectType Promise<UserResult>
-signIn('tuser', 'tpass')
+signIn({ username: 'tuser', password: 'tpass' })
 
 // $ExpectType Promise<UserResult>
-signIn('tuser', 'tpass', true)
+signIn({ username: 'tuser', password: 'tpass', rememberMe: true })
 
 // $ExpectError
-signIn('tuser')
+signIn({ username: 'tuser' })
 
 // $ExpectType Promise<void>
 signOut()
@@ -79,19 +58,13 @@ signOut()
 signOut('tuser')
 
 // $ExpectType Promise<void>
-forgotPassword('tuser')
-
-// $ExpectError
-forgotPassword()
-
-// $ExpectType Promise<void>
 updateUser({})
 
 // $ExpectType Promise<void>
 updateUser({ username: 'tusernew' })
 
 // $ExpectType Promise<void>
-updateUser({ password: 'tpassnew' })
+updateUser({ currentPassword: 'tpasscurrent', newPassword: 'tpassnew' })
 
 // $ExpectType Promise<void>
 updateUser({ email: 'testnew@test.com' })
@@ -112,50 +85,44 @@ updateUser({ profile: 'invalid' })
 deleteUser()
 
 // $ExpectType Promise<void>
-importKey('tkey')
+openDatabase({ databaseName: 'tdb', changeHandler: (items) => { } })
 
 // $ExpectError
-importKey()
-
-// $ExpectType string | undefined
-getLastUsedUsername()
+openDatabase({ databaseName: 'tdb' })
 
 // $ExpectType Promise<void>
-openDatabase('tdb', (items) => {})
-
-// $ExpectError
-openDatabase('tdb')
+insertItem({ databaseName: 'tdb', item: { name: 'tname' } })
 
 // $ExpectType Promise<void>
-insertItem('tdb', { name: 'tname' })
+insertItem({ databaseName: 'tdb', item: { name: 'tname' }, itemId: 'tid' })
+
+// $ExpectError
+insertItem({ databaseName: 'tdb', item: { name: 'tname' }, itemId: 1 })
 
 // $ExpectType Promise<void>
-insertItem('tdb', { name: 'tname' }, 'tid')
+updateItem({ databaseName: 'tdb', item: { name: 'tname' }, itemId: 'tid' })
 
 // $ExpectError
-insertItem('tdb', { name: 'tname' }, 1)
+updateItem({ databaseName: 'tdb', item: { name: 'tname' } })
 
 // $ExpectType Promise<void>
-updateItem('tdb', { name: 'tname' }, 'tid')
+buildTransaction({
+  databaseName: 'tdb',
+  operations: [
+    { command: 'Insert', item: { name: 'tname' } },
+    { command: 'Update', item: { name: 'tname' }, itemId: 'tid' },
+    { command: 'Delete', itemId: 'tid' }
+  ]
+})
 
 // $ExpectError
-updateItem('tdb', { name: 'tname' })
-
-// $ExpectType Promise<void>
-transaction('tdb', [
-  { command: 'Insert', item: { name: 'tname' }},
-  { command: 'Update', item: { name: 'tname' }, id: 'tid' },
-  { command: 'Delete', id: 'tid' }
-])
+buildTransaction({ databaseName: 'tdb' })
 
 // $ExpectError
-transaction('tdb')
+buildTransaction({ databaseName: 'tdb', operations: [{ command: 'Insert' }] })
 
 // $ExpectError
-transaction('tdb', [{ command: 'Insert' }])
+buildTransaction({ databaseName: 'tdb', operations: [{ command: 'Update', item: { name: 'tname' } }] })
 
 // $ExpectError
-transaction('tdb', [{ command: 'Update', item: { name: 'tname' }}])
-
-// $ExpectError
-transaction('tdb', [{ command: 'Delete' }])
+buildTransaction({ databaseName: 'tdb', operations: [{ command: 'Delete' }] })

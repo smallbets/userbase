@@ -1,57 +1,85 @@
-const setCurrentSession = (username, signedIn, sessionId, creationDate) => {
+const _getSeedName = (appId, username) => `userbaseSeed.${appId}.${username}`
+
+const setCurrentSession = (rememberMe, username, signedIn, sessionId, creationDate) => {
   const session = { username, signedIn, sessionId, creationDate }
   const sessionString = JSON.stringify(session)
-  localStorage.setItem('userbaseCurrentSession', sessionString)
+
+  if (rememberMe === 'local') {
+    localStorage.setItem('userbaseCurrentSession', sessionString)
+  } else if (rememberMe === 'session') {
+    sessionStorage.setItem('userbaseCurrentSession', sessionString)
+  }
 }
 
 const getCurrentSession = () => {
-  const currentSessionString = localStorage.getItem('userbaseCurrentSession')
-  return JSON.parse(currentSessionString)
+  const sessionStorageCurrentSessionString = sessionStorage.getItem('userbaseCurrentSession')
+
+  if (sessionStorageCurrentSessionString) {
+    const currentSession = JSON.parse(sessionStorageCurrentSessionString)
+
+    if (!currentSession.signedIn) {
+      const localCurrentSessionString = localStorage.getItem('userbaseCurrentSession')
+
+      if (localCurrentSessionString) {
+        const localCurrentSession = JSON.parse(localCurrentSessionString)
+
+        // allows session from localStorage to override sessionStorage if signed in
+        // to localStorage session and not signed in to sessionStorage session
+        if (localCurrentSession.signedIn) {
+          return {
+            ...localCurrentSession,
+            rememberMe: 'local'
+          }
+        }
+      }
+    }
+
+    return {
+      ...JSON.parse(sessionStorageCurrentSessionString),
+      rememberMe: 'session'
+    }
+  }
+
+  const localSessionString = localStorage.getItem('userbaseCurrentSession')
+  return localSessionString && {
+    ...JSON.parse(localSessionString),
+    rememberMe: 'local'
+  }
 }
 
-const saveSeedString = (username, seedString) => {
-  localStorage.setItem('userbaseSeed.' + username, seedString)
+const saveSeedString = (rememberMe, appId, username, seedString) => {
+  if (rememberMe === 'local') {
+    localStorage.setItem(_getSeedName(appId, username), seedString)
+  } else if (rememberMe === 'session') {
+    sessionStorage.setItem(_getSeedName(appId, username), seedString)
+  }
 }
 
-const removeSeedString = (username) => {
-  localStorage.removeItem('userbaseSeed.' + username)
+const removeSeedString = (appId, username) => {
+  const seedName = _getSeedName(appId, username)
+  sessionStorage.removeItem(seedName)
+  localStorage.removeItem(seedName)
 }
 
-const getSeedString = (username) => {
-  return localStorage.getItem('userbaseSeed.' + username)
+const getSeedString = (appId, username) => {
+  const seedName = _getSeedName(appId, username)
+  return sessionStorage.getItem(seedName) || localStorage.getItem(seedName)
 }
 
-const signInSession = (username, sessionId, creationDate) => {
+const signInSession = (rememberMe, username, sessionId, creationDate) => {
   const signedIn = true
-  setCurrentSession(username, signedIn, sessionId, creationDate)
+  setCurrentSession(rememberMe, username, signedIn, sessionId, creationDate)
 }
 
-const signOutSession = (username) => {
+const signOutSession = (rememberMe, username) => {
   const signedIn = false
-  setCurrentSession(username, signedIn)
+  setCurrentSession(rememberMe, username, signedIn)
 }
 
-const setSeedRequest = (username, seedRequestPrivateKey, seedRequestPublicKey) => {
-  const seedRequest = seedRequestPrivateKey + '|' + seedRequestPublicKey
-  localStorage.setItem(`userbaseSeedRequest.${username}`, seedRequest)
+const removeCurrentSession = () => {
+  sessionStorage.removeItem('userbaseCurrentSession')
+  localStorage.removeItem('userbaseCurrentSession')
 }
-
-const getSeedRequest = (username) => {
-  const seedRequest = localStorage.getItem(`userbaseSeedRequest.${username}`)
-  if (!seedRequest) return null
-
-  const seedRequestArray = seedRequest.split('|')
-  const seedRequestPrivateKey = seedRequestArray[0]
-  const seedRequestPublicKey = seedRequestArray[1]
-
-  return { seedRequestPrivateKey, seedRequestPublicKey }
-}
-
-const removeSeedRequest = (username) => {
-  return localStorage.removeItem(`userbaseSeedRequest.${username}`)
-}
-
-const removeCurrentSession = () => localStorage.removeItem('userbaseCurrentSession')
 
 export default {
   signInSession,
@@ -60,8 +88,5 @@ export default {
   saveSeedString,
   removeSeedString,
   getSeedString,
-  setSeedRequest,
-  getSeedRequest,
-  removeSeedRequest,
   removeCurrentSession,
 }

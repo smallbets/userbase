@@ -1,5 +1,16 @@
 import statusCodes from '../statusCodes'
 
+class AppIdAlreadySet extends Error {
+  constructor(appId, ...params) {
+    super(appId, ...params)
+
+    this.name = 'AppIdAlreadySet'
+    this.message = 'Application ID already set.'
+    this.status = statusCodes['Conflict']
+    this.appId = appId
+  }
+}
+
 class AppIdMustBeString extends Error {
   constructor(...params) {
     super(...params)
@@ -20,6 +31,7 @@ class AppIdCannotBeBlank extends Error {
 }
 
 export default {
+  AppIdAlreadySet,
   AppIdMustBeString,
   AppIdCannotBeBlank,
 }
