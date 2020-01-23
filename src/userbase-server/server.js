@@ -310,11 +310,11 @@ async function start(express, app, userbaseConfig = {}) {
   }
 }
 
-function createAdmin(email, password, fullName, adminId, storePasswordInSecretsManager = false) {
-  return admin.createAdmin(email, password, fullName, adminId, storePasswordInSecretsManager)
+function createAdmin({ email, password, fullName, adminId, receiveEmailUpdates, storePasswordInSecretsManager = false }) {
+  return admin.createAdmin(email, password, fullName, adminId, receiveEmailUpdates, storePasswordInSecretsManager)
 }
 
-function createApp(appName, adminId, appId) {
+function createApp({ appName, adminId, appId }) {
   return appController.createApp(appName, adminId, appId)
 }
 

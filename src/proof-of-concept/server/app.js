@@ -51,7 +51,13 @@ async function setupAdmin() {
       storePasswordInSecretsManager = true
     }
 
-    await userbaseServer.createAdmin(ADMIN_EMAIL, adminPassword, ADMIN_FULL_NAME, ADMIN_ID, storePasswordInSecretsManager)
+    await userbaseServer.createAdmin({
+      email: ADMIN_EMAIL,
+      password: adminPassword,
+      fullName: ADMIN_FULL_NAME,
+      adminId: ADMIN_ID,
+      storePasswordInSecretsManager
+    })
   } catch (e) {
     if (!e || e.status !== CONFLICT_STATUS_CODE) {
       console.log(`Failed to set up new admin account with ${JSON.stringify(e)}`)
@@ -61,7 +67,11 @@ async function setupAdmin() {
 
 async function setupApp() {
   try {
-    await userbaseServer.createApp(APP_NAME, ADMIN_ID, APP_ID)
+    await userbaseServer.createApp({
+      appName: APP_NAME,
+      adminId: ADMIN_ID,
+      appId: APP_ID
+    })
   } catch (e) {
     if (!e || e.status !== CONFLICT_STATUS_CODE) {
       console.log(`Failed to set up new app with ${JSON.stringify(e)}`)

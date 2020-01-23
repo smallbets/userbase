@@ -51,7 +51,7 @@ const setSessionCookie = (res, sessionId) => {
   res.cookie(SESSION_COOKIE_NAME, sessionId, cookieResponseHeaders)
 }
 
-async function createAdmin(email, password, fullName, adminId = uuidv4(), storePasswordInSecretsManager = false) {
+async function createAdmin(email, password, fullName, adminId = uuidv4(), receiveEmailUpdates, storePasswordInSecretsManager = false) {
   if (!email || !password || !fullName) throw {
     status: statusCodes['Bad Request'],
     data: 'Missing required items'
@@ -78,7 +78,8 @@ async function createAdmin(email, password, fullName, adminId = uuidv4(), storeP
         'password-hash': passwordHash,
         'full-name': fullName,
         'admin-id': adminId,
-        'creation-date': creationDate
+        'creation-date': creationDate,
+        'receive-email-updates': receiveEmailUpdates ? true : false
       }
 
       const adminParams = {
@@ -139,11 +140,12 @@ exports.createAdminController = async function (req, res) {
   const email = req.body.email
   const password = req.body.password
   const fullName = req.body.fullName
+  const receiveEmailUpdates = req.body.receiveEmailUpdates
 
   const adminId = uuidv4()
   try {
     const storePasswordInSecretsManager = false
-    await createAdmin(email, password, fullName, adminId, storePasswordInSecretsManager)
+    await createAdmin(email, password, fullName, adminId, receiveEmailUpdates, storePasswordInSecretsManager)
   } catch (e) {
     return res
       .status(e.status)
