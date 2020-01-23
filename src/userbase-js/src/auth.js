@@ -217,12 +217,14 @@ const signUp = async (params) => {
   try {
     if (typeof params !== 'object') throw new errors.ParamsMustBeObject
 
-    const { username, password, email, profile, rememberMe = false } = params
+    const { username, password, email, profile, rememberMe = 'session' } = params
 
     _validateSignUpOrSignInInput(username, password)
     if (profile) _validateProfile(profile)
     if (email && typeof email !== 'string') throw new errors.EmailNotValid
-    if (typeof rememberMe !== 'boolean') throw new errors.RememberMeMustBeBoolean
+    if (!config.REMEMBER_ME_OPTIONS[rememberMe]) {
+      throw new errors.RememberMeValueNotValid(config.REMEMBER_ME_OPTIONS)
+    }
 
     const appId = config.getAppId()
     const lowerCaseUsername = username.toLowerCase()
@@ -266,7 +268,7 @@ const signUp = async (params) => {
       case 'ProfileKeyTooLong':
       case 'ProfileValueMustBeString':
       case 'ProfileValueTooLong':
-      case 'RememberMeMustBeBoolean':
+      case 'RememberMeValueNotValid':
       case 'TrialExceededLimit':
       case 'AppIdNotSet':
       case 'AppIdNotValid':
@@ -377,10 +379,12 @@ const signIn = async (params) => {
   try {
     if (typeof params !== 'object') throw new errors.ParamsMustBeObject
 
-    const { username, password, rememberMe = false } = params
+    const { username, password, rememberMe = 'session' } = params
 
     _validateSignUpOrSignInInput(username, password)
-    if (typeof rememberMe !== 'boolean') throw new errors.RememberMeMustBeBoolean
+    if (!config.REMEMBER_ME_OPTIONS[rememberMe]) {
+      throw new errors.RememberMeValueNotValid(config.REMEMBER_ME_OPTIONS)
+    }
 
     const appId = config.getAppId()
     const lowerCaseUsername = username.toLowerCase()
@@ -422,7 +426,7 @@ const signIn = async (params) => {
       case 'PasswordTooShort':
       case 'PasswordTooLong':
       case 'PasswordMustBeString':
-      case 'RememberMeMustBeBoolean':
+      case 'RememberMeValueNotValid':
       case 'AppIdNotSet':
       case 'AppIdNotValid':
       case 'UserAlreadySignedIn':

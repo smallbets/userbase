@@ -78,7 +78,7 @@ class Connection {
     }
   }
 
-  connect(session, seedString = null, rememberMe = false, reconnectDelay, state) {
+  connect(session, seedString = null, rememberMe, reconnectDelay, state) {
     if (this.connected) throw new WebSocketError(wsAlreadyConnected, this.session.username)
 
     return new Promise((resolve, reject) => {

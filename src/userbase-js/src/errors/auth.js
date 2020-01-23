@@ -218,12 +218,12 @@ class ProfileValueTooLong extends Error {
   }
 }
 
-class RememberMeMustBeBoolean extends Error {
-  constructor(...params) {
-    super(...params)
+class RememberMeValueNotValid extends Error {
+  constructor(options, ...params) {
+    super(options, ...params)
 
-    this.name = 'RememberMeMustBeBoolean'
-    this.message = 'Remember me value must be a boolean.'
+    this.name = 'RememberMeValueNotValid'
+    this.message = `Remember me value must be one of ${JSON.stringify(Object.keys(options))}.`
     this.status = statusCodes['Bad Request']
   }
 }
@@ -290,7 +290,7 @@ export default {
   ProfileKeyTooLong,
   ProfileValueMustBeString,
   ProfileValueTooLong,
-  RememberMeMustBeBoolean,
+  RememberMeValueNotValid,
   ParamsMissing,
   TrialExceededLimit,
   CurrentPasswordMissing,
