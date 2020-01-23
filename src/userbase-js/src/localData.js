@@ -4,9 +4,9 @@ const setCurrentSession = (rememberMe, username, signedIn, sessionId, creationDa
   const session = { username, signedIn, sessionId, creationDate }
   const sessionString = JSON.stringify(session)
 
-  if (rememberMe) {
+  if (rememberMe === 'local') {
     localStorage.setItem('userbaseCurrentSession', sessionString)
-  } else {
+  } else if (rememberMe === 'session') {
     sessionStorage.setItem('userbaseCurrentSession', sessionString)
   }
 }
@@ -14,19 +14,43 @@ const setCurrentSession = (rememberMe, username, signedIn, sessionId, creationDa
 const getCurrentSession = () => {
   const sessionStorageCurrentSessionString = sessionStorage.getItem('userbaseCurrentSession')
 
-  if (sessionStorageCurrentSessionString) return JSON.parse(sessionStorageCurrentSessionString)
+  if (sessionStorageCurrentSessionString) {
+    const currentSession = JSON.parse(sessionStorageCurrentSessionString)
 
-  const currentSessionString = localStorage.getItem('userbaseCurrentSession')
-  return currentSessionString && {
-    ...JSON.parse(currentSessionString),
-    rememberMe: true
+    if (!currentSession.signedIn) {
+      const localCurrentSessionString = localStorage.getItem('userbaseCurrentSession')
+
+      if (localCurrentSessionString) {
+        const localCurrentSession = JSON.parse(localCurrentSessionString)
+
+        // allows session from localStorage to override sessionStorage if signed in
+        // to localStorage session and not signed in to sessionStorage session
+        if (localCurrentSession.signedIn) {
+          return {
+            ...localCurrentSession,
+            rememberMe: 'local'
+          }
+        }
+      }
+    }
+
+    return {
+      ...JSON.parse(sessionStorageCurrentSessionString),
+      rememberMe: 'session'
+    }
+  }
+
+  const localSessionString = localStorage.getItem('userbaseCurrentSession')
+  return localSessionString && {
+    ...JSON.parse(localSessionString),
+    rememberMe: 'local'
   }
 }
 
 const saveSeedString = (rememberMe, appId, username, seedString) => {
-  if (rememberMe) {
+  if (rememberMe === 'local') {
     localStorage.setItem(_getSeedName(appId, username), seedString)
-  } else {
+  } else if (rememberMe === 'session') {
     sessionStorage.setItem(_getSeedName(appId, username), seedString)
   }
 }

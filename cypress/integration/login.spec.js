@@ -28,11 +28,11 @@ describe('Login - Signup Testing', function () {
     })
   })
 
-  it('Signup/Logout/Signin a new user in same browser, rememberMe=true', function () {
+  it('Signup/Logout/Signin a new user in same browser, rememberMe=local', function () {
 
     let randomInfo
     let loginInfo
-    cy.getRandomInfoWithParams(null, null, true).then((userInfo) => {
+    cy.getRandomInfoWithParams(null, null, 'local').then((userInfo) => {
       randomInfo = userInfo
       loginInfo = { username: userInfo.username, password: userInfo.password }
     })
@@ -70,10 +70,10 @@ describe('Login - Signup Testing', function () {
     })
   })
 
-  it('Signup/Logout/Signin a new user in same browser, rememberMe=false', function () {
+  it('Signup/Logout/Signin a new user in same browser, rememberMe=session', function () {
     let randomInfo
     let loginInfo
-    cy.getRandomInfoWithParams(null, null, false).then((userInfo) => {
+    cy.getRandomInfoWithParams(null, null, 'session').then((userInfo) => {
       randomInfo = userInfo
       loginInfo = { username: userInfo.username, password: userInfo.password }
     })
