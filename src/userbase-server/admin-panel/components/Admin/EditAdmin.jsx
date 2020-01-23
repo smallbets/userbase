@@ -231,7 +231,7 @@ export default class EditAdmin extends Component {
       && (email === this.props.email || !email)
 
     return (
-      <div className='container content text-xs xs:text-base text-center mb-8'>
+      <div className='container content text-xs sm:text-base text-center mb-8'>
 
         {loading
           ? <div className='loader inline-block w-6 h-6' />
@@ -266,7 +266,8 @@ export default class EditAdmin extends Component {
             :
             <div>
               <div className='font-light text-left mb-4'>
-                You are currently using the <span className='font-bold'>free</span> version of Userbase.
+                <p>Your trial account is limited to 3 users.</p>
+                <p>Remove this limit with a Userbase subscription for only $49 per year.</p>
               </div>
 
               {paymentStatus === 'cancel_at_period_end'
@@ -283,7 +284,7 @@ export default class EditAdmin extends Component {
                   type='button'
                   role='link'
                   disabled={loadingCheckout}
-                  value={loadingCheckout ? 'Loading...' : 'Purchase Subscription'}
+                  value={loadingCheckout ? 'Loading...' : 'Buy Subscription'}
                   onClick={this.handleCheckout}
                 />
               }
@@ -296,14 +297,16 @@ export default class EditAdmin extends Component {
 
         <hr className='border border-t-0 border-gray-400 mt-8 mb-4' />
 
+        <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Edit Account</div>
+
         <form onSubmit={this.handleUpdateAcount}>
           <div className='table'>
 
             <div className='table-row'>
-              <div className='table-cell p-2 text-right'>Full Name</div>
-              <div className='table-cell p-2'>
+              <div className='table-cell p-2 w-32 sm:w-40 text-right'>Full Name</div>
+              <div className='table-cell p-2 w-32 sm:w-40'>
                 <input
-                  className='font-light text-xs xs:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
+                  className='font-light text-xs sm:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
                   type='text'
                   name='fullName'
                   autoComplete='name'
@@ -314,10 +317,10 @@ export default class EditAdmin extends Component {
             </div>
 
             <div className='table-row'>
-              <div className='table-cell p-2 text-right'>Email</div>
-              <div className='table-cell p-2'>
+              <div className='table-cell p-2 w-32 sm:w-40 text-right'>Email</div>
+              <div className='table-cell p-2 w-32 sm:w-40'>
                 <input
-                  className='font-light text-xs xs:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
+                  className='font-light text-xs sm:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
                   type='email'
                   name='email'
                   autoComplete='email'
@@ -348,14 +351,16 @@ export default class EditAdmin extends Component {
 
         <hr className='border border-t-0 border-gray-400 mt-8 mb-6' />
 
+        <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Update Password</div>
+
         <form onSubmit={this.handleChangePassword}>
           <div className='table'>
 
             <div className='table-row'>
-              <div className='table-cell p-2 text-right'>Current Password</div>
-              <div className='table-cell p-2 align-middle'>
+              <div className='table-cell p-2 w-32 sm:w-40 text-right'>Current Password</div>
+              <div className='table-cell p-2 w-32 sm:w-40 align-middle'>
                 <input
-                  className='font-light text-xs xs:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
+                  className='font-light text-xs sm:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
                   type='password'
                   name='currentPassword'
                   autoComplete='current-password'
@@ -366,8 +371,8 @@ export default class EditAdmin extends Component {
             </div>
 
             <div className='table-row'>
-              <div className='table-cell p-2 text-right'>New Password</div>
-              <div className='table-cell p-2 align-middle'>
+              <div className='table-cell p-2 w-32 sm:w-40 text-right'>New Password</div>
+              <div className='table-cell p-2 w-32 sm:w-40 align-middle'>
                 <input
                   className='font-light text-xs xs:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
                   type='password'
@@ -399,6 +404,8 @@ export default class EditAdmin extends Component {
         </form>
 
         <hr className='border border-t-0 border-gray-400 mt-8 mb-6' />
+
+        <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Danger Zone</div>
 
         <input
           className='btn w-40'
