@@ -198,6 +198,8 @@ export default class App extends Component {
                     paymentStatus={paymentStatus}
                     handleUpdateAccount={this.handleUpdateAccount}
                     handleUpdatePaymentStatus={this.handleUpdatePaymentStatus}
+                    fullName={fullName}
+                    email={email}
                   />
 
                 default:
