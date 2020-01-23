@@ -7,8 +7,8 @@ export default class EditAdmin extends Component {
   constructor(props) {
     super(props)
     this.state = {
-      email: '',
-      fullName: '',
+      email: this.props.email,
+      fullName: this.props.fullName,
       password: '',
       loadingUpdateAdmin: false,
       loadingDeleteAdmin: false,
@@ -66,17 +66,29 @@ export default class EditAdmin extends Component {
   }
 
   async handleUpdateAcount(event) {
-    const { email, password, fullName } = this.state
+    const { password } = this.state
     event.preventDefault()
 
-    if (!email && !password && !fullName) return
+    if (this.state.loadingUpdateAdmin) return
+
+    const fullName = this.state.fullName !== this.props.fullName && this.state.fullName
+    const email = this.state.email !== this.props.email && this.state.email
+
+    if (!password && !fullName && !email) return
 
     this.setState({ loadingUpdateAdmin: true })
 
     try {
-      await adminLogic.updateAdmin({ email, password, fullName })
+      await adminLogic.updateAdmin({ fullName, email, password })
       if (email || fullName) this.props.handleUpdateAccount(email, fullName)
-      if (this._isMounted) this.setState({ email: '', password: '', fullName: '', loadingUpdateAdmin: false })
+      if (this._isMounted) {
+        this.setState({
+          fullName: fullName || this.props.fullName,
+          email: email || this.props.email,
+          password: '',
+          loadingUpdateAdmin: false
+        })
+      }
     } catch (e) {
       if (this._isMounted) this.setState({ errorUpdatingAdmin: e.message, loadingUpdateAdmin: false })
     }
@@ -182,6 +194,10 @@ export default class EditAdmin extends Component {
       errorResumingSubscription,
       loading
     } = this.state
+
+    const disableUpdateButton = !password
+      && (fullName === this.props.fullName || !fullName)
+      && (email === this.props.email || !email)
 
     return (
       <div className='container content text-xs xs:text-base text-center mb-8'>
@@ -302,7 +318,7 @@ export default class EditAdmin extends Component {
               className='btn w-40 mt-4'
               type='submit'
               value={loadingUpdateAdmin ? 'Updating...' : 'Update Account'}
-              disabled={(!fullName && !email && !password) || loadingDeleteAdmin || loadingUpdateAdmin}
+              disabled={disableUpdateButton || loadingDeleteAdmin || loadingUpdateAdmin}
             />
 
             {errorUpdatingAdmin && (
@@ -339,5 +355,7 @@ export default class EditAdmin extends Component {
 EditAdmin.propTypes = {
   handleUpdateAccount: func,
   paymentStatus: string,
-  handleUpdatePaymentStatus: func
+  handleUpdatePaymentStatus: func,
+  fullName: string,
+  email: string
 }
