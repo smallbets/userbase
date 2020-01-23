@@ -40,9 +40,18 @@ export default class AppUsersTable extends Component {
         try {
           appUser['formattedCreationDate'] = new Date(appUser['creation-date'])
             .toLocaleDateString([], {
-              dateStyle: 'medium',
-              timeStyle: 'long'
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: 'numeric',
+              minute: 'numeric',
+              second: 'numeric',
+              timeZoneName: 'short'
             })
+
+          if (appUser['formattedCreationDate'] === new Date(appUser['creation-date']).toLocaleDateString()) {
+            appUser['formattedCreationDate'] = appUser['creation-date']
+          }
         } catch (e) {
           appUser['formattedCreationDate'] = appUser['creation-date']
         }
