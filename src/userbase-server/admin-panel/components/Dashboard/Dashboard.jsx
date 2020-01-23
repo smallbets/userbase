@@ -29,7 +29,14 @@ export default class Dashboard extends Component {
       this._isMounted = true
       document.addEventListener('keydown', this.handleHitEnter, true)
 
-      const apps = await dashboardLogic.listApps()
+      const apps = (await dashboardLogic.listApps())
+        // sort by app name in ascending order
+        .sort((a, b) => {
+          const lowerA = a['app-name'].toLowerCase()
+          const lowerB = b['app-name'].toLowerCase()
+          if (lowerA === lowerB) return 0
+          else return lowerA > lowerB ? 1 : -1
+        })
 
       const activeApps = []
       const deletedApps = []
@@ -71,7 +78,15 @@ export default class Dashboard extends Component {
 
       const app = await adminLogic.createApp(appName)
 
-      if (this._isMounted) this.setState({ activeApps: activeApps.concat(app), appName: '', error: '', loadingApp: false })
+      let insertionIndex = activeApps.findIndex((activeApp) => (activeApp['app-name'].toLowerCase() > app['app-name'].toLowerCase()))
+      if (insertionIndex === -1) {
+        activeApps.push(app)
+      } else {
+        // insert into deleted users at insertion index
+        activeApps.splice(insertionIndex, 0, app)
+      }
+
+      if (this._isMounted) this.setState({ activeApps, appName: '', error: '', loadingApp: false })
     } catch (err) {
       if (this._isMounted) this.setState({ error: err.message, loadingApp: false })
     }

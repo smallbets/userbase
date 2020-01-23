@@ -27,13 +27,25 @@ export default class AppUsersTable extends Component {
     const { appName } = this.props
 
     try {
-      const appUsers = await dashboardLogic.listAppUsers(appName)
+      const appUsers = (await dashboardLogic.listAppUsers(appName))
+        // sort by date in descending order
+        .sort((a, b) => new Date(b['creation-date']) - new Date(a['creation-date']))
 
       const activeUsers = []
       const deletedUsers = []
 
       for (let i = 0; i < appUsers.length; i++) {
         const appUser = appUsers[i]
+
+        try {
+          appUser['formattedCreationDate'] = new Date(appUser['creation-date'])
+            .toLocaleDateString([], {
+              dateStyle: 'medium',
+              timeStyle: 'long'
+            })
+        } catch (e) {
+          appUser['formattedCreationDate'] = appUser['creation-date']
+        }
 
         if (appUser['deleted']) deletedUsers.push(appUser)
         else activeUsers.push(appUser)
@@ -85,11 +97,20 @@ export default class AppUsersTable extends Component {
           const { activeUsers, deletedUsers } = this.state
           const userIndex = getUserIndex()
 
+          // remove user from active users
           const deletedUser = activeUsers.splice(userIndex, 1)[0]
           deletedUser.deleting = undefined
           deletedUser.deleted = true
 
-          this.setState({ activeUsers, deletedUsers: deletedUsers.concat(deletedUser) })
+          let insertionIndex = deletedUsers.findIndex((user) => new Date(deletedUser['creation-date']) > new Date(user['creation-date']))
+          if (insertionIndex === -1) {
+            deletedUsers.push(deletedUser)
+          } else {
+            // insert into deleted users at insertion index
+            deletedUsers.splice(insertionIndex, 0, deletedUser)
+          }
+
+          this.setState({ activeUsers, deletedUsers })
         }
       }
     } catch (e) {
@@ -196,7 +217,7 @@ export default class AppUsersTable extends Component {
                         {activeUsers.map((user) => (
                           <tr key={user['user-id']}>
                             <td className='border border-gray-400 px-4 py-2 font-light'>{user['username']}</td>
-                            <td className='border border-gray-400 px-4 py-2 font-light'>{user['creation-date']}</td>
+                            <td className='border border-gray-400 px-4 py-2 font-light'>{user['formattedCreationDate']}</td>
                             <td className='border border-gray-400 px-4 py-2 font-light'>
 
                               {user['deleting']
@@ -239,7 +260,7 @@ export default class AppUsersTable extends Component {
                           {deletedUsers.map((user) => (
                             <tr key={user['user-id']}>
                               <td className='border border-gray-400 px-4 py-2 font-light text-red-700'>{user['username']}</td>
-                              <td className='border border-gray-400 px-4 py-2 font-light'>{user['creation-date']}</td>
+                              <td className='border border-gray-400 px-4 py-2 font-light'>{user['formattedCreationDate']}</td>
                               <td className='border border-gray-400 px-4 py-2 font-light'>
 
                                 {user['permanentDeleting']
