@@ -127,21 +127,36 @@ const forgotPassword = async (email) => {
   }
 }
 
-const updateAdmin = async ({ email, password, fullName }) => {
+const updateAdmin = async ({ email, fullName }) => {
   try {
     await axios({
       method: 'POST',
       url: `/${VERSION}/admin/update-admin`,
       data: {
         email,
-        password,
         fullName
       },
       timeout: TEN_SECONDS_MS
     })
-    if (email || fullName) updateLocalSession(email, fullName)
+    updateLocalSession(email, fullName)
   } catch (e) {
     errorHandler(e)
+  }
+}
+
+const changePassword = async ({ currentPassword, newPassword }) => {
+  try {
+    await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/change-password`,
+      data: {
+        currentPassword,
+        newPassword
+      },
+      timeout: TEN_SECONDS_MS
+    })
+  } catch (e) {
+    errorHandler(e, false)
   }
 }
 
@@ -244,6 +259,7 @@ export default {
   errorHandler,
   forgotPassword,
   updateAdmin,
+  changePassword,
   deleteAdmin,
   subscribeToSaas,
   updateSaasPaymentMethod,

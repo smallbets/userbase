@@ -9,14 +9,17 @@ export default class EditAdmin extends Component {
     this.state = {
       email: this.props.email,
       fullName: this.props.fullName,
-      password: '',
+      currentPassword: '',
+      newPassword: '',
       loadingUpdateAdmin: false,
+      loadingChangePassword: false,
       loadingDeleteAdmin: false,
       loadingCheckout: false,
       loadingCancel: false,
       loadingUpdatePaymentMethod: false,
       loadingResumeSubscription: false,
       errorUpdatingAdmin: '',
+      errorChangingPassword: '',
       errorDeletingAdmin: '',
       errorCheckingOut: false,
       errorCancelling: false,
@@ -26,6 +29,7 @@ export default class EditAdmin extends Component {
 
     this.handleInputChange = this.handleInputChange.bind(this)
     this.handleUpdateAcount = this.handleUpdateAcount.bind(this)
+    this.handleChangePassword = this.handleChangePassword.bind(this)
     this.handleDeleteAccount = this.handleDeleteAccount.bind(this)
     this.handleCancelSubscription = this.handleCancelSubscription.bind(this)
     this.handleResumeSubscription = this.handleResumeSubscription.bind(this)
@@ -45,15 +49,16 @@ export default class EditAdmin extends Component {
 
   handleHitEnter(e) {
     const ENTER_KEY_CODE = 13
-    if ((e.target.name === 'email' || e.target.name === 'password' || e.target.name === 'fullName') &&
+    if ((e.target.name === 'fullName' || e.target.name === 'email'
+      || e.target.name === 'currentPassword' || e.target.name === 'newPassword') &&
       (e.key === 'Enter' || e.keyCode === ENTER_KEY_CODE)) {
       e.stopPropagation()
     }
   }
 
   handleInputChange(event) {
-    if (this.state.errorUpdatingAdmin || this.state.errorDeletingAdmin) {
-      this.setState({ errorUpdatingAdmin: undefined, errorDeletingAdmin: undefined })
+    if (this.state.errorUpdatingAdmin || this.state.errorDeletingAdmin || this.state.errorChangingPassword) {
+      this.setState({ errorUpdatingAdmin: undefined, errorDeletingAdmin: undefined, errorChangingPassword: undefined })
     }
 
     const target = event.target
@@ -66,7 +71,6 @@ export default class EditAdmin extends Component {
   }
 
   async handleUpdateAcount(event) {
-    const { password } = this.state
     event.preventDefault()
 
     if (this.state.loadingUpdateAdmin) return
@@ -74,23 +78,48 @@ export default class EditAdmin extends Component {
     const fullName = this.state.fullName !== this.props.fullName && this.state.fullName
     const email = this.state.email !== this.props.email && this.state.email
 
-    if (!password && !fullName && !email) return
+    if (!fullName && !email) return
 
     this.setState({ loadingUpdateAdmin: true })
 
     try {
-      await adminLogic.updateAdmin({ fullName, email, password })
+      await adminLogic.updateAdmin({ fullName, email })
       if (email || fullName) this.props.handleUpdateAccount(email, fullName)
       if (this._isMounted) {
         this.setState({
           fullName: fullName || this.props.fullName,
           email: email || this.props.email,
-          password: '',
           loadingUpdateAdmin: false
         })
       }
     } catch (e) {
       if (this._isMounted) this.setState({ errorUpdatingAdmin: e.message, loadingUpdateAdmin: false })
+    }
+  }
+
+  async handleChangePassword(event) {
+    const { currentPassword, newPassword } = this.state
+    event.preventDefault()
+
+    if (this.state.loadingChangePassword) return
+    if (!currentPassword || !newPassword) return
+
+    this.setState({ loadingChangePassword: true })
+
+    try {
+      await adminLogic.changePassword({ currentPassword, newPassword })
+
+      window.alert('Password changed successfully!')
+
+      if (this._isMounted) {
+        this.setState({
+          currentPassword: '',
+          newPassword: '',
+          loadingChangePassword: false
+        })
+      }
+    } catch (e) {
+      if (this._isMounted) this.setState({ errorChangingPassword: e.message, loadingChangePassword: false })
     }
   }
 
@@ -179,14 +208,17 @@ export default class EditAdmin extends Component {
     const {
       fullName,
       email,
-      password,
+      currentPassword,
+      newPassword,
       loadingUpdateAdmin,
+      loadingChangePassword,
       loadingDeleteAdmin,
       loadingCheckout,
       loadingCancel,
       loadingUpdatePaymentMethod,
       loadingResumeSubscription,
       errorUpdatingAdmin,
+      errorChangingPassword,
       errorDeletingAdmin,
       errorCheckingOut,
       errorCancelling,
@@ -195,8 +227,7 @@ export default class EditAdmin extends Component {
       loading
     } = this.state
 
-    const disableUpdateButton = !password
-      && (fullName === this.props.fullName || !fullName)
+    const disableUpdateButton = (fullName === this.props.fullName || !fullName)
       && (email === this.props.email || !email)
 
     return (
@@ -296,22 +327,7 @@ export default class EditAdmin extends Component {
               </div>
             </div>
 
-            <div className='table-row'>
-              <div className='table-cell p-2 text-right'>Password</div>
-              <div className='table-cell p-2'>
-                <input
-                  className='font-light text-xs xs:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
-                  type='password'
-                  name='password'
-                  autoComplete='new-password'
-                  onChange={this.handleInputChange}
-                  value={password}
-                />
-              </div>
-            </div>
-
           </div>
-
 
           <div className='text-center'>
             <input
@@ -326,7 +342,58 @@ export default class EditAdmin extends Component {
                 ? <UnknownError action='updating your account' />
                 : <div className='error'>{errorUpdatingAdmin}</div>
             )}
+          </div>
 
+        </form>
+
+        <hr className='border border-t-0 border-gray-400 mt-8 mb-6' />
+
+        <form onSubmit={this.handleChangePassword}>
+          <div className='table'>
+
+            <div className='table-row'>
+              <div className='table-cell p-2 text-right'>Current Password</div>
+              <div className='table-cell p-2 align-middle'>
+                <input
+                  className='font-light text-xs xs:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
+                  type='password'
+                  name='currentPassword'
+                  autoComplete='current-password'
+                  onChange={this.handleInputChange}
+                  value={currentPassword}
+                />
+              </div>
+            </div>
+
+            <div className='table-row'>
+              <div className='table-cell p-2 text-right'>New Password</div>
+              <div className='table-cell p-2 align-middle'>
+                <input
+                  className='font-light text-xs xs:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
+                  type='password'
+                  name='newPassword'
+                  autoComplete='new-password'
+                  onChange={this.handleInputChange}
+                  value={newPassword}
+                />
+              </div>
+            </div>
+
+          </div>
+
+          <div className='text-center'>
+            <input
+              className='btn w-40 mt-4'
+              type='submit'
+              value={loadingChangePassword ? 'Changing...' : 'Change Password'}
+              disabled={(!currentPassword || !newPassword) || loadingDeleteAdmin || loadingUpdateAdmin || loadingChangePassword}
+            />
+
+            {errorChangingPassword && (
+              errorChangingPassword === 'Unknown Error'
+                ? <UnknownError action='changing your password' />
+                : <div className='error'>{errorChangingPassword}</div>
+            )}
           </div>
 
         </form>

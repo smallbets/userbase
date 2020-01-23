@@ -516,19 +516,13 @@ const conditionExpressionAdminExists = (email, adminId) => {
   }
 }
 
-const _updateAdminExcludingEmailUpdate = async (oldAdmin, adminId, password, fullName) => {
+const _updateAdminExcludingEmailUpdate = async (oldAdmin, adminId, fullName) => {
   const params = conditionExpressionAdminExists(oldAdmin['email'], adminId)
 
   let UpdateExpression = 'SET '
 
-  if (password) {
-    UpdateExpression += '#passwordHash = :passwordHash'
-    params.ExpressionAttributeNames['#passwordHash'] = 'password-hash'
-    params.ExpressionAttributeValues[':passwordHash'] = await crypto.bcrypt.hash(password)
-  }
-
   if (fullName) {
-    UpdateExpression += (password ? ', ' : '') + '#fullName = :fullName'
+    UpdateExpression += '#fullName = :fullName'
     params.ExpressionAttributeNames['#fullName'] = 'full-name'
     params.ExpressionAttributeValues[':fullName'] = fullName
   }
@@ -546,7 +540,7 @@ const _updateAdminExcludingEmailUpdate = async (oldAdmin, adminId, password, ful
   }
 }
 
-const _updateAdminIncludingEmailUpdate = async (oldAdmin, adminId, email, password, fullName) => {
+const _updateAdminIncludingEmailUpdate = async (oldAdmin, adminId, email, fullName) => {
   // if updating email, need to Delete existing DDB item and Put new one because email is partition key
   const deleteAdminParams = conditionExpressionAdminExists(oldAdmin['email'], adminId)
 
@@ -554,8 +548,6 @@ const _updateAdminIncludingEmailUpdate = async (oldAdmin, adminId, email, passwo
     ...oldAdmin,
     email
   }
-
-  if (password) updatedAdmin['password-hash'] = await crypto.bcrypt.hash(password)
 
   if (fullName) updatedAdmin['full-name'] = fullName
 
@@ -592,22 +584,30 @@ exports.updateAdmin = async function (req, res) {
 
   try {
     const email = req.body.email && req.body.email.toLowerCase()
-    const password = req.body.password
     const fullName = req.body.fullName
 
     if (email) {
       if (email === admin['email']) return res.status(statusCodes['Conflict']).send('Email must be different')
       if (!validateEmail(email)) return res.status(statusCodes['Bad Request']).send('Invalid Email')
 
+      const updateStripeCustomer = async () => {
+        try {
+          await stripe.getClient().customers.update(stripeCustomerId, { email })
+        } catch (e) {
+          //failure ok
+          logger.warn(`Failed to update admin ${adminId}'s email in Stripe`)
+        }
+      }
+
       // ok if 1 fails and other succeeds. It's undesirable, but ok if they are out of sync since
       // Stripe Checkout allows for customers to change their email at the point of checkout anyway
       await Promise.all([
-        _updateAdminIncludingEmailUpdate(admin, adminId, email, password, fullName),
-        stripe.getClient().customers.update(stripeCustomerId, { email })
+        _updateAdminIncludingEmailUpdate(admin, adminId, email, fullName),
+        stripeCustomerId && updateStripeCustomer()
       ])
     } else {
-      if (!password && !fullName) return res.status(statusCodes['Bad Request']).send('Missing required items')
-      await _updateAdminExcludingEmailUpdate(admin, adminId, password, fullName)
+      if (!fullName) return res.status(statusCodes['Bad Request']).send('Missing required items')
+      await _updateAdminExcludingEmailUpdate(admin, adminId, fullName)
     }
 
     return res.end()
@@ -620,6 +620,55 @@ exports.updateAdmin = async function (req, res) {
 
     logger.error(`Failed to update admin '${adminId}' with ${e}`)
     return res.status(statusCodes['Internal Server Error']).send('Failed to update admin')
+  }
+}
+
+const _changePassword = async (admin, adminId, password) => {
+  const params = conditionExpressionAdminExists(admin['email'], adminId)
+
+  params.UpdateExpression = 'SET #passwordHash = :passwordHash'
+  params.ExpressionAttributeNames['#passwordHash'] = 'password-hash'
+  params.ExpressionAttributeValues[':passwordHash'] = await crypto.bcrypt.hash(password)
+
+  try {
+    const ddbClient = connection.ddbClient()
+    await ddbClient.update(params).promise()
+  } catch (e) {
+    if (e.name === 'ConditionalCheckFailedException') {
+      throw new Error('Admin not found')
+    }
+    throw e
+  }
+}
+
+exports.changePassword = async function (req, res) {
+  const admin = res.locals.admin
+  const adminId = admin['admin-id']
+
+  try {
+    const currentPassword = req.body.currentPassword
+    const newPassword = req.body.newPassword
+
+    if (!currentPassword && !newPassword) return res.status(statusCodes['Bad Request']).send('Missing required items')
+
+    try {
+      await _validateAdminPassword(currentPassword, admin)
+    } catch (e) {
+      return res
+        .status(statusCodes['Unauthorized'])
+        .send('Incorrect password')
+    }
+
+    await _changePassword(admin, adminId, newPassword)
+
+    return res.end()
+  } catch (e) {
+    if (e.message === 'Admin not found') {
+      return res.status(statusCodes['Not Found']).send('Admin not found')
+    }
+
+    logger.error(`Failed to change password for '${adminId}' with ${e}`)
+    return res.status(statusCodes['Internal Server Error']).send('Failed to change password')
   }
 }
 
