@@ -27,6 +27,8 @@ const MAX_PROFILE_OBJECT_KEYS = 100
 
 const LIMIT_NUM_TRIAL_USERS = 3
 
+const MAX_INCORRECT_PASSWORD_GUESSES = 25
+
 const createSession = async function (userId, appId) {
   const sessionId = crypto
     .randomBytes(ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID)
@@ -99,12 +101,45 @@ const _buildSignUpParams = (username, passwordToken, appId, userId,
   }
 }
 
-const _validatePassword = (passwordToken, user) => {
+const incorrectPasswordAttemptsInARow = {}
+
+const _validatePassword = (passwordToken, user, req) => {
   if (!user || user['deleted']) throw new Error('User does not exist')
+
+  const userId = user['user-id']
+
+  if (typeof incorrectPasswordAttemptsInARow[userId] === 'object') {
+    if (new Date() - incorrectPasswordAttemptsInARow[userId] > MS_IN_A_DAY) {
+      // safe to try to use password again
+      delete incorrectPasswordAttemptsInARow[userId]
+    } else {
+      throw {
+        error: 'PasswordAttemptLimitExceeded',
+        delay: '24 hours'
+      }
+    }
+  }
 
   const passwordTokenHash = crypto.sha256.hash(passwordToken)
 
-  if (!passwordTokenHash.equals(user['password-token'])) throw new Error('Incorrect password')
+  if (passwordTokenHash.equals(user['password-token'])) {
+    delete incorrectPasswordAttemptsInARow[userId]
+  } else {
+
+    if (incorrectPasswordAttemptsInARow[userId]) {
+      incorrectPasswordAttemptsInARow[userId] += 1
+
+      if (incorrectPasswordAttemptsInARow[userId] === MAX_INCORRECT_PASSWORD_GUESSES) {
+        logger.child({ userId, reqId: req && req.id }).warn('Someone has exceeded the password attempt limit')
+        incorrectPasswordAttemptsInARow[userId] = new Date()
+      }
+
+    } else {
+      incorrectPasswordAttemptsInARow[userId] = 1
+    }
+
+    throw new Error('Incorrect password')
+  }
 }
 
 const _validateProfile = (profile) => {
@@ -475,8 +510,12 @@ exports.signIn = async function (req, res) {
     const user = userResponse.Item
 
     try {
-      _validatePassword(passwordToken, user)
+      _validatePassword(passwordToken, user, req)
     } catch (e) {
+      if (e.error === 'PasswordAttemptLimitExceeded') {
+        return res.status(statusCodes['Unauthorized']).send(e)
+      }
+
       return res.status(statusCodes['Unauthorized']).send('Invalid password')
     }
 
@@ -769,6 +808,10 @@ exports.updateUser = async function (userId, username, currentPasswordToken, pas
       try {
         _validatePassword(currentPasswordToken, user)
       } catch (e) {
+        if (e.error === 'PasswordAttemptLimitExceeded') {
+          return responseBuilder.errorResponse(status(statusCodes['Unauthorized']), e)
+        }
+
         return responseBuilder.errorResponse(statusCodes['Bad Request'], 'CurrentPasswordIncorrect')
       }
     }
