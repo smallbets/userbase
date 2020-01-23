@@ -34,6 +34,7 @@ const beforeEachHook = function () {
 
 describe('DB Correctness Tests', function () {
   const dbName = 'test-db'
+  const BUNDLE_SIZE = 50 * 1024 // from src/userbase-server/ws.js
 
   describe('Open Database', function () {
 
@@ -55,26 +56,22 @@ describe('DB Correctness Tests', function () {
       })
 
       it('Open 2 Databases sequentially with the same name', async function () {
-        let changeHandlerCallCount = 0
+        let changeHandler1CallCount = 0
+        let changeHandler2CallCount = 0
 
-        const changeHandler = function (items) {
-          expect(items, 'array passed to changeHandler').to.be.a('array')
-          expect(items, 'array passed to changeHandler').to.be.empty
-
-          changeHandlerCallCount += 1
+        const changeHandler1 = function () {
+          changeHandler1CallCount += 1
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
-
-        try {
-          await this.test.userbase.openDatabase(dbName, changeHandler)
-        } catch (e) {
-          expect(e.name, 'error name').to.equal('DatabaseAlreadyOpen')
-          expect(e.message, 'error message').to.equal('Database is already open.')
-          expect(e.status, 'error status').to.equal(400)
+        const changeHandler2 = function () {
+          changeHandler2CallCount += 1
         }
 
-        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+        await this.test.userbase.openDatabase(dbName, changeHandler1)
+        await this.test.userbase.openDatabase(dbName, changeHandler2)
+
+        expect(changeHandler1CallCount, 'changeHandler 1 called correct number of times').to.equal(1)
+        expect(changeHandler2CallCount, 'changeHandler 2 called correct number of times').to.equal(1)
       })
 
       it('Open 10 Databases sequentially', async function () {
@@ -141,9 +138,9 @@ describe('DB Correctness Tests', function () {
             await this.test.userbase.openDatabase(dbName, changeHandler)
             successCount += 1
           } catch (e) {
-            expect(e.name, 'error name').to.be.equal('DatabaseAlreadyOpening')
-            expect(e.message, 'error message').to.equal('Already attempting to open database.')
-            expect(e.status, 'error status').to.equal(400)
+            expect(e.name, 'error name').to.be.equal('ServiceUnavailable')
+            expect(e.message, 'error message').to.equal('Service unavailable.')
+            expect(e.status, 'error status').to.equal(503)
             failureCount += 1
           }
         }
@@ -835,6 +832,49 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(4)
         expect(successful, 'successful state').to.be.true
+      })
+
+      it('Multiple inserts combined with multiple calls to open database with the same name', async function () {
+        let changeHandler1CallCount = 0
+        let changeHandler2CallCount = 0
+
+        let success
+
+        const changeHandler1 = function (items) {
+          changeHandler1CallCount += 1
+
+          if (changeHandler1CallCount === 2) {
+            expect(items).to.have.lengthOf(1)
+            expect(items[0].item === 'test1')
+          }
+        }
+
+        const changeHandler2 = function (items) {
+          changeHandler2CallCount += 1
+
+          if (changeHandler2CallCount === 1) {
+            expect(items).to.have.lengthOf(1)
+            expect(items[0].item === 'test1')
+          }
+
+          if (changeHandler2CallCount === 2) {
+            expect(items).to.have.lengthOf(2)
+            expect(items[0].item === 'test1')
+            expect(items[1].item === 'test2')
+            success = true
+          }
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler1)
+
+        await this.test.userbase.insertItem(dbName, 'test1')
+        await this.test.userbase.openDatabase(dbName, changeHandler2)
+
+        await this.test.userbase.insertItem(dbName, 'test2')
+
+        expect(changeHandler1CallCount, 'changeHandler 1 called correct number of times').to.equal(2)
+        expect(changeHandler2CallCount, 'changeHandler 2 called correct number of times').to.equal(2)
+        expect(success, 'database reached successful state').to.be.true
       })
 
     })
@@ -1717,8 +1757,6 @@ describe('DB Correctness Tests', function () {
 
       // must check the server logs to verify bundling occurs
       it('Bundle transaction log with a large Userbase transaction', async function () {
-        const BUNDLE_SIZE = 50 * 1024 // from src/userbase-server/ws.js
-
         const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
         const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
         expect(numItemsNeededToTriggerBundle, 'items needed to trigger bundle').to.be.lte(10) // max operations allowed in tx
@@ -1758,10 +1796,53 @@ describe('DB Correctness Tests', function () {
         expect(successful, 'successful state').to.be.true
       })
 
+      // must check the server logs to verify bundling occurs
+      it('Bundle transaction log with a large Userbase transaction and then insert', async function () {
+        const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
+        const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
+        expect(numItemsNeededToTriggerBundle, 'items needed to trigger bundle').to.be.lte(10) // max operations allowed in tx
+
+        const largeString = getStringOfByteLength(ITEM_SIZE)
+        const operations = []
+        for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
+          operations.push({ command: 'Insert', item: largeString, id: i.toString() })
+        }
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (changeHandlerCallCount === 3) {
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(numItemsNeededToTriggerBundle + 1)
+
+            for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
+              const insertedItem = items[i]
+              const { item, itemId } = insertedItem
+              expect(item, 'item in items array passed to changeHandler').to.equal(largeString)
+              expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(i.toString())
+            }
+
+            const finalItem = items[numItemsNeededToTriggerBundle]
+            const { item, itemId } = finalItem
+            expect(item, 'final item').to.equal('extra-insert')
+            expect(itemId, 'final item id').to.equal('extra-insert-id')
+
+            successful = true
+          }
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.transaction(dbName, operations)
+        await this.test.userbase.insertItem(dbName, 'extra-insert', 'extra-insert-id')
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(3)
+        expect(successful, 'successful state').to.be.true
+      })
+
       // must check the server to verify reading bundle from S3 and not DDB
       it('Read from bundled transaction log', async function () {
-        const BUNDLE_SIZE = 50 * 1024 // from src/userbase-server/ws.js
-
         const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
         const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
         expect(numItemsNeededToTriggerBundle, 'items needed to trigger bundle').to.be.lte(10) // max operations allowed in tx
@@ -1808,10 +1889,112 @@ describe('DB Correctness Tests', function () {
         expect(successful, 'successful state').to.be.true
       })
 
+      // must check the server to verify reading bundle from S3 and not DDB
+      it('Bundle transaction log with a large Userbase transaction, insert, and then read from bundle', async function () {
+        const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
+        const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
+        expect(numItemsNeededToTriggerBundle, 'items needed to trigger bundle').to.be.lte(10) // max operations allowed in tx
+
+        const largeString = getStringOfByteLength(ITEM_SIZE)
+        const operations = []
+        for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
+          operations.push({ command: 'Insert', item: largeString, id: i.toString() })
+        }
+
+        await this.test.userbase.openDatabase(dbName, () => { })
+        await this.test.userbase.transaction(dbName, operations)
+        await this.test.userbase.insertItem(dbName, 'extra-insert', 'extra-insert-id')
+
+        // give client sufficient time to finish the bundle
+        const THREE_SECONDS = 3 * 1000
+        await wait(THREE_SECONDS)
+        await this.test.userbase.signOut()
+        await this.test.userbase.signIn(this.test.username, this.test.password)
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          expect(items, 'array passed to changeHandler').to.have.lengthOf(numItemsNeededToTriggerBundle + 1)
+
+          for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
+            const insertedItem = items[i]
+            const { item, itemId } = insertedItem
+            expect(item, 'item in items array passed to changeHandler').to.equal(largeString)
+            expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(i.toString())
+          }
+
+          const finalItem = items[numItemsNeededToTriggerBundle]
+          const { item, itemId } = finalItem
+          expect(item, 'final item').to.equal('extra-insert')
+          expect(itemId, 'final item id').to.equal('extra-insert-id')
+
+          successful = true
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+        expect(successful, 'successful state').to.be.true
+      })
+
+      // must check the server to verify reading bundle from S3 and not DDB
+      it('Read from bundled transaction log and then insert', async function () {
+        const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
+        const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
+        expect(numItemsNeededToTriggerBundle, 'items needed to trigger bundle').to.be.lte(10) // max operations allowed in tx
+
+        const largeString = getStringOfByteLength(ITEM_SIZE)
+        const operations = []
+        for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
+          operations.push({ command: 'Insert', item: largeString, id: i.toString() })
+        }
+
+        await this.test.userbase.openDatabase(dbName, () => { })
+        await this.test.userbase.transaction(dbName, operations)
+
+        // give client sufficient time to finish the bundle
+        const THREE_SECONDS = 3 * 1000
+        await wait(THREE_SECONDS)
+        await this.test.userbase.signOut()
+        await this.test.userbase.signIn(this.test.username, this.test.password)
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (changeHandlerCallCount === 2) {
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(numItemsNeededToTriggerBundle + 1)
+
+            for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
+              const insertedItem = items[i]
+              const { item, itemId } = insertedItem
+              expect(item, 'item in items array passed to changeHandler').to.equal(largeString)
+              expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(i.toString())
+            }
+
+            const finalItem = items[numItemsNeededToTriggerBundle]
+            const { item, itemId } = finalItem
+            expect(item, 'final item').to.equal('extra-insert')
+            expect(itemId, 'final item id').to.equal('extra-insert-id')
+
+            successful = true
+          }
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.insertItem(dbName, 'extra-insert', 'extra-insert-id')
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
+        expect(successful, 'successful state').to.be.true
+      })
+
       // must check the server logs to verify bundling occurs
       it('Bundle transaction log with regular inserts', async function () {
-        const BUNDLE_SIZE = 50 * 1024 // from src/userbase-server/ws.js
-
         const ITEM_SIZE = 5 * 1024
         const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
         const largeString = getStringOfByteLength(ITEM_SIZE)
@@ -1852,8 +2035,6 @@ describe('DB Correctness Tests', function () {
 
       // must check the server logs to verify bundling occurs
       it('Read from bundled transaction log with regular inserts', async function () {
-        const BUNDLE_SIZE = 50 * 1024 // from src/userbase-server/ws.js
-
         const ITEM_SIZE = 5 * 1024
         const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
         const largeString = getStringOfByteLength(ITEM_SIZE)
@@ -1905,8 +2086,6 @@ describe('DB Correctness Tests', function () {
       it('Bundle transaction log 5 times with 5 sequential large Userbase transactions', async function () {
         const numBundles = 5
 
-        const BUNDLE_SIZE = 50 * 1024 // from src/userbase-server/ws.js
-
         const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
         const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
         expect(numItemsNeededToTriggerBundle, 'items needed to tigger bundle').to.be.lte(10) // max operations allowed in tx
@@ -1957,8 +2136,6 @@ describe('DB Correctness Tests', function () {
       // must check the server logs to verify bundling occurs
       it('Read from bundled transaction after 5 sequential large Userbase transactions', async function () {
         const numBundles = 5
-
-        const BUNDLE_SIZE = 50 * 1024 // from src/userbase-server/ws.js
 
         const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
         const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
@@ -2021,9 +2198,133 @@ describe('DB Correctness Tests', function () {
       beforeEach(function () { beforeEachHook() })
 
       // must check the server logs to verify bundling occurs
-      it('2 concurrent transactions, each trigger bundle process', async function () {
-        const BUNDLE_SIZE = 50 * 1024 // from src/userbase-server/ws.js
+      it('2 concurrent transactions, 1 triggers bundle process', async function () {
+        const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
+        const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
+        expect(numItemsNeededToTriggerBundle, 'items needed to trigger bundle').to.be.lte(10) // max operations allowed in tx
 
+        const largeString = getStringOfByteLength(ITEM_SIZE)
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (!successful && items.length === 2 * numItemsNeededToTriggerBundle) {
+            for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
+              const itemIndex1 = i
+              const itemIndex2 = i + numItemsNeededToTriggerBundle
+
+              const insertedItem1 = items[itemIndex1]
+              const insertedItem2 = items[itemIndex2]
+
+              if (insertedItem1.itemId === itemIndex1.toString()) {
+                expect(insertedItem1.item, 'item 1 in items array passed to changeHandler').to.deep.equal(itemIndex1.toString())
+
+                expect(insertedItem2.itemId, 'item ID of item 2 in items array passed to changeHandler').to.equal(itemIndex2.toString())
+                expect(insertedItem2.item, 'item 2 in items array passed to changeHandler').to.deep.equal(largeString)
+              } else {
+                expect(insertedItem1.itemId, 'item ID of item 1 in items array passed to changeHandler').to.equal(itemIndex2.toString())
+                expect(insertedItem1.item, 'item 1 in items array passed to changeHandler').to.deep.equal(largeString)
+
+                expect(insertedItem2.itemId, 'item ID of item 2 in items array passed to changeHandler').to.equal(itemIndex1.toString())
+                expect(insertedItem2.item, 'item 2 in items array passed to changeHandler').to.deep.equal(itemIndex1.toString())
+              }
+            }
+
+            successful = true
+          }
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+
+        const operations1 = []
+        const operations2 = []
+
+        for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
+          operations1.push({ command: 'Insert', item: i.toString(), id: i.toString() })
+          operations2.push({ command: 'Insert', item: largeString, id: (i + numItemsNeededToTriggerBundle).toString() })
+        }
+
+        await Promise.all([
+          this.test.userbase.transaction(dbName, operations1),
+          this.test.userbase.transaction(dbName, operations2)
+        ])
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(3)
+        expect(successful, 'successful state').to.be.true
+      })
+
+      // must check the server logs to verify bundling occurs
+      it('Read from bundled transaction log after 2 concurrent transactions where 1 triggers bundle process', async function () {
+        const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
+        const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
+        expect(numItemsNeededToTriggerBundle, 'items needed to trigger bundle').to.be.lte(10) // max operations allowed in tx
+
+        const largeString = getStringOfByteLength(ITEM_SIZE)
+
+        const operations1 = []
+        const operations2 = []
+        for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
+          operations1.push({ command: 'Insert', item: i.toString(), id: i.toString() })
+          operations2.push({ command: 'Insert', item: largeString, id: (i + numItemsNeededToTriggerBundle).toString() })
+        }
+
+        await this.test.userbase.openDatabase(dbName, () => { })
+
+        await Promise.all([
+          this.test.userbase.transaction(dbName, operations1),
+          this.test.userbase.transaction(dbName, operations2)
+        ])
+
+        // give client sufficient time to finish the bundle
+        const THREE_SECONDS = 3 * 1000
+        await wait(THREE_SECONDS)
+
+        await this.test.userbase.signOut()
+        await this.test.userbase.signIn(this.test.username, this.test.password)
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          expect(items, 'array passed to changeHandler').to.have.lengthOf(2 * numItemsNeededToTriggerBundle)
+
+          for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
+            const itemIndex1 = i
+            const itemIndex2 = i + numItemsNeededToTriggerBundle
+
+            const insertedItem1 = items[itemIndex1]
+            const insertedItem2 = items[itemIndex2]
+
+            if (insertedItem1.itemId === itemIndex1.toString()) {
+              expect(insertedItem1.item, 'item 1 in items array passed to changeHandler').to.deep.equal(itemIndex1.toString())
+
+              expect(insertedItem2.itemId, 'item ID of item 2 in items array passed to changeHandler').to.equal(itemIndex2.toString())
+              expect(insertedItem2.item, 'item 2 in items array passed to changeHandler').to.deep.equal(largeString)
+            } else {
+              expect(insertedItem1.itemId, 'item ID of item 1 in items array passed to changeHandler').to.equal(itemIndex2.toString())
+              expect(insertedItem1.item, 'item 1 in items array passed to changeHandler').to.deep.equal(largeString)
+
+              expect(insertedItem2.itemId, 'item ID of item 2 in items array passed to changeHandler').to.equal(itemIndex1.toString())
+              expect(insertedItem2.item, 'item 2 in items array passed to changeHandler').to.deep.equal(itemIndex1.toString())
+            }
+          }
+
+          successful = true
+        }
+
+        await this.test.userbase.openDatabase(dbName, changeHandler)
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+        expect(successful, 'successful state').to.be.true
+      })
+
+      // must check the server logs to verify bundling occurs
+      it('2 concurrent transactions, each trigger bundle process', async function () {
         const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
         const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
         expect(numItemsNeededToTriggerBundle, 'items needed to trigger bundle').to.be.lte(10) // max operations allowed in tx
@@ -2086,8 +2387,6 @@ describe('DB Correctness Tests', function () {
 
       // must check the server logs to verify bundling occurs
       it('Read from bundled transaction log after 2 concurrent transactions that each trigger bundle process', async function () {
-        const BUNDLE_SIZE = 50 * 1024 // from src/userbase-server/ws.js
-
         const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
         const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
         expect(numItemsNeededToTriggerBundle, 'items needed to trigger bundle').to.be.lte(10) // max operations allowed in tx
@@ -2160,8 +2459,6 @@ describe('DB Correctness Tests', function () {
       it('5 concurrent transactions, each trigger bundle process', async function () {
         const numBundles = 5
 
-        const BUNDLE_SIZE = 50 * 1024 // from src/userbase-server/ws.js
-
         const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
         const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
         expect(numItemsNeededToTriggerBundle, 'items needed to trigger bundle').to.be.lte(10) // max operations allowed in tx
@@ -2223,8 +2520,6 @@ describe('DB Correctness Tests', function () {
       // must check the server logs to verify reading from bundle. Failing to bundle is ok
       it('Read from bundled transaction log after 5 concurrent transactions that each trigger bundle process', async function () {
         const numBundles = 5
-
-        const BUNDLE_SIZE = 50 * 1024 // from src/userbase-server/ws.js
 
         const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
         const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
