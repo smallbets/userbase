@@ -151,7 +151,7 @@ export default class Dashboard extends Component {
     const { loading, activeApps, deletedApps, showDeletedApps, error, appName, loadingApp } = this.state
 
     return (
-      <div className='text-xs xs:text-base'>
+      <div className='text-xs sm:text-sm'>
         {
           loading
             ? <div className='text-center'><div className='loader w-6 h-6 inline-block' /></div>
@@ -159,24 +159,32 @@ export default class Dashboard extends Component {
 
             <div className='container content text-center'>
 
+              <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Apps</div>
+              {
+                paymentStatus === 'active' ? <div />
+                  : <div className='text-left mb-4 text-red-600 font-normal'>
+                    Your account is limited to 3 users. <a href="#edit-account">Remove this limit</a> with a Userbase subscription.
+                </div>
+              }
+
               {activeApps && activeApps.length > 0 &&
-                <table className='table-auto w-full border-collapse border-2 border-gray-500 mx-auto'>
+                <table className='table-auto w-full border-none mx-auto text-xs'>
 
                   <thead>
-                    <tr>
-                      <th className='border border-gray-400 px-4 py-2 text-gray-800'>App</th>
-                      <th className='border border-gray-400 px-4 py-2 text-gray-800'>App ID</th>
+                    <tr className='border-b'>
+                      <th className='px-1 py-1 text-gray-800 text-left'>App</th>
+                      <th className='px-1 py-1 text-gray-800 text-left'>App ID</th>
                     </tr>
                   </thead>
 
                   <tbody>
 
                     {activeApps.map((app) => (
-                      <tr key={app['app-id']}>
-                        <td className='border border-gray-400 px-4 py-2 font-light'>
+                      <tr key={app['app-id']} className='border-b mouse:hover:bg-yellow-200 h-8'>
+                        <td className='px-1 font-light text-left'>
                           <a href={`#app=${app['app-name']}`}>{app['app-name']}</a>
                         </td>
-                        <td className='border border-gray-400 px-4 py-2 font-light'>{app['app-id']}</td>
+                        <td className='px-1 font-mono font-light text-left'>{app['app-id']}</td>
                       </tr>
                     ))}
 
@@ -190,12 +198,12 @@ export default class Dashboard extends Component {
                 <form className={`flex text-left ${(activeApps && activeApps.length) ? 'mt-8' : ''}`}>
                   <div className='flex-1'>
                     <input
-                      className='input-text text-xs xs:text-sm w-36 xs:w-48'
+                      className='input-text text-xs sm:text-sm w-36 xs:w-48'
                       type='text'
                       name='appName'
                       autoComplete='off'
                       value={appName}
-                      placeholder='New app'
+                      placeholder='App name'
                       onChange={this.handleInputChange}
                     />
                   </div>
@@ -226,23 +234,23 @@ export default class Dashboard extends Component {
                   </div>
 
                   {showDeletedApps &&
-                    <table className='mt-6 table-auto w-full border-collapse border-2 border-gray-500 mx-auto'>
+                    <table className='mt-6 table-auto w-full border-none mx-auto text-xs'>
 
                       <thead>
-                        <tr>
-                          <th className='border border-gray-400 px-4 py-2 text-gray-800'>App</th>
-                          <th className='border border-gray-400 px-4 py-2 text-gray-800'>App ID</th>
-                          <th className='border border-gray-400 px-4 py-2'></th>
+                        <tr className='border-b'>
+                          <th className='px-1 py-1 text-gray-800 text-left'>App</th>
+                          <th className='px-1 py-1 text-gray-800 text-left'>App ID</th>
+                          <th className='px-1 py-1 text-gray-800 w-8'></th>
                         </tr>
                       </thead>
 
                       <tbody>
 
                         {deletedApps.map((app) => (
-                          <tr key={app['app-id']}>
-                            <td className='border border-gray-400 px-4 py-2 font-light text-red-700'>{app['app-name']}</td>
-                            <td className='border border-gray-400 px-4 py-2 font-light'>{app['app-id']}</td>
-                            <td className='border border-gray-400 px-4 py-2 font-light'>
+                          <tr key={app['app-id']} className='border-b mouse:hover:bg-yellow-200 h-8'>
+                            <td className='px-1 font-light text-left text-red-700'>{app['app-name']}</td>
+                            <td className='px-1 font-mono font-light text-left'>{app['app-id']}</td>
+                            <td className='px-1 font-light w-8'>
 
                               {app['permanentDeleting']
                                 ? <div className='loader w-4 h-4 inline-block' />

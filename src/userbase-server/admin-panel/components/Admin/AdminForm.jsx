@@ -111,7 +111,7 @@ export default class AdminForm extends Component {
     return (
       <form onSubmit={this.handleSubmit}>
 
-        <div className={`container content text-xs xs:text-base ${formType === 'Create Admin' ? 'max-w-xl' : ''}`}>
+        <div className='container content max-w-lg text-xs sm:text-base'>
 
           {formType === 'Sign In'
             ? <div className="font-normal mb-4">Sign in with your email and password:</div>
@@ -170,7 +170,7 @@ export default class AdminForm extends Component {
                 <div className='table-cell p-2 pt-0 text-left'>
                   <div className='block select-none'>
                     <div className='inline-block text-left whitespace-no-wrap'>
-                      <a className='cursor-pointer italic font-light text-xs xs:text-sm' onClick={this.handleForgotPassword}>Forgot password</a>
+                      <a className='cursor-pointer italic font-light text-xs sm:text-sm' onClick={this.handleForgotPassword}>Forgot password</a>
                     </div>
                   </div>
                 </div>
@@ -193,10 +193,10 @@ export default class AdminForm extends Component {
 
                     <span>
                       <a
-                        className='italic cursor-pointer no-underline font-light text-xs xs:text-sm'
+                        className='italic cursor-pointer no-underline font-light text-xs'
                         onClick={receiveEmailUpdates ? this.handleDoNotReceiveEmailUpdates : this.handleReceiveEmailUpdates}
                       >
-                        Receive email updates about new Userbase features
+                        Receive email updates about new features.
                       </a>
                     </span>
 
@@ -230,7 +230,12 @@ export default class AdminForm extends Component {
 
           {formType === 'Sign In' && <div>
             <hr className='border border-t-0 border-gray-400 mt-4 mb-4' />
-            <div className="font-normal mb-4 text-xs xs:text-sm">Or, <a href='#create-admin'>create a new account</a>.</div>
+            <div className="font-normal mb-4 text-xs sm:text-sm">Or, <a href='#create-admin'>create a new account</a>.</div>
+          </div>}
+
+          {formType === 'Create Admin' && <div>
+            <hr className='border border-t-0 border-gray-400 mt-4 mb-4' />
+            <div className="font-normal mb-4 text-xs sm:text-sm">Already have an account? <a href='#sign-in'>Log in here</a>.</div>
           </div>}
 
         </div>

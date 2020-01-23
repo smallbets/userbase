@@ -179,28 +179,18 @@ export default class AppUsersTable extends Component {
     const { loading, activeUsers, deletedUsers, error, showDeletedUsers } = this.state
 
     return (
-      <div className='text-xs xs:text-base'>
+      <div className='text-xs sm:text-sm'>
 
         <div className='container content'>
 
-          <div className='flex mb-6'>
-            <span className='flex-0'>{appName}</span>
-            <div className='flex-1 text-right'>
-              {
-                paymentStatus === 'active'
-                  ?
-                  <input
-                    className='btn w-32'
-                    type='button'
-                    value='Delete App'
-                    onClick={this.handleDeleteApp}
-                  />
-                  :
-                  <span className='italic font-light ml-3 text-red-600'>
-                    {appName} app can only have 3 users
-                  </span>
-              }
-            </div>
+          <div className='mb-6'>
+            <div className='text-lg sm:text-xl text-left mb-4'>{appName}</div>
+            {
+              paymentStatus === 'active' ? <div />
+                : <div className='text-left mb-4 text-red-600 font-normal'>
+                  Your account is limited to 3 users. <a href="#edit-account">Remove this limit</a> with a Userbase subscription.
+                </div>
+            }
           </div>
 
           {loading
@@ -211,23 +201,23 @@ export default class AppUsersTable extends Component {
               <div>
                 {activeUsers && activeUsers.length > 0 &&
                   <div className='text-center'>
-                    <table className='table-auto w-full border-collapse border-2 border-gray-500 mx-auto'>
+                    <table className='table-auto w-full border-none mx-auto text-xs'>
 
                       <thead>
-                        <tr>
-                          <th className='border border-gray-400 px-4 py-2 text-gray-800'>Username</th>
-                          <th className='border border-gray-400 px-4 py-2 text-gray-800'>Created</th>
-                          <th className='border border-gray-400 px-4 py-2'></th>
+                        <tr className='border-b'>
+                          <th className='px-1 py-1 text-gray-800 text-left'>Username</th>
+                          <th className='px-1 py-1 text-gray-800 text-left'>Created</th>
+                          <th className='px-1 py-1'></th>
                         </tr>
                       </thead>
 
                       <tbody>
 
                         {activeUsers.map((user) => (
-                          <tr key={user['user-id']}>
-                            <td className='border border-gray-400 px-4 py-2 font-light'>{user['username']}</td>
-                            <td className='border border-gray-400 px-4 py-2 font-light'>{user['formattedCreationDate']}</td>
-                            <td className='border border-gray-400 px-4 py-2 font-light'>
+                          <tr key={user['user-id']} className='border-b mouse:hover:bg-yellow-200 h-8'>
+                            <td className='px-1 font-light text-left'>{user['username']}</td>
+                            <td className='px-1 font-light text-left'>{user['formattedCreationDate']}</td>
+                            <td className='px-1 font-light w-8'>
 
                               {user['deleting']
                                 ? <div className='loader w-4 h-4 inline-block' />
@@ -254,23 +244,23 @@ export default class AppUsersTable extends Component {
 
                     {showDeletedUsers &&
 
-                      <table className='mt-6 text-center table-auto w-full border-collapse border-2 border-gray-500 mx-auto'>
+                      <table className='mt-6 table-auto w-full border-none mx-auto text-xs'>
 
                         <thead>
-                          <tr>
-                            <th className='border border-gray-400 px-4 py-2 text-gray-800'>Username</th>
-                            <th className='border border-gray-400 px-4 py-2 text-gray-800'>Created</th>
-                            <th className='border border-gray-400 px-4 py-2'></th>
+                          <tr className='border-b'>
+                            <th className='px-1 py-1 text-gray-800 text-left'>Username</th>
+                            <th className='px-1 py-1 text-gray-800 text-left'>Created</th>
+                            <th className='px-1 py-1'></th>
                           </tr>
                         </thead>
 
                         <tbody>
 
                           {deletedUsers.map((user) => (
-                            <tr key={user['user-id']}>
-                              <td className='border border-gray-400 px-4 py-2 font-light text-red-700'>{user['username']}</td>
-                              <td className='border border-gray-400 px-4 py-2 font-light'>{user['formattedCreationDate']}</td>
-                              <td className='border border-gray-400 px-4 py-2 font-light'>
+                            <tr key={user['user-id']} className='border-b mouse:hover:bg-yellow-200 h-8'>
+                              <td className='px-1 font-light text-left text-red-700'>{user['username']}</td>
+                              <td className='px-1 font-light text-left'>{user['formattedCreationDate']}</td>
+                              <td className='px-1 font-light text-left w-8'>
 
                                 {user['permanentDeleting']
                                   ? <div className='loader w-4 h-4 inline-block' />
@@ -300,6 +290,24 @@ export default class AppUsersTable extends Component {
               ? <UnknownError />
               : <div className='error'>{error}</div>
           )}
+
+          {paymentStatus === 'active'
+            ? <div>
+              <hr className='border border-t-0 border-gray-400 mt-8 mb-6' />
+
+              <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Danger Zone</div>
+
+              <div className='text-center'>
+                <input
+                  className='btn w-32'
+                  type='button'
+                  value='Delete App'
+                  onClick={this.handleDeleteApp}
+                />
+              </div>
+            </div>
+            : <div />
+          }
 
         </div>
 
