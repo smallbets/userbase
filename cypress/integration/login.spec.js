@@ -63,6 +63,9 @@ describe('Login - Signup Testing', function () {
           return userbase.signIn(loginInfo).then((user) => {
             cy.log('user', user)
             expect(user.username, 'login should set the username').to.exist.and.to.equal(randomInfo.username)
+            return userbase.deleteUser().then(() => {
+              window.sessionStorage.clear()
+            })
           })
 
         })
@@ -97,7 +100,9 @@ describe('Login - Signup Testing', function () {
           return userbase.signIn(loginInfo).then((user) => {
             cy.log('user', user)
             expect(user.username, 'login should set the username').to.exist.and.to.equal(randomInfo.username)
-            window.sessionStorage.clear()
+            return userbase.deleteUser().then(() => {
+              window.sessionStorage.clear()
+            })
           })
         })
       })
