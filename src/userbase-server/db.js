@@ -318,8 +318,6 @@ exports.bundleTransactionLog = async function (databaseId, seqNo, bundle) {
     const s3 = setup.s3()
     await s3.upload(dbStateParams).promise()
 
-    logger.info(`Setting bundle sequence number ${bundleSeqNo} on database ${databaseId}...`)
-
     const bundleParams = {
       TableName: setup.databaseTableName,
       Key: {
@@ -337,6 +335,8 @@ exports.bundleTransactionLog = async function (databaseId, seqNo, bundle) {
 
     const ddbClient = connection.ddbClient()
     await ddbClient.update(bundleParams).promise()
+
+    logger.info(`Set bundle sequence number ${bundleSeqNo} on database ${databaseId}...`)
 
     return responseBuilder.successResponse({})
   } catch (e) {

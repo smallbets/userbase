@@ -9,8 +9,8 @@
     "install:server": "cd ./src/userbase-server && npm install",
     "install:admin-panel": "cd ./src/userbase-server/admin-panel && npm install",
     "install:poc": "cd ./src/proof-of-concept && npm install",
-    "ci:postinstall": "npm-run-all -p ci:sdk ci:server ci:admin-panel && npm run ci:poc",
     "ci:install": "RUNNING_ENV=CI npm ci && unset RUNNING_ENV && npm run ci:postinstall",
+    "ci:postinstall": "npm-run-all -p ci:sdk ci:server ci:admin-panel && npm run ci:poc",
     "ci:sdk": "cd ./src/userbase-js && npm ci",
     "ci:server": "cd ./src/userbase-server && npm ci",
     "ci:admin-panel": "cd ./src/userbase-server/admin-panel && npm ci",
@@ -47,7 +47,8 @@
     "build:userbase-js:script": "cd src/userbase-js && npm run build:umd",
     "lint": "eslint .",
     "test:setup": "npm run build:userbase-js:script && npm run watch:server",
-    "test": "npx cypress open & npm run test:setup"
+    "test": "npx cypress open & npm run test:setup",
+    "test:concurrency": "npm run build:userbase-js:script && sh ./test/start.sh"
   },
   "repository": "https://github.com/encrypted-dev/userbase",
   "keywords": [],
@@ -72,6 +73,7 @@
     "eslint-plugin-cypress": "^2.7.0",
     "eslint-plugin-react": "^7.16.0",
     "forever": "^1.0.0",
+    "http-server": "^0.12.0",
     "nodemon": "^1.19.1",
     "npm-run-all": "^4.1.5",
     "pino-pretty": "^3.2.0",

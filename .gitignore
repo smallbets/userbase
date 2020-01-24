@@ -9,3 +9,6 @@ logs
 npm_build
 cypress/videos
 cypress/screenshots
+
+test/loginInfo.js
+test/browser*/tmp

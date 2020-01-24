@@ -3,6 +3,7 @@
     "*.spec.js",
     "cypress/**",
     "src/userbase-js/",
-    "src/proof-of-concept/client/"
+    "src/proof-of-concept/client/",
+    "test/**"
   ]
 }

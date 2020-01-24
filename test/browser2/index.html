@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <script type="text/javascript" src="./tmp/userbase.js"></script>
+  <script src="./tmp/loginInfo.js"></script>
+  <script src="./tmp/development.js"></script>
+</head>
+
+<body>
+  <h1>Browser 2</h1>
+  <h4>Open up the web console and preserve logs!</h4>
+</body>
+
+<script>
+  const SIGN_UP_DELAY = 5000
+
+  const test1 = (testNum) => {
+    console.log(`%cTest ${testNum}: Browser 1 waits for Browser 2 to insert`, 'font-size: large')
+
+    const { username, password } = USERS[testNum - 1]
+
+    userbase.init({ appId, endpoint })
+
+    wait(SIGN_UP_DELAY)
+      .then(() => {
+        userbase.signIn(username, password)
+          .then(() => {
+            console.log('Signed in...')
+
+            userbase.openDatabase(dbName, () => { })
+              .then(() => {
+                userbase.insertItem(dbName, 'Hello world!', 'test-id')
+                  .then(() => completedTest(testNum))
+              })
+              .catch((e) => console.assert(false, e))
+
+          })
+          .catch((e) => console.assert(false, e))
+      })
+  }
+
+  const test2 = (testNum) => {
+    console.log(`%cTest ${testNum}: Browser 1 waits for Browser 2 to insert, then attempts to insert same item`, 'font-size: large')
+
+    const { username, password } = USERS[testNum - 1]
+
+    userbase.init({ appId, endpoint })
+
+    wait(SIGN_UP_DELAY)
+      .then(() => {
+        userbase.signIn(username, password)
+          .then(() => {
+            console.log('Signed in...')
+
+            userbase.openDatabase(dbName, () => { })
+              .then(() => {
+                userbase.insertItem(dbName, 'Hello world!', 'test-id')
+                  .then(() => completedTest(testNum))
+              })
+              .catch((e) => console.assert(false, e))
+
+          })
+          .catch((e) => console.assert(false, e))
+      })
+  }
+
+  const test3 = (testNum) => {
+    console.log(`%cTest ${testNum}: Browser 1 waits for Browser 2 to Insert 10 items concurrently`, 'font-size: large')
+
+    const NUM_INSERTS = 10
+
+    const { username, password } = USERS[testNum - 1]
+
+    userbase.init({ appId, endpoint })
+
+    wait(SIGN_UP_DELAY)
+      .then(() => {
+        userbase.signIn(username, password)
+          .then(() => {
+            console.log('Signed in...')
+
+            userbase.openDatabase(dbName, () => { })
+              .then(() => {
+
+                for (let i = 0; i < NUM_INSERTS; i++) {
+                  userbase.insertItem(dbName, 'item-' + i, i.toString())
+                }
+
+                completedTest(testNum)
+              })
+              .catch((e) => console.assert(false, e))
+
+          })
+          .catch((e) => console.assert(false, e))
+      })
+  }
+
+  const test4 = (testNum) => {
+    console.log(`%cTest ${testNum}: Browser 1 & Browser 2 each Insert 10 items concurrently`, 'font-size: large')
+
+    const NUM_INSERTS = 10
+
+    const { username, password } = USERS[testNum - 1]
+
+    userbase.init({ appId, endpoint })
+
+    wait(SIGN_UP_DELAY)
+      .then(() => {
+        userbase.signIn(username, password)
+          .then((user) => {
+            console.log('Signed in...')
+
+            userbase.openDatabase(dbName, () => { })
+              .then(() => {
+
+                // wait until timeToInsert
+                const timeToWait = Number(user.profile.timeToInsert) - Date.now()
+                assert(timeToWait > 0, true, 'Must wait a positive amount of time to insert')
+
+                wait(timeToWait)
+                  .then(() => {
+                    console.log('Inserting all items at ' + new Date())
+
+                    for (let i = 0; i < NUM_INSERTS; i++) {
+                      userbase.insertItem(dbName, 'item-' + (i + NUM_INSERTS), (i + NUM_INSERTS).toString())
+                    }
+
+                    completedTest(testNum)
+                  })
+
+              })
+              .catch((e) => console.assert(false, e))
+
+          })
+          .catch((e) => console.assert(false, e))
+      })
+  }
+
+  const test5 = (testNum) => {
+    console.log(`%cTest ${testNum}: Browser 1 & Browser 2 each Insert the same batch of 20 items concurrently`, 'font-size: large')
+
+    const NUM_INSERTS = 20
+
+    userbase.init({ appId, endpoint })
+
+    const { username, password } = USERS[testNum]
+
+    wait(SIGN_UP_DELAY)
+      .then(() => {
+        userbase.signIn(username, password)
+          .then((user) => {
+            console.log('Signed in...')
+
+            let database = []
+
+            userbase.openDatabase(dbName, (items) => { database = items })
+              .then(() => {
+
+                // wait until timeToInsert
+                const timeToWait = Number(user.profile.timeToInsert) - Date.now()
+                assert(timeToWait > 0, true, 'Must wait a positive amount of time to insert')
+
+                wait(timeToWait)
+                  .then(() => {
+                    console.log('Inserting all items at ' + new Date())
+
+                    const inserts = []
+                    const successfulInserts = {}
+
+                    for (let i = 0; i < NUM_INSERTS; i++) {
+                      const item = {
+                        browser: 2,
+                        i
+                      }
+
+                      const insert = new Promise(resolve => {
+                        userbase.insertItem(dbName, item, i.toString())
+                          .then(() => {
+                            console.log(`Item with id ${i.toString()} succeeeded!`)
+                            successfulInserts[i] = false
+                            resolve()
+                          })
+                          .catch((e) => {
+                            assert(e.name, 'ItemAlreadyExists', 'error name')
+                            assert(e.message, 'Item with the same id already exists.', 'error message')
+                            assert(e.status, 409, 'error status')
+                            resolve()
+                          })
+                      })
+
+                      inserts.push(insert)
+                    }
+
+                    Promise.all(inserts)
+                      .then(() => {
+                        // at this point, all successful inserts should be in the state...
+                        for (let successfulInsertIndex of Object.keys(successfulInserts)) {
+                          const itemId = successfulInsertIndex.toString()
+                          const itemPresentInState = database.findIndex((item) => item.itemId === itemId && item.item.browser === 2)
+                          console.assert(itemPresentInState !== -1, true, 'Successfully inserted item is present in state')
+                        }
+
+                        console.log("Final State after this browser's inserts completed: ", JSON.stringify(database))
+                        completedTest(testNum)
+                      })
+                  })
+              })
+              .catch((e) => console.assert(false, e))
+          })
+          .catch((e) => console.assert(false, e))
+      })
+  }
+
+  if (!location.hash) console.log('%cBrowser 2', 'font-size: x-large; font-weight: bold;')
+
+  switch (location.hash) {
+    case '':
+      test1(1)
+      break
+
+    case '#test2':
+      test2(2)
+      break
+
+    case '#test3':
+      test3(3)
+      break
+
+    case '#test4':
+      test4(4)
+      break
+
+    case '#test5':
+      test5(5)
+      break
+
+    case '#complete':
+      console.log('%cTests complete!', 'color: green; font-size: large;')
+      break
+
+    default:
+      location.hash = 'complete'
+      location.reload()
+      break
+  }
+
+</script>
+
+</html>
