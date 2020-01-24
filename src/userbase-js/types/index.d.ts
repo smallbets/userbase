@@ -10,6 +10,8 @@ export interface UserProfile {
   [key: string]: string
 }
 
+export type RememberMeOption = 'session' | 'local' | 'none'
+
 export interface UserResult {
   username: string
   email?: string
@@ -45,9 +47,9 @@ export interface Item {
 export interface Userbase {
   init(params: { appId: string }): Promise<Session>
 
-  signUp(params: { username: string, password: string, email?: string, profile?: UserProfile, rememberMe?: boolean }): Promise<UserResult>
+  signUp(params: { username: string, password: string, email?: string, profile?: UserProfile, rememberMe?: RememberMeOption }): Promise<UserResult>
 
-  signIn(params: { username: string, password: string, rememberMe?: boolean }): Promise<UserResult>
+  signIn(params: { username: string, password: string, rememberMe?: RememberMeOption }): Promise<UserResult>
 
   signOut(): Promise<void>
 
