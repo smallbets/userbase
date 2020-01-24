@@ -16,6 +16,7 @@ export default class App extends Component {
       email: undefined,
       fullName: undefined,
       paymentStatus: undefined,
+      mobileMenuOpen: false,
       loadingPaymentStatus: true,
       errorGettingPaymentStatus: false,
     }
@@ -24,6 +25,7 @@ export default class App extends Component {
     this.handleUpdateAccount = this.handleUpdateAccount.bind(this)
     this.handleReadHash = this.handleReadHash.bind(this)
     this.handleUpdatePaymentStatus = this.handleUpdatePaymentStatus.bind(this)
+    this.handleToggleMobileMenu = this.handleToggleMobileMenu.bind(this)
   }
 
   async componentDidMount() {
@@ -69,7 +71,7 @@ export default class App extends Component {
     const email = session && session.email
     const fullName = session && session.fullName
 
-    const updatedState = { signedIn }
+    const updatedState = { signedIn, mobileMenuOpen: false }
 
     if (email !== this.state.email) {
       updatedState.email = email
@@ -127,8 +129,22 @@ export default class App extends Component {
     this.setState({ paymentStatus })
   }
 
+  handleToggleMobileMenu(e) {
+    e.preventDefault()
+    this.setState({ mobileMenuOpen: !this.state.mobileMenuOpen })
+  }
+
   render() {
-    const { mode, signedIn, email, fullName, paymentStatus, loadingPaymentStatus, errorGettingPaymentStatus } = this.state
+    const {
+      mode,
+      signedIn,
+      email,
+      fullName,
+      paymentStatus,
+      mobileMenuOpen,
+      loadingPaymentStatus,
+      errorGettingPaymentStatus
+    } = this.state
 
     if (!mode) {
       return <div />
@@ -146,17 +162,19 @@ export default class App extends Component {
                 </div>
               </div>
               <div className='sm:hidden'>
-                <button onClick='toggleMenu()' type='button' className='block text-blackish hover:text-orange-700 focus:text-orange-700 focus:outline-none'>
-                  <svg className='h-6 w-6 fill-current' viewBox='0 0 24 24'>
-                    <path className='hidden menu-close' fillRule='evenodd' d='M18.278 16.864a1 1 0 0 1-1.414 1.414l-4.829-4.828-4.828 4.828a1 1 0 0 1-1.414-1.414l4.828-4.829-4.828-4.828a1 1 0 0 1 1.414-1.414l4.829 4.828 4.828-4.828a1 1 0 1 1 1.414 1.414l-4.828 4.829 4.828 4.828z' />
-                    <path className='menu-open' fillRule='evenodd' d='M4 5h16a1 1 0 0 1 0 2H4a1 1 0 1 1 0-2zm0 6h16a1 1 0 0 1 0 2H4a1 1 0 0 1 0-2zm0 6h16a1 1 0 0 1 0 2H4a1 1 0 0 1 0-2z' />
-                  </svg>
-                </button>
+                { signedIn &&
+                  <button onClick={this.handleToggleMobileMenu} type='button' className='block text-blackish hover:text-orange-700 focus:text-orange-700 focus:outline-none'>
+                    <svg className='h-6 w-6 fill-current' viewBox='0 0 24 24'>
+                      <path className={`${mobileMenuOpen ? '' : 'hidden'} menu-close`} fillRule='evenodd' d='M18.278 16.864a1 1 0 0 1-1.414 1.414l-4.829-4.828-4.828 4.828a1 1 0 0 1-1.414-1.414l4.828-4.829-4.828-4.828a1 1 0 0 1 1.414-1.414l4.829 4.828 4.828-4.828a1 1 0 1 1 1.414 1.414l-4.828 4.829 4.828 4.828z' />
+                      <path className={`${mobileMenuOpen ? 'hidden' : ''} menu-open`} fillRule='evenodd' d='M4 5h16a1 1 0 0 1 0 2H4a1 1 0 1 1 0-2zm0 6h16a1 1 0 0 1 0 2H4a1 1 0 0 1 0-2zm0 6h16a1 1 0 0 1 0 2H4a1 1 0 0 1 0-2z' />
+                    </svg>
+                  </button>
+                }
               </div>
             </div>
 
             {signedIn
-              ? <nav className='pt-0 pb-8 hidden sm:flex sm:p-0 text-lg text-center menu'>
+              ? <nav className={`pt-0 pb-8 sm:flex sm:p-0 text-lg text-center menu ${mobileMenuOpen ? '' : 'hidden'}`}>
                 <a href='/' className='menu-item'>Apps</a>
                 <a href='#edit-account' className='menu-item'>Account</a>
                 <a href='#' onClick={this.handleSignOut} className='menu-item'>Sign out</a>
@@ -214,7 +232,7 @@ export default class App extends Component {
             })()
         }
 
-      </div >
+      </div>
     )
   }
 }
