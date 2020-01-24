@@ -101,7 +101,7 @@ const _buildSignUpParams = (username, passwordToken, appId, userId,
   }
 }
 
-const _allowUserToRetryPassword = async (user) => {
+const _allowUserToRetryPassword = (user) => {
   const params = {
     TableName: setup.usersTableName,
     Key: {
@@ -119,10 +119,10 @@ const _allowUserToRetryPassword = async (user) => {
   }
 
   const ddbClient = connection.ddbClient()
-  await ddbClient.update(params).promise()
+  ddbClient.update(params).promise()
 }
 
-const _suspendUser = async (user) => {
+const _suspendUser = (user) => {
   const params = {
     TableName: setup.usersTableName,
     Key: {
@@ -139,10 +139,10 @@ const _suspendUser = async (user) => {
   }
 
   const ddbClient = connection.ddbClient()
-  await ddbClient.update(params).promise()
+  ddbClient.update(params).promise()
 }
 
-const _incrementIncorrectPasswordAttempt = async (user) => {
+const _incrementIncorrectPasswordAttempt = (user) => {
   const incrementParams = {
     TableName: setup.usersTableName,
     Key: {
@@ -159,7 +159,7 @@ const _incrementIncorrectPasswordAttempt = async (user) => {
   }
 
   const ddbClient = connection.ddbClient()
-  await ddbClient.update(incrementParams).promise()
+  ddbClient.update(incrementParams).promise()
 }
 
 const _validatePassword = (passwordToken, user, req) => {
