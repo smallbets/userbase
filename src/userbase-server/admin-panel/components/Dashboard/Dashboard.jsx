@@ -164,7 +164,7 @@ export default class Dashboard extends Component {
               <div className='flex-0 mb-4 text-left'>
                 <span>
                   <span className='text-lg sm:text-xl'>Apps</span>
-                  { activeApps && activeApps.length > 0 &&
+                  {activeApps && activeApps.length > 0 &&
                     <span className='font-light text-md ml-2'>
                       ({activeApps.length} total)
                     </span>
@@ -175,7 +175,7 @@ export default class Dashboard extends Component {
               {
                 paymentStatus === 'active' ? <div />
                   : <div className='text-left mb-4 text-red-600 font-normal'>
-                    Your account is limited to 3 users. <a href="#edit-account">Remove this limit</a> with a Userbase subscription.
+                    Your account is limited to 1 app and 3 users. <a href="#edit-account">Remove this limit</a> with a Userbase subscription.
                 </div>
               }
 
@@ -262,12 +262,12 @@ export default class Dashboard extends Component {
                           <tr key={app['app-id']} className='border-b mouse:hover:bg-yellow-200 h-8'>
                             <td className='px-1 font-light text-left text-red-700'>{app['app-name']}</td>
                             <td className='px-1 font-mono font-light text-left'>{app['app-id']}</td>
-                            <td className='px-1 font-light w-8'>
+                            <td className='px-1 font-light w-8 text-center'>
 
                               {app['permanentDeleting']
                                 ? <div className='loader w-4 h-4 inline-block' />
                                 : <div
-                                  className='font-normal text-lg cursor-pointer text-yellow-700'
+                                  className='font-normal text-sm cursor-pointer text-yellow-700'
                                   onClick={() => this.handlePermanentDeleteApp(app)}
                                 >
                                   <FontAwesomeIcon icon={faTrashAlt} />

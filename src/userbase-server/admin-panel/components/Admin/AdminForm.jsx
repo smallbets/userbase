@@ -172,7 +172,7 @@ export default class AdminForm extends Component {
                 <div className='table-cell p-2 pt-0 text-left'>
                   <div className='block select-none'>
                     <div className='inline-block text-left whitespace-no-wrap'>
-                      <a className='cursor-pointer italic font-light text-xs sm:text-sm' onClick={this.handleForgotPassword}>Forgot password</a>
+                      <a className='cursor-pointer font-light text-xs sm:text-sm' onClick={this.handleForgotPassword}>Forgot password</a>
                     </div>
                   </div>
                 </div>
@@ -197,7 +197,7 @@ export default class AdminForm extends Component {
 
                     <span>
                       <a
-                        className='italic cursor-pointer no-underline font-light text-xs'
+                        className='cursor-pointer no-underline font-light text-xs'
                         onClick={receiveEmailUpdates ? this.handleDoNotReceiveEmailUpdates : this.handleReceiveEmailUpdates}
                       >
                         Receive email updates about new features.
@@ -217,7 +217,7 @@ export default class AdminForm extends Component {
               {loading
                 ? <div className='loader inline-block w-6 h-6' />
                 : <input
-                  className={`btn ${formType === 'Sign In' ? 'w-24' : 'w-32'}`}
+                  className={`btn w-48`}
                   type='submit'
                   value={formType}
                   disabled={disabled}

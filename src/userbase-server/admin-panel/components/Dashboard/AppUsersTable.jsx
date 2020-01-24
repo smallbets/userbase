@@ -191,16 +191,16 @@ export default class AppUsersTable extends Component {
             <div className='mb-4'>
               <span>
                 <span className='text-lg sm:text-xl text-left'>{appName}</span>
-                { activeUsers && activeUsers.length > 0 &&
+                {activeUsers && activeUsers.length > 0 &&
                   <span className='font-light text-md ml-2'>
                     ({activeUsers.length} user{`${activeUsers.length === 1 ? '' : 's'}`})
-                  </span> }
+                  </span>}
               </span>
             </div>
             {
               paymentStatus === 'active' ? <div />
                 : <div className='text-left mb-4 text-red-600 font-normal'>
-                  Your account is limited to 3 users. <a href="#edit-account">Remove this limit</a> with a Userbase subscription.
+                  Your account is limited to 1 app and 3 users. <a href="#edit-account">Remove this limit</a> with a Userbase subscription.
                 </div>
             }
           </div>
@@ -229,12 +229,12 @@ export default class AppUsersTable extends Component {
                           <tr key={user['user-id']} className='border-b mouse:hover:bg-yellow-200 h-8'>
                             <td className='px-1 font-light text-left'>{user['username']}</td>
                             <td className='px-1 font-light text-left'>{user['formattedCreationDate']}</td>
-                            <td className='px-1 font-light w-8'>
+                            <td className='px-1 font-light w-8 text-center'>
 
                               {user['deleting']
                                 ? <div className='loader w-4 h-4 inline-block' />
                                 : <div
-                                  className='font-normal text-lg cursor-pointer text-yellow-700'
+                                  className='font-normal text-sm cursor-pointer text-yellow-700'
                                   onClick={() => this.handleDeleteUser(user)}
                                 >
                                   <FontAwesomeIcon icon={faTrashAlt} />
@@ -274,12 +274,12 @@ export default class AppUsersTable extends Component {
                             <tr key={user['user-id']} className='border-b mouse:hover:bg-yellow-200 h-8'>
                               <td className='px-1 font-light text-left text-red-700'>{user['username']}</td>
                               <td className='px-1 font-light text-left'>{user['formattedCreationDate']}</td>
-                              <td className='px-1 font-light text-left w-8'>
+                              <td className='px-1 font-light w-8 text-center'>
 
                                 {user['permanentDeleting']
                                   ? <div className='loader w-4 h-4 inline-block' />
                                   : <div
-                                    className='font-normal text-lg cursor-pointer text-yellow-700'
+                                    className='font-normal text-sm cursor-pointer text-yellow-700'
                                     onClick={() => this.handlePermanentDeleteUser(user)}
                                   >
                                     <FontAwesomeIcon icon={faTrashAlt} />
@@ -311,11 +311,14 @@ export default class AppUsersTable extends Component {
             ? <div>
               <hr className='border border-t-0 border-gray-400 mt-8 mb-6' />
 
-              <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Danger Zone</div>
+              <div className='flex-0 text-lg sm:text-xl text-left mb-4 text-red-600'>Danger Zone</div>
+
+              <div className='flex-0 text-base sm:text-lg text-left mb-1'>Delete App</div>
+              <p className='text-left font-normal'>By deleting this app, your users will lose access to their accounts. This action becomes irreversible once the app is permanently deleted.</p>
 
               <div className='text-center'>
                 <input
-                  className='btn w-32'
+                  className='btn w-56'
                   type='button'
                   value='Delete App'
                   onClick={this.handleDeleteApp}

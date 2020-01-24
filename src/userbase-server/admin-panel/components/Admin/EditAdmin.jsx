@@ -263,6 +263,8 @@ export default class EditAdmin extends Component {
           : paymentStatus === 'active' || paymentStatus === 'past_due'
             ?
             <div>
+              <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Subscription</div>
+
               <input
                 className='btn w-56 text-center'
                 type='button'
@@ -277,8 +279,10 @@ export default class EditAdmin extends Component {
             </div>
             :
             <div>
-              <div className='font-light text-left mb-4'>
-                <p>Your trial account is limited to 3 users.</p>
+              <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Subscription</div>
+
+              <div className='font-normal text-left mb-4'>
+                <p>Your trial account is limited to 1 app and 3 users.</p>
                 <p>Remove this limit with a Userbase subscription for only $49 per year.</p>
               </div>
 
@@ -346,7 +350,7 @@ export default class EditAdmin extends Component {
 
           <div className='text-center'>
             <input
-              className='btn w-40 mt-4'
+              className='btn w-56 mt-4'
               type='submit'
               value={loadingUpdateAdmin ? 'Updating...' : 'Update Account'}
               disabled={disableUpdateButton || loadingDeleteAdmin || loadingUpdateAdmin}
@@ -400,7 +404,7 @@ export default class EditAdmin extends Component {
 
           <div className='text-center'>
             <input
-              className='btn w-40 mt-4'
+              className='btn mt-4 w-56'
               type='submit'
               value={loadingChangePassword ? 'Changing...' : 'Change Password'}
               disabled={(!currentPassword || !newPassword) || loadingDeleteAdmin || loadingUpdateAdmin || loadingChangePassword}
@@ -417,10 +421,13 @@ export default class EditAdmin extends Component {
 
         <hr className='border border-t-0 border-gray-400 mt-8 mb-6' />
 
-        <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Danger Zone</div>
+        <div className='flex-0 text-lg sm:text-xl text-left mb-4 text-red-600'>Danger Zone</div>
 
-       { (paymentStatus === 'active' || paymentStatus === 'past_due') &&
+        {(paymentStatus === 'active' || paymentStatus === 'past_due') &&
           <div>
+            <div className='flex-0 text-base sm:text-lg text-left mb-1'>Cancel Subscription</div>
+            <p className='text-left font-normal'>By cancelling your subscription, your account will become limited to 3 users, and no new sign ups will succeed once that limit is reached.</p>
+
             <input
               className='btn w-56'
               type='button'
@@ -435,21 +442,24 @@ export default class EditAdmin extends Component {
           </div>
         }
 
-          <input
-            className='btn w-56'
-            type='button'
-            value={loadingDeleteAdmin ? 'Deleting...' : 'Delete Account'}
-            disabled={loadingDeleteAdmin}
-            onClick={this.handleDeleteAccount}
-          />
+        <div className='flex-0 text-base sm:text-lg text-left mb-1'>Delete Account</div>
+        <p className='text-left font-normal'>By deleting your account, your apps will stop working, and your users will permanently lose access to their accounts. This action is irreversible.</p>
 
-          {errorCancelling && <UnknownError action='cancelling your subscription' />}
+        <input
+          className='btn w-56'
+          type='button'
+          value={loadingDeleteAdmin ? 'Deleting...' : 'Delete Account'}
+          disabled={loadingDeleteAdmin}
+          onClick={this.handleDeleteAccount}
+        />
 
-          {errorDeletingAdmin && (
-            errorDeletingAdmin === 'Unknown Error'
-              ? <UnknownError action='deleting your account' />
-              : <div className='error'>{errorDeletingAdmin}</div>
-          )}
+        {errorCancelling && <UnknownError action='cancelling your subscription' />}
+
+        {errorDeletingAdmin && (
+          errorDeletingAdmin === 'Unknown Error'
+            ? <UnknownError action='deleting your account' />
+            : <div className='error'>{errorDeletingAdmin}</div>
+        )}
 
 
       </div>
