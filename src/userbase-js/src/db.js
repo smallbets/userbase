@@ -664,7 +664,7 @@ const _buildDeleteParams = async (database, itemId) => {
   return { itemKey, encryptedItem }
 }
 
-const buildTransaction = async (params) => {
+const putTransaction = async (params) => {
   try {
     if (typeof params !== 'object') throw new errors.ParamsMustBeObject
 
@@ -777,5 +777,5 @@ export default {
   insertItem,
   updateItem,
   deleteItem,
-  buildTransaction,
+  putTransaction,
 }

@@ -24,7 +24,7 @@ describe('Login - Signup Testing', function () {
       expect(userbase).to.respondTo('insertItem')
       expect(userbase).to.respondTo('updateItem')
       expect(userbase).to.respondTo('deleteItem')
-      expect(userbase).to.respondTo('buildTransaction')
+      expect(userbase).to.respondTo('putTransaction')
     })
   })
 

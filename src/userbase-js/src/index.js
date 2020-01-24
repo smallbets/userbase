@@ -15,5 +15,5 @@ export default {
   insertItem: db.insertItem,
   updateItem: db.updateItem,
   deleteItem: db.deleteItem,
-  buildTransaction: db.buildTransaction
+  putTransaction: db.putTransaction
 }
