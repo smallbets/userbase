@@ -13,20 +13,18 @@
 </body>
 
 <script>
+  window._userbaseEndpoint = endpoint
+
+  const CONCURRENT_INSERT_DELAY = 10000
+
   const test1 = (testNum) => {
     console.log(`%cTest ${testNum}: Browser 1 waits for Browser 2 to insert`, 'font-size: large')
 
-    userbase.init({ appId, endpoint })
+    userbase.init({ appId })
 
     const { username, password } = USERS[testNum - 1]
 
-    const email = null
-    const profile = null
-    const showKeyHandler = () => { }
-    const rememberMe = false
-    const backUpKey = true
-
-    userbase.signUp(username, password, email, profile, showKeyHandler, rememberMe, backUpKey)
+    userbase.signUp({ username, password, rememberMe })
       .then(() => {
         console.log('Signed up...')
 
@@ -38,7 +36,7 @@
 
         let database = []
         let called = 0
-        let dbChangeHandler = (items) => {
+        let changeHandler = (items) => {
           database = items
           called += 1
 
@@ -48,7 +46,7 @@
         }
 
         // open the database immediately after signing up
-        userbase.openDatabase(dbName, dbChangeHandler)
+        userbase.openDatabase({ databaseName, changeHandler })
           .then(() => {
 
             console.log('Waiting for first insert...')
@@ -75,17 +73,11 @@
   const test2 = (testNum) => {
     console.log(`%cTest ${testNum}: Browser 1 waits for Browser 2 to insert, then attempts to insert same item`, 'font-size: large')
 
-    userbase.init({ appId, endpoint })
+    userbase.init({ appId })
 
     const { username, password } = USERS[testNum - 1]
 
-    const email = null
-    const profile = null
-    const showKeyHandler = () => { }
-    const rememberMe = false
-    const backUpKey = true
-
-    userbase.signUp(username, password, email, profile, showKeyHandler, rememberMe, backUpKey)
+    userbase.signUp({ username, password, rememberMe })
       .then(() => {
         console.log('Signed up...')
 
@@ -97,7 +89,7 @@
 
         let database = []
         let called = 0
-        let dbChangeHandler = (items) => {
+        let changeHandler = (items) => {
           database = items
           called += 1
 
@@ -107,13 +99,13 @@
         }
 
         // open the database immediately after signing up
-        userbase.openDatabase(dbName, dbChangeHandler)
+        userbase.openDatabase({ databaseName, changeHandler })
           .then(() => {
 
             console.log('Waiting for first insert...')
             waitForFirstInsert
               .then(() => {
-                userbase.insertItem(dbName, 'Hello world 2!', 'test-id')
+                userbase.insertItem({ databaseName, item: 'Hello world 2!', itemId: 'test-id' })
                   .then(() => assert(false, true, 'Should not have inserted successfully'))
                   .catch((e) => {
                     assert(e.name, 'ItemAlreadyExists', 'error name')
@@ -136,17 +128,11 @@
 
     const NUM_INSERTS = 10
 
-    userbase.init({ appId, endpoint })
+    userbase.init({ appId })
 
     const { username, password } = USERS[testNum - 1]
 
-    const email = null
-    const profile = null
-    const showKeyHandler = () => { }
-    const rememberMe = false
-    const backUpKey = true
-
-    userbase.signUp(username, password, email, profile, showKeyHandler, rememberMe, backUpKey)
+    userbase.signUp({ username, password, rememberMe })
       .then(() => {
         console.log('Signed up...')
 
@@ -157,7 +143,7 @@
         })
 
         let database = []
-        let dbChangeHandler = (items) => {
+        let changeHandler = (items) => {
           database = items
 
           if (items.length === NUM_INSERTS) {
@@ -166,7 +152,7 @@
         }
 
         // open the database immediately after signing up
-        userbase.openDatabase(dbName, dbChangeHandler)
+        userbase.openDatabase({ databaseName, changeHandler })
           .then(() => {
 
             console.log('Waiting for 10 inserts...')
@@ -208,19 +194,15 @@
     const NUM_INSERTS = 10
     const TOTAL_INSERTS = NUM_INSERTS * 2
 
-    userbase.init({ appId, endpoint })
+    userbase.init({ appId })
 
     const { username, password } = USERS[testNum - 1]
 
-    const timeToInsert = (Date.now() + 10000).toString()
+    const timeToInsert = (Date.now() + CONCURRENT_INSERT_DELAY).toString()
 
-    const email = null
     const profile = { timeToInsert } // tells other browser the time to insert
-    const showKeyHandler = () => { }
-    const rememberMe = false
-    const backUpKey = true
 
-    userbase.signUp(username, password, email, profile, showKeyHandler, rememberMe, backUpKey)
+    userbase.signUp({ username, password, profile, rememberMe })
       .then(() => {
         console.log('Signed up...')
 
@@ -232,7 +214,7 @@
 
         let database = []
         let called = 0
-        let dbChangeHandler = (items) => {
+        let changeHandler = (items) => {
           database = items
           called += 1
 
@@ -242,7 +224,7 @@
         }
 
         // open the database immediately after signing up
-        userbase.openDatabase(dbName, dbChangeHandler)
+        userbase.openDatabase({ databaseName, changeHandler })
           .then(() => {
 
             // wait until timeToInsert
@@ -254,7 +236,7 @@
                 console.log('Inserting all items at ' + new Date())
 
                 for (let i = 0; i < NUM_INSERTS; i++) {
-                  userbase.insertItem(dbName, 'item-' + i, i.toString())
+                  userbase.insertItem({ databaseName, item: 'item-' + i, itemId: i.toString() })
                 }
 
                 console.log('Waiting for all inserts...')
@@ -296,19 +278,14 @@
 
     const NUM_INSERTS = 20
 
-    userbase.init({ appId, endpoint })
+    userbase.init({ appId })
 
     const { username, password } = USERS[testNum - 1]
 
-    const timeToInsert = (Date.now() + 10000).toString()
-
-    const email = null
+    const timeToInsert = (Date.now() + CONCURRENT_INSERT_DELAY).toString()
     const profile = { timeToInsert } // tells other browser the time to insert
-    const showKeyHandler = () => { }
-    const rememberMe = false
-    const backUpKey = true
 
-    userbase.signUp(username, password, email, profile, showKeyHandler, rememberMe, backUpKey)
+    userbase.signUp({ username, password, profile, rememberMe })
       .then(() => {
         console.log('Signed up...')
 
@@ -319,16 +296,32 @@
         })
 
         let database = []
-        let dbChangeHandler = (items) => {
+
+        let includedInState = {}
+
+        let changeHandler = (items) => {
           database = items
 
           if (items.length === NUM_INSERTS) {
             resolveInserts()
           }
+
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i]
+
+            const itemId = item.itemId
+            const browser = item.item.browser
+
+            if (!includedInState[itemId]) {
+              includedInState[itemId] = browser
+            } else {
+              console.assert(includedInState[itemId], browser, `${itemId} switched from ${includedInState[itemId]} to ${browser}`)
+            }
+          }
         }
 
         // open the database immediately after signing up
-        userbase.openDatabase(dbName, dbChangeHandler)
+        userbase.openDatabase({ databaseName, changeHandler })
           .then(() => {
 
             // wait until timeToInsert
@@ -349,7 +342,7 @@
                   }
 
                   const insert = new Promise(resolve => {
-                    userbase.insertItem(dbName, item, i.toString())
+                    userbase.insertItem({ databaseName, item, itemId: i.toString() })
                       .then(() => {
                         successfulInserts[i] = false
 

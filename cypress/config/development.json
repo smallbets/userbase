@@ -4,7 +4,7 @@
     "password": "7jphi05xp5rmu0xn060jb-pass",
     "key": "CKLjtFyavUQkr5lCevkvpCggVoaoo0tTuCAG8h99dGo=",
     "endpoint": "http://localhost:8080/v1",
-    "appId": "7b137d19-f6e1-4d2d-86f7-8f78aeca9e2b",
+    "appId": "test-id",
     "dbName": "test"
   }
 }

@@ -1,11 +1,13 @@
 /* eslint-disable no-unused-vars */
 
 const appId = 'test-id'
-const endpoint = 'http://localhost:8080'
+const endpoint = 'http://localhost:8080/v1'
 
 const wait = (ms) => new Promise(resolve => setTimeout(() => resolve(), ms))
 
-const dbName = 'test-db'
+const databaseName = 'test-db'
+
+const rememberMe = 'none'
 
 const assert = (actual, expected, errorMsg) => console.assert(actual === expected, { actual, expected, errorMsg })
 
