@@ -10,6 +10,7 @@ export default class AppUsersTable extends Component {
     super(props)
     this.state = {
       error: '',
+      appId: '',
       activeUsers: [],
       deletedUsers: [],
       loading: true,
@@ -29,9 +30,10 @@ export default class AppUsersTable extends Component {
     const { appName } = this.props
 
     try {
-      const appUsers = (await dashboardLogic.listAppUsers(appName))
-        // sort by date in descending order
-        .sort((a, b) => new Date(b['creation-date']) - new Date(a['creation-date']))
+      const { users, appId } = await dashboardLogic.listAppUsers(appName)
+
+      // sort by date in descending order
+      const appUsers = users.sort((a, b) => new Date(b['creation-date']) - new Date(a['creation-date']))
 
       const activeUsers = []
       const deletedUsers = []
@@ -62,7 +64,7 @@ export default class AppUsersTable extends Component {
         else activeUsers.push(appUser)
       }
 
-      if (this._isMounted) this.setState({ activeUsers, deletedUsers, loading: false })
+      if (this._isMounted) this.setState({ appId, activeUsers, deletedUsers, loading: false })
     } catch (e) {
       if (this._isMounted) this.setState({ error: e.message, loading: false })
     }
@@ -178,7 +180,7 @@ export default class AppUsersTable extends Component {
 
   render() {
     const { appName, paymentStatus } = this.props
-    const { loading, activeUsers, deletedUsers, error, showDeletedUsers } = this.state
+    const { loading, appId, activeUsers, deletedUsers, error, showDeletedUsers } = this.state
 
     return (
       <div className='text-xs sm:text-sm'>
@@ -186,7 +188,15 @@ export default class AppUsersTable extends Component {
         <div className='container content'>
 
           <div className='mb-6'>
-            <div className='text-lg sm:text-xl text-left mb-4'>{appName}</div>
+            <div className='mb-4'>
+              <span>
+                <span className='text-lg sm:text-xl text-left'>{appName}</span>
+                { activeUsers && activeUsers.length > 0 &&
+                  <span className='font-light text-md ml-2'>
+                    ({activeUsers.length} user{`${activeUsers.length === 1 ? '' : 's'}`})
+                  </span> }
+              </span>
+            </div>
             {
               paymentStatus === 'active' ? <div />
                 : <div className='text-left mb-4 text-red-600 font-normal'>

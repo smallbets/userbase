@@ -298,7 +298,10 @@ exports.listAppUsers = async function (req, res) {
       users.push(usersResponse.Items)
     }
 
-    return res.status(statusCodes['Success']).send(users)
+    return res.status(statusCodes['Success']).send({
+      users,
+      appId: app['app-id']
+    })
   } catch (e) {
     logger.error(`Failed to list app users for app ${appName} and admin ${adminId} with ${e}`)
     return res
