@@ -15,17 +15,18 @@ const beforeEachHook = function () {
     this.currentTest.userbase = userbase
 
     const { appId, endpoint } = Cypress.env()
-    userbase.init({ appId, endpoint })
+    win._userbaseEndpoint = endpoint
+    userbase.init({ appId })
 
     const randomUser = 'test-user-' + getRandomString()
     const password = getRandomString()
-    const email = null
-    const profile = null
-    const showKeyHandler = () => { }
-    const rememberMe = false
-    const backUpKey = true
+    const rememberMe = 'none'
 
-    await userbase.signUp(randomUser, password, email, profile, showKeyHandler, rememberMe, backUpKey)
+    await userbase.signUp({
+      username: randomUser,
+      password,
+      rememberMe
+    })
 
     this.currentTest.username = randomUser
     this.currentTest.password = password
@@ -33,7 +34,7 @@ const beforeEachHook = function () {
 }
 
 describe('DB Correctness Tests', function () {
-  const dbName = 'test-db'
+  const databaseName = 'test-db'
   const BUNDLE_SIZE = 50 * 1024 // from src/userbase-server/ws.js
 
   describe('Open Database', function () {
@@ -50,7 +51,7 @@ describe('DB Correctness Tests', function () {
 
           changeHandlerCallCount += 1
         }
-        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
       })
@@ -67,8 +68,8 @@ describe('DB Correctness Tests', function () {
           changeHandler2CallCount += 1
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler1)
-        await this.test.userbase.openDatabase(dbName, changeHandler2)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: changeHandler1 })
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: changeHandler2 })
 
         expect(changeHandler1CallCount, 'changeHandler 1 called correct number of times').to.equal(1)
         expect(changeHandler2CallCount, 'changeHandler 2 called correct number of times').to.equal(1)
@@ -87,17 +88,17 @@ describe('DB Correctness Tests', function () {
         }
 
         for (let i = 0; i < numDatabases; i++) {
-          await this.test.userbase.openDatabase(dbName + i, changeHandler)
+          await this.test.userbase.openDatabase({ databaseName: databaseName + i, changeHandler })
         }
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(10)
       })
     })
 
-    describe('Concurrency tests', function () {
+    describe('Concurrency Tests', function () {
       beforeEach(function () { beforeEachHook() })
 
-      it('Open 10 Databases concurrently', async function () {
+      it('Open 10 different Databases concurrently', async function () {
         const numDatabases = 10
 
         let changeHandlerCallCount = 0
@@ -111,49 +112,37 @@ describe('DB Correctness Tests', function () {
 
         const promises = []
         for (let i = 0; i < numDatabases; i++) {
-          promises.push(this.test.userbase.openDatabase(dbName + i, changeHandler))
+          promises.push(this.test.userbase.openDatabase({ databaseName: databaseName + i, changeHandler }))
         }
         await Promise.all(promises)
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(10)
       })
 
-      it('Open 10 Databases concurrently with the same name', async function () {
+      it('Open the same 10 Databases concurrently', async function () {
         const numDatabases = 10
 
-        let changeHandlerCallCount = 0
+        const successfulChangeHandlersCalled = []
 
-        const changeHandler = function (items) {
-          expect(items, 'array passed to changeHandler').to.be.a('array')
-          expect(items, 'array passed to changeHandler').to.be.empty
+        const openDatabasePromises = []
 
-          changeHandlerCallCount += 1
-        }
-
-        let successCount = 0
-        let failureCount = 0
-
-        const openDatabase = async () => {
-          try {
-            await this.test.userbase.openDatabase(dbName, changeHandler)
-            successCount += 1
-          } catch (e) {
-            expect(e.name, 'error name').to.be.equal('ServiceUnavailable')
-            expect(e.message, 'error message').to.equal('Service unavailable.')
-            expect(e.status, 'error status').to.equal(503)
-            failureCount += 1
-          }
-        }
-
-        const promises = []
         for (let i = 0; i < numDatabases; i++) {
-          promises.push(openDatabase())
-        }
-        await Promise.all(promises)
+          const changeHandler = function (items) {
+            expect(items, 'array passed to changeHandler').to.be.a('array')
+            expect(items, 'array passed to changeHandler').to.be.empty
 
-        expect(successCount, 'success count').to.equal(1)
-        expect(failureCount, 'failure count').to.equal(numDatabases - 1)
-        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+            successfulChangeHandlersCalled.push(i)
+          }
+
+          openDatabasePromises.push(this.test.userbase.openDatabase({ databaseName, changeHandler }))
+        }
+
+        // all calls to openDatabase should succeed
+        await Promise.all(openDatabasePromises)
+
+        // but there should only be 1 changeHandler called 1 time, and it should be the final database's changeHandler
+        expect(successfulChangeHandlersCalled.length).to.equal(1)
+        expect(successfulChangeHandlersCalled[0]).to.equal(numDatabases - 1)
       })
 
     })
@@ -191,8 +180,8 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
-        await this.test.userbase.insertItem(dbName, itemToInsert)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+        await this.test.userbase.insertItem({ databaseName, item: itemToInsert })
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
         expect(successful, 'successful state').to.be.true
@@ -225,8 +214,8 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
-        await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+        await this.test.userbase.insertItem({ databaseName, item: itemToInsert, itemId: testItemId })
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
         expect(successful, 'successful state').to.be.true
@@ -264,9 +253,9 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
-        await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
-        await this.test.userbase.updateItem(dbName, itemToUpdate, testItemId)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+        await this.test.userbase.insertItem({ databaseName, item: itemToInsert, itemId: testItemId })
+        await this.test.userbase.updateItem({ databaseName, item: itemToUpdate, itemId: testItemId })
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(3)
         expect(successful, 'successful state').to.be.true
@@ -291,9 +280,9 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
-        await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
-        await this.test.userbase.deleteItem(dbName, testItemId)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+        await this.test.userbase.insertItem({ databaseName, item: itemToInsert, itemId: testItemId })
+        await this.test.userbase.deleteItem({ databaseName, itemId: testItemId })
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(3)
         expect(successful, 'successful state').to.be.true
@@ -316,7 +305,7 @@ describe('DB Correctness Tests', function () {
         const changeHandler = function (items) {
           changeHandlerCallCount += 1
 
-          if (changeHandlerCallCount === 3) {
+          if (changeHandlerCallCount === 2) {
             expect(items, 'array passed to changeHandler').to.have.lengthOf(1)
 
             const insertedItem = items[0]
@@ -330,11 +319,11 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
-        await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+        await this.test.userbase.insertItem({ databaseName, item: itemToInsert, itemId: testItemId })
 
         try {
-          await this.test.userbase.insertItem(dbName, duplicateItem, testItemId)
+          await this.test.userbase.insertItem({ databaseName, item: duplicateItem, itemId: testItemId })
           throw new Error('Should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.be.equal('ItemAlreadyExists')
@@ -342,7 +331,7 @@ describe('DB Correctness Tests', function () {
           expect(e.status, 'error status').to.be.equal(409)
         }
 
-        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(3)
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
         expect(successful, 'successful state').to.be.true
       })
 
@@ -357,10 +346,10 @@ describe('DB Correctness Tests', function () {
           changeHandlerCallCount += 1
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
 
         try {
-          await this.test.userbase.updateItem(dbName, itemToFailUpdate, testItemId)
+          await this.test.userbase.updateItem({ databaseName, item: itemToFailUpdate, itemId: testItemId })
           throw new Error('Should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.be.equal('ItemDoesNotExist')
@@ -371,7 +360,7 @@ describe('DB Correctness Tests', function () {
         expect(changeHandlerCallCount, 'changeHandler is not called if item does not exist').to.equal(1)
 
         try {
-          await this.test.userbase.deleteItem(dbName, testItemId)
+          await this.test.userbase.deleteItem({ databaseName, itemId: testItemId })
           throw new Error('Should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.be.equal('ItemDoesNotExist')
@@ -398,12 +387,12 @@ describe('DB Correctness Tests', function () {
           changeHandlerCallCount += 1
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
-        await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
-        await this.test.userbase.deleteItem(dbName, testItemId)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+        await this.test.userbase.insertItem({ databaseName, item: itemToInsert, itemId: testItemId })
+        await this.test.userbase.deleteItem({ databaseName, itemId: testItemId })
 
         try {
-          await this.test.userbase.updateItem(dbName, itemToFailUpdate, testItemId)
+          await this.test.userbase.updateItem({ databaseName, item: itemToFailUpdate, itemId: testItemId })
           throw new Error('Should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.be.equal('ItemDoesNotExist')
@@ -414,7 +403,7 @@ describe('DB Correctness Tests', function () {
         expect(changeHandlerCallCount, 'changeHandler is not called if item does not exist').to.equal(3)
 
         try {
-          await this.test.userbase.deleteItem(dbName, testItemId)
+          await this.test.userbase.deleteItem({ databaseName, itemId: testItemId })
           throw new Error('Should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.be.equal('ItemDoesNotExist')
@@ -452,10 +441,10 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
-        await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
-        await this.test.userbase.deleteItem(dbName, testItemId)
-        await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+        await this.test.userbase.insertItem({ databaseName, item: itemToInsert, itemId: testItemId })
+        await this.test.userbase.deleteItem({ databaseName, itemId: testItemId })
+        await this.test.userbase.insertItem({ databaseName, item: itemToInsert, itemId: testItemId })
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(4)
         expect(successful, 'successful state').to.be.true
@@ -503,23 +492,23 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
 
         for (let i = 0; i < numSequentialOperations; i++) {
           const item = i.toString()
           const itemId = item
-          await this.test.userbase.insertItem(dbName, item, itemId)
+          await this.test.userbase.insertItem({ databaseName, item, itemId })
         }
 
         for (let i = 0; i < numSequentialOperations; i++) {
           const item = (i + numSequentialOperations).toString()
           const itemId = i.toString()
-          await this.test.userbase.updateItem(dbName, item, itemId)
+          await this.test.userbase.updateItem({ databaseName, item, itemId })
         }
 
         for (let i = 0; i < numSequentialOperations; i++) {
           const itemId = i.toString()
-          await this.test.userbase.deleteItem(dbName, itemId)
+          await this.test.userbase.deleteItem({ databaseName, itemId })
         }
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1 + (numSequentialOperations * 3))
@@ -550,8 +539,8 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
-        await this.test.userbase.insertItem(dbName, largeString)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+        await this.test.userbase.insertItem({ databaseName, item: largeString })
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
         expect(successful, 'successful state').to.be.true
@@ -587,9 +576,9 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
-        await this.test.userbase.insertItem(dbName, largeString)
-        await this.test.userbase.insertItem(dbName, smallItem)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+        await this.test.userbase.insertItem({ databaseName, item: largeString })
+        await this.test.userbase.insertItem({ databaseName, item: smallItem })
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(3)
         expect(successful, 'successful state').to.be.true
@@ -625,8 +614,8 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
-        await this.test.userbase.transaction(dbName, operations)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+        await this.test.userbase.buildTransaction({ databaseName, operations })
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
         expect(successful, 'successful state').to.be.true
@@ -638,8 +627,8 @@ describe('DB Correctness Tests', function () {
         const operations = []
         for (let i = 0; i < NUM_ITEMS; i++) {
           const item = i.toString()
-          const id = item
-          operations.push({ command: 'Insert', item, id })
+          const itemId = item
+          operations.push({ command: 'Insert', item, itemId })
         }
 
         let changeHandlerCallCount = 0
@@ -664,8 +653,8 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
-        await this.test.userbase.transaction(dbName, operations)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+        await this.test.userbase.buildTransaction({ databaseName, operations })
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
         expect(successful, 'successful state').to.be.true
@@ -677,15 +666,15 @@ describe('DB Correctness Tests', function () {
         const insertOperations = []
         for (let i = 0; i < NUM_ITEMS; i++) {
           const item = i.toString()
-          const id = item
-          insertOperations.push({ command: 'Insert', item, id })
+          const itemId = item
+          insertOperations.push({ command: 'Insert', item, itemId })
         }
 
         const updateOperations = []
         for (let i = 0; i < NUM_ITEMS; i++) {
           const item = (i + NUM_ITEMS).toString()
-          const id = i.toString()
-          updateOperations.push({ command: 'Update', item, id })
+          const itemId = i.toString()
+          updateOperations.push({ command: 'Update', item, itemId })
         }
 
         let changeHandlerCallCount = 0
@@ -709,10 +698,9 @@ describe('DB Correctness Tests', function () {
             successful = true
           }
         }
-
-        await this.test.userbase.openDatabase(dbName, changeHandler)
-        await this.test.userbase.transaction(dbName, insertOperations)
-        await this.test.userbase.transaction(dbName, updateOperations)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+        await this.test.userbase.buildTransaction({ databaseName, operations: insertOperations })
+        await this.test.userbase.buildTransaction({ databaseName, operations: updateOperations })
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(3)
         expect(successful, 'successful state').to.be.true
@@ -726,21 +714,21 @@ describe('DB Correctness Tests', function () {
         const insertOperations = []
         for (let i = 0; i < NUM_ITEMS; i++) {
           const item = i.toString()
-          const id = item
-          insertOperations.push({ command: 'Insert', item, id })
+          const itemId = item
+          insertOperations.push({ command: 'Insert', item, itemId })
         }
 
         const updateOperations = []
         for (let i = 0; i < NUM_ITEMS; i++) {
           const item = (i + NUM_ITEMS).toString()
-          const id = i.toString()
-          updateOperations.push({ command: 'Update', item, id })
+          const itemId = i.toString()
+          updateOperations.push({ command: 'Update', item, itemId })
         }
 
         const deleteOperations = []
         for (let i = 0; i < NUM_DELETES; i++) {
-          const id = i.toString()
-          deleteOperations.push({ command: 'Delete', id })
+          const itemId = i.toString()
+          deleteOperations.push({ command: 'Delete', itemId })
         }
 
         let changeHandlerCallCount = 0
@@ -766,11 +754,11 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
 
-        await this.test.userbase.transaction(dbName, insertOperations)
-        await this.test.userbase.transaction(dbName, updateOperations)
-        await this.test.userbase.transaction(dbName, deleteOperations)
+        await this.test.userbase.buildTransaction({ databaseName, operations: insertOperations })
+        await this.test.userbase.buildTransaction({ databaseName, operations: updateOperations })
+        await this.test.userbase.buildTransaction({ databaseName, operations: deleteOperations })
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(4)
         expect(successful, 'successful state').to.be.true
@@ -796,9 +784,9 @@ describe('DB Correctness Tests', function () {
         }
 
         const operations = [
-          { command: 'Insert', item: item3ToInsert, id: itemId3 },
-          { command: 'Update', item: item2ToUpdate, id: itemId2 },
-          { command: 'Delete', id: itemId1 },
+          { command: 'Insert', item: item3ToInsert, itemId: itemId3 },
+          { command: 'Update', item: item2ToUpdate, itemId: itemId2 },
+          { command: 'Delete', itemId: itemId1 },
         ]
 
         let changeHandlerCallCount = 0
@@ -824,11 +812,11 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
 
-        await this.test.userbase.insertItem(dbName, item1ToInsert, itemId1)
-        await this.test.userbase.insertItem(dbName, item2ToInsert, itemId2)
-        await this.test.userbase.transaction(dbName, operations)
+        await this.test.userbase.insertItem({ databaseName, item: item1ToInsert, itemId: itemId1 })
+        await this.test.userbase.insertItem({ databaseName, item: item2ToInsert, itemId: itemId2 })
+        await this.test.userbase.buildTransaction({ databaseName, operations })
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(4)
         expect(successful, 'successful state').to.be.true
@@ -865,12 +853,12 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler1)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: changeHandler1 })
 
-        await this.test.userbase.insertItem(dbName, 'test1')
-        await this.test.userbase.openDatabase(dbName, changeHandler2)
+        await this.test.userbase.insertItem({ databaseName, item: 'test1' })
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: changeHandler2 })
 
-        await this.test.userbase.insertItem(dbName, 'test2')
+        await this.test.userbase.insertItem({ databaseName, item: 'test2' })
 
         expect(changeHandler1CallCount, 'changeHandler 1 called correct number of times').to.equal(2)
         expect(changeHandler2CallCount, 'changeHandler 2 called correct number of times').to.equal(2)
@@ -879,7 +867,7 @@ describe('DB Correctness Tests', function () {
 
     })
 
-    describe('Concurrency tests', function () {
+    describe('Concurrency Tests', function () {
       beforeEach(function () { beforeEachHook() })
 
       it('10 concurrent Inserts', async function () {
@@ -919,14 +907,14 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
 
         const inserts = []
         for (let i = 0; i < numConcurrentOperations; i++) {
           const item = i.toString()
           const itemId = item
           insertedItems[itemId] = false
-          inserts.push(this.test.userbase.insertItem(dbName, item, itemId))
+          inserts.push(this.test.userbase.insertItem({ databaseName, item, itemId }))
         }
         await Promise.all(inserts)
 
@@ -974,13 +962,13 @@ describe('DB Correctness Tests', function () {
         }
 
         // Set up the test
-        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
 
         const inserts = []
         for (let i = 0; i < numConcurrentOperations; i++) {
           const item = i.toString()
           const itemId = item
-          inserts.push(this.test.userbase.insertItem(dbName, item, itemId))
+          inserts.push(this.test.userbase.insertItem({ databaseName, item, itemId }))
         }
         await Promise.all(inserts)
 
@@ -991,7 +979,7 @@ describe('DB Correctness Tests', function () {
           const item = (i + numConcurrentOperations).toString()
           const itemId = i.toString()
           updatedItems[itemId] = false
-          updates.push(this.test.userbase.updateItem(dbName, item, itemId))
+          updates.push(this.test.userbase.updateItem({ databaseName, item, itemId }))
         }
         await Promise.all(updates)
 
@@ -1066,13 +1054,13 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
 
         const inserts = []
         for (let i = 0; i < numConcurrentOperations; i++) {
           const item = i.toString()
           const itemId = item
-          inserts.push(this.test.userbase.insertItem(dbName, item, itemId))
+          inserts.push(this.test.userbase.insertItem({ databaseName, item, itemId }))
         }
         await Promise.all(inserts)
 
@@ -1081,7 +1069,7 @@ describe('DB Correctness Tests', function () {
         const deletes = []
         for (let i = 0; i < numConcurrentOperations; i++) {
           const itemId = i.toString()
-          deletes.push(this.test.userbase.deleteItem(dbName, itemId))
+          deletes.push(this.test.userbase.deleteItem({ databaseName, itemId }))
         }
         await Promise.all(deletes)
 
@@ -1156,13 +1144,13 @@ describe('DB Correctness Tests', function () {
         }
 
         // Set up test
-        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
 
         const inserts = []
         for (let i = 0; i < numConcurrentOperations; i++) {
           const item = i.toString()
           const itemId = item
-          inserts.push(this.test.userbase.insertItem(dbName, item, itemId))
+          inserts.push(this.test.userbase.insertItem({ databaseName, item, itemId }))
         }
         await Promise.all(inserts)
 
@@ -1173,12 +1161,12 @@ describe('DB Correctness Tests', function () {
           const item = (i + numConcurrentOperations).toString()
           const itemId = i.toString()
           updatedItems[itemId] = false
-          updatesAndDeletes.push(this.test.userbase.updateItem(dbName, item, itemId))
+          updatesAndDeletes.push(this.test.userbase.updateItem({ databaseName, item, itemId }))
         }
 
         for (let i = numUpdates; i < numConcurrentOperations; i++) {
           const itemId = i.toString()
-          updatesAndDeletes.push(this.test.userbase.deleteItem(dbName, itemId))
+          updatesAndDeletes.push(this.test.userbase.deleteItem({ databaseName, itemId }))
         }
         await Promise.all(updatesAndDeletes)
 
@@ -1239,7 +1227,7 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
 
         let successCount = 0
         let failureCount = 0
@@ -1250,7 +1238,7 @@ describe('DB Correctness Tests', function () {
 
           const insert = async () => {
             try {
-              await this.test.userbase.insertItem(dbName, item, testItemId)
+              await this.test.userbase.insertItem({ databaseName, item, itemId: testItemId })
               successCount += 1
             } catch (e) {
               expect(e.name, 'error name').to.be.equal('ItemAlreadyExists')
@@ -1319,7 +1307,7 @@ describe('DB Correctness Tests', function () {
             }
           }
 
-          openDatabases.push(this.test.userbase.openDatabase(dbName + i, changeHandler))
+          openDatabases.push(this.test.userbase.openDatabase({ databaseName: databaseName + i, changeHandler }))
         }
         await Promise.all(openDatabases)
 
@@ -1331,7 +1319,7 @@ describe('DB Correctness Tests', function () {
             const item = `${i} ${j}`
             const itemId = item
             insertedItems[i][itemId] = false
-            inserts.push(this.test.userbase.insertItem(dbName + i, item, itemId))
+            inserts.push(this.test.userbase.insertItem({ databaseName: databaseName + i, item, itemId }))
           }
         }
         await Promise.all(inserts)
@@ -1395,13 +1383,13 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
-        await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+        await this.test.userbase.insertItem({ databaseName, item: itemToInsert, itemId: testItemId })
 
         try {
           await Promise.all([
-            this.test.userbase.updateItem(dbName, update1, testItemId),
-            this.test.userbase.updateItem(dbName, update2, testItemId)
+            this.test.userbase.updateItem({ databaseName, item: update1, itemId: testItemId }),
+            this.test.userbase.updateItem({ databaseName, item: update2, itemId: testItemId })
           ])
           throw new Error('Should have failed')
         } catch (e) {
@@ -1434,7 +1422,7 @@ describe('DB Correctness Tests', function () {
           updatedKey2: 456
         }
         const operations = [
-          { command: 'Update', item: update2, id: testItemId }
+          { command: 'Update', item: update2, itemId: testItemId }
         ]
 
         let changeHandlerCallCount = 0
@@ -1467,13 +1455,13 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
-        await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+        await this.test.userbase.insertItem({ databaseName, item: itemToInsert, itemId: testItemId })
 
         try {
           await Promise.all([
-            this.test.userbase.updateItem(dbName, update1, testItemId),
-            this.test.userbase.transaction(dbName, operations)
+            this.test.userbase.updateItem({ databaseName, item: update1, itemId: testItemId }),
+            this.test.userbase.buildTransaction({ databaseName, operations }),
           ])
           throw new Error('Should have failed')
         } catch (e) {
@@ -1515,13 +1503,13 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
-        await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+        await this.test.userbase.insertItem({ databaseName, item: itemToInsert, itemId: testItemId })
 
         try {
           await Promise.all([
-            this.test.userbase.deleteItem(dbName, testItemId),
-            this.test.userbase.deleteItem(dbName, testItemId)
+            this.test.userbase.deleteItem({ databaseName, itemId: testItemId }),
+            this.test.userbase.deleteItem({ databaseName, itemId: testItemId })
           ])
           throw new Error('Should have failed')
         } catch (e) {
@@ -1579,13 +1567,13 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
-        await this.test.userbase.insertItem(dbName, itemToInsert, testItemId)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+        await this.test.userbase.insertItem({ databaseName, item: itemToInsert, itemId: testItemId })
 
         try {
           await Promise.all([
-            this.test.userbase.updateItem(dbName, update, testItemId),
-            this.test.userbase.deleteItem(dbName, testItemId)
+            this.test.userbase.updateItem({ databaseName, item: update, itemId: testItemId }),
+            this.test.userbase.deleteItem({ databaseName, itemId: testItemId })
           ])
           throw new Error('Should have failed')
         } catch (e) {
@@ -1656,11 +1644,11 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
 
         await Promise.all([
-          this.test.userbase.insertItem(dbName, largeItem, largeItemId),
-          this.test.userbase.insertItem(dbName, smallItem, smallItemId)
+          this.test.userbase.insertItem({ databaseName, item: largeItem, itemId: largeItemId }),
+          this.test.userbase.insertItem({ databaseName, item: smallItem, itemId: smallItemId })
         ])
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(3)
@@ -1683,8 +1671,8 @@ describe('DB Correctness Tests', function () {
         const transactionItem2 = { test3: 'test3' }
 
         const operations = [
-          { command: 'Insert', item: transactionItem1, id: transactionItem1Id },
-          { command: 'Insert', item: transactionItem2, id: transactionItem2Id },
+          { command: 'Insert', item: transactionItem1, itemId: transactionItem1Id },
+          { command: 'Insert', item: transactionItem2, itemId: transactionItem2Id },
         ]
 
         let changeHandlerCallCount = 0
@@ -1730,11 +1718,11 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
 
         await Promise.all([
-          this.test.userbase.insertItem(dbName, insertItem, insertItemId),
-          this.test.userbase.transaction(dbName, operations)
+          this.test.userbase.insertItem({ databaseName, item: insertItem, itemId: insertItemId }),
+          this.test.userbase.buildTransaction({ databaseName, operations })
         ])
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(3)
@@ -1764,7 +1752,7 @@ describe('DB Correctness Tests', function () {
         const largeString = getStringOfByteLength(ITEM_SIZE)
         const operations = []
         for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
-          operations.push({ command: 'Insert', item: largeString, id: i.toString() })
+          operations.push({ command: 'Insert', item: largeString, itemId: i.toString() })
         }
 
         let changeHandlerCallCount = 0
@@ -1789,8 +1777,8 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
-        await this.test.userbase.transaction(dbName, operations)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+        await this.test.userbase.buildTransaction({ databaseName, operations })
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
         expect(successful, 'successful state').to.be.true
@@ -1805,7 +1793,7 @@ describe('DB Correctness Tests', function () {
         const largeString = getStringOfByteLength(ITEM_SIZE)
         const operations = []
         for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
-          operations.push({ command: 'Insert', item: largeString, id: i.toString() })
+          operations.push({ command: 'Insert', item: largeString, itemId: i.toString() })
         }
 
         let changeHandlerCallCount = 0
@@ -1833,9 +1821,9 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
-        await this.test.userbase.transaction(dbName, operations)
-        await this.test.userbase.insertItem(dbName, 'extra-insert', 'extra-insert-id')
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+        await this.test.userbase.buildTransaction({ databaseName, operations })
+        await this.test.userbase.insertItem({ databaseName, item: 'extra-insert', itemId: 'extra-insert-id' })
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(3)
         expect(successful, 'successful state').to.be.true
@@ -1850,17 +1838,17 @@ describe('DB Correctness Tests', function () {
         const largeString = getStringOfByteLength(ITEM_SIZE)
         const operations = []
         for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
-          operations.push({ command: 'Insert', item: largeString, id: i.toString() })
+          operations.push({ command: 'Insert', item: largeString, itemId: i.toString() })
         }
 
-        await this.test.userbase.openDatabase(dbName, () => { })
-        await this.test.userbase.transaction(dbName, operations)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+        await this.test.userbase.buildTransaction({ databaseName, operations })
 
         // give client sufficient time to finish the bundle
         const THREE_SECONDS = 3 * 1000
         await wait(THREE_SECONDS)
         await this.test.userbase.signOut()
-        await this.test.userbase.signIn(this.test.username, this.test.password)
+        await this.test.userbase.signIn({ username: this.test.username, password: this.test.password, rememberMe: 'none' })
 
         let changeHandlerCallCount = 0
         let successful
@@ -1884,7 +1872,7 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
         expect(successful, 'successful state').to.be.true
       })
@@ -1898,18 +1886,18 @@ describe('DB Correctness Tests', function () {
         const largeString = getStringOfByteLength(ITEM_SIZE)
         const operations = []
         for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
-          operations.push({ command: 'Insert', item: largeString, id: i.toString() })
+          operations.push({ command: 'Insert', item: largeString, itemId: i.toString() })
         }
 
-        await this.test.userbase.openDatabase(dbName, () => { })
-        await this.test.userbase.transaction(dbName, operations)
-        await this.test.userbase.insertItem(dbName, 'extra-insert', 'extra-insert-id')
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+        await this.test.userbase.buildTransaction({ databaseName, operations })
+        await this.test.userbase.insertItem({ databaseName, item: 'extra-insert', itemId: 'extra-insert-id' })
 
         // give client sufficient time to finish the bundle
         const THREE_SECONDS = 3 * 1000
         await wait(THREE_SECONDS)
         await this.test.userbase.signOut()
-        await this.test.userbase.signIn(this.test.username, this.test.password)
+        await this.test.userbase.signIn({ username: this.test.username, password: this.test.password, rememberMe: 'none' })
 
         let changeHandlerCallCount = 0
         let successful
@@ -1934,7 +1922,7 @@ describe('DB Correctness Tests', function () {
           successful = true
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
         expect(successful, 'successful state').to.be.true
@@ -1949,17 +1937,17 @@ describe('DB Correctness Tests', function () {
         const largeString = getStringOfByteLength(ITEM_SIZE)
         const operations = []
         for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
-          operations.push({ command: 'Insert', item: largeString, id: i.toString() })
+          operations.push({ command: 'Insert', item: largeString, itemId: i.toString() })
         }
 
-        await this.test.userbase.openDatabase(dbName, () => { })
-        await this.test.userbase.transaction(dbName, operations)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+        await this.test.userbase.buildTransaction({ databaseName, operations })
 
         // give client sufficient time to finish the bundle
         const THREE_SECONDS = 3 * 1000
         await wait(THREE_SECONDS)
         await this.test.userbase.signOut()
-        await this.test.userbase.signIn(this.test.username, this.test.password)
+        await this.test.userbase.signIn({ username: this.test.username, password: this.test.password, rememberMe: 'none' })
 
         let changeHandlerCallCount = 0
         let successful
@@ -1986,8 +1974,8 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
-        await this.test.userbase.insertItem(dbName, 'extra-insert', 'extra-insert-id')
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+        await this.test.userbase.insertItem({ databaseName, item: 'extra-insert', itemId: 'extra-insert-id' })
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
         expect(successful, 'successful state').to.be.true
@@ -2021,12 +2009,12 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
 
         for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
           const item = largeString
           const itemId = i.toString()
-          await this.test.userbase.insertItem(dbName, item, itemId)
+          await this.test.userbase.insertItem({ databaseName, item, itemId })
         }
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1 + numItemsNeededToTriggerBundle)
@@ -2039,12 +2027,12 @@ describe('DB Correctness Tests', function () {
         const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
         const largeString = getStringOfByteLength(ITEM_SIZE)
 
-        await this.test.userbase.openDatabase(dbName, () => { })
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
 
         for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
           const item = largeString
           const itemId = i.toString()
-          await this.test.userbase.insertItem(dbName, item, itemId)
+          await this.test.userbase.insertItem({ databaseName, item, itemId })
         }
 
         // give client sufficient time to finish the bundle
@@ -2052,7 +2040,7 @@ describe('DB Correctness Tests', function () {
         await wait(THREE_SECONDS)
 
         await this.test.userbase.signOut()
-        await this.test.userbase.signIn(this.test.username, this.test.password)
+        await this.test.userbase.signIn({ username: this.test.username, password: this.test.password, rememberMe: 'none' })
 
         let changeHandlerCallCount = 0
         let successful
@@ -2076,7 +2064,7 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
         expect(successful, 'successful state').to.be.true
@@ -2118,15 +2106,15 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
 
         for (let i = 0; i < numBundles; i++) {
           const operations = []
           for (let j = 0; j < numItemsNeededToTriggerBundle; j++) {
             const itemId = ((i * numItemsNeededToTriggerBundle) + j).toString()
-            operations.push({ command: 'Insert', item: largeString, id: itemId })
+            operations.push({ command: 'Insert', item: largeString, itemId: itemId })
           }
-          await this.test.userbase.transaction(dbName, operations)
+          await this.test.userbase.buildTransaction({ databaseName, operations })
         }
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1 + numBundles)
@@ -2143,15 +2131,15 @@ describe('DB Correctness Tests', function () {
 
         const largeString = getStringOfByteLength(ITEM_SIZE)
 
-        await this.test.userbase.openDatabase(dbName, () => { })
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
 
         for (let i = 0; i < numBundles; i++) {
           const operations = []
           for (let j = 0; j < numItemsNeededToTriggerBundle; j++) {
             const itemId = ((i * numItemsNeededToTriggerBundle) + j).toString()
-            operations.push({ command: 'Insert', item: largeString, id: itemId })
+            operations.push({ command: 'Insert', item: largeString, itemId: itemId })
           }
-          await this.test.userbase.transaction(dbName, operations)
+          await this.test.userbase.buildTransaction({ databaseName, operations })
         }
 
         // give client sufficient time to finish the bundle
@@ -2159,7 +2147,7 @@ describe('DB Correctness Tests', function () {
         await wait(THREE_SECONDS)
 
         await this.test.userbase.signOut()
-        await this.test.userbase.signIn(this.test.username, this.test.password)
+        await this.test.userbase.signIn({ username: this.test.username, password: this.test.password, rememberMe: 'none' })
 
         let changeHandlerCallCount = 0
         let successful
@@ -2187,14 +2175,14 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
         expect(successful, 'successful state').to.be.true
       })
     })
 
-    describe('Concurrency tests', function () {
+    describe('Concurrency Tests', function () {
       beforeEach(function () { beforeEachHook() })
 
       // must check the server logs to verify bundling occurs
@@ -2237,19 +2225,19 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
 
         const operations1 = []
         const operations2 = []
 
         for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
-          operations1.push({ command: 'Insert', item: i.toString(), id: i.toString() })
-          operations2.push({ command: 'Insert', item: largeString, id: (i + numItemsNeededToTriggerBundle).toString() })
+          operations1.push({ command: 'Insert', item: i.toString(), itemId: i.toString() })
+          operations2.push({ command: 'Insert', item: largeString, itemId: (i + numItemsNeededToTriggerBundle).toString() })
         }
 
         await Promise.all([
-          this.test.userbase.transaction(dbName, operations1),
-          this.test.userbase.transaction(dbName, operations2)
+          this.test.userbase.buildTransaction({ databaseName, operations: operations1 }),
+          this.test.userbase.buildTransaction({ databaseName, operations: operations2 })
         ])
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(3)
@@ -2267,15 +2255,15 @@ describe('DB Correctness Tests', function () {
         const operations1 = []
         const operations2 = []
         for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
-          operations1.push({ command: 'Insert', item: i.toString(), id: i.toString() })
-          operations2.push({ command: 'Insert', item: largeString, id: (i + numItemsNeededToTriggerBundle).toString() })
+          operations1.push({ command: 'Insert', item: i.toString(), itemId: i.toString() })
+          operations2.push({ command: 'Insert', item: largeString, itemId: (i + numItemsNeededToTriggerBundle).toString() })
         }
 
-        await this.test.userbase.openDatabase(dbName, () => { })
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
 
         await Promise.all([
-          this.test.userbase.transaction(dbName, operations1),
-          this.test.userbase.transaction(dbName, operations2)
+          this.test.userbase.buildTransaction({ databaseName, operations: operations1 }),
+          this.test.userbase.buildTransaction({ databaseName, operations: operations2 })
         ])
 
         // give client sufficient time to finish the bundle
@@ -2283,7 +2271,7 @@ describe('DB Correctness Tests', function () {
         await wait(THREE_SECONDS)
 
         await this.test.userbase.signOut()
-        await this.test.userbase.signIn(this.test.username, this.test.password)
+        await this.test.userbase.signIn({ username: this.test.username, password: this.test.password, rememberMe: 'none' })
 
         let changeHandlerCallCount = 0
         let successful
@@ -2317,7 +2305,7 @@ describe('DB Correctness Tests', function () {
           successful = true
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
         expect(successful, 'successful state').to.be.true
@@ -2366,19 +2354,19 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
 
         const operations1 = []
         const operations2 = []
 
         for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
-          operations1.push({ command: 'Insert', item: largeString, id: i.toString() })
-          operations2.push({ command: 'Insert', item: largeString, id: (i + numItemsNeededToTriggerBundle).toString() })
+          operations1.push({ command: 'Insert', item: largeString, itemId: i.toString() })
+          operations2.push({ command: 'Insert', item: largeString, itemId: (i + numItemsNeededToTriggerBundle).toString() })
         }
 
         await Promise.all([
-          this.test.userbase.transaction(dbName, operations1),
-          this.test.userbase.transaction(dbName, operations2)
+          this.test.userbase.buildTransaction({ databaseName, operations: operations1 }),
+          this.test.userbase.buildTransaction({ databaseName, operations: operations2 })
         ])
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(3)
@@ -2396,15 +2384,15 @@ describe('DB Correctness Tests', function () {
         const operations1 = []
         const operations2 = []
         for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
-          operations1.push({ command: 'Insert', item: largeString, id: i.toString() })
-          operations2.push({ command: 'Insert', item: largeString, id: (i + numItemsNeededToTriggerBundle).toString() })
+          operations1.push({ command: 'Insert', item: largeString, itemId: i.toString() })
+          operations2.push({ command: 'Insert', item: largeString, itemId: (i + numItemsNeededToTriggerBundle).toString() })
         }
 
-        await this.test.userbase.openDatabase(dbName, () => { })
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
 
         await Promise.all([
-          this.test.userbase.transaction(dbName, operations1),
-          this.test.userbase.transaction(dbName, operations2)
+          this.test.userbase.buildTransaction({ databaseName, operations: operations1 }),
+          this.test.userbase.buildTransaction({ databaseName, operations: operations2 })
         ])
 
         // give client sufficient time to finish the bundle
@@ -2412,7 +2400,7 @@ describe('DB Correctness Tests', function () {
         await wait(THREE_SECONDS)
 
         await this.test.userbase.signOut()
-        await this.test.userbase.signIn(this.test.username, this.test.password)
+        await this.test.userbase.signIn({ username: this.test.username, password: this.test.password, rememberMe: 'none' })
 
         let changeHandlerCallCount = 0
         let successful
@@ -2449,7 +2437,7 @@ describe('DB Correctness Tests', function () {
           successful = true
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
         expect(successful, 'successful state').to.be.true
@@ -2499,7 +2487,7 @@ describe('DB Correctness Tests', function () {
           }
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
 
         const transactions = []
 
@@ -2507,9 +2495,9 @@ describe('DB Correctness Tests', function () {
           const operations = []
           for (let j = 0; j < numItemsNeededToTriggerBundle; j++) {
             const itemId = ((i * numItemsNeededToTriggerBundle) + j).toString()
-            operations.push({ command: 'Insert', item: largeString, id: itemId })
+            operations.push({ command: 'Insert', item: largeString, itemId: itemId })
           }
-          transactions.push(this.test.userbase.transaction(dbName, operations))
+          transactions.push(this.test.userbase.buildTransaction({ databaseName, operations }))
         }
         await Promise.all(transactions)
 
@@ -2527,16 +2515,16 @@ describe('DB Correctness Tests', function () {
 
         const largeString = getStringOfByteLength(ITEM_SIZE)
 
-        await this.test.userbase.openDatabase(dbName, () => { })
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
 
         const transactions = []
         for (let i = 0; i < numBundles; i++) {
           const operations = []
           for (let j = 0; j < numItemsNeededToTriggerBundle; j++) {
             const itemId = ((i * numItemsNeededToTriggerBundle) + j).toString()
-            operations.push({ command: 'Insert', item: largeString, id: itemId })
+            operations.push({ command: 'Insert', item: largeString, itemId: itemId })
           }
-          transactions.push(this.test.userbase.transaction(dbName, operations))
+          transactions.push(this.test.userbase.buildTransaction({ databaseName, operations }))
         }
         await Promise.all(transactions)
 
@@ -2545,7 +2533,7 @@ describe('DB Correctness Tests', function () {
         await wait(THREE_SECONDS)
 
         await this.test.userbase.signOut()
-        await this.test.userbase.signIn(this.test.username, this.test.password)
+        await this.test.userbase.signIn({ username: this.test.username, password: this.test.password, rememberMe: 'none' })
 
         let changeHandlerCallCount = 0
         let successful
@@ -2579,7 +2567,7 @@ describe('DB Correctness Tests', function () {
           successful = true
         }
 
-        await this.test.userbase.openDatabase(dbName, changeHandler)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
         expect(successful, 'successful state').to.be.true
