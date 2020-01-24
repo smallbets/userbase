@@ -33,8 +33,23 @@ signUp({ username: 'tuser', password: 'tpass', email: 'test@test.com', profile: 
 // $ExpectType Promise<UserResult>
 signUp({ username: 'tuser', password: 'tpass', email: 'test@test.com', profile: { tkey: 'tval' } })
 
+// $ExpectType Promise<UserResult>
+signUp({ username: 'tuser', password: 'tpass', email: 'test@test.com', profile: { tkey: 'tval' }, rememberMe: 'session' })
+
+// $ExpectType Promise<UserResult>
+signUp({ username: 'tuser', password: 'tpass', email: 'test@test.com', profile: { tkey: 'tval' }, rememberMe: 'local' })
+
+// $ExpectType Promise<UserResult>
+signUp({ username: 'tuser', password: 'tpass', email: 'test@test.com', profile: { tkey: 'tval' }, rememberMe: 'none' })
+
 // $ExpectError
 signUp({ username: 'tuser', password: 'tpass', email: 'test@test.com', profile: { tkey: {} } })
+
+// $ExpectError
+signUp({ username: 'tuser', password: 'tpass', email: 'test@test.com', rememberMe: false })
+
+// $ExpectError
+signUp({ username: 'tuser', password: 'tpass', email: 'test@test.com', rememberMe: 'tremember' })
 
 // $ExpectError
 signUp({ username: 'tuser' })
@@ -46,10 +61,13 @@ signUp({})
 signIn({ username: 'tuser', password: 'tpass' })
 
 // $ExpectType Promise<UserResult>
-signIn({ username: 'tuser', password: 'tpass', rememberMe: true })
+signIn({ username: 'tuser', password: 'tpass', rememberMe: 'session' })
 
 // $ExpectError
 signIn({ username: 'tuser' })
+
+// $ExpectError
+signIn({ username: 'tuser', password: 'tpass', rememberMe: true })
 
 // $ExpectType Promise<void>
 signOut()
