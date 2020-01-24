@@ -159,7 +159,17 @@ export default class Dashboard extends Component {
 
             <div className='container content text-center'>
 
-              <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Apps</div>
+              <div className='flex-0 mb-4 text-left'>
+                <span>
+                  <span className='text-lg sm:text-xl'>Apps</span>
+                  { activeApps && activeApps.length > 0 &&
+                    <span className='font-light text-md ml-2'>
+                      ({activeApps.length} total)
+                    </span>
+                  }
+                </span>
+              </div>
+
               {
                 paymentStatus === 'active' ? <div />
                   : <div className='text-left mb-4 text-red-600 font-normal'>

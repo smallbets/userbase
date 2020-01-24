@@ -184,7 +184,15 @@ export default class AppUsersTable extends Component {
         <div className='container content'>
 
           <div className='mb-6'>
-            <div className='text-lg sm:text-xl text-left mb-4'>{appName}</div>
+            <div className='mb-4'>
+              <span>
+                <span className='text-lg sm:text-xl text-left'>{appName}</span>
+                { activeUsers && activeUsers.length > 0 &&
+                  <span className='font-light text-md ml-2'>
+                    ({activeUsers.length} user{`${activeUsers.length === 1 ? '' : 's'}`})
+                  </span> }
+              </span>
+            </div>
             {
               paymentStatus === 'active' ? <div />
                 : <div className='text-left mb-4 text-red-600 font-normal'>
