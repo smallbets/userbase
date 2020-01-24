@@ -34,7 +34,7 @@
     "type": "git",
     "url": "git+https://github.com/encrypted-dev/userbase.git"
   },
-  "version": "0.0.10",
+  "version": "0.0.11",
   "scripts": {
     "prepublishOnly": "npm run build",
     "build": "npm run build:esm && npm run build:cjs && npm run build:umd",
