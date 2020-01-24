@@ -24,7 +24,7 @@ const userbaseConfig = {
   emailDomain: 'encrypted.dev'
 }
 
-const ADMIN_EMAIL = 'admin@userbase.dev'
+const ADMIN_EMAIL = 'admin@userbase.com'
 const ADMIN_ID = 'admin-id'
 const ADMIN_FULL_NAME = 'Default Admin'
 
@@ -39,7 +39,7 @@ const CONFLICT_STATUS_CODE = 409
 start()
 async function start() {
   app.use(cors())
-  app.use(express.static(distDir))
+  app.use('/poc', express.static(distDir))
   await userbaseServer.start(express, app, userbaseConfig)
 
   await setupAdmin()
@@ -55,7 +55,13 @@ async function setupAdmin() {
       storePasswordInSecretsManager = true
     }
 
-    await userbaseServer.createAdmin(ADMIN_EMAIL, adminPassword, ADMIN_FULL_NAME, ADMIN_ID, storePasswordInSecretsManager)
+    await userbaseServer.createAdmin({
+      email: ADMIN_EMAIL,
+      password: adminPassword,
+      fullName: ADMIN_FULL_NAME,
+      adminId: ADMIN_ID,
+      storePasswordInSecretsManager
+    })
   } catch (e) {
     if (!e || e.status !== CONFLICT_STATUS_CODE) {
       console.log(`Failed to set up new admin account with ${JSON.stringify(e)}`)
@@ -66,8 +72,8 @@ async function setupAdmin() {
 async function setupApps() {
   try {
     await Promise.all([
-      userbaseServer.createApp(POC_APP_NAME, ADMIN_ID, POC_APP_ID),
-      userbaseServer.createApp(TEST_APP_NAME, ADMIN_ID, TEST_APP_ID),
+      userbaseServer.createApp({ appName: POC_APP_NAME, adminId: ADMIN_ID, appId: POC_APP_ID }),
+      userbaseServer.createApp({ appName: TEST_APP_NAME, adminId: ADMIN_ID, appId: TEST_APP_ID }),
     ])
   } catch (e) {
     if (!e || e.status !== CONFLICT_STATUS_CODE) {

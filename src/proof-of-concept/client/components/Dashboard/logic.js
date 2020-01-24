@@ -6,7 +6,7 @@ const getDbName = (username) => {
 }
 
 const openDatabase = async (username, onDbChangeHandler) => {
-  await userbase.openDatabase(getDbName(username), onDbChangeHandler)
+  await userbase.openDatabase({ databaseName: getDbName(username), changeHandler: onDbChangeHandler })
 }
 
 const _errorHandler = (e, operation, handleRemoveUserAuthentication) => {
@@ -20,7 +20,7 @@ const _errorHandler = (e, operation, handleRemoveUserAuthentication) => {
 
 const insertTodo = async (username, todo, handleRemoveUserAuthentication) => {
   try {
-    await userbase.insertItem(getDbName(username), { todo })
+    await userbase.insertItem({ databaseName: getDbName(username), item: { todo } })
   } catch (e) {
     _errorHandler(e, 'insert todo', handleRemoveUserAuthentication)
   }
@@ -28,7 +28,7 @@ const insertTodo = async (username, todo, handleRemoveUserAuthentication) => {
 
 const deleteTodo = async (username, todo, handleRemoveUserAuthentication) => {
   try {
-    await userbase.deleteItem(getDbName(username), todo.itemId)
+    await userbase.deleteItem({ databaseName: getDbName(username), itemId: todo.itemId })
   } catch (e) {
     _errorHandler(e, 'delete todos', handleRemoveUserAuthentication)
   }
@@ -37,7 +37,11 @@ const deleteTodo = async (username, todo, handleRemoveUserAuthentication) => {
 const toggleTodo = async (username, todo, handleRemoveUserAuthentication) => {
   try {
     const markingComplete = !todo.item.completed
-    await userbase.updateItem(getDbName(username), { todo: todo.item.todo, completed: markingComplete }, todo.itemId)
+    await userbase.updateItem({
+      databaseName: getDbName(username),
+      item: { todo: todo.item.todo, completed: markingComplete },
+      itemId: todo.itemId
+    })
   } catch (e) {
     _errorHandler(e, 'toggle todos', handleRemoveUserAuthentication)
   }
@@ -45,7 +49,11 @@ const toggleTodo = async (username, todo, handleRemoveUserAuthentication) => {
 
 const updateTodo = async (username, todo, newTodoInput, handleRemoveUserAuthentication) => {
   try {
-    await userbase.updateItem(getDbName(username), { todo: newTodoInput, completed: todo.item.completed }, todo.itemId)
+    await userbase.updateItem({
+      databaseName: getDbName(username),
+      item: { todo: newTodoInput, completed: todo.item.completed },
+      itemId: todo.itemId
+    })
   } catch (e) {
     _errorHandler(e, 'update todo', handleRemoveUserAuthentication)
   }

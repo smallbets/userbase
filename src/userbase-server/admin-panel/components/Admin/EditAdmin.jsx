@@ -1,40 +1,45 @@
 import React, { Component } from 'react'
-import { func } from 'prop-types'
+import { func, string } from 'prop-types'
 import adminLogic from './logic'
+import UnknownError from './UnknownError'
 
 export default class EditAdmin extends Component {
   constructor(props) {
     super(props)
     this.state = {
-      email: '',
-      fullName: '',
-      password: '',
-      paymentStatus: '',
-      loadingPaymentStatus: true,
-      loadingUpdate: false,
-      loadingDelete: false,
-      errorUpdating: '',
-      errorDeleting: ''
+      email: this.props.email,
+      fullName: this.props.fullName,
+      currentPassword: '',
+      newPassword: '',
+      loadingUpdateAdmin: false,
+      loadingChangePassword: false,
+      loadingDeleteAdmin: false,
+      loadingCheckout: false,
+      loadingCancel: false,
+      loadingUpdatePaymentMethod: false,
+      loadingResumeSubscription: false,
+      errorUpdatingAdmin: '',
+      errorChangingPassword: '',
+      errorDeletingAdmin: '',
+      errorCheckingOut: false,
+      errorCancelling: false,
+      errorUpdatingPaymentMethod: false,
+      errorResumingSubscription: false
     }
 
     this.handleInputChange = this.handleInputChange.bind(this)
     this.handleUpdateAcount = this.handleUpdateAcount.bind(this)
+    this.handleChangePassword = this.handleChangePassword.bind(this)
     this.handleDeleteAccount = this.handleDeleteAccount.bind(this)
     this.handleCancelSubscription = this.handleCancelSubscription.bind(this)
     this.handleResumeSubscription = this.handleResumeSubscription.bind(this)
+    this.handleCheckout = this.handleCheckout.bind(this)
+    this.handleUpdatePaymentMethod = this.handleUpdatePaymentMethod.bind(this)
   }
 
   async componentDidMount() {
     this._isMounted = true
     document.addEventListener('keydown', this.handleHitEnter, true)
-
-    try {
-      const paymentStatus = await adminLogic.getPaymentStatus()
-      if (this._isMounted) this.setState({ paymentStatus, loadingPaymentStatus: false })
-    } catch (e) {
-      if (this._isMounted) this.setState({ loadingPaymentStatus: false })
-      console.log(e.message)
-    }
   }
 
   componentWillUnmount() {
@@ -44,15 +49,16 @@ export default class EditAdmin extends Component {
 
   handleHitEnter(e) {
     const ENTER_KEY_CODE = 13
-    if ((e.target.name === 'email' || e.target.name === 'password' || e.target.name === 'fullName') &&
+    if ((e.target.name === 'fullName' || e.target.name === 'email'
+      || e.target.name === 'currentPassword' || e.target.name === 'newPassword') &&
       (e.key === 'Enter' || e.keyCode === ENTER_KEY_CODE)) {
       e.stopPropagation()
     }
   }
 
   handleInputChange(event) {
-    if (this.state.errorUpdating || this.state.errorDeleting) {
-      this.setState({ errorUpdating: undefined, errorDeleting: undefined })
+    if (this.state.errorUpdatingAdmin || this.state.errorDeletingAdmin || this.state.errorChangingPassword) {
+      this.setState({ errorUpdatingAdmin: undefined, errorDeletingAdmin: undefined, errorChangingPassword: undefined })
     }
 
     const target = event.target
@@ -65,68 +71,118 @@ export default class EditAdmin extends Component {
   }
 
   async handleUpdateAcount(event) {
-    const { email, password, fullName } = this.state
     event.preventDefault()
 
-    if (!email && !password && !fullName) return
+    if (this.state.loadingUpdateAdmin) return
 
-    this.setState({ loadingUpdate: true })
+    const fullName = this.state.fullName !== this.props.fullName && this.state.fullName
+    const email = this.state.email !== this.props.email && this.state.email
+
+    if (!fullName && !email) return
+
+    this.setState({ loadingUpdateAdmin: true })
 
     try {
-      await adminLogic.updateAdmin({ email, password, fullName })
+      await adminLogic.updateAdmin({ fullName, email })
       if (email || fullName) this.props.handleUpdateAccount(email, fullName)
-      if (this._isMounted) this.setState({ email: '', password: '', fullName: '', loadingUpdate: false })
+      if (this._isMounted) {
+        this.setState({
+          fullName: fullName || this.props.fullName,
+          email: email || this.props.email,
+          loadingUpdateAdmin: false
+        })
+      }
     } catch (e) {
-      if (this._isMounted) this.setState({ errorUpdating: e.message, loadingUpdate: false })
+      if (this._isMounted) this.setState({ errorUpdatingAdmin: e.message, loadingUpdateAdmin: false })
+    }
+  }
+
+  async handleChangePassword(event) {
+    const { currentPassword, newPassword } = this.state
+    event.preventDefault()
+
+    if (this.state.loadingChangePassword) return
+    if (!currentPassword || !newPassword) return
+
+    this.setState({ loadingChangePassword: true })
+
+    try {
+      await adminLogic.changePassword({ currentPassword, newPassword })
+
+      window.alert('Password changed successfully!')
+
+      if (this._isMounted) {
+        this.setState({
+          currentPassword: '',
+          newPassword: '',
+          loadingChangePassword: false
+        })
+      }
+    } catch (e) {
+      if (this._isMounted) this.setState({ errorChangingPassword: e.message, loadingChangePassword: false })
     }
   }
 
   async handleDeleteAccount(event) {
     event.preventDefault()
 
-    this.setState({ errorDeleting: '' })
+    this.setState({ errorDeletingAdmin: '' })
 
     try {
       if (window.confirm('Are you sure you want to delete your account?')) {
-        this.setState({ loadingDelete: true })
+        this.setState({ loadingDeleteAdmin: true })
         await adminLogic.deleteAdmin()
       }
     } catch (e) {
-      if (this._isMounted) this.setState({ errorDeleting: e.message, loadingDelete: false })
+      if (this._isMounted) this.setState({ errorDeletingAdmin: e.message, loadingDeleteAdmin: false })
     }
   }
 
   async handleCheckout(event) {
     event.preventDefault()
 
+    this.setState({ loadingCheckout: true, errorCheckingOut: false })
     try {
       await adminLogic.subscribeToSaas()
+      if (this._isMounted) this.setState({ loadingCheckout: false })
     } catch (e) {
-      console.log(e.message)
+      if (this._isMounted) this.setState({ loadingCheckout: false, errorCheckingOut: true })
     }
   }
 
   async handleUpdatePaymentMethod(event) {
     event.preventDefault()
 
+    if (this.state.loadingUpdatePaymentMethod) return
+
+    this.setState({ loadingUpdatePaymentMethod: true, errorUpdatingPaymentMethod: false, errorCancelling: false })
     try {
       await adminLogic.updateSaasPaymentMethod()
+
+      if (this._isMounted) this.setState({ loadingUpdatePaymentMethod: false })
     } catch (e) {
-      console.log(e.message)
+      if (this._isMounted) this.setState({ loadingUpdatePaymentMethod: false, errorUpdatingPaymentMethod: true })
     }
   }
 
   async handleCancelSubscription(event) {
     event.preventDefault()
 
+    if (this.state.loadingCancel) return
+
+    this.setState({ errorCancelling: false, errorUpdatingPaymentMethod: false })
+
     try {
       if (window.confirm('Are you sure you want to cancel your subscription?')) {
-        this.setState({ loadingPaymentStatus: true })
-        await adminLogic.cancelSaasSubscription()
-        if (this._isMounted) this.setState({ paymentStatus: 'cancel_at_period_end', loadingPaymentStatus: false })
+        this.setState({ loadingCancel: true })
+        const paymentStatus = await adminLogic.cancelSaasSubscription()
+
+        this.props.handleUpdatePaymentStatus(paymentStatus)
+
+        if (this._isMounted) this.setState({ loadingCancel: false })
       }
     } catch (e) {
-      console.log(JSON.stringify(e), e.message)
+      if (this._isMounted) this.setState({ loadingCancel: false, errorCancelling: true })
     }
   }
 
@@ -134,33 +190,50 @@ export default class EditAdmin extends Component {
     event.preventDefault()
 
     try {
-      this.setState({ loadingPaymentStatus: true })
+      this.setState({ loadingResumeSubscription: true, errorResumingSubscription: false })
+
       await adminLogic.resumeSaasSubscription()
       const paymentStatus = await adminLogic.getPaymentStatus()
-      if (this._isMounted) this.setState({ paymentStatus, loadingPaymentStatus: false })
+
+      this.props.handleUpdatePaymentStatus(paymentStatus)
+
+      if (this._isMounted) this.setState({ loadingResumeSubscription: false })
     } catch (e) {
-      if (this._isMounted) this.setState({ loadingPaymentStatus: false })
-      console.log(e.message)
+      if (this._isMounted) this.setState({ loadingResumeSubscription: false, errorResumingSubscription: true })
     }
   }
 
   render() {
+    const { paymentStatus } = this.props
     const {
       fullName,
       email,
-      password,
-      loadingUpdate,
-      loadingDelete,
-      errorUpdating,
-      errorDeleting,
-      paymentStatus,
-      loadingPaymentStatus
+      currentPassword,
+      newPassword,
+      loadingUpdateAdmin,
+      loadingChangePassword,
+      loadingDeleteAdmin,
+      loadingCheckout,
+      loadingCancel,
+      loadingUpdatePaymentMethod,
+      loadingResumeSubscription,
+      errorUpdatingAdmin,
+      errorChangingPassword,
+      errorDeletingAdmin,
+      errorCheckingOut,
+      errorCancelling,
+      errorUpdatingPaymentMethod,
+      errorResumingSubscription,
+      loading
     } = this.state
 
-    return (
-      <div className='container content text-xs xs:text-base text-center mb-8'>
+    const disableUpdateButton = (fullName === this.props.fullName || !fullName)
+      && (email === this.props.email || !email)
 
-        {loadingPaymentStatus
+    return (
+      <div className='container content text-xs sm:text-base text-center mb-8'>
+
+        {loading
           ? <div className='loader inline-block w-6 h-6' />
           : paymentStatus === 'active' || paymentStatus === 'past_due'
             ?
@@ -169,7 +242,8 @@ export default class EditAdmin extends Component {
                 className='btn w-56 text-center'
                 type='button'
                 role='link'
-                value='Update Payment Method'
+                value={loadingUpdatePaymentMethod ? 'Loading...' : 'Update Payment Method'}
+                disabled={loadingCancel || loadingUpdatePaymentMethod}
                 onClick={this.handleUpdatePaymentMethod}
               />
 
@@ -180,14 +254,20 @@ export default class EditAdmin extends Component {
                 className='btn w-56 text-center'
                 type='button'
                 role='link'
-                value='Cancel Subscription'
+                value={loadingCancel ? 'Cancelling Subscription...' : 'Cancel Subscription'}
+                disabled={loadingCancel || loadingUpdatePaymentMethod}
                 onClick={this.handleCancelSubscription}
               />
+
+              {errorCancelling && <UnknownError action='cancelling your subscription' />}
+              {errorUpdatingPaymentMethod && <UnknownError action='loading the form to update your payment method' />}
+
             </div>
             :
             <div>
               <div className='font-light text-left mb-4'>
-                You are currently using the <span className='font-bold'>free</span> version of Userbase.
+                <p>Your trial account is limited to 3 users.</p>
+                <p>Remove this limit with a Userbase subscription for only $49 per year.</p>
               </div>
 
               {paymentStatus === 'cancel_at_period_end'
@@ -195,30 +275,38 @@ export default class EditAdmin extends Component {
                   className='btn w-56 text-center'
                   type='button'
                   role='link'
-                  value='Resume Subscription'
+                  value={loadingResumeSubscription ? 'Resuming Subscription...' : 'Resume Subscription'}
+                  disabled={loadingResumeSubscription}
                   onClick={this.handleResumeSubscription}
                 />
                 : <input
                   className='btn w-56 text-center'
                   type='button'
                   role='link'
-                  value='Purchase Subscription'
+                  disabled={loadingCheckout}
+                  value={loadingCheckout ? 'Loading...' : 'Buy Subscription'}
                   onClick={this.handleCheckout}
                 />
               }
+
+              {errorCheckingOut && <UnknownError action='loading the checkout form' />}
+              {errorResumingSubscription && <UnknownError action='resuming your subscription' />}
+
             </div>
         }
 
         <hr className='border border-t-0 border-gray-400 mt-8 mb-4' />
 
+        <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Edit Account</div>
+
         <form onSubmit={this.handleUpdateAcount}>
           <div className='table'>
 
             <div className='table-row'>
-              <div className='table-cell p-2 text-right'>Full Name</div>
-              <div className='table-cell p-2'>
+              <div className='table-cell p-2 w-32 sm:w-40 text-right'>Full Name</div>
+              <div className='table-cell p-2 w-32 sm:w-40'>
                 <input
-                  className='font-light text-xs xs:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
+                  className='font-light text-xs sm:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
                   type='text'
                   name='fullName'
                   autoComplete='name'
@@ -229,10 +317,10 @@ export default class EditAdmin extends Component {
             </div>
 
             <div className='table-row'>
-              <div className='table-cell p-2 text-right'>Email</div>
-              <div className='table-cell p-2'>
+              <div className='table-cell p-2 w-32 sm:w-40 text-right'>Email</div>
+              <div className='table-cell p-2 w-32 sm:w-40'>
                 <input
-                  className='font-light text-xs xs:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
+                  className='font-light text-xs sm:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
                   type='email'
                   name='email'
                   autoComplete='email'
@@ -242,47 +330,96 @@ export default class EditAdmin extends Component {
               </div>
             </div>
 
-            <div className='table-row'>
-              <div className='table-cell p-2 text-right'>Password</div>
-              <div className='table-cell p-2'>
-                <input
-                  className='font-light text-xs xs:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
-                  type='password'
-                  name='password'
-                  autoComplete='new-password'
-                  onChange={this.handleInputChange}
-                  value={password}
-                />
-              </div>
-            </div>
-
           </div>
-
 
           <div className='text-center'>
             <input
               className='btn w-40 mt-4'
               type='submit'
-              value={loadingUpdate ? 'Updating...' : 'Update Account'}
-              disabled={(!fullName && !email && !password) || loadingDelete || loadingUpdate}
+              value={loadingUpdateAdmin ? 'Updating...' : 'Update Account'}
+              disabled={disableUpdateButton || loadingDeleteAdmin || loadingUpdateAdmin}
             />
 
-            <div className='error'>{errorUpdating}</div>
+            {errorUpdatingAdmin && (
+              errorUpdatingAdmin === 'Unknown Error'
+                ? <UnknownError action='updating your account' />
+                : <div className='error'>{errorUpdatingAdmin}</div>
+            )}
           </div>
 
         </form>
 
         <hr className='border border-t-0 border-gray-400 mt-8 mb-6' />
 
+        <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Update Password</div>
+
+        <form onSubmit={this.handleChangePassword}>
+          <div className='table'>
+
+            <div className='table-row'>
+              <div className='table-cell p-2 w-32 sm:w-40 text-right'>Current Password</div>
+              <div className='table-cell p-2 w-32 sm:w-40 align-middle'>
+                <input
+                  className='font-light text-xs sm:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
+                  type='password'
+                  name='currentPassword'
+                  autoComplete='current-password'
+                  onChange={this.handleInputChange}
+                  value={currentPassword}
+                />
+              </div>
+            </div>
+
+            <div className='table-row'>
+              <div className='table-cell p-2 w-32 sm:w-40 text-right'>New Password</div>
+              <div className='table-cell p-2 w-32 sm:w-40 align-middle'>
+                <input
+                  className='font-light text-xs xs:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
+                  type='password'
+                  name='newPassword'
+                  autoComplete='new-password'
+                  onChange={this.handleInputChange}
+                  value={newPassword}
+                />
+              </div>
+            </div>
+
+          </div>
+
+          <div className='text-center'>
+            <input
+              className='btn w-40 mt-4'
+              type='submit'
+              value={loadingChangePassword ? 'Changing...' : 'Change Password'}
+              disabled={(!currentPassword || !newPassword) || loadingDeleteAdmin || loadingUpdateAdmin || loadingChangePassword}
+            />
+
+            {errorChangingPassword && (
+              errorChangingPassword === 'Unknown Error'
+                ? <UnknownError action='changing your password' />
+                : <div className='error'>{errorChangingPassword}</div>
+            )}
+          </div>
+
+        </form>
+
+        <hr className='border border-t-0 border-gray-400 mt-8 mb-6' />
+
+        <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Danger Zone</div>
+
         <input
           className='btn w-40'
           type='button'
-          value={loadingDelete ? 'Deleting...' : 'Delete Account'}
-          disabled={loadingDelete}
+          value={loadingDeleteAdmin ? 'Deleting...' : 'Delete Account'}
+          disabled={loadingDeleteAdmin}
           onClick={this.handleDeleteAccount}
         />
 
-        {errorDeleting && <div className='error'>{errorDeleting}</div>}
+        {errorDeletingAdmin && (
+          errorDeletingAdmin === 'Unknown Error'
+            ? <UnknownError action='deleting your account' />
+            : <div className='error'>{errorDeletingAdmin}</div>
+        )}
 
       </div>
     )
@@ -290,5 +427,9 @@ export default class EditAdmin extends Component {
 }
 
 EditAdmin.propTypes = {
-  handleUpdateAccount: func
+  handleUpdateAccount: func,
+  paymentStatus: string,
+  handleUpdatePaymentStatus: func,
+  fullName: string,
+  email: string
 }

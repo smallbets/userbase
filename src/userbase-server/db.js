@@ -58,11 +58,11 @@ const createDatabase = async function (userId, dbNameHash, dbId, encryptedDbName
 
     if (e.message) {
       if (e.message.includes('UserNotFound')) {
-        return responseBuilder.errorResponse(statusCodes['Conflict'], 'UserNotFound')
+        throw responseBuilder.errorResponse(statusCodes['Conflict'], 'UserNotFound')
       } else if (e.message.includes('ConditionalCheckFailed')) {
-        return responseBuilder.errorResponse(statusCodes['Conflict'], 'Database already exists')
+        throw responseBuilder.errorResponse(statusCodes['Conflict'], 'Database already exists')
       } else if (e.message.includes('TransactionConflict')) {
-        return responseBuilder.errorResponse(statusCodes['Conflict'], 'Database already creating')
+        throw responseBuilder.errorResponse(statusCodes['Conflict'], 'Database already creating')
       }
     }
 
@@ -108,8 +108,9 @@ const getDatabase = async function (userId, dbNameHash) {
   return { ...userDb, ...database }
 }
 
-exports.openDatabase = async function (userId, connectionId, dbNameHash, newDatabaseParams) {
+exports.openDatabase = async function (userId, connectionId, dbNameHash, newDatabaseParams, reopenAtSeqNo) {
   if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
+  if (reopenAtSeqNo && typeof reopenAtSeqNo !== 'number') return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Reopen at seq no must be number')
 
   try {
     let database
@@ -140,7 +141,7 @@ exports.openDatabase = async function (userId, connectionId, dbNameHash, newData
     const bundleSeqNo = database['bundle-seq-no']
     const dbKey = database['encrypted-db-key']
 
-    if (connections.openDatabase(userId, connectionId, dbId, bundleSeqNo, dbNameHash, dbKey)) {
+    if (connections.openDatabase(userId, connectionId, dbId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo)) {
       return responseBuilder.successResponse('Success!')
     } else {
       throw new Error('Unable to open database')
@@ -151,7 +152,7 @@ exports.openDatabase = async function (userId, connectionId, dbNameHash, newData
   }
 }
 
-const putTransaction = async function (transaction, userId, dbNameHash, databaseId) {
+const putTransaction = async function (transaction, userId, databaseId) {
   const ddbClient = connection.ddbClient()
 
   const incrementSeqNoParams = {
@@ -238,7 +239,7 @@ exports.doCommand = async function (command, userId, dbNameHash, databaseId, key
   }
 
   try {
-    const sequenceNo = await putTransaction(transaction, userId, dbNameHash, databaseId)
+    const sequenceNo = await putTransaction(transaction, userId, databaseId)
     return responseBuilder.successResponse({ sequenceNo })
   } catch (e) {
     logger.warn(`Failed command ${command} for user ${userId} with ${e}`)
@@ -283,7 +284,7 @@ exports.batchTransaction = async function (userId, dbNameHash, databaseId, opera
       operations: ops
     }
 
-    const sequenceNo = await putTransaction(transaction, userId, dbNameHash, databaseId)
+    const sequenceNo = await putTransaction(transaction, userId, databaseId)
     return responseBuilder.successResponse({ sequenceNo })
   } catch (e) {
     logger.warn(`Failed batch transaction for user ${userId} with ${e}`)
@@ -294,7 +295,7 @@ exports.batchTransaction = async function (userId, dbNameHash, databaseId, opera
 exports.bundleTransactionLog = async function (databaseId, seqNo, bundle) {
   const bundleSeqNo = Number(seqNo)
 
-  if (!bundleSeqNo && bundleSeqNo !== 0) {
+  if (!bundleSeqNo) {
     return responseBuilder.errorResponse(statusCodes['Bad Request'], `Missing bundle sequence number`)
   }
 
@@ -345,7 +346,7 @@ exports.bundleTransactionLog = async function (databaseId, seqNo, bundle) {
 }
 
 exports.getBundle = async function (databaseId, bundleSeqNo) {
-  if (!bundleSeqNo && bundleSeqNo !== 0) {
+  if (!bundleSeqNo) {
     return responseBuilder.errorResponse(statusCodes['Bad Request'], `Missing bundle sequence number`)
   }
 

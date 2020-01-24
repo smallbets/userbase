@@ -14,7 +14,8 @@ async function createApp(appName, adminId, appId = uuidv4()) {
     'admin-id': adminId,
     'app-name': appName,
     'app-id': appId,
-    'creation-date': new Date().toISOString()
+    'creation-date': new Date().toISOString(),
+    'num-users': 0
   }
 
   const params = {
@@ -48,6 +49,12 @@ async function createApp(appName, adminId, appId = uuidv4()) {
 exports.createApp = createApp
 
 exports.createAppController = async function (req, res) {
+  const subscription = res.locals.subscription
+
+  if (!subscription || subscription.cancel_at_period_end || subscription.status !== 'active') return res
+    .status(statusCodes['Payment Required'])
+    .send('Pay subscription fee to create an app.')
+
   const appName = req.body.appName
 
   const admin = res.locals.admin
@@ -100,6 +107,9 @@ exports.listApps = async function (req, res) {
 }
 
 async function getApp(adminId, appName) {
+  console.log('---------------------')
+  console.log(adminId)
+  console.log(appName)
   const params = {
     TableName: setup.appsTableName,
     Key: {
@@ -110,6 +120,7 @@ async function getApp(adminId, appName) {
 
   const ddbClient = connection.ddbClient()
   const appResponse = await ddbClient.get(params).promise()
+  console.log(appResponse)
   return appResponse.Item
 }
 exports.getApp = getApp
@@ -145,6 +156,12 @@ async function getAppByAppId(appId) {
 exports.getAppByAppId = getAppByAppId
 
 exports.deleteApp = async function (req, res) {
+  const subscription = res.locals.subscription
+
+  if (!subscription || subscription.cancel_at_period_end || subscription.status !== 'active') return res
+    .status(statusCodes['Payment Required'])
+    .send('Pay subscription fee to delete an app.')
+
   const appName = req.query.appName
 
   const admin = res.locals.admin
@@ -182,6 +199,73 @@ exports.deleteApp = async function (req, res) {
 
     logger.error(`Failed to delete app ${appName} for admin ${adminId} with ${e}`)
     return res.status(statusCodes['Internal Server Error']).send('Failed to delete app')
+  }
+}
+
+exports.permanentDeleteApp = async function (req, res) {
+  const subscription = res.locals.subscription
+
+  if (!subscription || subscription.cancel_at_period_end || subscription.status !== 'active') return res
+    .status(statusCodes['Payment Required'])
+    .send('Pay subscription fee to permanently delete an app.')
+
+  const appName = req.query.appName
+  const appId = req.query.appId
+
+  const admin = res.locals.admin
+  const adminId = admin['admin-id']
+
+  if (!appName || !appId || !adminId) return res
+    .status(statusCodes['Bad Request'])
+    .send('Missing required items')
+
+  try {
+    const existingAppParams = {
+      TableName: setup.appsTableName,
+      Key: {
+        'admin-id': adminId,
+        'app-name': appName
+      },
+      ConditionExpression: 'attribute_exists(deleted) and #appId = :appId',
+      ExpressionAttributeNames: {
+        '#appId': 'app-id'
+      },
+      ExpressionAttributeValues: {
+        ':appId': appId
+      }
+    }
+
+    const permanentDeletedAppParams = {
+      TableName: setup.deletedAppsTableName,
+      Item: {
+        'app-id': appId,
+        'admin-id': adminId,
+        'app-name': appName
+      },
+      ConditionExpression: 'attribute_not_exists(#appId)',
+      ExpressionAttributeNames: {
+        '#appId': 'app-id'
+      },
+    }
+
+    const transactionParams = {
+      TransactItems: [
+        { Delete: existingAppParams },
+        { Put: permanentDeletedAppParams }
+      ]
+    }
+
+    const ddbClient = connection.ddbClient()
+    await ddbClient.transactWrite(transactionParams).promise()
+
+    return res.end()
+  } catch (e) {
+    if (e.message.includes('ConditionalCheckFailed]')) {
+      return res.status(statusCodes['Conflict']).send('App already permanently deleted')
+    }
+
+    logger.error(`Failed to permanently delete app ${appName} for admin ${adminId} with ${e}`)
+    return res.status(statusCodes['Internal Server Error']).send('Failed to permanently delete app')
   }
 }
 
@@ -225,4 +309,42 @@ exports.listAppUsers = async function (req, res) {
       .status(statusCodes['Internal Server Error'])
       .send('Failed to list app users')
   }
+}
+
+const updateNumAppUsers = async function (adminId, appName, appId, increment) {
+  const incrementNumUsersParams = {
+    TableName: setup.appsTableName,
+    Key: {
+      'admin-id': adminId,
+      'app-name': appName
+    },
+    UpdateExpression: 'add #numUsers :num',
+    ConditionExpression: '#appId = :appId',
+    ExpressionAttributeNames: {
+      '#numUsers': 'num-users',
+      '#appId': 'app-id'
+    },
+    ExpressionAttributeValues: {
+      ':num': increment ? 1 : -1,
+      ':appId': appId
+    }
+  }
+
+  try {
+    const ddbClient = connection.ddbClient()
+    await ddbClient.update(incrementNumUsersParams).promise()
+  } catch (e) {
+    // failure ok -- this is a best effort attempt
+    logger.warn(`Failed to increment number of users for app ${appId} with ${e}`)
+  }
+}
+
+exports.incrementNumAppUsers = async function (adminId, appName, appId) {
+  const increment = true
+  await updateNumAppUsers(adminId, appName, appId, increment)
+}
+
+exports.decrementNumAppUsers = async function (adminId, appName, appId) {
+  const increment = false
+  await updateNumAppUsers(adminId, appName, appId, increment)
 }

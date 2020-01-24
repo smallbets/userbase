@@ -25,11 +25,29 @@ body {
 }
 
 a {
-  @apply underline;
+  @apply underline font-semibold;
 }
 
 a:hover {
   @apply text-orange-700;
+}
+
+a.menu-item {
+  @apply block font-black py-2 leading-none no-underline
+}
+
+@screen sm {
+  a.menu-item {
+    @apply px-3
+  }
+}
+
+p {
+  @apply mb-4;
+}
+
+strong {
+  @apply font-semibold;
 }
 
 .btn {
@@ -37,7 +55,13 @@ a:hover {
 }
 
 .content {
-  @apply max-w-lg font-bold bg-white p-8 shadow-md;
+  @apply max-w-3xl font-bold bg-white p-6 shadow-md mt-8;
+}
+
+@screen sm {
+  .content {
+    @apply mt-0 p-8
+  }
 }
 
 .btn:disabled {

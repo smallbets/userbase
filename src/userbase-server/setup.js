@@ -6,7 +6,7 @@ import crypto from './crypto'
 let awsAccountId
 let initialized = false
 
-const defaultRegion = 'us-west-2'
+const defaultRegion = process.env.NODE_ENV == 'development' ? 'us-west-2' : 'us-east-1'
 
 const defineUsername = () => {
   let appUsername = ''
@@ -17,7 +17,7 @@ const defineUsername = () => {
       appUsername = os.userInfo().username
     }
   } else {
-    appUsername = 'beta'
+    appUsername = 'prod-v1'
   }
   return appUsername
 }
@@ -35,7 +35,8 @@ const sessionsTableName = resourceNamePrefix + 'sessions'
 const databaseTableName = resourceNamePrefix + 'databases'
 const userDatabaseTableName = resourceNamePrefix + 'user-databases'
 const transactionsTableName = resourceNamePrefix + 'transactions'
-const seedExchangeTableName = resourceNamePrefix + 'seed-exchanges'
+const deletedUsersTableName = resourceNamePrefix + 'deleted-users'
+const deletedAppsTableName = resourceNamePrefix + 'deleted-apps'
 const dbStatesBucketNamePrefix = resourceNamePrefix + 'database-states'
 const secretManagerSecretId = resourceNamePrefix + 'env'
 
@@ -46,17 +47,16 @@ exports.sessionsTableName = sessionsTableName
 exports.databaseTableName = databaseTableName
 exports.userDatabaseTableName = userDatabaseTableName
 exports.transactionsTableName = transactionsTableName
-exports.seedExchangeTableName = seedExchangeTableName
+exports.deletedUsersTableName = deletedUsersTableName
+exports.deletedAppsTableName = deletedAppsTableName
 
 const adminIdIndex = 'AdminIdIndex'
 const userIdIndex = 'UserIdIndex'
 const appIdIndex = 'AppIdIndex'
-const userDatabaseIdIndex = 'UserDatabaseIdIndex'
 
 exports.adminIdIndex = adminIdIndex
 exports.userIdIndex = userIdIndex
 exports.appIdIndex = appIdIndex
-exports.userDatabaseIdIndex = userDatabaseIdIndex
 
 const getDbStatesBucketName = function () {
   if (!initialized || !awsAccountId) {
@@ -72,10 +72,10 @@ exports.s3 = getS3Connection
 exports.getDbStatesBucketName = getDbStatesBucketName
 
 let sm
-let emailDomain
 exports.getSecrets = getSecrets
 exports.updateSecrets = updateSecrets
 
+let emailDomain
 let ses
 exports.sendEmail = sendEmail
 
@@ -97,9 +97,8 @@ exports.init = async function (userbaseConfig) {
   // eslint-disable-next-line require-atomic-updates
   aws.config.credentials = await chain.resolvePromise()
 
-  const region = await getEC2Region() || defaultRegion
-
-  aws.config.update({ region })
+  logger.info('Default AWS region: ' + defaultRegion)
+  aws.config.update({ region: defaultRegion })
 
   // get the AWS account id
   const accountInfo = await (new aws.STS({ apiVersion: '2011-06-15' })).getCallerIdentity({}).promise()
@@ -221,28 +220,14 @@ async function setupDdb() {
   const userDatabaseTableParams = {
     AttributeDefinitions: [
       { AttributeName: 'user-id', AttributeType: 'S' },
-      { AttributeName: 'database-name-hash', AttributeType: 'S' },
-      { AttributeName: 'database-id', AttributeType: 'S' }
+      { AttributeName: 'database-name-hash', AttributeType: 'S' }
     ],
     KeySchema: [
       { AttributeName: 'user-id', KeyType: 'HASH' },
       { AttributeName: 'database-name-hash', KeyType: 'RANGE' }
     ],
     BillingMode: 'PAY_PER_REQUEST',
-    TableName: userDatabaseTableName,
-    GlobalSecondaryIndexes: [{
-      IndexName: userDatabaseIdIndex,
-      KeySchema: [
-        { AttributeName: 'database-id', KeyType: 'HASH' },
-        { AttributeName: 'user-id', KeyType: 'RANGE' },
-      ],
-      Projection: {
-        NonKeyAttributes: [
-          'database-id'
-        ],
-        ProjectionType: 'INCLUDE'
-      }
-    }]
+    TableName: userDatabaseTableName
   }
 
   // the transactions table holds a record per database transaction
@@ -259,25 +244,28 @@ async function setupDdb() {
     TableName: transactionsTableName
   }
 
-  // the key exchange table holds key data per user request
-  const seedExchangeTableParams = {
+  // the deleted users table holds a record per deleted user
+  const deletedUsersTableParams = {
+    TableName: deletedUsersTableName,
+    BillingMode: 'PAY_PER_REQUEST',
     AttributeDefinitions: [
-      { AttributeName: 'user-id', AttributeType: 'S' },
-      { AttributeName: 'requester-public-key', AttributeType: 'S' }
+      { AttributeName: 'user-id', AttributeType: 'S' }
     ],
     KeySchema: [
-      { AttributeName: 'user-id', KeyType: 'HASH' },
-      { AttributeName: 'requester-public-key', KeyType: 'RANGE' }
-    ],
-    BillingMode: 'PAY_PER_REQUEST',
-    TableName: seedExchangeTableName
+      { AttributeName: 'user-id', KeyType: 'HASH' }
+    ]
   }
-  const seedExchangeTimeToLive = {
-    TableName: seedExchangeTableName,
-    TimeToLiveSpecification: {
-      AttributeName: 'ttl',
-      Enabled: true
-    }
+
+  // the deleted apps table holds a record per deleted app
+  const deletedAppsTableParams = {
+    TableName: deletedAppsTableName,
+    BillingMode: 'PAY_PER_REQUEST',
+    AttributeDefinitions: [
+      { AttributeName: 'app-id', AttributeType: 'S' }
+    ],
+    KeySchema: [
+      { AttributeName: 'app-id', KeyType: 'HASH' }
+    ]
   }
 
   logger.info('Creating DynamoDB tables if necessary')
@@ -289,11 +277,10 @@ async function setupDdb() {
     createTable(ddb, databaseTableParams),
     createTable(ddb, userDatabaseTableParams),
     createTable(ddb, transactionsTableParams),
-    createTable(ddb, seedExchangeTableParams),
+    createTable(ddb, deletedUsersTableParams),
+    createTable(ddb, deletedAppsTableParams),
   ])
 
-  logger.info('Setting time to live on tables if necessary')
-  await setTimeToLive(ddb, seedExchangeTimeToLive)
 }
 
 async function setupS3() {
@@ -336,17 +323,6 @@ async function createTable(ddb, params) {
   }
 
   enableBackup()
-}
-
-async function setTimeToLive(ddb, params) {
-  try {
-    await ddb.updateTimeToLive(params).promise()
-    logger.info(`Time to live set on ${params.TableName} successfully`)
-  } catch (e) {
-    if (!e.message.includes('TimeToLive is already enabled')) {
-      throw e
-    }
-  }
 }
 
 async function createBucket(s3, params) {
@@ -434,31 +410,6 @@ async function updateSecrets(secrets, secretKeyName, secretValue) {
   await sm.updateSecret(params).promise()
 
   process.env['sm.' + secretKeyName] = secretValue
-}
-
-async function getEC2Region() {
-  try {
-    return await new Promise((resolve, reject) => {
-      new aws.MetadataService({
-        httpOptions: {
-          timeout: 2000,
-          maxRetries: 0
-        }
-      }).request("/latest/dynamic/instance-identity/document", function (err, data) {
-        if (err) {
-          reject(err)
-          return
-        }
-        const ec2Region = JSON.parse(data).region
-        logger.info(`Running on EC2 in ${ec2Region}`)
-        resolve(ec2Region)
-      })
-      setTimeout(() => reject(new Error('timeout')), 5000)
-    })
-  } catch {
-    logger.info(`Not running on EC2 - Using default region: ${defaultRegion}`)
-    return null
-  }
 }
 
 async function setupSes() {

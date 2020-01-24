@@ -4,6 +4,7 @@ import adminLogic from './components/Admin/logic'
 import Dashboard from './components/Dashboard/Dashboard'
 import AppUsersTable from './components/Dashboard/AppUsersTable'
 import EditAdmin from './components/Admin/EditAdmin'
+import UnknownError from './components/Admin/UnknownError'
 
 export default class App extends Component {
   constructor(props) {
@@ -13,30 +14,37 @@ export default class App extends Component {
       mode: undefined,
       signedIn: undefined,
       email: undefined,
-      fullName: undefined
+      fullName: undefined,
+      paymentStatus: undefined,
+      loadingPaymentStatus: true,
+      errorGettingPaymentStatus: false,
     }
 
     this.handleSignOut = this.handleSignOut.bind(this)
     this.handleUpdateAccount = this.handleUpdateAccount.bind(this)
     this.handleReadHash = this.handleReadHash.bind(this)
+    this.handleUpdatePaymentStatus = this.handleUpdatePaymentStatus.bind(this)
   }
 
   async componentDidMount() {
     window.addEventListener('hashchange', this.handleReadHash, false)
-    this.handleReadHash()
+    const signedIn = this.handleReadHash()
 
-    try {
-      const paymentStatus = await adminLogic.getPaymentStatus()
-      if (this.state.signedIn && paymentStatus !== 'active') {
-        if (paymentStatus === 'past_due') {
+    let paymentStatus = undefined
+    if (signedIn) {
+      try {
+        paymentStatus = await adminLogic.getPaymentStatus()
+
+        if (this.state.signedIn && paymentStatus === 'past_due') {
           window.alert('Please update your payment method!')
-        } else {
-          window.alert('You are using the free version of Userbase!')
         }
+
+      } catch (e) {
+        this.setState({ errorGettingPaymentStatus: true })
       }
-    } catch (e) {
-      // do nothing
     }
+
+    this.setState({ paymentStatus, loadingPaymentStatus: false })
   }
 
   componentWillUnmount() {
@@ -61,14 +69,19 @@ export default class App extends Component {
     const email = session && session.email
     const fullName = session && session.fullName
 
-    this.setState({ signedIn })
+    const updatedState = { signedIn }
 
     if (email !== this.state.email) {
-      this.setState({ email })
+      updatedState.email = email
     }
 
     if (fullName !== this.state.fullName) {
-      this.setState({ fullName })
+      updatedState.fullName = fullName
+    }
+
+    if (!signedIn && this.state.signedIn) {
+      updatedState.paymentStatus = undefined
+      updatedState.errorGettingPaymentStatus = false
     }
 
     const hashRoute = window.location.hash.substring(1)
@@ -76,101 +89,132 @@ export default class App extends Component {
     switch (hashRoute) {
       case 'create-admin':
       case 'sign-in':
-        return signedIn
+        signedIn
           ? window.location.hash = ''
-          : this.setState({ mode: hashRoute })
+          : this.setState({ mode: hashRoute, ...updatedState })
+        break
 
       case 'edit-account':
-        return signedIn
-          ? this.setState({ mode: hashRoute })
+        signedIn
+          ? this.setState({ mode: hashRoute, ...updatedState })
           : window.location.hash = ''
+        break
 
       case 'success':
         window.alert('Payment successful!')
-        return window.location.hash = ''
+        window.location.hash = ''
+        break
 
       case 'update-success':
         window.alert('Payment method saved!')
-        return window.location.hash = ''
+        window.location.hash = ''
+        break
 
       default:
         if (hashRoute && hashRoute.substring(0, 4) === 'app=' && signedIn) {
-          return this.setState({ mode: 'app-users-table' })
+          this.setState({ mode: 'app-users-table', ...updatedState })
+        } else {
+          signedIn
+            ? this.setState({ mode: 'dashboard', ...updatedState })
+            : window.location.hash = session ? 'sign-in' : 'create-admin'
         }
-
-        return signedIn
-          ? this.setState({ mode: 'dashboard' })
-          : window.location.hash = session ? 'sign-in' : 'create-admin'
     }
+
+    return signedIn
+  }
+
+  handleUpdatePaymentStatus(paymentStatus) {
+    this.setState({ paymentStatus })
   }
 
   render() {
-    const { mode, signedIn, email, fullName } = this.state
+    const { mode, signedIn, email, fullName, paymentStatus, loadingPaymentStatus, errorGettingPaymentStatus } = this.state
 
     if (!mode) {
       return <div />
     }
 
-    const adminPanelHeader = signedIn && fullName
-      && `${fullName}'${fullName.charAt(fullName.length - 1) === "s" ? "" : "s"} `
-
     return (
       <div>
-        <nav className='flex items-center min-w-full text-sm sm:text-lg font-extrabold bg-white shadow-md p-2 h-14 sm:h-16 mb-10'>
-          <div className='flex-0 ml-2 tracking-tight'>
-            <div className='flex items-center min-w-full'>
-              <a href='#'><img src={require('./img/icon.png')} className='h-10 sm:h-12' /></a>
-              <p className='ml-4 italic'>{adminPanelHeader || ''}Admin Panel</p>
+        <header className='sm:sticky top-0 bg-white z-50 shadow-md mb-0 sm:mb-8'>
+          <div className='sm:flex sm:justify-between sm:items-center py-2 px-4'>
+            <div className='flex items-center justify-between h-10'>
+              <div className='flex-shrink-0'>
+                <div className='flex text-lg text-center menu'>
+                  <a href='https://userbase.com'><img alt='Userbase' className='h-8' src={require('./img/logo.png')} /></a>
+                  <span className='hidden sm:block font-semibold py-2 px-3 tracking-tight leading-none'>{signedIn ? fullName : ''}</span>
+                </div>
+              </div>
+              <div className='sm:hidden'>
+                <button onClick='toggleMenu()' type='button' className='block text-blackish hover:text-orange-700 focus:text-orange-700 focus:outline-none'>
+                  <svg className='h-6 w-6 fill-current' viewBox='0 0 24 24'>
+                    <path className='hidden menu-close' fillRule='evenodd' d='M18.278 16.864a1 1 0 0 1-1.414 1.414l-4.829-4.828-4.828 4.828a1 1 0 0 1-1.414-1.414l4.828-4.829-4.828-4.828a1 1 0 0 1 1.414-1.414l4.829 4.828 4.828-4.828a1 1 0 1 1 1.414 1.414l-4.828 4.829 4.828 4.828z' />
+                    <path className='menu-open' fillRule='evenodd' d='M4 5h16a1 1 0 0 1 0 2H4a1 1 0 1 1 0-2zm0 6h16a1 1 0 0 1 0 2H4a1 1 0 0 1 0-2zm0 6h16a1 1 0 0 1 0 2H4a1 1 0 0 1 0-2z' />
+                  </svg>
+                </button>
+              </div>
             </div>
-          </div>
-          <div className='flex-1 text-right tracking-tight mr-5'>
-            {mode === 'sign-in' || mode === 'create-admin'
-              ? <ul>
-                <li className='inline-block ml-4'><a className={mode === 'sign-in' ? 'text-orange-600' : ''} href='#sign-in'>Sign in</a></li>
-                <li className='inline-block ml-4'><a className={mode === 'create-admin' ? 'text-orange-600' : ''} href='#create-admin'>New admin</a></li>
-              </ul>
-              : <ul>
-                <li className='inline-block ml-4 font-light'><a className={mode === 'edit-account' ? 'text-orange-600' : ''} href='#edit-account'>{email}</a></li>
-                <li className='inline-block ml-4'><a href='#' onClick={this.handleSignOut}>Sign out</a></li>
-              </ul>
+
+            {signedIn
+              ? <nav className='pt-0 pb-8 hidden sm:flex sm:p-0 text-lg text-center menu'>
+                <a href='/' className='menu-item'>Apps</a>
+                <a href='#edit-account' className='menu-item'>Account</a>
+                <a href='#' onClick={this.handleSignOut} className='menu-item'>Sign out</a>
+              </nav>
+              : <nav className='pt-0 pb-8 hidden sm:flex sm:p-0 text-lg text-center menu' />
             }
           </div>
-        </nav>
+        </header>
 
-        {(() => {
-          switch (mode) {
-            case 'create-admin':
-              return <AdminForm
-                formType='Create Admin'
-                key='create-admin'
-                placeholderEmail=''
-              />
+        {errorGettingPaymentStatus
+          ? <div className='container content text-xs sm:text-base'>
+            <UnknownError noMarginTop />
+          </div>
+          : loadingPaymentStatus
+            ? <div className='text-center'>< div className='loader w-6 h-6 inline-block' /></div>
+            : (() => {
+              switch (mode) {
+                case 'create-admin':
+                  return <AdminForm
+                    formType='Create Admin'
+                    key='create-admin'
+                    placeholderEmail=''
+                  />
 
-            case 'sign-in':
-              return <AdminForm
-                formType='Sign In'
-                key='sign-in'
-                placeholderEmail={email}
-              />
+                case 'sign-in':
+                  return <AdminForm
+                    formType='Sign In'
+                    key='sign-in'
+                    placeholderEmail={email}
+                    handleUpdatePaymentStatus={this.handleUpdatePaymentStatus}
+                  />
 
-            case 'dashboard':
-              return <Dashboard />
+                case 'dashboard':
+                  return <Dashboard paymentStatus={paymentStatus} />
 
-            case 'app-users-table':
-              return <AppUsersTable
-                appName={decodeURIComponent(window.location.hash.substring(5))}
-                key={window.location.hash} // re-renders on hash change
-              />
+                case 'app-users-table':
+                  return <AppUsersTable
+                    appName={decodeURIComponent(window.location.hash.substring(5))}
+                    paymentStatus={paymentStatus}
+                    key={window.location.hash} // re-renders on hash change
+                  />
 
-            case 'edit-account':
-              return <EditAdmin handleUpdateAccount={this.handleUpdateAccount} />
+                case 'edit-account':
+                  return <EditAdmin
+                    paymentStatus={paymentStatus}
+                    handleUpdateAccount={this.handleUpdateAccount}
+                    handleUpdatePaymentStatus={this.handleUpdatePaymentStatus}
+                    fullName={fullName}
+                    email={email}
+                  />
 
-            default:
-              return null
-          }
-        })()}
+                default:
+                  return null
+              }
+            })()
+        }
 
-      </div>
+      </div >
     )
   }
 }
