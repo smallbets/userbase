@@ -8,6 +8,7 @@ export default class AppUsersTable extends Component {
     super(props)
     this.state = {
       error: '',
+      appId: '',
       activeUsers: [],
       deletedUsers: [],
       loading: true,
@@ -27,9 +28,10 @@ export default class AppUsersTable extends Component {
     const { appName } = this.props
 
     try {
-      const appUsers = (await dashboardLogic.listAppUsers(appName))
-        // sort by date in descending order
-        .sort((a, b) => new Date(b['creation-date']) - new Date(a['creation-date']))
+      const { users, appId } = await dashboardLogic.listAppUsers(appName)
+
+      // sort by date in descending order
+      const appUsers = users.sort((a, b) => new Date(b['creation-date']) - new Date(a['creation-date']))
 
       const activeUsers = []
       const deletedUsers = []
@@ -60,7 +62,7 @@ export default class AppUsersTable extends Component {
         else activeUsers.push(appUser)
       }
 
-      if (this._isMounted) this.setState({ activeUsers, deletedUsers, loading: false })
+      if (this._isMounted) this.setState({ appId, activeUsers, deletedUsers, loading: false })
     } catch (e) {
       if (this._isMounted) this.setState({ error: e.message, loading: false })
     }
@@ -176,7 +178,7 @@ export default class AppUsersTable extends Component {
 
   render() {
     const { appName, paymentStatus } = this.props
-    const { loading, activeUsers, deletedUsers, error, showDeletedUsers } = this.state
+    const { loading, appId, activeUsers, deletedUsers, error, showDeletedUsers } = this.state
 
     return (
       <div className='text-xs sm:text-sm'>
