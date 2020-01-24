@@ -44,6 +44,8 @@ const _connectWebSocket = async (session, seed, rememberMe) => {
 const _parseGenericUsernamePasswordError = (e) => {
   if (e.response && e.response.data.error === 'UsernameTooLong') {
     throw new errors.UsernameTooLong(e.response.data.maxLen)
+  } else if (e.response && e.response.data.error === 'PasswordAttemptLimitExceeded') {
+    throw new errors.PasswordAttemptLimitExceeded(e.response.data.delay)
   }
 }
 
@@ -426,6 +428,7 @@ const signIn = async (params) => {
       case 'PasswordTooShort':
       case 'PasswordTooLong':
       case 'PasswordMustBeString':
+      case 'PasswordAttemptLimitExceeded':
       case 'RememberMeValueNotValid':
       case 'AppIdNotSet':
       case 'AppIdNotValid':
@@ -609,6 +612,7 @@ const updateUser = async (params) => {
       case 'UsernameTooLong':
       case 'CurrentPasswordMissing':
       case 'CurrentPasswordIncorrect':
+      case 'PasswordAttemptLimitExceeded':
       case 'PasswordMustBeString':
       case 'PasswordCannotBeBlank':
       case 'PasswordTooShort':

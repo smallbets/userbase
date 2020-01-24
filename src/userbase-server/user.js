@@ -27,6 +27,8 @@ const MAX_PROFILE_OBJECT_KEYS = 100
 
 const LIMIT_NUM_TRIAL_USERS = 3
 
+const MAX_INCORRECT_PASSWORD_GUESSES = 25
+
 const createSession = async function (userId, appId) {
   const sessionId = crypto
     .randomBytes(ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID)
@@ -99,12 +101,100 @@ const _buildSignUpParams = (username, passwordToken, appId, userId,
   }
 }
 
-const _validatePassword = (passwordToken, user) => {
+const _allowUserToRetryPassword = (user) => {
+  const params = {
+    TableName: setup.usersTableName,
+    Key: {
+      'username': user['username'],
+      'app-id': user['app-id']
+    },
+    UpdateExpression: 'REMOVE #suspendedAt SET #incorrectAttempts = :incorrectAttempts',
+    ExpressionAttributeNames: {
+      '#suspendedAt': 'suspended-at',
+      '#incorrectAttempts': 'incorrect-password-attempts-in-a-row'
+    },
+    ExpressionAttributeValues: {
+      ':incorrectAttempts': 0
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+  ddbClient.update(params).promise()
+}
+
+const _suspendUser = (user) => {
+  const params = {
+    TableName: setup.usersTableName,
+    Key: {
+      'username': user['username'],
+      'app-id': user['app-id']
+    },
+    UpdateExpression: 'SET #suspendedAt = :suspendedAt',
+    ExpressionAttributeNames: {
+      '#suspendedAt': 'suspended-at'
+    },
+    ExpressionAttributeValues: {
+      ':suspendedAt': new Date().toISOString()
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+  ddbClient.update(params).promise()
+}
+
+const _incrementIncorrectPasswordAttempt = (user) => {
+  const incrementParams = {
+    TableName: setup.usersTableName,
+    Key: {
+      'username': user['username'],
+      'app-id': user['app-id']
+    },
+    UpdateExpression: 'add #incorrectAttempts :num',
+    ExpressionAttributeNames: {
+      '#incorrectAttempts': 'incorrect-password-attempts-in-a-row'
+    },
+    ExpressionAttributeValues: {
+      ':num': 1
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+  ddbClient.update(incrementParams).promise()
+}
+
+const _validatePassword = (passwordToken, user, req) => {
   if (!user || user['deleted']) throw new Error('User does not exist')
 
-  const passwordTokenHash = crypto.sha256.hash(passwordToken)
+  if (user['incorrect-password-attempts-in-a-row'] >= MAX_INCORRECT_PASSWORD_GUESSES) {
 
-  if (!passwordTokenHash.equals(user['password-token'])) throw new Error('Incorrect password')
+    const dateSuspended = user['suspended-at']
+    if (!dateSuspended) {
+      _suspendUser(user)
+
+      logger
+        .child({ userId: user['user-id'], reqId: req && req.id })
+        .warn('Someone has exceeded the password attempt limit')
+    }
+
+    if (!dateSuspended || new Date() - new Date(dateSuspended) < MS_IN_A_DAY) {
+      throw {
+        error: 'PasswordAttemptLimitExceeded',
+        delay: '24 hours'
+      }
+    } else {
+      _allowUserToRetryPassword(user)
+    }
+  }
+
+  const passwordTokenHash = crypto.sha256.hash(passwordToken)
+  const passwordIsCorrect = passwordTokenHash.equals(user['password-token'])
+
+  if (passwordIsCorrect && user['incorrect-password-attempts-in-a-row']) {
+    _allowUserToRetryPassword(user)
+  } else if (!passwordIsCorrect) {
+    _incrementIncorrectPasswordAttempt(user)
+    throw new Error('Incorrect password')
+  }
 }
 
 const _validateProfile = (profile) => {
@@ -475,8 +565,12 @@ exports.signIn = async function (req, res) {
     const user = userResponse.Item
 
     try {
-      _validatePassword(passwordToken, user)
+      _validatePassword(passwordToken, user, req)
     } catch (e) {
+      if (e.error === 'PasswordAttemptLimitExceeded') {
+        return res.status(statusCodes['Unauthorized']).send(e)
+      }
+
       return res.status(statusCodes['Unauthorized']).send('Invalid password')
     }
 
@@ -769,6 +863,10 @@ exports.updateUser = async function (userId, username, currentPasswordToken, pas
       try {
         _validatePassword(currentPasswordToken, user)
       } catch (e) {
+        if (e.error === 'PasswordAttemptLimitExceeded') {
+          return responseBuilder.errorResponse(status(statusCodes['Unauthorized']), e)
+        }
+
         return responseBuilder.errorResponse(statusCodes['Bad Request'], 'CurrentPasswordIncorrect')
       }
     }

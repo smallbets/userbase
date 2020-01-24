@@ -80,6 +80,16 @@ class PasswordMustBeString extends Error {
   }
 }
 
+class PasswordAttemptLimitExceeded extends Error {
+  constructor(delay, ...params) {
+    super(delay, ...params)
+
+    this.name = 'PasswordAttemptLimitExceeded'
+    this.message = `Password attempt limit exceeded. Must wait ${delay} to attempt to use password again.`
+    this.status = statusCodes['Unauthorized']
+  }
+}
+
 class UsernameOrPasswordMismatch extends Error {
   constructor(...params) {
     super(...params)
@@ -277,6 +287,7 @@ export default {
   PasswordTooShort,
   PasswordTooLong,
   PasswordMustBeString,
+  PasswordAttemptLimitExceeded,
   UsernameOrPasswordMismatch,
   UserAlreadySignedIn,
   AppIdNotValid,
