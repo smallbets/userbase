@@ -1,5 +1,7 @@
 import React, { Component } from 'react'
 import { string } from 'prop-types'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { faTrashAlt } from '@fortawesome/free-regular-svg-icons'
 import dashboardLogic from './logic'
 import UnknownError from '../Admin/UnknownError'
 
@@ -222,9 +224,11 @@ export default class AppUsersTable extends Component {
                               {user['deleting']
                                 ? <div className='loader w-4 h-4 inline-block' />
                                 : <div
-                                  className='fas fa-trash-alt font-normal text-lg cursor-pointer text-yellow-700'
+                                  className='font-normal text-lg cursor-pointer text-yellow-700'
                                   onClick={() => this.handleDeleteUser(user)}
-                                />
+                                >
+                                  <FontAwesomeIcon icon={faTrashAlt} />
+                                </div>
                               }
 
                             </td>
@@ -265,9 +269,11 @@ export default class AppUsersTable extends Component {
                                 {user['permanentDeleting']
                                   ? <div className='loader w-4 h-4 inline-block' />
                                   : <div
-                                    className='fas fa-trash-alt font-normal text-lg cursor-pointer text-yellow-700'
+                                    className='font-normal text-lg cursor-pointer text-yellow-700'
                                     onClick={() => this.handlePermanentDeleteUser(user)}
-                                  />
+                                  >
+                                    <FontAwesomeIcon icon={faTrashAlt} />
+                                  </div>
                                 }
 
                               </td>

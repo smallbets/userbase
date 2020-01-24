@@ -1,5 +1,7 @@
 import React, { Component } from 'react'
 import { string } from 'prop-types'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { faTrashAlt } from '@fortawesome/free-regular-svg-icons'
 import dashboardLogic from './logic'
 import adminLogic from '../Admin/logic'
 import UnknownError from '../Admin/UnknownError'
@@ -255,9 +257,11 @@ export default class Dashboard extends Component {
                               {app['permanentDeleting']
                                 ? <div className='loader w-4 h-4 inline-block' />
                                 : <div
-                                  className='fas fa-trash-alt font-normal text-lg cursor-pointer text-yellow-700'
+                                  className='font-normal text-lg cursor-pointer text-yellow-700'
                                   onClick={() => this.handlePermanentDeleteApp(app)}
-                                />
+                                >
+                                  <FontAwesomeIcon icon={faTrashAlt} />
+                                </div>
                               }
 
                             </td>
