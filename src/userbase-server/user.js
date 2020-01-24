@@ -101,43 +101,100 @@ const _buildSignUpParams = (username, passwordToken, appId, userId,
   }
 }
 
-const incorrectPasswordAttemptsInARow = {}
+const _allowUserToRetryPassword = async (user) => {
+  const params = {
+    TableName: setup.usersTableName,
+    Key: {
+      'username': user['username'],
+      'app-id': user['app-id']
+    },
+    UpdateExpression: 'REMOVE #suspendedAt SET #incorrectAttempts = :incorrectAttempts',
+    ExpressionAttributeNames: {
+      '#suspendedAt': 'suspended-at',
+      '#incorrectAttempts': 'incorrect-password-attempts-in-a-row'
+    },
+    ExpressionAttributeValues: {
+      ':incorrectAttempts': 0
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+  await ddbClient.update(params).promise()
+}
+
+const _suspendUser = async (user) => {
+  const params = {
+    TableName: setup.usersTableName,
+    Key: {
+      'username': user['username'],
+      'app-id': user['app-id']
+    },
+    UpdateExpression: 'SET #suspendedAt = :suspendedAt',
+    ExpressionAttributeNames: {
+      '#suspendedAt': 'suspended-at'
+    },
+    ExpressionAttributeValues: {
+      ':suspendedAt': new Date().toISOString()
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+  await ddbClient.update(params).promise()
+}
+
+const _incrementIncorrectPasswordAttempt = async (user) => {
+  const incrementParams = {
+    TableName: setup.usersTableName,
+    Key: {
+      'username': user['username'],
+      'app-id': user['app-id']
+    },
+    UpdateExpression: 'add #incorrectAttempts :num',
+    ExpressionAttributeNames: {
+      '#incorrectAttempts': 'incorrect-password-attempts-in-a-row'
+    },
+    ExpressionAttributeValues: {
+      ':num': 1
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+  await ddbClient.update(incrementParams).promise()
+}
 
 const _validatePassword = (passwordToken, user, req) => {
   if (!user || user['deleted']) throw new Error('User does not exist')
 
-  const userId = user['user-id']
+  logger.warn(user['incorrect-password-attempts-in-a-row'], user['suspended-at'])
 
-  if (typeof incorrectPasswordAttemptsInARow[userId] === 'object') {
-    if (new Date() - incorrectPasswordAttemptsInARow[userId] > MS_IN_A_DAY) {
-      // safe to try to use password again
-      delete incorrectPasswordAttemptsInARow[userId]
-    } else {
+  if (user['incorrect-password-attempts-in-a-row'] >= MAX_INCORRECT_PASSWORD_GUESSES) {
+
+    const dateSuspended = user['suspended-at']
+    if (!dateSuspended) {
+      _suspendUser(user)
+
+      logger
+        .child({ userId: user['user-id'], reqId: req && req.id })
+        .warn('Someone has exceeded the password attempt limit')
+    }
+
+    if (!dateSuspended || new Date() - new Date(dateSuspended) < MS_IN_A_DAY) {
       throw {
         error: 'PasswordAttemptLimitExceeded',
         delay: '24 hours'
       }
+    } else {
+      _allowUserToRetryPassword(user)
     }
   }
 
   const passwordTokenHash = crypto.sha256.hash(passwordToken)
+  const passwordIsCorrect = passwordTokenHash.equals(user['password-token'])
 
-  if (passwordTokenHash.equals(user['password-token'])) {
-    delete incorrectPasswordAttemptsInARow[userId]
-  } else {
-
-    if (incorrectPasswordAttemptsInARow[userId]) {
-      incorrectPasswordAttemptsInARow[userId] += 1
-
-      if (incorrectPasswordAttemptsInARow[userId] === MAX_INCORRECT_PASSWORD_GUESSES) {
-        logger.child({ userId, reqId: req && req.id }).warn('Someone has exceeded the password attempt limit')
-        incorrectPasswordAttemptsInARow[userId] = new Date()
-      }
-
-    } else {
-      incorrectPasswordAttemptsInARow[userId] = 1
-    }
-
+  if (passwordIsCorrect && user['incorrect-password-attempts-in-a-row']) {
+    _allowUserToRetryPassword(user)
+  } else if (!passwordIsCorrect) {
+    _incrementIncorrectPasswordAttempt(user)
     throw new Error('Incorrect password')
   }
 }

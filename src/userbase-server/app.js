@@ -107,9 +107,6 @@ exports.listApps = async function (req, res) {
 }
 
 async function getApp(adminId, appName) {
-  console.log('---------------------')
-  console.log(adminId)
-  console.log(appName)
   const params = {
     TableName: setup.appsTableName,
     Key: {
@@ -120,7 +117,6 @@ async function getApp(adminId, appName) {
 
   const ddbClient = connection.ddbClient()
   const appResponse = await ddbClient.get(params).promise()
-  console.log(appResponse)
   return appResponse.Item
 }
 exports.getApp = getApp
