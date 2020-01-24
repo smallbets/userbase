@@ -165,8 +165,6 @@ const _incrementIncorrectPasswordAttempt = async (user) => {
 const _validatePassword = (passwordToken, user, req) => {
   if (!user || user['deleted']) throw new Error('User does not exist')
 
-  logger.warn(user['incorrect-password-attempts-in-a-row'], user['suspended-at'])
-
   if (user['incorrect-password-attempts-in-a-row'] >= MAX_INCORRECT_PASSWORD_GUESSES) {
 
     const dateSuspended = user['suspended-at']
