@@ -65,7 +65,7 @@ export interface Userbase {
 
   deleteItem(params: { databaseName: string, itemId: string }): Promise<void>
 
-  buildTransaction(params: { databaseName: string, operations: DatabaseOperation[] }): Promise<void>
+  putTransaction(params: { databaseName: string, operations: DatabaseOperation[] }): Promise<void>
 }
 
 declare let userbase: Userbase
