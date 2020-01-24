@@ -23,7 +23,7 @@ const ONE_KB = 1024
 // DynamoDB single item limit: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html#limits-items
 const FOUR_HUNDRED_KB = 400 * ONE_KB
 
-const HSTS_MAX_AGE = 60 * 60 * 24 * 7 // 1 week
+const HSTS_MAX_AGE = 63072000 // 2 years
 
 if (process.env.NODE_ENV == 'development') {
   logger.warn('Development Mode')
@@ -218,7 +218,7 @@ async function start(express, app, userbaseConfig = {}) {
 
     // browsers will cache setting to use https for all future requests to server
     app.use(function (req, res, next) {
-      res.setHeader('Strict-Transport-Security', `max-age: ${HSTS_MAX_AGE}; includeSubDomains`)
+      res.setHeader('Strict-Transport-Security', `max-age: ${HSTS_MAX_AGE}; includeSubDomains; preload`)
       next()
     })
 
