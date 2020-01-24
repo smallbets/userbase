@@ -1,5 +1,7 @@
 import React, { Component } from 'react'
 import { string, func } from 'prop-types'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { faCheck } from '@fortawesome/free-solid-svg-icons'
 import adminLogic from './logic'
 import UnknownError from './UnknownError'
 
@@ -185,10 +187,12 @@ export default class AdminForm extends Component {
                 <div className='table-cell p-2 pt-0 text-left'>
                   <span className='mt-2 block select-none'>
                     <span className='mr-2'>
-                      <div
-                        className={`m-0 cursor-pointer ${receiveEmailUpdates ? 'checkbox-checked fa-check' : 'checkbox fa-check-empty'}`}
+                      <span
+                        className={`m-0 cursor-pointer ${receiveEmailUpdates ? 'checkbox-checked' : 'checkbox check-empty'}`}
                         onClick={receiveEmailUpdates ? this.handleDoNotReceiveEmailUpdates : this.handleReceiveEmailUpdates}
-                      />
+                      >
+                        {receiveEmailUpdates && <FontAwesomeIcon className='fa-check' icon={faCheck} />}
+                      </span>
                     </span>
 
                     <span>

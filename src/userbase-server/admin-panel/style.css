@@ -1,23 +1,5 @@
 @tailwind base;
 
-@font-face {
-  font-family: 'Font Awesome 5 Free';
-  font-style: normal;
-  font-weight: 400;
-  font-display: auto;
-  src: url("./fonts/fa-regular-400.eot");
-  src: url("./fonts/fa-regular-400.eot?#iefix") format("embedded-opentype"), url("./fonts/fa-regular-400.woff2") format("woff2"), url("./fonts/fa-regular-400.woff") format("woff"), url("./fonts/fa-regular-400.ttf") format("truetype"), url("./fonts/fa-regular-400.svg#fontawesome") format("svg");
-}
-
-@font-face {
-  font-family: 'Font Awesome 5 Free';
-  font-style: normal;
-  font-weight: 900;
-  font-display: auto;
-  src: url("./fonts/fa-solid-900.eot");
-  src: url("./fonts/fa-solid-900.eot?#iefix") format("embedded-opentype"), url("./fonts/fa-solid-900.woff2") format("woff2"), url("./fonts/fa-solid-900.woff") format("woff"), url("./fonts/fa-solid-900.ttf") format("truetype"), url("./fonts/fa-solid-900.svg#fontawesome") format("svg");
-}
-
 @tailwind components;
 
 body {
@@ -115,32 +97,11 @@ strong {
   100% { transform: rotate(360deg); }
 }
 
-.fa-check:before {
-  font-family: 'Font Awesome 5 Free';
-  content: "\f00c";
-}
-
-.fa-check-empty:before {
-  font-family: 'Font Awesome 5 Free';
+.check-empty:before {
   content: "-";
 }
 
-.fa-trash-alt:before {
-  font-family: 'Font Awesome 5 Free';
-  content: "\f2ed";
-}
-
-.fa-key:before {
-  font-family: 'Font Awesome 5 Free';
-  content: "\f084";
-}
-
-.fa-times-circle:before {
-  font-family: 'Font Awesome 5 Free';
-  content: "\f057";
-}
-
-.fa-user-plus:before {
-  font-family: 'Font Awesome 5 Free';
-  content: "\f234"
+.fa-check {
+  @apply align-middle;
+  margin-bottom: .125em;
 }
