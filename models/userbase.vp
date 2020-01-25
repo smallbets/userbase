@@ -1,0 +1,129 @@
+attacker[active]
+
+principal Server[]
+principal UserA[]
+principal UserA_OtherDevice[]
+principal UserB[]
+principal UserB_OtherDevice[]
+
+// _generatePasswordToken
+principal UserA[
+	knows password passA
+	generates seedA
+	generates passwordSaltA
+	generates passwordTokenSaltA
+	generates passwordBasedEncryptionKeySaltA
+	passwordHashA = PW_HASH(HASH(passA, passwordSaltA))
+	passwordHkdfKeyA = HKDF(passwordHashA, nil, nil)
+	passwordTokenA = HKDF(passwordHkdfKeyA, passwordTokenSaltA, nil)
+	passwordBasedEncryptionKeyA = HKDF(passwordHkdfKeyA, passwordBasedEncryptionKeySaltA, nil)
+	passwordEncryptedSeedA = AEAD_ENC(passwordBasedEncryptionKeyA, seedA, nil)
+]
+
+// _generateKeysAndSignUp
+principal UserA[
+	masterKeyA = HKDF(seedA, nil, nil)
+	generates encryptionKeySaltA
+	generates dhKeySaltA
+	generates hmacKeySaltA
+	encryptionKeyA = HKDF(masterKeyA, encryptionKeySaltA, nil)
+	dhPrivateKeyA = HKDF(masterKeyA, dhKeySaltA, nil)
+	hmacKeyA = HKDF(masterKeyA, hmacKeySaltA, nil)
+	publicKeyA = G^dhPrivateKeyA
+]
+
+UserA -> Server: passwordTokenA, publicKeyA, passwordSaltA, passwordTokenSaltA, encryptionKeySaltA, dhKeySaltA, hmacKeySaltA, passwordBasedEncryptionKeySaltA, passwordEncryptedSeedA
+
+// _generatePasswordToken
+principal UserB[
+	knows password passB
+	generates seedB
+	generates passwordSaltB
+	generates passwordTokenSaltB
+	generates passwordBasedEncryptionKeySaltB
+	passwordHashB = PW_HASH(HASH(passB, passwordSaltB))
+	passwordHkdfKeyB = HKDF(passwordHashB, nil, nil)
+	passwordTokenB = HKDF(passwordHkdfKeyB, passwordTokenSaltB, nil)
+	passwordBasedEncryptionKeyB = HKDF(passwordHkdfKeyB, passwordBasedEncryptionKeySaltB, nil)
+	passwordEncryptedSeedB = AEAD_ENC(passwordBasedEncryptionKeyB, seedB, nil)
+]
+
+// _generateKeysAndSignUp
+principal UserB[
+	masterKeyB = HKDF(seedB, nil, nil)
+	generates encryptionKeySaltB
+	generates dhKeySaltB
+	generates hmacKeySaltB
+	encryptionKeyB = HKDF(masterKeyB, encryptionKeySaltB, nil)
+	dhPrivateKeyB = HKDF(masterKeyB, dhKeySaltB, nil)
+	hmacKeyB = HKDF(masterKeyB, hmacKeySaltB, nil)
+	publicKeyB = G^dhPrivateKeyB
+]
+
+UserB -> Server: passwordTokenB, publicKeyB, passwordSaltB, passwordTokenSaltB, encryptionKeySaltB, dhKeySaltB, hmacKeySaltB, passwordBasedEncryptionKeySaltB, passwordEncryptedSeedB
+
+principal UserA[
+	generates dbKeyA
+	encryptedDbKeyA = AEAD_ENC(encryptionKeyA, dbKeyA, nil)
+]
+
+UserA -> Server: encryptedDbKeyA
+
+principal UserA[
+	knows private itemA
+	encryptedItemA = AEAD_ENC(dbKeyA, itemA, nil)
+]
+
+UserA -> Server: encryptedItemA
+
+principal UserB[
+	generates dbKeyB
+	encryptedDbKeyB = AEAD_ENC(encryptionKeyB, dbKeyB, nil)
+]
+
+UserB -> Server: encryptedDbKeyB
+
+principal UserB[
+	knows private itemB
+	encryptedItemB = AEAD_ENC(dbKeyB, itemB, nil)
+]
+
+UserB -> Server: encryptedItemB
+
+Server -> UserA_OtherDevice: encryptedItemA, encryptedDbKeyA, passwordEncryptedSeedA, passwordSaltA, passwordTokenSaltA, encryptionKeySaltA, passwordBasedEncryptionKeySaltA
+
+Server -> UserB_OtherDevice: encryptedItemB, encryptedDbKeyB, passwordEncryptedSeedB, passwordSaltB, passwordTokenSaltB, encryptionKeySaltB, passwordBasedEncryptionKeySaltB
+
+principal UserA_OtherDevice[
+	knows password passA
+	passwordHashA_ = PW_HASH(HASH(passA, passwordSaltA))
+	passwordHkdfKeyA_ = HKDF(passwordHashA_, nil, nil)
+	passwordTokenA_ = HKDF(passwordHkdfKeyA_, passwordTokenSaltA, nil)
+	passwordBasedEncryptionKeyA_ = HKDF(passwordHkdfKeyA_, passwordBasedEncryptionKeySaltA, nil)
+	seedA_ = AEAD_DEC(passwordBasedEncryptionKeyA_, passwordEncryptedSeedA, nil)?
+	masterKeyA_ = HKDF(seedA_, nil, nil)
+	encryptionKeyA_ = HKDF(masterKeyA_, encryptionKeySaltA, nil)
+	dbKeyA_ = AEAD_DEC(encryptionKeyA_, encryptedDbKeyA, nil)?
+	itemA_ = AEAD_DEC(dbKeyA_, encryptedItemA, nil)?
+]
+
+principal UserB_OtherDevice[
+	knows password passB
+	passwordHashB_ = PW_HASH(HASH(passB, passwordSaltB))
+	passwordHkdfKeyB_ = HKDF(passwordHashB_, nil, nil)
+	passwordTokenB_ = HKDF(passwordHkdfKeyB_, passwordTokenSaltB, nil)
+	passwordBasedEncryptionKeyB_ = HKDF(passwordHkdfKeyB_, passwordBasedEncryptionKeySaltB, nil)
+	seedB_ = AEAD_DEC(passwordBasedEncryptionKeyB_, passwordEncryptedSeedB, nil)?
+	masterKeyB_ = HKDF(seedB_, nil, nil)
+	encryptionKeyB_ = HKDF(masterKeyB_, encryptionKeySaltB, nil)
+	dbKeyB_ = AEAD_DEC(encryptionKeyB_, encryptedDbKeyB, nil)?
+	itemB_ = AEAD_DEC(dbKeyB_, encryptedItemB, nil)?
+]
+
+queries[
+	confidentiality? itemA
+	confidentiality? itemB
+	authentication? Server -> UserA_OtherDevice: encryptedItemA
+	authentication? Server -> UserB_OtherDevice: encryptedItemB
+]
+
