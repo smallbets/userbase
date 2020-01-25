@@ -814,6 +814,21 @@ exports.updateSaasSubscriptionPaymentSession = async function (req, res) {
   }
 }
 
+const saveDefaultPaymentMethod = async function (session) {
+  const subscription_id = session.subscription
+  const subscription = await stripe.getClient().subscriptions.retrieve(subscription_id)
+
+  const { customer, default_payment_method } = subscription
+  await stripe.getClient().customers.update(
+    customer,
+    {
+      invoice_settings: { default_payment_method },
+    }
+  )
+
+  logger.child({ customer }).info(`Successfully saved admin's default payment method`)
+}
+
 const updateStripePaymentMethod = async function (session) {
   const setupIntent = await stripe.getClient().setupIntents.retrieve(session.setup_intent)
   const { payment_method, metadata: { customer_id, subscription_id } } = setupIntent
@@ -830,14 +845,14 @@ const updateStripePaymentMethod = async function (session) {
       invoice_settings: { default_payment_method: payment_method },
     }
   )
-  logger.info(`Successfully updated payment method for admin with Stripe customer id ${customer_id}`)
+  logger.child({ customer: customer_id }).info(`Successfully updated admin's payment method`)
 
   const subscription = await stripe.getClient().subscriptions.retrieve(subscription_id)
   if (subscription.status === 'past_due' || subscription.status === 'unpaid') {
     const latestInvoiceId = subscription.latest_invoice
 
     await stripe.getClient().invoices.pay(latestInvoiceId, { payment_method })
-    logger.info(`Successfully charged admin with Stripe customer id ${customer_id} with updated payment method`)
+    logger.child({ customer: customer_id }).info('Successfully charged admin with updated payment method')
   }
 }
 
@@ -854,6 +869,8 @@ exports.handleStripeWebhook = async function (req, res) {
 
       if (session.mode === 'setup') {
         await updateStripePaymentMethod(session)
+      } else if (session.mode === 'subscription') {
+        await saveDefaultPaymentMethod(session)
       }
     }
 
