@@ -10,28 +10,35 @@ async function createApp(appName, adminId, appId = uuidv4()) {
     data: 'Missing required items'
   }
 
-  const app = {
-    'admin-id': adminId,
-    'app-name': appName,
-    'app-id': appId,
-    'creation-date': new Date().toISOString(),
-    'num-users': 0
-  }
-
-  const params = {
-    TableName: setup.appsTableName,
-    Item: app,
-    ConditionExpression: 'attribute_not_exists(#adminId)',
-    ExpressionAttributeNames: {
-      '#adminId': 'admin-id'
-    },
-  }
-
   try {
+    const trimmedAppName = appName.trim()
+    if (!trimmedAppName) throw {
+      status: statusCodes['Bad Request'],
+      data: 'App name cannot be blank'
+    }
+
+    const app = {
+      'admin-id': adminId,
+      'app-name': trimmedAppName,
+      'app-id': appId,
+      'creation-date': new Date().toISOString(),
+      'num-users': 0
+    }
+
+    const params = {
+      TableName: setup.appsTableName,
+      Item: app,
+      ConditionExpression: 'attribute_not_exists(#adminId)',
+      ExpressionAttributeNames: {
+        '#adminId': 'admin-id'
+      },
+    }
+
     const ddbClient = connection.ddbClient()
     await ddbClient.put(params).promise()
     return app
   } catch (e) {
+    if (e.data === 'App name cannot be blank') throw e
     if (e.name === 'ConditionalCheckFailedException') {
       throw {
         status: statusCodes['Conflict'],
