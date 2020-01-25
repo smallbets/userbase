@@ -85,7 +85,7 @@ npm run test
 ```
 
 ## Credits
-These are the people who have made this project a reality:
+The people who made this project a reality:
 - [Daniel Vassallo](https://twitter.com/dvassallo)
 - [Justin Berman](https://twitter.com/justinberman95)
 - [Luca Cipriani](https://twitter.com/mastrolinux)
