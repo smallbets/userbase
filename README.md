@@ -34,7 +34,7 @@ If you're building a web app, you will likely need a database and a backend. Use
 Check out the [FAQ](https://userbase.com/docs/faq/) for more details.
 
 ## How do I start?
-The easiest way to start using Userbase is to create a [free Admin account](https://userbase.com) and follow the [Quickstart](https://userbase.com/docs/quickstart/) guide. If you have any questions, or there's anything we can do to help you with your web app, please [get in touch](https://userbase.com/contact/). Thank you!
+The easiest way to start using Userbase is to create a [free Admin account](https://userbase.com) and follow the [Quickstart](https://userbase.com/docs/quickstart/) guide. If you have any questions, or if there's anything we can do to help you with your web app, please [get in touch](https://userbase.com/contact/). Thank you!
 
 ## Development
 
