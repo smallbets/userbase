@@ -298,7 +298,11 @@ export default class AppUsersTable extends Component {
 
               </div>
 
-              : !error && <p className='italic font-light'>No users yet.</p>
+              : !error &&
+              <div>
+                <p className='font-normal'>No users yet.</p>
+                <p className='font-normal mt-6'>Check out the <a href='https://userbase.com/docs/' target='_blank' rel='noopener noreferrer'>Quickstart guide</a> to get started.</p>
+              </div>
           }
 
           {error && (

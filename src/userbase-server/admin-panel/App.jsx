@@ -162,7 +162,7 @@ export default class App extends Component {
                 </div>
               </div>
               <div className='sm:hidden'>
-                { signedIn &&
+                {signedIn &&
                   <button onClick={this.handleToggleMobileMenu} type='button' className='block text-blackish hover:text-orange-700 focus:text-orange-700 focus:outline-none'>
                     <svg className='h-6 w-6 fill-current' viewBox='0 0 24 24'>
                       <path className={`${mobileMenuOpen ? '' : 'hidden'} menu-close`} fillRule='evenodd' d='M18.278 16.864a1 1 0 0 1-1.414 1.414l-4.829-4.828-4.828 4.828a1 1 0 0 1-1.414-1.414l4.828-4.829-4.828-4.828a1 1 0 0 1 1.414-1.414l4.829 4.828 4.828-4.828a1 1 0 1 1 1.414 1.414l-4.828 4.829 4.828 4.828z' />
@@ -176,6 +176,7 @@ export default class App extends Component {
             {signedIn
               ? <nav className={`pt-0 pb-8 sm:flex sm:p-0 text-lg text-center menu ${mobileMenuOpen ? '' : 'hidden'}`}>
                 <a href='/' className='menu-item'>Apps</a>
+                <a href='https://userbase.com/docs/' target='_blank' rel='noopener noreferrer' className='menu-item'>Docs</a>
                 <a href='#edit-account' className='menu-item'>Account</a>
                 <a href='#' onClick={this.handleSignOut} className='menu-item'>Sign out</a>
               </nav>
