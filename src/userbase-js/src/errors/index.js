@@ -47,6 +47,14 @@ class Reconnecting extends ServiceUnavailable {
   }
 }
 
+class UnknownServiceUnavailable extends ServiceUnavailable {
+  constructor(e, ...params) {
+    super(e, ...params)
+
+    console.error('Userbase error. Please report this to support@userbase.com.\n\n', e)
+  }
+}
+
 class ParamsMustBeObject extends Error {
   constructor(...params) {
     super(...params)
@@ -66,5 +74,6 @@ export default {
   ServiceUnavailable,
   Timeout,
   Reconnecting,
+  UnknownServiceUnavailable,
   ParamsMustBeObject
 }

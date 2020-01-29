@@ -479,7 +479,7 @@ const openDatabase = async (params) => {
         throw e
 
       default:
-        throw new errors.ServiceUnavailable
+        throw new errors.UnknownServiceUnavailable(e)
     }
   }
 }
@@ -526,7 +526,7 @@ const insertItem = async (params) => {
         throw e
 
       default:
-        throw new errors.ServiceUnavailable
+        throw new errors.UnknownServiceUnavailable(e)
     }
 
   }
@@ -585,7 +585,7 @@ const updateItem = async (params) => {
         throw e
 
       default:
-        throw new errors.ServiceUnavailable
+        throw new errors.UnknownServiceUnavailable
     }
 
   }
@@ -643,7 +643,7 @@ const deleteItem = async (params) => {
         throw e
 
       default:
-        throw new errors.ServiceUnavailable
+        throw new errors.UnknownServiceUnavailable(e)
     }
 
   }
@@ -742,7 +742,7 @@ const putTransaction = async (params) => {
         throw e
 
       default:
-        throw new errors.ServiceUnavailable
+        throw new errors.UnknownServiceUnavailable(e)
     }
   }
 }
