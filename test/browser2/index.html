@@ -13,6 +13,8 @@
 </body>
 
 <script>
+  window._userbaseEndpoint = endpoint
+
   const SIGN_UP_DELAY = 5000
 
   const test1 = (testNum) => {
@@ -20,17 +22,17 @@
 
     const { username, password } = USERS[testNum - 1]
 
-    userbase.init({ appId, endpoint })
+    userbase.init({ appId })
 
     wait(SIGN_UP_DELAY)
       .then(() => {
-        userbase.signIn(username, password)
+        userbase.signIn({ username, password, rememberMe })
           .then(() => {
             console.log('Signed in...')
 
-            userbase.openDatabase(dbName, () => { })
+            userbase.openDatabase({ databaseName, changeHandler: () => { } })
               .then(() => {
-                userbase.insertItem(dbName, 'Hello world!', 'test-id')
+                userbase.insertItem({ databaseName, item: 'Hello world!', itemId: 'test-id' })
                   .then(() => completedTest(testNum))
               })
               .catch((e) => console.assert(false, e))
@@ -45,17 +47,17 @@
 
     const { username, password } = USERS[testNum - 1]
 
-    userbase.init({ appId, endpoint })
+    userbase.init({ appId })
 
     wait(SIGN_UP_DELAY)
       .then(() => {
-        userbase.signIn(username, password)
+        userbase.signIn({ username, password, rememberMe })
           .then(() => {
             console.log('Signed in...')
 
-            userbase.openDatabase(dbName, () => { })
+            userbase.openDatabase({ databaseName, changeHandler: () => { } })
               .then(() => {
-                userbase.insertItem(dbName, 'Hello world!', 'test-id')
+                userbase.insertItem({ databaseName, item: 'Hello world!', itemId: 'test-id' })
                   .then(() => completedTest(testNum))
               })
               .catch((e) => console.assert(false, e))
@@ -72,19 +74,19 @@
 
     const { username, password } = USERS[testNum - 1]
 
-    userbase.init({ appId, endpoint })
+    userbase.init({ appId })
 
     wait(SIGN_UP_DELAY)
       .then(() => {
-        userbase.signIn(username, password)
+        userbase.signIn({ username, password, rememberMe })
           .then(() => {
             console.log('Signed in...')
 
-            userbase.openDatabase(dbName, () => { })
+            userbase.openDatabase({ databaseName, changeHandler: () => { } })
               .then(() => {
 
                 for (let i = 0; i < NUM_INSERTS; i++) {
-                  userbase.insertItem(dbName, 'item-' + i, i.toString())
+                  userbase.insertItem({ databaseName, item: 'item-' + i, itemId: i.toString() })
                 }
 
                 completedTest(testNum)
@@ -103,15 +105,15 @@
 
     const { username, password } = USERS[testNum - 1]
 
-    userbase.init({ appId, endpoint })
+    userbase.init({ appId })
 
     wait(SIGN_UP_DELAY)
       .then(() => {
-        userbase.signIn(username, password)
+        userbase.signIn({ username, password, rememberMe })
           .then((user) => {
             console.log('Signed in...')
 
-            userbase.openDatabase(dbName, () => { })
+            userbase.openDatabase({ databaseName, changeHandler: () => { } })
               .then(() => {
 
                 // wait until timeToInsert
@@ -123,7 +125,7 @@
                     console.log('Inserting all items at ' + new Date())
 
                     for (let i = 0; i < NUM_INSERTS; i++) {
-                      userbase.insertItem(dbName, 'item-' + (i + NUM_INSERTS), (i + NUM_INSERTS).toString())
+                      userbase.insertItem({ databaseName, item: 'item-' + (i + NUM_INSERTS), itemId: (i + NUM_INSERTS).toString() })
                     }
 
                     completedTest(testNum)
@@ -142,19 +144,19 @@
 
     const NUM_INSERTS = 20
 
-    userbase.init({ appId, endpoint })
+    userbase.init({ appId })
 
-    const { username, password } = USERS[testNum]
+    const { username, password } = USERS[testNum - 1]
 
     wait(SIGN_UP_DELAY)
       .then(() => {
-        userbase.signIn(username, password)
+        userbase.signIn({ username, password, rememberMe })
           .then((user) => {
             console.log('Signed in...')
 
             let database = []
 
-            userbase.openDatabase(dbName, (items) => { database = items })
+            userbase.openDatabase({ databaseName, changeHandler: (items) => { database = items } })
               .then(() => {
 
                 // wait until timeToInsert
@@ -175,7 +177,7 @@
                       }
 
                       const insert = new Promise(resolve => {
-                        userbase.insertItem(dbName, item, i.toString())
+                        userbase.insertItem({ databaseName, item, itemId: i.toString() })
                           .then(() => {
                             console.log(`Item with id ${i.toString()} succeeeded!`)
                             successfulInserts[i] = false
