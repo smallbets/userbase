@@ -9,7 +9,6 @@ logs
 npm_build
 cypress/videos
 cypress/screenshots
-cypress/config/luca.json
 
 test/loginInfo.js
 test/browser*/tmp
