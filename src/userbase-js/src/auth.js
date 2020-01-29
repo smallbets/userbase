@@ -629,6 +629,7 @@ const updateUser = async (params) => {
       case 'AppIdNotValid':
       case 'UserNotFound':
       case 'UserNotSignedIn':
+      case 'TooManyRequests':
       case 'ServiceUnavailable':
         throw e
 
@@ -663,6 +664,7 @@ const deleteUser = async () => {
     switch (e.name) {
       case 'UserNotSignedIn':
       case 'UserNotFound':
+      case 'TooManyRequests':
       case 'ServiceUnavailable':
         throw e
 

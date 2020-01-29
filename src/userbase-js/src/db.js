@@ -475,6 +475,7 @@ const openDatabase = async (params) => {
       case 'ChangeHandlerMustBeFunction':
       case 'UserNotSignedIn':
       case 'UserNotFound':
+      case 'TooManyRequests':
       case 'ServiceUnavailable':
         throw e
 
@@ -522,6 +523,7 @@ const insertItem = async (params) => {
       case 'ItemAlreadyExists':
       case 'UserNotSignedIn':
       case 'UserNotFound':
+      case 'TooManyRequests':
       case 'ServiceUnavailable':
         throw e
 
@@ -581,6 +583,7 @@ const updateItem = async (params) => {
       case 'ItemUpdateConflict':
       case 'UserNotSignedIn':
       case 'UserNotFound':
+      case 'TooManyRequests':
       case 'ServiceUnavailable':
         throw e
 
@@ -639,6 +642,7 @@ const deleteItem = async (params) => {
       case 'ItemUpdateConflict':
       case 'UserNotSignedIn':
       case 'UserNotFound':
+      case 'TooManyRequests':
       case 'ServiceUnavailable':
         throw e
 
@@ -738,6 +742,7 @@ const putTransaction = async (params) => {
       case 'ItemUpdateConflict':
       case 'UserNotSignedIn':
       case 'UserNotFound':
+      case 'TooManyRequests':
       case 'ServiceUnavailable':
         throw e
 

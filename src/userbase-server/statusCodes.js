@@ -5,6 +5,7 @@ export default {
   'Payment Required': 402,
   'Not Found': 404,
   'Conflict': 409,
+  'Too Many Requests': 429,
   'Internal Server Error': 500,
 
   // Custom ws close event codes

@@ -1264,11 +1264,11 @@ describe('DB Correctness Tests', function () {
         expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
       })
 
-      it('10 concurrent Inserts across 5 open databases', async function () {
-        const numConcurrentOperations = 10
+      it('5 concurrent Inserts across 4 open databases', async function () {
+        const numConcurrentOperations = 5
         const insertedItems = {}
 
-        const numOpenDatabases = 5
+        const numOpenDatabases = 4
 
         let changeHandlerCallCounts = []
         changeHandlerCallCounts.length = numOpenDatabases
@@ -1729,6 +1729,171 @@ describe('DB Correctness Tests', function () {
         expect(successful, 'successful state').to.be.true
 
         // give client time to process all transactions, then make sure state is still correct
+        const THREE_SECONDS = 3 * 1000
+        await wait(THREE_SECONDS)
+        expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
+      })
+
+      it('26 concurrent Inserts trigger rate limit', async function () {
+        const numSuccessfulConcurrentOperations = 25
+        const insertedItems = {}
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        let latestState
+        let correctState
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+          latestState = items
+
+          if (items.length === numSuccessfulConcurrentOperations && !successful) {
+            for (let i = 0; i < numSuccessfulConcurrentOperations; i++) {
+              const insertedItem = items[i]
+              const { itemId } = insertedItem
+
+              expect(insertedItems[itemId].inState, 'item status before insert confirmed').to.be.undefined
+              insertedItems[itemId].inState = true
+            }
+
+            successful = true
+            correctState = items
+          }
+        }
+
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+
+        // wait for ValidateKey and OpenDatabase to be finished to reset rate limiter
+        await wait(2000)
+
+        let errorCount = 0
+        let failedItemId
+
+        const inserts = []
+        for (let i = 0; i < numSuccessfulConcurrentOperations + 1; i++) {
+          const item = i.toString()
+          const itemId = item
+          insertedItems[itemId] = { successResponse: false }
+
+          const insert = async () => {
+            try {
+              await this.test.userbase.insertItem({ databaseName, item, itemId })
+              insertedItems[itemId].successResponse = true
+
+            } catch (e) {
+
+              expect(e.name, 'error name').to.be.equal('TooManyRequests')
+              expect(e.message, 'error message').to.be.equal('Too many requests in a row. Please try again in 1 second.')
+              expect(e.status, 'error status').to.be.equal(429)
+              errorCount += 1
+              failedItemId = itemId
+            }
+          }
+          inserts.push(insert())
+        }
+        await Promise.all(inserts)
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(1 + numSuccessfulConcurrentOperations)
+        expect(successful, 'successful state').to.be.true
+        expect(errorCount, 'error count').to.equal(1)
+
+        for (const insertedItemId of Object.keys(insertedItems)) {
+          const insertedItem = insertedItems[insertedItemId]
+
+          if (insertedItem.inState) {
+            expect(insertedItem.successResponse, 'item status after insert finished').to.be.true
+          } else {
+            expect(failedItemId, 'failed item id is correct').to.equal(insertedItemId)
+            expect(insertedItem.inState, 'failed item status in state after insert finished').to.be.undefined
+            expect(insertedItem.successResponse, 'failed item status after insert finished').to.be.false
+          }
+        }
+
+        // give client time to process all inserts, then make sure state is still correct
+        const THREE_SECONDS = 3 * 1000
+        await wait(THREE_SECONDS)
+        expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
+      })
+
+      it('26 concurrent Inserts trigger rate limit, then wait 1 second and insert', async function () {
+        const numSuccessfulConcurrentOperations = 25
+        const insertedItems = {}
+
+        let changeHandlerCallCount = 0
+        let successful
+
+        let latestState
+        let correctState
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+          latestState = items
+
+          if (items.length === numSuccessfulConcurrentOperations + 1 && !successful) {
+            for (let i = 0; i < numSuccessfulConcurrentOperations + 1; i++) {
+              const insertedItem = items[i]
+              const { itemId } = insertedItem
+
+              expect(insertedItems[itemId].inState, 'item status before insert confirmed').to.be.undefined
+              insertedItems[itemId].inState = true
+            }
+
+            successful = true
+            correctState = items
+          }
+        }
+
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+
+        // wait for ValidateKey and OpenDatabase to be finished to reset rate limiter
+        await wait(2000)
+
+        const inserts = []
+        for (let i = 0; i < numSuccessfulConcurrentOperations + 1; i++) {
+          const item = i.toString()
+          const itemId = item
+          insertedItems[itemId] = { successResponse: false }
+
+          const insert = async () => {
+            try {
+              await this.test.userbase.insertItem({ databaseName, item, itemId })
+              insertedItems[itemId].successResponse = true
+            } catch (e) {
+              // do nothing
+            }
+          }
+          inserts.push(insert())
+        }
+        await Promise.all(inserts)
+
+        // wait 1 second then insert
+        await wait(1000)
+
+        const finalItem = 'final-item'
+        const finalItemId = 'final-item-id'
+        insertedItems[finalItemId] = { successResponse: false }
+        await this.test.userbase.insertItem({ databaseName, item: finalItem, itemId: finalItemId })
+        insertedItems[finalItemId].successResponse = true
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(2 + numSuccessfulConcurrentOperations)
+        expect(successful, 'successful state').to.be.true
+
+        for (const insertedItemId of Object.keys(insertedItems)) {
+          const insertedItem = insertedItems[insertedItemId]
+
+          if (insertedItem.inState) {
+            expect(insertedItem.successResponse, 'item status after insert finished').to.be.true
+          } else {
+            expect(insertedItem.successResponse, 'failed item status after insert finished').to.be.false
+          }
+
+          if (insertedItemId === 'finalItemId') {
+            expect(insertedItem.inState, 'final item to be in state').to.be.true
+          }
+        }
+
+        // give client time to process all inserts, then make sure state is still correct
         const THREE_SECONDS = 3 * 1000
         await wait(THREE_SECONDS)
         expect(latestState, 'successful state after waiting').to.deep.equal(correctState)

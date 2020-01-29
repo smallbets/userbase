@@ -108,102 +108,109 @@ async function start(express, app, userbaseConfig = {}) {
             const action = request.action
             const params = request.params
 
-            if (action !== 'Pong') {
-              logger.child({ wsReq: { userId, connectionId, adminId, requestId, action, size: msg.length } }).info()
-            }
-
             let response
 
             if (action === 'Pong') {
               heartbeat(ws)
               return
-            } else if (action === 'SignOut') {
-              response = await user.signOut(params.sessionId)
-            } else if (!conn.keyValidated) {
+            }
 
-              switch (action) {
-                case 'ValidateKey': {
-                  response = await user.validateKey(
-                    validationMessage,
-                    params.validationMessage,
-                    res.locals.user,
-                    conn
-                  )
-                  break
-                }
-                default: {
-                  response = responseBuilder.errorResponse(statusCodes['Unauthorized'], 'Key not validated')
-                }
-              }
+            logger.child({ wsReq: { userId, connectionId, adminId, requestId, action, size: msg.length } }).info()
+
+            if (conn.rateLimiter.atCapacity()) {
+
+              response = responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
 
             } else {
 
-              switch (action) {
-                case 'ValidateKey': {
-                  response = responseBuilder.errorResponse(statusCodes['Bad Request'], 'Already validated key')
-                  break
+              if (action === 'SignOut') {
+                response = await user.signOut(params.sessionId)
+              } else if (!conn.keyValidated) {
+
+                switch (action) {
+                  case 'ValidateKey': {
+                    response = await user.validateKey(
+                      validationMessage,
+                      params.validationMessage,
+                      res.locals.user,
+                      conn
+                    )
+                    break
+                  }
+                  default: {
+                    response = responseBuilder.errorResponse(statusCodes['Unauthorized'], 'Key not validated')
+                  }
                 }
-                case 'UpdateUser': {
-                  response = await user.updateUser(
-                    userId,
-                    params.username,
-                    params.currentPasswordToken,
-                    params.passwordToken,
-                    params.passwordSalts,
-                    params.email,
-                    params.profile,
-                    params.passwordBasedBackup
-                  )
-                  break
-                }
-                case 'DeleteUser': {
-                  response = await user.deleteUserController(
-                    userId,
-                    adminId,
-                    res.locals.app['app-name']
-                  )
-                  break
-                }
-                case 'OpenDatabase': {
-                  response = await db.openDatabase(
-                    userId,
-                    connectionId,
-                    params.dbNameHash,
-                    params.newDatabaseParams,
-                    params.reopenAtSeqNo
-                  )
-                  break
-                }
-                case 'Insert':
-                case 'Update':
-                case 'Delete': {
-                  response = await db.doCommand(
-                    action,
-                    userId,
-                    params.dbNameHash,
-                    params.dbId,
-                    params.itemKey,
-                    params.encryptedItem
-                  )
-                  break
-                }
-                case 'BatchTransaction': {
-                  response = await db.batchTransaction(userId, params.dbNameHash, params.dbId, params.operations)
-                  break
-                }
-                case 'Bundle': {
-                  response = await db.bundleTransactionLog(params.dbId, params.seqNo, params.bundle)
-                  break
-                }
-                case 'GetPasswordSalts': {
-                  response = await user.getPasswordSaltsByUserId(userId)
-                  break
-                }
-                default: {
-                  logger
-                    .child({ wsRes: { userId, connectionId, adminId, route: action, requestId, statusCode: response.status, size: msg.length } })
-                    .error('Received unknown action')
-                  return ws.send(`Received unkown action ${action}`)
+
+              } else {
+
+                switch (action) {
+                  case 'ValidateKey': {
+                    response = responseBuilder.errorResponse(statusCodes['Bad Request'], 'Already validated key')
+                    break
+                  }
+                  case 'UpdateUser': {
+                    response = await user.updateUser(
+                      userId,
+                      params.username,
+                      params.currentPasswordToken,
+                      params.passwordToken,
+                      params.passwordSalts,
+                      params.email,
+                      params.profile,
+                      params.passwordBasedBackup
+                    )
+                    break
+                  }
+                  case 'DeleteUser': {
+                    response = await user.deleteUserController(
+                      userId,
+                      adminId,
+                      res.locals.app['app-name']
+                    )
+                    break
+                  }
+                  case 'OpenDatabase': {
+                    response = await db.openDatabase(
+                      userId,
+                      connectionId,
+                      params.dbNameHash,
+                      params.newDatabaseParams,
+                      params.reopenAtSeqNo
+                    )
+                    break
+                  }
+                  case 'Insert':
+                  case 'Update':
+                  case 'Delete': {
+                    response = await db.doCommand(
+                      action,
+                      userId,
+                      params.dbNameHash,
+                      params.dbId,
+                      params.itemKey,
+                      params.encryptedItem
+                    )
+                    break
+                  }
+                  case 'BatchTransaction': {
+                    response = await db.batchTransaction(userId, params.dbNameHash, params.dbId, params.operations)
+                    break
+                  }
+                  case 'Bundle': {
+                    response = await db.bundleTransactionLog(params.dbId, params.seqNo, params.bundle)
+                    break
+                  }
+                  case 'GetPasswordSalts': {
+                    response = await user.getPasswordSaltsByUserId(userId)
+                    break
+                  }
+                  default: {
+                    logger
+                      .child({ wsRes: { userId, connectionId, adminId, route: action, requestId, statusCode: response.status, size: msg.length } })
+                      .error('Received unknown action')
+                    return ws.send(`Received unkown action ${action}`)
+                  }
                 }
               }
             }
