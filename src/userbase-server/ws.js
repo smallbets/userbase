@@ -9,6 +9,38 @@ import statusCodes from './statusCodes'
 const SECONDS_BEFORE_ROLLBACK_GAP_TRIGGERED = 1000 * 10 // 10s
 const TRANSACTION_SIZE_BUNDLE_TRIGGER = 1024 * 50 // 50 KB
 
+const MAX_REQUESTS_PER_SECOND = 25
+
+// Rate limiter. Enforces a max of MAX_REQUESTS_PER_SECOND. Once a token is taken from
+// the bucket, it is refilled at a rate of 1 per second.
+//
+// source: https://kendru.github.io/javascript/2018/12/28/rate-limiting-in-javascript-with-a-token-bucket/
+class TokenBucket {
+  constructor() {
+    this.capacity = this.tokens = MAX_REQUESTS_PER_SECOND
+    this.lastFilled = Date.now()
+  }
+
+  atCapacity() {
+    this.refillRequestTokens()
+
+    if (this.tokens > 0) {
+      this.tokens -= 1
+      return false
+    }
+
+    return true
+  }
+
+  refillRequestTokens() {
+    const now = Date.now()
+    const secondsSinceLastFill = Math.floor((now - this.lastFilled) / 1000)
+
+    this.tokens = Math.min(this.capacity, this.tokens + secondsSinceLastFill)
+    this.lastFilled = now
+  }
+}
+
 class Connection {
   constructor(userId, socket, clientId, adminId) {
     this.userId = userId
@@ -18,6 +50,8 @@ class Connection {
     this.adminId = adminId
     this.databases = {}
     this.keyValidated = false
+
+    this.rateLimiter = new TokenBucket()
   }
 
   openDatabase(databaseId, bundleSeqNo, reopenAtSeqNo) {
@@ -83,36 +117,43 @@ class Connection {
       do {
         let transactionLogResponse = await ddbClient.query(params).promise()
 
-        for (let i = 0; i < transactionLogResponse.Items.length && !gapInSeqNo; i++) {
+        if (transactionLogResponse.Items.length) {
+          const lastSeqNoInBatch = transactionLogResponse.Items[transactionLogResponse.Items.length - 1]['sequence-no']
 
-          // if there's a gap in sequence numbers and past rollback buffer, rollback all transactions in gap
-          gapInSeqNo = transactionLogResponse.Items[i]['sequence-no'] > lastSeqNo + 1
-          const secondsSinceCreation = gapInSeqNo && new Date() - new Date(transactionLogResponse.Items[i]['creation-date'])
+          if (database.lastSeqNo < lastSeqNoInBatch) {
 
-          // waiting gives opportunity for item to insert into DDB
-          if (gapInSeqNo && secondsSinceCreation > SECONDS_BEFORE_ROLLBACK_GAP_TRIGGERED) {
-            const rolledBackTransactions = await this.rollback(lastSeqNo, transactionLogResponse.Items[i]['sequence-no'], databaseId, ddbClient)
+            for (let i = 0; i < transactionLogResponse.Items.length && !gapInSeqNo; i++) {
 
-            for (let j = 0; j < rolledBackTransactions.length; j++) {
+              // if there's a gap in sequence numbers and past rollback buffer, rollback all transactions in gap
+              gapInSeqNo = transactionLogResponse.Items[i]['sequence-no'] > lastSeqNo + 1
+              const secondsSinceCreation = gapInSeqNo && new Date() - new Date(transactionLogResponse.Items[i]['creation-date'])
+
+              // waiting gives opportunity for item to insert into DDB
+              if (gapInSeqNo && secondsSinceCreation > SECONDS_BEFORE_ROLLBACK_GAP_TRIGGERED) {
+                const rolledBackTransactions = await this.rollback(lastSeqNo, transactionLogResponse.Items[i]['sequence-no'], databaseId, ddbClient)
+
+                for (let j = 0; j < rolledBackTransactions.length; j++) {
+
+                  // add transaction to the result set if have not sent it to client yet
+                  if (rolledBackTransactions[j]['sequence-no'] > database.lastSeqNo) {
+                    ddbTransactionLog.push(rolledBackTransactions[j])
+                  }
+
+                }
+              } else if (gapInSeqNo) {
+                // at this point must stop querying for more transactions
+                continue
+              }
+
+              lastSeqNo = transactionLogResponse.Items[i]['sequence-no']
 
               // add transaction to the result set if have not sent it to client yet
-              if (rolledBackTransactions[j]['sequence-no'] > database.lastSeqNo) {
-                ddbTransactionLog.push(rolledBackTransactions[j])
+              if (transactionLogResponse.Items[i]['sequence-no'] > database.lastSeqNo) {
+                ddbTransactionLog.push(transactionLogResponse.Items[i])
               }
 
             }
-          } else if (gapInSeqNo) {
-            // at this point must stop querying for more transactions
-            continue
           }
-
-          lastSeqNo = transactionLogResponse.Items[i]['sequence-no']
-
-          // add transaction to the result set if have not sent it to client yet
-          if (transactionLogResponse.Items[i]['sequence-no'] > database.lastSeqNo) {
-            ddbTransactionLog.push(transactionLogResponse.Items[i])
-          }
-
         }
 
         // paginate over all results

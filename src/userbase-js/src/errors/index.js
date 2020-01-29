@@ -57,6 +57,18 @@ class ParamsMustBeObject extends Error {
   }
 }
 
+class TooManyRequests extends Error {
+  constructor(retryDelay, ...params) {
+    super(retryDelay, ...params)
+
+    const retryDelaySeconds = Math.floor(retryDelay / 1000)
+
+    this.name = 'TooManyRequests'
+    this.message = `Too many requests in a row. Please try again in ${retryDelaySeconds} second${retryDelaySeconds !== 1 ? 's' : ''}.`
+    this.status = statusCodes['Too Many Requests']
+  }
+}
+
 export default {
   ...auth,
   ...db,
@@ -66,5 +78,6 @@ export default {
   ServiceUnavailable,
   Timeout,
   Reconnecting,
-  ParamsMustBeObject
+  ParamsMustBeObject,
+  TooManyRequests
 }
