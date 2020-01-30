@@ -1,6 +1,20 @@
+const tryCatchWrapper = (func) => (...args) => {
+  try {
+    return func(...args)
+  } catch (e) {
+    // ok to swallow error
+    //
+    // local/sessionStorage are non-critical benefits. If they happen to be available,
+    // they're helpful, but if not, the SDK functions totally fine.
+    //
+    // If a function fails, behavior is functionally the same as if rememberMe is 'none'.
+    console.warn('Error accessing browser storage. Defaulting to memory.\n\n', e)
+  }
+}
+
 const _getSeedName = (appId, username) => `userbaseSeed.${appId}.${username}`
 
-const setCurrentSession = (rememberMe, username, signedIn, sessionId, creationDate) => {
+const setCurrentSession = tryCatchWrapper((rememberMe, username, signedIn, sessionId, creationDate) => {
   const session = { username, signedIn, sessionId, creationDate }
   const sessionString = JSON.stringify(session)
 
@@ -9,9 +23,9 @@ const setCurrentSession = (rememberMe, username, signedIn, sessionId, creationDa
   } else if (rememberMe === 'session') {
     sessionStorage.setItem('userbaseCurrentSession', sessionString)
   }
-}
+})
 
-const getCurrentSession = () => {
+const getCurrentSession = tryCatchWrapper(() => {
   const sessionStorageCurrentSessionString = sessionStorage.getItem('userbaseCurrentSession')
 
   if (sessionStorageCurrentSessionString) {
@@ -45,26 +59,26 @@ const getCurrentSession = () => {
     ...JSON.parse(localSessionString),
     rememberMe: 'local'
   }
-}
+})
 
-const saveSeedString = (rememberMe, appId, username, seedString) => {
+const saveSeedString = tryCatchWrapper((rememberMe, appId, username, seedString) => {
   if (rememberMe === 'local') {
     localStorage.setItem(_getSeedName(appId, username), seedString)
   } else if (rememberMe === 'session') {
     sessionStorage.setItem(_getSeedName(appId, username), seedString)
   }
-}
+})
 
-const removeSeedString = (appId, username) => {
+const removeSeedString = tryCatchWrapper((appId, username) => {
   const seedName = _getSeedName(appId, username)
   sessionStorage.removeItem(seedName)
   localStorage.removeItem(seedName)
-}
+})
 
-const getSeedString = (appId, username) => {
+const getSeedString = tryCatchWrapper((appId, username) => {
   const seedName = _getSeedName(appId, username)
   return sessionStorage.getItem(seedName) || localStorage.getItem(seedName)
-}
+})
 
 const signInSession = (rememberMe, username, sessionId, creationDate) => {
   const signedIn = true
@@ -76,10 +90,10 @@ const signOutSession = (rememberMe, username) => {
   setCurrentSession(rememberMe, username, signedIn)
 }
 
-const removeCurrentSession = () => {
+const removeCurrentSession = tryCatchWrapper(() => {
   sessionStorage.removeItem('userbaseCurrentSession')
   localStorage.removeItem('userbaseCurrentSession')
-}
+})
 
 export default {
   signInSession,
