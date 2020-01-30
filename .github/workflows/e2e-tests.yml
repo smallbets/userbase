@@ -13,6 +13,10 @@ on:
 jobs:
   integration-tests:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # run 2 copies of the current job in parallel
+        containers: [1, 2]
     steps:
       - uses: actions/setup-node@v1
         with:
@@ -51,4 +55,5 @@ jobs:
           wait-on: "http://localhost:8080/ping"
           wait-on-timeout: 120
           record: true
+          parallel: true
           env: configFile=ci
