@@ -11,6 +11,8 @@
     "cookie-parser": "^1.4.4",
     "express-pino-logger": "^4.0.0",
     "pino": "^5.13.0",
+    "request": "^2.88.0",
+    "request-promise-native": "^1.0.8",
     "stripe": "^7.14.0",
     "uuid": "^3.3.2",
     "ws": "^7.1.1"
