@@ -26,3 +26,5 @@ import './commands'
 
 //   throw error // throw error to have test still fail
 // })
+
+require('cypress-skip-and-only-ui/support')

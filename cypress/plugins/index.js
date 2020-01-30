@@ -20,10 +20,12 @@ function getConfigurationByFile(file) {
   return fs.readJson(pathToConfigFile)
 }
 
+const task = require('cypress-skip-and-only-ui/task')
+
 // plugins file
 module.exports = (on, config) => {
+  on('task', task)
   // accept a configFile value or use development by default
   const file = config.env.configFile || 'development'
-
   return getConfigurationByFile(file)
 }
