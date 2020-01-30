@@ -5,6 +5,7 @@ import responseBuilder from './responseBuilder'
 import connections from './ws'
 import logger from './logger'
 import userController from './user'
+import peers from './peers'
 
 const MAX_OPERATIONS_IN_TX = 10
 
@@ -199,6 +200,9 @@ const putTransaction = async function (transaction, userId, databaseId) {
 
   // notify all websocket connections that there's a database change
   connections.push(transaction, userId)
+
+  // broadcast transaction to all peers so they also push to their connected clients
+  peers.broadcast(transaction, userId)
 
   return transaction['sequence-no']
 }

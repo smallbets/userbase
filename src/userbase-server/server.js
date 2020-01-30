@@ -321,6 +321,32 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.post('/stripe/cancel-saas-subscription', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.cancelSaasSubscription)
     v1Admin.post('/stripe/resume-saas-subscription', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.resumeSaasSubscription)
 
+    // internal server used to receive notifications of transactions from peers -- shouldn't be exposed to public
+    const internalServer = express()
+    const internalServerPort = 9000
+    http.createServer(internalServer)
+      .listen(internalServerPort, () => logger.info(`Internal server listening on http port ${internalServerPort}....`))
+
+    internalServer.use(bodyParser.json())
+    internalServer.post('/internal/notify-transaction', (req, res) => {
+      const transaction = req.body.transaction
+      const userId = req.body.userId
+
+      try {
+        logger
+          .child({ userId, databaseId: transaction['database-id'], seqNo: transaction['seq-no'] })
+          .info('Received internal notification to update db')
+
+        connections.push(transaction, userId)
+      } catch (e) {
+        const msg = 'Error pushing internal transaction to connected clients'
+        logger.child({ userId, databaseId: transaction['database-id'], seqNo: transaction['seq-no'], error: e }).error(msg)
+        return res.status(statusCodes['Internal Server Error']).send(msg)
+      }
+
+      return res.end()
+    })
+
   } catch (e) {
     logger.info(`Unhandled error while launching server: ${e}`)
   }

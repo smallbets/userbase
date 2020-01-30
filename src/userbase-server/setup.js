@@ -2,6 +2,7 @@ import aws from 'aws-sdk'
 import os from 'os'
 import logger from './logger'
 import crypto from './crypto'
+import peers from './peers'
 
 let awsAccountId
 let initialized = false
@@ -114,6 +115,7 @@ exports.init = async function (userbaseConfig) {
   await setupS3()
   await setupSM()
   await setupSes()
+  await setupEc2PeerDiscovery()
 }
 
 async function setupDdb() {
@@ -441,5 +443,85 @@ async function sendEmail(to, subject, body) {
   } catch (e) {
     logger.error('Failed to send email')
     throw e
+  }
+}
+
+async function setupEc2PeerDiscovery() {
+  if (!peers.ipAddresses) peers.ipAddresses = []
+
+  const thisInstanceId = await thisEc2InstanceId()
+  if (thisInstanceId) {
+    const ec2 = new aws.EC2({ apiVersion: '2016-11-15' })
+
+    // get the stack name used for all EC2's in the same scaling group
+    const stackName = (await ec2.describeTags({
+      Filters: [{ Name: 'resource-id', Values: [thisInstanceId] }]
+    }).promise())
+      .Tags
+      .find(tag => tag.Key === 'aws:cloudformation:stack-name')
+      .Value
+
+    peers.ipAddresses = await getEc2Peers(ec2, stackName, thisInstanceId) || []
+
+    // check for EC2 peers every 30 seconds
+    setInterval(async function () {
+
+      // if request to getEc2Peers() fails, don't change current list of peers
+      peers.ipAddresses = await getEc2Peers(ec2, stackName, thisInstanceId) || peers.ipAddresses
+
+    }, 30000)
+  }
+}
+
+async function thisEc2InstanceId() {
+  try {
+    return await new Promise((resolve, reject) => {
+      new aws.MetadataService({
+        httpOptions: {
+          timeout: 2000,
+          maxRetries: 0
+        }
+      }).request('/latest/dynamic/instance-identity/document', function (err, data) {
+        if (err) {
+          reject(err)
+          return
+        }
+
+        const instanceId = JSON.parse(data).instanceId
+        logger.info('Running on EC2...')
+        resolve(instanceId)
+      })
+      setTimeout(() => reject(new Error('timeout')), 5000)
+    })
+  } catch {
+    logger.info('Not running on EC2...')
+    return null
+  }
+}
+
+async function getEc2Peers(ec2, stackName, thisInstanceId) {
+  try {
+    const ec2Peers = []
+
+    const ec2Instances = await ec2.describeInstances({
+      Filters: [{ Name: 'tag:aws:cloudformation:stack-name', Values: [stackName] }]
+    }).promise()
+
+    for (let i = 0; i < ec2Instances.Reservations.length; i++) {
+      const instances = ec2Instances.Reservations[i].Instances
+
+      for (let j = 0; j < instances.length; j++) {
+        const instance = instances[j]
+
+        if (instance.InstanceId !== thisInstanceId) {
+          ec2Peers.push(instance.PrivateIpAddress)
+        }
+      }
+    }
+
+    return ec2Peers
+  } catch (e) {
+    logger.child({ error: e }).warn('Failed to discover ec2 peers')
+    return null
   }
 }
