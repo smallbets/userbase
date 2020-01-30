@@ -34,11 +34,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
       # Install NPM dependencies, cache them correctly
-      # and run all Cypress tests
+      - name: Enable NPM Caching
+        id: npm-cache
+        run: |
+          echo "::set-output name=dir::$(npm config get cache)"
+        uses: actions/cache@v1
+        with:
+          path: ${{ steps.npm-cache.outputs.dir }}
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
       - name: Install dependencies and build
         run: |
           npm run ci:install
           npm run build:userbase-js:script
+      # Run all Cypress tests
       - name: Cypress run
         uses: cypress-io/github-action@v1
         env:
