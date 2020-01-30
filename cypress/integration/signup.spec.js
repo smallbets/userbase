@@ -178,34 +178,6 @@ describe('Signup Testing', function () {
   })
 
 
-  it('Signup a new user, username too long', function () {
-    let randomInfo
-
-    cy.getRandomInfoWithParams(null, null, 'local').then((loginInfo) => {
-
-      let longUsername = ''
-
-      for (let i = 0; i <= 60; i++) longUsername += Math.floor(Math.random() * 10)
-
-      randomInfo = { ...loginInfo, username: longUsername }
-    })
-
-    cy.window().then((window) => {
-      const { userbase } = window
-      window._userbaseEndpoint = info.endpoint
-      userbase.init({ appId: info.appId })
-
-      return userbase.signUp(randomInfo)
-        .then(() => {
-          expect(true, 'signUp should not be successful').to.be.false
-        })
-        .catch(error => {
-          expect(error).to.be.a('Error')
-          expect(error.name).to.be.equal('UsernameTooLong')
-        })
-    })
-  })
-
   it('Signup a new user, null password', function () {
     let randomInfo
 
@@ -437,52 +409,6 @@ describe('Signup Testing', function () {
     })
   })
 
-  it('Signup with a null profile', function () {
-    let randomInfo
-
-    cy.getRandomInfoWithParams(null, null, 'local').then((loginInfo) => {
-      randomInfo = { ...loginInfo, profile: null }
-    })
-
-    cy.window().then((window) => {
-      const { userbase } = window
-      window._userbaseEndpoint = info.endpoint
-      userbase.init({ appId: info.appId })
-
-      return userbase.signUp(randomInfo)
-        .then(() => {
-          expect(true, 'signUp should not be successful').to.be.false
-        })
-        .catch(error => {
-          expect(error).to.be.a('Error')
-          expect(error.name).to.be.equal('ProfileMustBeObject')
-        })
-    })
-  })
-
-  it('Signup with an undefined profile', function () {
-    let randomInfo
-
-    cy.getRandomInfoWithParams(null, null, 'local').then((loginInfo) => {
-      randomInfo = { ...loginInfo, profile: undefined }
-    })
-
-    cy.window().then((window) => {
-      const { userbase } = window
-      window._userbaseEndpoint = info.endpoint
-      userbase.init({ appId: info.appId })
-
-      return userbase.signUp(randomInfo)
-        .then(() => {
-          expect(true, 'signUp should not be successful').to.be.false
-        })
-        .catch(error => {
-          expect(error).to.be.a('Error')
-          expect(error.name).to.be.equal('ProfileMustBeObject')
-        })
-    })
-  })
-
   it('Signup with a profile with too many keys', function () {
     let randomInfo
 
@@ -530,29 +456,6 @@ describe('Signup Testing', function () {
           expect(error).to.be.a('Error')
           expect(error.name).to.be.equal('ProfileKeyTooLong')
         })
-    })
-  })
-
-  it('Signup with a profile with a value with 0 length', function () {
-    let randomInfo
-
-    cy.getRandomInfoWithParams(null, null, 'local').then((loginInfo) => {
-      randomInfo = { ...loginInfo, profile: { 'key': '' } }
-    })
-
-    cy.window().then((window) => {
-      const { userbase } = window
-      window._userbaseEndpoint = info.endpoint
-      userbase.init({ appId: info.appId })
-
-
-      return userbase.signUp(randomInfo).then((user) => {
-        expect(user.username, 'user.username').to.exists
-        expect(user.username, 'user.username to be the one signed up').to.equal(randomInfo.username)
-        expect(localStorage.length, 'localstorage size').to.equal(0)
-
-        return userbase.deleteUser()
-      })
     })
   })
 
