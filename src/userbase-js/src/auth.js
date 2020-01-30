@@ -401,7 +401,7 @@ const signIn = async (params) => {
       username: lowerCaseUsername
     }
 
-    const savedSeedString = localData.getSeedString(lowerCaseUsername)
+    const savedSeedString = localData.getSeedString(appId, lowerCaseUsername)
 
     let seedStringFromBackup
     if (!savedSeedString) {
