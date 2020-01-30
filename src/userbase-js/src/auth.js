@@ -279,7 +279,7 @@ const signUp = async (params) => {
         throw e
 
       default:
-        throw new errors.ServiceUnavailable
+        throw new errors.UnknownServiceUnavailable(e)
     }
 
   }
@@ -304,7 +304,7 @@ const signOut = async () => {
         throw e
 
       default:
-        throw new errors.ServiceUnavailable
+        throw new errors.UnknownServiceUnavailable(e)
     }
   }
 }
@@ -401,7 +401,7 @@ const signIn = async (params) => {
       username: lowerCaseUsername
     }
 
-    const savedSeedString = localData.getSeedString(lowerCaseUsername)
+    const savedSeedString = localData.getSeedString(appId, lowerCaseUsername)
 
     let seedStringFromBackup
     if (!savedSeedString) {
@@ -437,7 +437,7 @@ const signIn = async (params) => {
         throw e
 
       default:
-        throw new errors.ServiceUnavailable
+        throw new errors.UnknownServiceUnavailable(e)
     }
 
   }
@@ -466,7 +466,7 @@ const init = async (params) => {
         throw e
 
       default:
-        throw new errors.ServiceUnavailable
+        throw new errors.UnknownServiceUnavailable(e)
     }
 
   }
@@ -629,11 +629,12 @@ const updateUser = async (params) => {
       case 'AppIdNotValid':
       case 'UserNotFound':
       case 'UserNotSignedIn':
+      case 'TooManyRequests':
       case 'ServiceUnavailable':
         throw e
 
       default:
-        throw new errors.ServiceUnavailable
+        throw new errors.UnknownServiceUnavailable(e)
     }
 
   }
@@ -663,11 +664,12 @@ const deleteUser = async () => {
     switch (e.name) {
       case 'UserNotSignedIn':
       case 'UserNotFound':
+      case 'TooManyRequests':
       case 'ServiceUnavailable':
         throw e
 
       default:
-        throw new errors.ServiceUnavailable
+        throw new errors.UnknownServiceUnavailable(e)
     }
 
   }

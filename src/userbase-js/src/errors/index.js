@@ -47,6 +47,14 @@ class Reconnecting extends ServiceUnavailable {
   }
 }
 
+class UnknownServiceUnavailable extends ServiceUnavailable {
+  constructor(e, ...params) {
+    super(e, ...params)
+
+    console.error('Userbase error. Please report this to support@userbase.com.\n\n', e)
+  }
+}
+
 class ParamsMustBeObject extends Error {
   constructor(...params) {
     super(...params)
@@ -54,6 +62,18 @@ class ParamsMustBeObject extends Error {
     this.name = 'ParamsMustBeObject'
     this.message = 'Parameters passed to function must be placed inside an object.'
     this.status = statusCodes['Bad Request']
+  }
+}
+
+class TooManyRequests extends Error {
+  constructor(retryDelay, ...params) {
+    super(retryDelay, ...params)
+
+    const retryDelaySeconds = Math.floor(retryDelay / 1000)
+
+    this.name = 'TooManyRequests'
+    this.message = `Too many requests in a row. Please try again in ${retryDelaySeconds} second${retryDelaySeconds !== 1 ? 's' : ''}.`
+    this.status = statusCodes['Too Many Requests']
   }
 }
 
@@ -66,5 +86,7 @@ export default {
   ServiceUnavailable,
   Timeout,
   Reconnecting,
-  ParamsMustBeObject
+  UnknownServiceUnavailable,
+  ParamsMustBeObject,
+  TooManyRequests
 }

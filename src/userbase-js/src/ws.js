@@ -447,7 +447,8 @@ class Connection {
       return response
     } catch (e) {
       // process any errors and re-throw them
-      throw new RequestFailed(action, e)
+      if (e.status === statusCodes['Too Many Requests']) throw new errors.TooManyRequests(e.data.retryDelay)
+      else throw new RequestFailed(action, e)
     }
   }
 

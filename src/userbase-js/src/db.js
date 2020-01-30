@@ -475,11 +475,12 @@ const openDatabase = async (params) => {
       case 'ChangeHandlerMustBeFunction':
       case 'UserNotSignedIn':
       case 'UserNotFound':
+      case 'TooManyRequests':
       case 'ServiceUnavailable':
         throw e
 
       default:
-        throw new errors.ServiceUnavailable
+        throw new errors.UnknownServiceUnavailable(e)
     }
   }
 }
@@ -522,11 +523,12 @@ const insertItem = async (params) => {
       case 'ItemAlreadyExists':
       case 'UserNotSignedIn':
       case 'UserNotFound':
+      case 'TooManyRequests':
       case 'ServiceUnavailable':
         throw e
 
       default:
-        throw new errors.ServiceUnavailable
+        throw new errors.UnknownServiceUnavailable(e)
     }
 
   }
@@ -581,11 +583,12 @@ const updateItem = async (params) => {
       case 'ItemUpdateConflict':
       case 'UserNotSignedIn':
       case 'UserNotFound':
+      case 'TooManyRequests':
       case 'ServiceUnavailable':
         throw e
 
       default:
-        throw new errors.ServiceUnavailable
+        throw new errors.UnknownServiceUnavailable
     }
 
   }
@@ -639,11 +642,12 @@ const deleteItem = async (params) => {
       case 'ItemUpdateConflict':
       case 'UserNotSignedIn':
       case 'UserNotFound':
+      case 'TooManyRequests':
       case 'ServiceUnavailable':
         throw e
 
       default:
-        throw new errors.ServiceUnavailable
+        throw new errors.UnknownServiceUnavailable(e)
     }
 
   }
@@ -738,11 +742,12 @@ const putTransaction = async (params) => {
       case 'ItemUpdateConflict':
       case 'UserNotSignedIn':
       case 'UserNotFound':
+      case 'TooManyRequests':
       case 'ServiceUnavailable':
         throw e
 
       default:
-        throw new errors.ServiceUnavailable
+        throw new errors.UnknownServiceUnavailable(e)
     }
   }
 }
