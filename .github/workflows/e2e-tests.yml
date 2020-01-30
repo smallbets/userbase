@@ -12,31 +12,25 @@ on:
 
 jobs:
   integration-tests:
-
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/setup-node@v1
         with:
-          node-version: '12.x'
+          node-version: "12.x"
       - name: Install build-essential and python
         run: sudo apt-get install -y build-essential python
-
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
-
       - name: Git Checkout
         uses: actions/checkout@v2
-
       - name: Get NPM Cache Dir
         id: npm-cache
         run: |
           echo "::set-output name=dir::$(npm config get cache)"
-
       - name: Enable NPM Cache on package-lock file
       - uses: actions/cache@v1
         with:
@@ -44,19 +38,17 @@ jobs:
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-
-
       - name: Install NPM dependencies and build Userbase
         run: |
           npm run ci:install
           npm run build:userbase-js:script
-      # Run all Cypress tests
       - name: Run Cypress Tests
         uses: cypress-io/github-action@v1
         env:
           CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
         with:
           start: npm run ci:start
-          wait-on: 'http://localhost:8080/ping'
+          wait-on: "http://localhost:8080/ping"
           wait-on-timeout: 120
           record: true
           env: configFile=ci
