@@ -15,7 +15,7 @@
     "ci:server": "cd ./src/userbase-server && npm ci",
     "ci:admin-panel": "cd ./src/userbase-server/admin-panel && npm ci",
     "ci:poc": "cd ./src/proof-of-concept && npm ci",
-    "ci:start": "USERNAME=runner npm run watch:server",
+    "ci:start": "USERNAME=runner LOG_LEVEL=warn npm run watch:server",
     "clean": "rm -Rf ./src/proof-of-concept/build ./src/proof-of-concept/dist ./src/userbase-server/admin-panel/dist",
     "build": "npm run clean && npm-run-all -p build:client build:server build:admin-panel && npm run copy:admin-panel:to-build",
     "build:client": "cd ./src/proof-of-concept && npm run build:client",
