@@ -21,35 +21,36 @@ jobs:
           node-version: '12.x'
       - name: Install build-essential and python
         run: sudo apt-get install -y build-essential python
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
-      - name: Show current linux user
-        run: whoami
-      # - name: AWS CLI test
-      #   run: aws configure list
-      - name: Checkout
+
+      - name: Git Checkout
         uses: actions/checkout@v2
-      # Install NPM dependencies, cache them correctly
-      - name: Enable NPM Caching
+
+      - name: Get NPM Cache Dir
         id: npm-cache
         run: |
           echo "::set-output name=dir::$(npm config get cache)"
-        uses: actions/cache@v1
+
+      - name: Enable NPM Cache on package-lock file
+      - uses: actions/cache@v1
         with:
           path: ${{ steps.npm-cache.outputs.dir }}
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-
-      - name: Install dependencies and build
+
+      - name: Install NPM dependencies and build Userbase
         run: |
           npm run ci:install
           npm run build:userbase-js:script
       # Run all Cypress tests
-      - name: Cypress run
+      - name: Run Cypress Tests
         uses: cypress-io/github-action@v1
         env:
           CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
