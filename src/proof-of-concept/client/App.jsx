@@ -4,7 +4,7 @@ import dbLogic from './components/Dashboard/logic'
 import Dashboard from './components/Dashboard/Dashboard'
 import UserForm from './components/User/UserForm'
 
-const APP_ID = 'a87131a7-1c8a-4fea-ab16-ff98dbaeb5f8'
+const APP_ID = 'poc-id'
 
 export default class App extends Component {
   constructor(props) {

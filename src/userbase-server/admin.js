@@ -965,7 +965,8 @@ const createAccessToken = async function (adminId) {
     TableName: setup.adminAccessTokensTableName,
     Item: {
       'admin-id': adminId,
-      'access-token': accessToken
+      'access-token': accessToken,
+      'creation-date': new Date().toISOString()
     },
     ConditionExpression: 'attribute_not_exists(#adminId)',
     ExpressionAttributeNames: {
