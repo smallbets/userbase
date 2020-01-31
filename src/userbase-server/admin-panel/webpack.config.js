@@ -97,6 +97,11 @@ module.exports = (env, argv) => {
           target: 'http://localhost:8080/',
           ws: true,
           secure: false
+        },
+        '/access-tokens': {
+          target: 'http://localhost:8080/',
+          ws: true,
+          secure: false
         }
       }
     }

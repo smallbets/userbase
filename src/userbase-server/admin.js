@@ -300,7 +300,7 @@ exports.authenticateAdmin = async function (req, res, next) {
 
   if (!sessionId) return res
     .status(statusCodes['Unauthorized'])
-    .send('Missing session token')
+    .send('Please sign in.')
 
   const params = {
     TableName: setup.sessionsTableName,
