@@ -311,7 +311,7 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.post('/update-admin', admin.authenticateAdmin, admin.updateAdmin)
     v1Admin.post('/change-password', admin.authenticateAdmin, admin.changePassword)
     v1Admin.post('/forgot-password', admin.forgotPassword)
-    v1Admin.post('/update-internal-profile', admin.authenticateAccessToken, user.updateInternalProfile)
+    v1Admin.put('/internal-profile', admin.authenticateAccessToken, user.updateInternalProfile)
     v1Admin.get('/payment-status', admin.authenticateAdmin, admin.getSaasSubscriptionController, (req, res) => {
       const subscription = res.locals.subscription
       if (!subscription) return res.end()
