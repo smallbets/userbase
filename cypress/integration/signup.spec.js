@@ -459,6 +459,30 @@ describe('Signup Testing', function () {
     })
   })
 
+  it('Signup with a profile with a value with 0 length', function () {
+    let randomInfo
+
+    cy.getRandomInfoWithParams(null, null, 'local').then((loginInfo) => {
+      randomInfo = { ...loginInfo, profile: { 'key': '' } }
+    })
+
+    cy.window().then((window) => {
+      const { userbase } = window
+      window._userbaseEndpoint = info.endpoint
+      userbase.init({ appId: info.appId })
+
+
+      return userbase.signUp(randomInfo)
+        .then(() => {
+          expect(true, 'signUp should not be successful').to.be.false
+        })
+        .catch(error => {
+          expect(error).to.be.a('Error')
+          expect(error.name).to.be.equal('ProfileValueCannotBeBlank')
+        })
+    })
+  })
+
   it('Signup with a profile with a null value', function () {
     let randomInfo
 
@@ -472,12 +496,14 @@ describe('Signup Testing', function () {
       userbase.init({ appId: info.appId })
 
 
-      return userbase.signUp(randomInfo).then((user) => {
-        expect(user.username, 'user.username').to.exists
-        expect(user.username, 'user.username to be the one signed up').to.equal(randomInfo.username)
-
-        return userbase.deleteUser()
-      })
+      return userbase.signUp(randomInfo)
+        .then(() => {
+          expect(true, 'signUp should not be successful').to.be.false
+        })
+        .catch(error => {
+          expect(error).to.be.a('Error')
+          expect(error.name).to.be.equal('ProfileValueMustBeString')
+        })
     })
   })
 
@@ -485,7 +511,7 @@ describe('Signup Testing', function () {
     let randomInfo
 
     cy.getRandomInfoWithParams(null, null, 'local').then((loginInfo) => {
-      randomInfo = { ...loginInfo, profile: { 'key': null } }
+      randomInfo = { ...loginInfo, profile: { 'key': undefined } }
     })
 
     cy.window().then((window) => {
@@ -494,12 +520,38 @@ describe('Signup Testing', function () {
       userbase.init({ appId: info.appId })
 
 
-      return userbase.signUp(randomInfo).then((user) => {
-        expect(user.username, 'user.username').to.exists
-        expect(user.username, 'user.username to be the one signed up').to.equal(randomInfo.username)
+      return userbase.signUp(randomInfo)
+        .then(() => {
+          expect(true, 'signUp should not be successful').to.be.false
+        })
+        .catch(error => {
+          expect(error).to.be.a('Error')
+          expect(error.name).to.be.equal('ProfileValueMustBeString')
+        })
+    })
+  })
 
-        return userbase.deleteUser()
-      })
+  it('Signup with a profile with a false value', function () {
+    let randomInfo
+
+    cy.getRandomInfoWithParams(null, null, 'local').then((loginInfo) => {
+      randomInfo = { ...loginInfo, profile: { 'key': false } }
+    })
+
+    cy.window().then((window) => {
+      const { userbase } = window
+      window._userbaseEndpoint = info.endpoint
+      userbase.init({ appId: info.appId })
+
+
+      return userbase.signUp(randomInfo)
+        .then(() => {
+          expect(true, 'signUp should not be successful').to.be.false
+        })
+        .catch(error => {
+          expect(error).to.be.a('Error')
+          expect(error.name).to.be.equal('ProfileValueMustBeString')
+        })
     })
   })
 

@@ -14,8 +14,10 @@ export type RememberMeOption = 'session' | 'local' | 'none'
 
 export interface UserResult {
   username: string
+  userId: string
   email?: string
   profile?: UserProfile
+  internalProfile?: UserProfile
 }
 
 export type DatabaseChangeHandler = (items: Item[]) => void

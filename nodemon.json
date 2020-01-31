@@ -4,6 +4,7 @@
     "cypress/**",
     "src/userbase-js/",
     "src/proof-of-concept/client/",
-    "test/**"
+    "test/**",
+    "src/userbase-server/admin-panel/"
   ]
 }

@@ -5,7 +5,7 @@ import statusCodes from './statusCodes'
 import responseBuilder from './responseBuilder'
 import crypto from './crypto'
 import logger from './logger'
-import { validateEmail } from './utils'
+import { validateEmail, trimReq } from './utils'
 import appController from './app'
 import adminController from './admin'
 
@@ -13,6 +13,7 @@ import adminController from './admin'
 const ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID = 16
 
 const VALIDATION_MESSAGE_LENGTH = 16
+const UUID_STRING_LENGTH = 36
 
 const HOURS_IN_A_DAY = 24
 const SECONDS_IN_A_DAY = 60 * 60 * HOURS_IN_A_DAY
@@ -82,11 +83,12 @@ const _buildSignUpParams = (username, passwordToken, appId, userId,
     'hmac-key-salt': hmacKeySalt,
     'seed-not-saved-yet': true,
     'creation-date': new Date().toISOString(),
-    email: email ? email.toLowerCase() : undefined,
-    profile: profile || undefined,
     'password-based-encryption-key-salt': passwordBasedEncryptionKeySalt,
     'password-encrypted-seed': passwordEncryptedSeed
   }
+
+  if (email) user.email = email.toLowerCase()
+  if (profile) user.profile = profile
 
   return {
     TableName: setup.usersTableName,
@@ -198,30 +200,39 @@ const _validatePassword = (passwordToken, user, req) => {
 }
 
 const _validateProfile = (profile) => {
-  if (typeof profile !== 'object') throw { error: 'ProfileMustBeObject' }
+  if (typeof profile !== 'object') throw { error: 'ProfileMustBeObject', message: 'Profile must be a flat JSON object.' }
 
   let counter = 0
   for (const key in profile) {
-    if (typeof key !== 'string') throw { error: 'ProfileKeyMustBeString', key }
+    if (typeof key !== 'string') throw { error: 'ProfileKeyMustBeString', message: 'Profile key must be a string.', key }
     if (key.length > MAX_PROFILE_OBJECT_KEY_CHAR_LENGTH) {
-      throw { error: 'ProfileKeyTooLong', key, maxLen: MAX_PROFILE_OBJECT_KEY_CHAR_LENGTH }
+      const maxLen = MAX_PROFILE_OBJECT_KEY_CHAR_LENGTH
+      throw { error: 'ProfileKeyTooLong', message: `Profile key too long. Must be a max of ${maxLen} characters.`, key, maxLen }
     }
 
     const value = profile[key]
-    if (value) {
-      if (typeof value !== 'string') throw { error: 'ProfileValueMustBeString', key, value }
-      if (value.length > MAX_PROFILE_OBJECT_VALUE_CHAR_LENGTH) {
-        throw { error: 'ProfileValueTooLong', key, value, maxLen: MAX_PROFILE_OBJECT_VALUE_CHAR_LENGTH }
-      }
+    if (typeof value !== 'string') {
+      throw { error: 'ProfileValueMustBeString', message: 'Profile value must be a string.', key, value }
+    }
+
+    // no empty string in DDB: https://forums.aws.amazon.com/thread.jspa?threadID=90137&start=50&tstart=0
+    if (!value.length) {
+      throw { error: 'ProfileValueCannotBeBlank', message: 'Profile value cannot be blank.', key }
+    }
+
+    if (value.length > MAX_PROFILE_OBJECT_VALUE_CHAR_LENGTH) {
+      const maxLen = MAX_PROFILE_OBJECT_VALUE_CHAR_LENGTH
+      throw { error: 'ProfileValueTooLong', message: `Profile value too long. Must be a max of ${maxLen} characters.`, key, value, maxLen }
     }
 
     counter += 1
     if (counter > MAX_PROFILE_OBJECT_KEYS) {
-      throw { error: 'ProfileHasTooManyKeys', maxKeys: MAX_PROFILE_OBJECT_KEYS }
+      const maxKeys = MAX_PROFILE_OBJECT_KEYS
+      throw { error: 'ProfileHasTooManyKeys', message: `Profile has too many keys. Must have a max of ${maxKeys} keys.`, maxKeys }
     }
   }
 
-  if (!counter) throw { error: 'ProfileCannotBeEmpty' }
+  if (!counter) throw { error: 'ProfileCannotBeEmpty', message: 'Profile cannot be empty.' }
 }
 
 const _validateUsernameInput = (username) => {
@@ -319,7 +330,7 @@ exports.signUp = async function (req, res) {
     appController.incrementNumAppUsers(admin['admin-id'], app['app-name'], appId)
 
     const session = await createSession(userId, appId)
-    return res.send(session)
+    return res.send({ userId, ...session })
   } catch (e) {
     logger.warn(`Failed to sign up user '${username}' of app '${appId}' with ${e}`)
     return res.status(statusCodes['Internal Server Error']).end()
@@ -576,7 +587,7 @@ exports.signIn = async function (req, res) {
 
     const session = await createSession(user['user-id'], appId)
 
-    const result = { session }
+    const result = { session, userId: user['user-id'] }
 
     if (user['email']) result.email = user['email']
     if (user['profile']) result.profile = user['profile']
@@ -584,6 +595,7 @@ exports.signIn = async function (req, res) {
       passwordBasedEncryptionKeySalt: user['password-based-encryption-key-salt'],
       passwordEncryptedSeed: user['password-encrypted-seed']
     }
+    if (user['internal-profile']) result.internalProfile = user['internal-profile']
 
     return res.send(result)
   } catch (e) {
@@ -677,11 +689,12 @@ exports.extendSession = async function (req, res) {
     const ddbClient = connection.ddbClient()
     await ddbClient.update(params).promise()
 
-    const result = { extendedDate, username: user['username'] }
+    const result = { extendedDate, username: user['username'], userId: user['user-id'] }
 
     if (user['email']) result.email = user['email']
     if (user['profile']) result.profile = user['profile']
     result.backUpKey = (user['password-based-encryption-key-salt'] && user['password-encrypted-seed']) ? true : false
+    if (user['internal-profile']) result.internalProfile = user['internal-profile']
 
     return res.send(result)
   } catch (e) {
@@ -927,6 +940,85 @@ exports.deleteUserController = async function (userId, adminId, appName) {
 
     logger.error(`Failed to delete user '${userId}' with ${e}`)
     return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to delete user')
+  }
+}
+
+const updateInternalProfile = async function (username, appId, userId, internalProfile) {
+  const updateUserParams = conditionCheckUserExists(username, appId, userId)
+
+  updateUserParams.ExpressionAttributeNames['#internalProfile'] = 'internal-profile'
+
+  let UpdateExpression
+  if (internalProfile) {
+    UpdateExpression = 'SET #internalProfile = :internalProfile'
+    updateUserParams.ExpressionAttributeValues[':internalProfile'] = internalProfile
+  } else {
+    UpdateExpression = 'REMOVE #internalProfile'
+  }
+
+  updateUserParams.UpdateExpression = UpdateExpression
+
+  try {
+    const ddbClient = connection.ddbClient()
+    await ddbClient.update(updateUserParams).promise()
+  } catch (e) {
+    if (e.name === 'ConditionalCheckFailedException') {
+      throw { status: statusCodes['Not Found'], error: { message: 'User not found' } }
+    }
+    throw e
+  }
+}
+
+const _validateUserId = (userId) => {
+  if (!userId) throw { status: statusCodes['Bad Request'], error: { message: 'User ID missing.' } }
+  if (typeof userId !== 'string') throw { status: statusCodes['Bad Request'], error: { message: 'User ID must be a string.' } }
+  if (userId.length !== UUID_STRING_LENGTH) throw { status: statusCodes['Bad Request'], error: { message: 'User ID invalid.' } }
+}
+
+exports.updateInternalProfile = async function (req, res) {
+  const { appId, userId, internalProfile } = req.body
+
+  try {
+    logger.child({ appId, userId, req: trimReq(req) }).info('Updating internal profile')
+
+    _validateUserId(userId)
+
+    if (!Object.prototype.hasOwnProperty.call(req.body, 'internalProfile')) {
+      throw { status: statusCodes['Bad Request'], error: { message: 'Internal profile missing.' } }
+    }
+
+    try {
+      // if falsey, it gets deleted
+      if (internalProfile) _validateProfile(internalProfile)
+    } catch (e) {
+      const name = e.error
+      delete e.error
+      throw { status: statusCodes['Bad Request'], error: { name, ...e } }
+    }
+
+    // make sure user belongs to app
+    const user = await getUserByUserId(userId)
+    if (!user || user['deleted'] || user['app-id'] !== appId) {
+      throw { status: statusCodes['Not Found'], error: { message: 'User not found' } }
+    }
+
+    await updateInternalProfile(user['username'], appId, userId, internalProfile)
+
+    logger
+      .child({ appId, userId, statusCode: statusCodes['Success'], req: trimReq(req) })
+      .info('Successfully updated internal profile')
+
+    return res.end()
+  } catch (e) {
+    const message = 'Failed to update internal profile.'
+
+    if (e.status && e.error) {
+      logger.child({ appId, userId, err: e.error, req: trimReq(req) }).info(message)
+      return res.status(e.status).send(e.error)
+    } else {
+      logger.child({ appId, userId, err: e, req: trimReq(req) }).error(message)
+      return res.status(statusCodes['Internal Server Error']).send({ message })
+    }
   }
 }
 

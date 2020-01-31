@@ -6,12 +6,15 @@ import statusCodes from './statusCodes'
 import logger from './logger'
 import appController from './app'
 import userController from './user'
-import { validateEmail } from './utils'
+import { validateEmail, trimReq } from './utils'
 import stripe from './stripe'
 
 // source: https://github.com/OWASP/CheatSheetSeries/blob/master/cheatsheets/Session_Management_Cheat_Sheet.md#session-id-length
 const ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID = 16
 const SESSION_COOKIE_NAME = 'adminSessionId'
+
+const BASE_64_STRING_LENGTH_FOR_32_BYTES = 44
+const UUID_STRING_LENGTH = 36
 
 const HOURS_IN_A_DAY = 24
 const SECONDS_IN_A_DAY = 60 * 60 * HOURS_IN_A_DAY
@@ -297,7 +300,7 @@ exports.authenticateAdmin = async function (req, res, next) {
 
   if (!sessionId) return res
     .status(statusCodes['Unauthorized'])
-    .send('Missing session token')
+    .send('Please sign in.')
 
   const params = {
     TableName: setup.sessionsTableName,
@@ -950,5 +953,129 @@ exports.resumeSaasSubscription = async function (req, res) {
   } catch (e) {
     logger.error(`Failed to resume subscription for admin '${adminId}' with ${e}`)
     return res.status(statusCodes['Internal Server Error']).send('Failed to resume subscription')
+  }
+}
+
+const createAccessToken = async function (adminId) {
+  const accessToken = crypto
+    .randomBytes(ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID * 2) // the more bytes the safer
+    .toString('base64')
+
+  const params = {
+    TableName: setup.adminAccessTokensTableName,
+    Item: {
+      'admin-id': adminId,
+      'access-token': accessToken,
+      'creation-date': new Date().toISOString()
+    },
+    ConditionExpression: 'attribute_not_exists(#adminId)',
+    ExpressionAttributeNames: {
+      '#adminId': 'admin-id'
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+  await ddbClient.put(params).promise()
+
+  return accessToken
+}
+
+const getAccessTokens = async function (adminId) {
+  const params = {
+    TableName: setup.adminAccessTokensTableName,
+    KeyConditionExpression: '#adminId = :adminId',
+    ExpressionAttributeNames: {
+      '#adminId': 'admin-id'
+    },
+    ExpressionAttributeValues: {
+      ':adminId': adminId
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+  const adminResponse = await ddbClient.query(params).promise()
+
+  let accessTokens = adminResponse.Items.length === 0
+    ? [{ 'access-token': await createAccessToken(adminId) }]
+    : adminResponse.Items.map(item => ({ 'access-token': item['access-token'] }))
+
+  return accessTokens
+}
+
+exports.getAccessTokens = async function (req, res) {
+  const { admin } = res.locals
+  const adminId = admin['admin-id']
+
+  try {
+    logger.child({ adminId, req: trimReq(req) }).info('Getting access tokens')
+
+    const accessTokens = await getAccessTokens(adminId)
+
+    logger.child({ adminId, req: trimReq(req) }).info('Retrieved access tokens')
+    return res.send(accessTokens)
+  } catch (e) {
+    const msg = 'Failed to get access tokens'
+    logger.child({ adminId, err: e, req: trimReq(req) }).error(msg)
+    return res.status(statusCodes['Internal Server Error']).send(msg)
+  }
+}
+
+const getAccessToken = async function (adminId, accessToken) {
+  const params = {
+    TableName: setup.adminAccessTokensTableName,
+    Key: {
+      'admin-id': adminId,
+      'access-token': accessToken
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+  const accessTokenResponse = await ddbClient.get(params).promise()
+  return accessTokenResponse.Item
+}
+
+const _validateAppId = (appId) => {
+  if (!appId) throw { status: statusCodes['Bad Request'], error: { message: 'Missing App ID' } }
+  if (typeof appId !== 'string') throw { status: statusCodes['Bad Request'], error: { message: 'App ID must be a string' } }
+  if (appId.length !== UUID_STRING_LENGTH) throw { status: statusCodes['Bad Request'], error: { message: 'App ID invalid' } }
+}
+
+const _validateAccessToken = (accessToken) => {
+  if (!accessToken) throw { status: statusCodes['Bad Request'], error: { message: 'Missing access token' } }
+  if (typeof accessToken !== 'string') throw { status: statusCodes['Bad Request'], error: { message: 'Access token must be a string' } }
+  if (accessToken.length !== BASE_64_STRING_LENGTH_FOR_32_BYTES) throw { status: statusCodes['Bad Request'], error: { message: 'Access token invalid' } }
+}
+
+exports.authenticateAccessToken = async function (req, res, next) {
+  const { accessToken, appId } = req.body
+
+  try {
+    logger.child({ appId, req: trimReq(req) }).info('Authenticating access token')
+
+    _validateAccessToken(accessToken)
+    _validateAppId(appId)
+
+    // check that access token belongs to the admin of the provided app
+    const app = await appController.getAppByAppId(appId)
+    if (!app || app['deleted']) throw { status: statusCodes['Not Found'], error: { message: 'App not found' } }
+
+    const [accessTokenItem, admin] = await Promise.all([
+      getAccessToken(app['admin-id'], accessToken),
+      findAdminByAdminId(app['admin-id'])
+    ])
+
+    if (!accessTokenItem || !admin || admin['deleted'] || accessTokenItem['admin-id'] !== admin['admin-id']) {
+      throw { status: statusCodes['Unauthorized'], error: { message: 'Access token invalid' } }
+    }
+
+    logger.child({ appId, req: trimReq(req) }).info('Successfully authenticated access token')
+    next()
+  } catch (e) {
+    const msg = 'Failed to authenticate access tokens'
+    logger.child({ appId, err: e, req: trimReq(req) }).error(msg)
+
+    return (e.status && e.error)
+      ? res.status(e.status).send(e.error)
+      : res.status(statusCodes['Internal Server Error']).send(msg)
   }
 }
