@@ -23,7 +23,7 @@ export default class Peers {
 
         } catch (e) {
           logger
-            .child({ userId, databaseId: transaction['database-id'], ipAddress, error: e })
+            .child({ userId, databaseId: transaction['database-id'], ipAddress, err: e })
             .warn('Failed to notify db update')
         }
       }

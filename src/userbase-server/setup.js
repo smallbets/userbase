@@ -546,7 +546,7 @@ async function getEc2Peers(ec2, stackName, thisInstanceId) {
 
     return ec2Peers
   } catch (e) {
-    logger.child({ error: e }).warn('Failed to discover ec2 peers')
+    logger.child({ err: e }).warn('Failed to discover ec2 peers')
     return null
   }
 }

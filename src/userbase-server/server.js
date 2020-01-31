@@ -342,7 +342,7 @@ async function start(express, app, userbaseConfig = {}) {
         connections.push(transaction, userId)
       } catch (e) {
         const msg = 'Error pushing internal transaction to connected clients'
-        logger.child({ userId, databaseId: transaction['database-id'], seqNo: transaction['seq-no'], error: e }).error(msg)
+        logger.child({ userId, databaseId: transaction['database-id'], seqNo: transaction['seq-no'], err: e }).error(msg)
         return res.status(statusCodes['Internal Server Error']).send(msg)
       }
 
