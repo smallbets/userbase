@@ -216,6 +216,17 @@ class ProfileValueMustBeString extends Error {
   }
 }
 
+class ProfileValueCannotBeBlank extends Error {
+  constructor(key, ...params) {
+    super(key, ...params)
+
+    this.name = 'ProfileValueCannotBeBlank'
+    this.message = 'Profile value cannot be blank.'
+    this.status = statusCodes['Bad Request']
+    this.key = key
+  }
+}
+
 class ProfileValueTooLong extends Error {
   constructor(maxLen, key, value, ...params) {
     super(maxLen, key, value, ...params)
@@ -300,6 +311,7 @@ export default {
   ProfileKeyMustBeString,
   ProfileKeyTooLong,
   ProfileValueMustBeString,
+  ProfileValueCannotBeBlank,
   ProfileValueTooLong,
   RememberMeValueNotValid,
   ParamsMissing,

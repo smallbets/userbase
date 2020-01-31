@@ -55,3 +55,5 @@ export const estimateSizeOfDdbItem = (item) => {
 
   return bytes
 }
+
+export const trimReq = (req) => ({ id: req.id, url: req.url })

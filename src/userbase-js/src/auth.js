@@ -86,6 +86,9 @@ const _parseUserResponseError = (e, username) => {
       case 'ProfileValueMustBeString':
         throw new errors.ProfileValueMustBeString(data.key, data.value)
 
+      case 'ProfileValueCannotBeBlank':
+        throw new errors.ProfileValueCannotBeBlank(data.key)
+
       case 'ProfileValueTooLong':
         throw new errors.ProfileValueTooLong(data.maxLen, data.key, data.value)
 
@@ -188,11 +191,12 @@ const _generateKeysAndSignUp = async (username, password, seed, email, profile) 
   }
 }
 
-const _buildUserResult = (username, email, profile) => {
-  const result = { username }
+const _buildUserResult = (username, userId, email, profile, internalProfile) => {
+  const result = { username, userId }
 
   if (email) result.email = email
   if (profile) result.profile = profile
+  if (internalProfile) result.internalProfile = internalProfile
 
   return result
 }
@@ -207,9 +211,8 @@ const _validateProfile = (profile) => {
     if (typeof key !== 'string') throw new errors.ProfileKeyMustBeString(key)
 
     const value = profile[key]
-    if (value) {
-      if (typeof value !== 'string') throw new errors.ProfileValueMustBeString(key, value)
-    }
+    if (typeof value !== 'string') throw new errors.ProfileValueMustBeString(key, value)
+    if (!value) throw new errors.ProfileValueCannotBeBlank(key)
   }
 
   if (!keyExists) throw new errors.ProfileCannotBeEmpty
@@ -235,7 +238,7 @@ const signUp = async (params) => {
 
     const lowerCaseEmail = email && email.toLowerCase()
 
-    const { sessionId, creationDate } = await _generateKeysAndSignUp(lowerCaseUsername, password, seed, lowerCaseEmail, profile)
+    const { sessionId, creationDate, userId } = await _generateKeysAndSignUp(lowerCaseUsername, password, seed, lowerCaseEmail, profile)
     const session = {
       username: lowerCaseUsername,
       sessionId,
@@ -249,7 +252,7 @@ const signUp = async (params) => {
 
     await _connectWebSocket(session, seedString, rememberMe)
 
-    return _buildUserResult(lowerCaseUsername, lowerCaseEmail, profile)
+    return _buildUserResult(lowerCaseUsername, userId, lowerCaseEmail, profile)
   } catch (e) {
 
     switch (e.name) {
@@ -269,6 +272,7 @@ const signUp = async (params) => {
       case 'ProfileKeyMustBeString':
       case 'ProfileKeyTooLong':
       case 'ProfileValueMustBeString':
+      case 'ProfileValueCannotBeBlank':
       case 'ProfileValueTooLong':
       case 'RememberMeValueNotValid':
       case 'TrialExceededLimit':
@@ -347,6 +351,7 @@ const _getPasswordSaltsOverRestEndpoint = async (username) => {
     return passwordSalts
   } catch (e) {
     _parseGenericErrors(e)
+    _parseGenericUsernamePasswordError(e)
 
     if (e.response && e.response.data === 'User not found') {
       throw new errors.UsernameOrPasswordMismatch
@@ -395,7 +400,7 @@ const signIn = async (params) => {
     const { passwordHkdfKey, passwordToken } = await _rebuildPasswordToken(password, passwordSalts)
 
     const apiSignInResult = await _signInWrapper(lowerCaseUsername, passwordToken)
-    const { email, profile, passwordBasedBackup } = apiSignInResult
+    const { userId, email, profile, passwordBasedBackup, internalProfile } = apiSignInResult
     const session = {
       ...apiSignInResult.session,
       username: lowerCaseUsername
@@ -415,7 +420,7 @@ const signIn = async (params) => {
 
     await _connectWebSocket(session, seedString, rememberMe)
 
-    return _buildUserResult(lowerCaseUsername, email, profile)
+    return _buildUserResult(lowerCaseUsername, userId, email, profile, internalProfile)
   } catch (e) {
 
     switch (e.name) {
@@ -494,7 +499,7 @@ const signInWithSession = async (appId) => {
 
       throw e
     }
-    const { username, email, profile } = apiSignInWithSessionResult
+    const { userId, username, email, profile, internalProfile } = apiSignInWithSessionResult
 
     // overwrite local data if username has been changed on server
     if (username !== currentSession.username) {
@@ -506,7 +511,7 @@ const signInWithSession = async (appId) => {
     // enable idempotent calls to init()
     if (ws.connectionResolved) {
       if (ws.session.sessionId === sessionId) {
-        return { user: _buildUserResult(username, email, profile) }
+        return { user: _buildUserResult(username, userId, email, profile, internalProfile) }
       } else {
         throw new errors.UserAlreadySignedIn(ws.session.username)
       }
@@ -514,7 +519,7 @@ const signInWithSession = async (appId) => {
 
     await _connectWebSocket(currentSession, savedSeedString, rememberMe)
 
-    return { user: _buildUserResult(username, email, profile) }
+    return { user: _buildUserResult(username, userId, email, profile, internalProfile) }
   } catch (e) {
     _parseGenericErrors(e)
     throw e
@@ -624,6 +629,7 @@ const updateUser = async (params) => {
       case 'ProfileKeyMustBeString':
       case 'ProfileKeyTooLong':
       case 'ProfileValueMustBeString':
+      case 'ProfileValueCannotBeBlank':
       case 'ProfileValueTooLong':
       case 'AppIdNotSet':
       case 'AppIdNotValid':

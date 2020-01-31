@@ -30,6 +30,7 @@ const resourceNamePrefix = 'userbase-' + defineUsername() + '-'
 const ddbTableGroup = 'userbase-' + defineUsername()
 
 const adminTableName = resourceNamePrefix + 'admins'
+const adminAccessTokensTableName = resourceNamePrefix + 'admin-access-tokens'
 const appsTableName = resourceNamePrefix + 'apps'
 const usersTableName = resourceNamePrefix + 'users'
 const sessionsTableName = resourceNamePrefix + 'sessions'
@@ -42,6 +43,7 @@ const dbStatesBucketNamePrefix = resourceNamePrefix + 'database-states'
 const secretManagerSecretId = resourceNamePrefix + 'env'
 
 exports.adminTableName = adminTableName
+exports.adminAccessTokensTableName = adminAccessTokensTableName
 exports.appsTableName = appsTableName
 exports.usersTableName = usersTableName
 exports.sessionsTableName = sessionsTableName
@@ -52,6 +54,7 @@ exports.deletedUsersTableName = deletedUsersTableName
 exports.deletedAppsTableName = deletedAppsTableName
 
 const adminIdIndex = 'AdminIdIndex'
+const accessTokenIndex = 'AccessTokenIndex'
 const userIdIndex = 'UserIdIndex'
 const appIdIndex = 'AppIdIndex'
 
@@ -136,6 +139,27 @@ async function setupDdb() {
       IndexName: adminIdIndex,
       KeySchema: [
         { AttributeName: 'admin-id', KeyType: 'HASH' }
+      ],
+      Projection: { ProjectionType: 'ALL' }
+    }]
+  }
+
+  // the admin table holds a record per admin account
+  const adminAccessTokensTableParams = {
+    TableName: adminAccessTokensTableName,
+    BillingMode: 'PAY_PER_REQUEST',
+    AttributeDefinitions: [
+      { AttributeName: 'admin-id', AttributeType: 'S' },
+      { AttributeName: 'access-token', AttributeType: 'S' }
+    ],
+    KeySchema: [
+      { AttributeName: 'admin-id', KeyType: 'HASH' },
+      { AttributeName: 'access-token', KeyType: 'RANGE' }
+    ],
+    GlobalSecondaryIndexes: [{
+      IndexName: accessTokenIndex,
+      KeySchema: [
+        { AttributeName: 'access-token', KeyType: 'HASH' }
       ],
       Projection: { ProjectionType: 'ALL' }
     }]
@@ -273,6 +297,7 @@ async function setupDdb() {
   logger.info('Creating DynamoDB tables if necessary')
   await Promise.all([
     createTable(ddb, adminTableParams),
+    createTable(ddb, adminAccessTokensTableParams),
     createTable(ddb, appsTableParams),
     createTable(ddb, usersTableParams),
     createTable(ddb, sessionsTableParams),
