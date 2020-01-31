@@ -526,7 +526,7 @@ describe('Signup Testing', function () {
         })
         .catch(error => {
           expect(error).to.be.a('Error')
-          expect(error.name).to.be.equal('ProfileCannotBeEmpty')
+          expect(error.name).to.be.equal('ProfileValueMustBeString')
         })
     })
   })
