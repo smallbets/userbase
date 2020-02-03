@@ -309,8 +309,9 @@ exports.signUp = async function (req, res) {
 
     const subscription = await adminController.getSaasSubscription(admin['admin-id'], admin['stripe-customer-id'])
     const unpaidSubscription = !subscription || subscription.cancel_at_period_end || subscription.status !== 'active'
-    if (unpaidSubscription && app['num-users'] >= LIMIT_NUM_TRIAL_USERS) {
-      return res.status(statusCodes['Payment Required']).send('TrialExceededLimit')
+    if (unpaidSubscription) {
+      const numUsers = await appController.countNonDeletedAppUsers(app['app-id'], LIMIT_NUM_TRIAL_USERS)
+      if (numUsers >= LIMIT_NUM_TRIAL_USERS) return res.status(statusCodes['Payment Required']).send('TrialExceededLimit')
     }
 
     const params = _buildSignUpParams(username, passwordToken, appId, userId,
@@ -325,9 +326,6 @@ exports.signUp = async function (req, res) {
       }
       throw e
     }
-
-    // best effort increment, no need to wait for response
-    appController.incrementNumAppUsers(admin['admin-id'], app['app-name'], appId)
 
     const session = await createSession(userId, appId)
     return res.send({ userId, ...session })
@@ -908,7 +906,7 @@ exports.updateUser = async function (userId, username, currentPasswordToken, pas
   }
 }
 
-const deleteUser = async (username, appId, userId, adminId, appName) => {
+const deleteUser = async (username, appId, userId) => {
   const params = conditionCheckUserExists(username, appId, userId)
 
   params.UpdateExpression = 'set deleted = :deleted'
@@ -916,9 +914,6 @@ const deleteUser = async (username, appId, userId, adminId, appName) => {
 
   const ddbClient = connection.ddbClient()
   await ddbClient.update(params).promise()
-
-  // best effort decrement
-  appController.decrementNumAppUsers(adminId, appName, appId)
 }
 exports.deleteUser = deleteUser
 
@@ -930,7 +925,7 @@ exports.deleteUserController = async function (userId, adminId, appName) {
     const user = await getUserByUserId(userId)
     if (!user || user['deleted']) return responseBuilder.errorResponse(statusCodes['Not Found'], 'UserNotFound')
 
-    await deleteUser(user['username'], user['app-id'], userId, adminId, appName)
+    await deleteUser(user['username'], user['app-id'], userId)
 
     return responseBuilder.successResponse()
   } catch (e) {

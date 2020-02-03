@@ -317,40 +317,38 @@ exports.listAppUsers = async function (req, res) {
   }
 }
 
-const updateNumAppUsers = async function (adminId, appName, appId, increment) {
-  const incrementNumUsersParams = {
-    TableName: setup.appsTableName,
-    Key: {
-      'admin-id': adminId,
-      'app-name': appName
-    },
-    UpdateExpression: 'add #numUsers :num',
-    ConditionExpression: '#appId = :appId',
+exports.countNonDeletedAppUsers = async function (appId, limit) {
+  const params = {
+    TableName: setup.usersTableName,
+    IndexName: setup.appIdIndex,
+    KeyConditionExpression: '#appId = :appId',
+    FilterExpression: 'attribute_not_exists(deleted) and attribute_not_exists(#seedNotSavedYet)',
     ExpressionAttributeNames: {
-      '#numUsers': 'num-users',
-      '#appId': 'app-id'
+      '#appId': 'app-id',
+      '#seedNotSavedYet': 'seed-not-saved-yet'
     },
     ExpressionAttributeValues: {
-      ':num': increment ? 1 : -1,
       ':appId': appId
-    }
+    },
+    Select: 'COUNT'
   }
 
-  try {
-    const ddbClient = connection.ddbClient()
-    await ddbClient.update(incrementNumUsersParams).promise()
-  } catch (e) {
-    // failure ok -- this is a best effort attempt
-    logger.warn(`Failed to increment number of users for app ${appId} with ${e}`)
+  if (limit) params.Limit = limit
+
+  const ddbClient = connection.ddbClient()
+
+  let usersResponse = await ddbClient.query(params).promise()
+  let count = usersResponse.Count
+
+  // limit stops query as soon as limit number of items are read, not necessarily items that fit filter expression.
+  // must continue executing query until limit is reached or read all items in table
+  while ((!limit || count < limit) && usersResponse.LastEvaluatedKey) {
+    params.ExclusiveStartKey = usersResponse.LastEvaluatedKey
+    usersResponse = await ddbClient.query(params).promise()
+    count = limit
+      ? Math.min(limit, count + usersResponse.Count)
+      : count + usersResponse.Count
   }
-}
 
-exports.incrementNumAppUsers = async function (adminId, appName, appId) {
-  const increment = true
-  await updateNumAppUsers(adminId, appName, appId, increment)
-}
-
-exports.decrementNumAppUsers = async function (adminId, appName, appId) {
-  const increment = false
-  await updateNumAppUsers(adminId, appName, appId, increment)
+  return count
 }
