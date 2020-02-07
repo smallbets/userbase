@@ -68,7 +68,3 @@ export const stringToArrayBuffer = (str) => {
   }
   return buf
 }
-
-export const wait = (ms) => new Promise((resolve) => {
-  setTimeout(() => resolve(), ms)
-})

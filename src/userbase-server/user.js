@@ -5,7 +5,7 @@ import statusCodes from './statusCodes'
 import responseBuilder from './responseBuilder'
 import crypto from './crypto'
 import logger from './logger'
-import { validateEmail, trimReq, wait } from './utils'
+import { validateEmail, trimReq } from './utils'
 import appController from './app'
 import adminController from './admin'
 
@@ -1187,20 +1187,6 @@ exports.forgotPassword = async function (req, forgotPasswordToken, userProvidedF
 
     if (e.status && e.error) {
       logger.child({ appId, userId, statusCode: e.status, err: e.error, req: trimReq(req) }).warn(message)
-
-      if (e.error.name === 'KeyNotValid') {
-
-        // will return success response to client even if key was not valid. This way someone using the wrong key
-        // won't know whether or not it's the wrong key. Prevent a timing attack by waiting
-        // the average time it takes to generate password token and send the email
-        const LO_TIME_TO_GENERATE_AND_SEND_EMAIL = 400
-        const HI_TIME_TO_GENERATE_AND_SEND_EMAIL = 1000
-        const timeToWait = LO_TIME_TO_GENERATE_AND_SEND_EMAIL + (Math.random() * (HI_TIME_TO_GENERATE_AND_SEND_EMAIL - LO_TIME_TO_GENERATE_AND_SEND_EMAIL))
-        await wait(timeToWait)
-
-        return responseBuilder.successResponse()
-      }
-
       return responseBuilder.errorResponse(e.status, e.error)
     } else {
       const statusCode = statusCodes['Internal Server Error']
