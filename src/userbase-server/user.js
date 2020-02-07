@@ -5,7 +5,7 @@ import statusCodes from './statusCodes'
 import responseBuilder from './responseBuilder'
 import crypto from './crypto'
 import logger from './logger'
-import { validateEmail, trimReq } from './utils'
+import { validateEmail, trimReq, wait } from './utils'
 import appController from './app'
 import adminController from './admin'
 
@@ -191,12 +191,24 @@ const _validatePassword = (passwordToken, user, req) => {
   const passwordTokenHash = crypto.sha256.hash(passwordToken)
   const passwordIsCorrect = passwordTokenHash.equals(user['password-token'])
 
-  if (passwordIsCorrect && user['incorrect-password-attempts-in-a-row']) {
+  if (passwordIsCorrect) {
     _allowUserToRetryPassword(user)
-  } else if (!passwordIsCorrect) {
-    _incrementIncorrectPasswordAttempt(user)
-    throw new Error('Incorrect password')
+  } else {
+    const tempPasswordIsCorrect = user['temp-password-token'] && passwordTokenHash.equals(user['temp-password-token'])
+
+    if (!tempPasswordIsCorrect) {
+      _incrementIncorrectPasswordAttempt(user)
+      throw { error: 'Incorrect password or temp password' }
+    } else if (new Date() - new Date(user['temp-password-creation-date']) > MS_IN_A_DAY) {
+      _incrementIncorrectPasswordAttempt(user)
+      throw { error: 'Temp password expired' }
+    }
+
+    // returns true if temp password is used
+    return tempPasswordIsCorrect
   }
+
+  return false
 }
 
 const _validateProfile = (profile) => {
@@ -238,6 +250,10 @@ const _validateProfile = (profile) => {
 const _validateUsernameInput = (username) => {
   if (typeof username !== 'string') throw {
     error: 'UsernameMustBeString'
+  }
+
+  if (!username) throw {
+    error: 'UsernameCannotBeBlank'
   }
 
   if (username.length > MAX_USERNAME_CHAR_LENGTH) throw {
@@ -396,7 +412,7 @@ exports.authenticateUser = async function (req, res, next) {
   }
 }
 
-exports.getValidationMessage = (publicKey) => {
+const _getValidationMessage = (publicKey) => {
   const validationMessage = crypto.randomBytes(VALIDATION_MESSAGE_LENGTH)
 
   const publicKeyArrayBuffer = Buffer.from(publicKey, 'base64')
@@ -409,6 +425,7 @@ exports.getValidationMessage = (publicKey) => {
     encryptedValidationMessage
   }
 }
+exports.getValidationMessage = _getValidationMessage
 
 const userSavedSeed = async function (userId, appId, username, publicKey) {
   const updateUserParams = {
@@ -573,8 +590,9 @@ exports.signIn = async function (req, res) {
 
     const user = userResponse.Item
 
+    let usedTempPassword
     try {
-      _validatePassword(passwordToken, user, req)
+      usedTempPassword = _validatePassword(passwordToken, user, req)
     } catch (e) {
       if (e.error === 'PasswordAttemptLimitExceeded') {
         return res.status(statusCodes['Unauthorized']).send(e)
@@ -587,6 +605,7 @@ exports.signIn = async function (req, res) {
 
     const result = { session, userId: user['user-id'] }
 
+    if (usedTempPassword) result.usedTempPassword = true
     if (user['email']) result.email = user['email']
     if (user['profile']) result.profile = user['profile']
     if (user['password-based-encryption-key-salt'] && user['password-encrypted-seed']) result.passwordBasedBackup = {
@@ -1008,11 +1027,185 @@ exports.updateInternalProfile = async function (req, res) {
     const message = 'Failed to update internal profile.'
 
     if (e.status && e.error) {
-      logger.child({ appId, userId, err: e.error, req: trimReq(req) }).info(message)
+      logger.child({ appId, userId, statusCode: e.status, err: e.error, req: trimReq(req) }).info(message)
       return res.status(e.status).send(e.error)
     } else {
-      logger.child({ appId, userId, err: e, req: trimReq(req) }).error(message)
-      return res.status(statusCodes['Internal Server Error']).send({ message })
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ appId, userId, statusCode, err: e, req: trimReq(req) }).error(message)
+      return res.status(statusCode).send({ message })
+    }
+  }
+}
+
+const getUser = async function (appId, username) {
+  const userParams = {
+    TableName: setup.usersTableName,
+    Key: {
+      'app-id': appId,
+      username
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+  const userResponse = await ddbClient.get(userParams).promise()
+
+  return userResponse && userResponse.Item
+}
+
+const _precheckGenerateForgotPasswordToken = async function (appId, username) {
+  if (!appId || !username) {
+    throw { status: statusCodes['Bad Request'], error: { message: 'Missing required items' } }
+  }
+
+  try {
+    _validateUsernameInput(username)
+  } catch (e) {
+    const name = e.error
+    delete e.error
+    throw { status: statusCodes['Bad Request'], error: { name, ...e } }
+  }
+
+  const app = await appController.getAppByAppId(appId)
+  if (!app || app['deleted']) {
+    throw { status: statusCodes['Unauthorized'], error: { name: 'AppIdNotValid' } }
+  }
+
+  const [admin, user] = await Promise.all([
+    adminController.findAdminByAdminId(app['admin-id']),
+    getUser(appId, username)
+  ])
+
+  if (!admin || admin['deleted']) {
+    throw { status: statusCodes['Unauthorized'], error: { name: 'AppIdNotValid' } }
+  } else if (!user || user['deleted']) {
+    throw { status: statusCodes['Not Found'], error: { name: 'UserNotFound' } }
+  } else if (!user['email']) {
+    throw { status: statusCodes['Not Found'], error: { name: 'UserEmailNotFound' } }
+  }
+
+  return { user, app, admin }
+}
+
+exports.generateForgotPasswordToken = async function (req, appId, username) {
+  try {
+    logger.child({ appId, username, req: trimReq(req) }).info('Generating forgot password token')
+
+    const { user, app, admin } = await _precheckGenerateForgotPasswordToken(appId, username)
+
+    const { validationMessage, encryptedValidationMessage } = _getValidationMessage(user['public-key'])
+
+    logger
+      .child({ appId, username, userId: user['user-id'], statusCode: statusCodes['Success'], req: trimReq(req) })
+      .info('Successfully generated forgot password token')
+
+    const forgotPasswordToken = validationMessage
+    const encryptedForgotPasswordToken = encryptedValidationMessage
+
+    return responseBuilder.successResponse({ user, app, admin, forgotPasswordToken, encryptedForgotPasswordToken })
+  } catch (e) {
+    const message = 'Failed to generate forgot password token.'
+
+    if (e.status && e.error) {
+      logger.child({ appId, username, statusCode: e.status, err: e.error, req: trimReq(req) }).warn(message)
+      return responseBuilder.errorResponse(e.status, e.error)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ appId, username, statusCode, err: e, req: trimReq(req) }).error(message)
+      return responseBuilder.errorResponse(statusCode, message)
+    }
+  }
+}
+
+const _setTempPasswordToken = async (username, appId, userId, tempPasswordToken) => {
+  const params = conditionCheckUserExists(username, appId, userId)
+
+  params.UpdateExpression = 'set #tempPasswordToken = :tempPasswordToken, #tempPasswordCreationDate = :tempPasswordCreationDate'
+
+  params.ExpressionAttributeNames = {
+    ...params.ExpressionAttributeNames,
+    '#tempPasswordToken': 'temp-password-token',
+    '#tempPasswordCreationDate': 'temp-password-creation-date'
+  }
+
+  params.ExpressionAttributeValues = {
+    ...params.ExpressionAttributeValues,
+    ':tempPasswordToken': crypto.sha256.hash(tempPasswordToken),
+    ':tempPasswordCreationDate': new Date().toISOString()
+  }
+
+  const ddbClient = connection.ddbClient()
+  await ddbClient.update(params).promise()
+}
+
+// matches userbase-js password token generation
+const _generateTempPasswordToken = async (tempPassword, passwordSalt, passwordTokenSalt) => {
+  const tempPasswordHash = await crypto.scrypt.hash(tempPassword, new Uint8Array(Buffer.from(passwordSalt, 'base64')))
+  const tempPasswordToken = await crypto.hkdf.getPasswordToken(tempPasswordHash, Buffer.from(passwordTokenSalt, 'base64'))
+  return tempPasswordToken
+}
+
+exports.forgotPassword = async function (req, forgotPasswordToken, userProvidedForgotPasswordToken, user, app) {
+  const userId = user['user-id']
+  const appId = app['app-id']
+
+  try {
+    logger.child({ userId, appId, req: trimReq(req) }).info('User forgot password')
+
+    // check if client decrypted forgot password token successfully
+    if (forgotPasswordToken.toString('base64') !== userProvidedForgotPasswordToken) {
+      throw { status: statusCodes['Unauthorized'], error: { name: 'KeyNotValid' } }
+    }
+
+    const tempPassword = crypto
+      .randomBytes(ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID)
+      .toString('base64')
+
+    const tempPasswordToken = await _generateTempPasswordToken(tempPassword, user['password-salt'], user['password-token-salt'])
+    await _setTempPasswordToken(user['username'], appId, userId, tempPasswordToken)
+
+    const subject = `Forgot password - ${app['app-name']}`
+    const body = `Hello, ${user['username']}!`
+      + '<br />'
+      + '<br />'
+      + `Someone has requested you forgot your password to ${app['app-name']}!`
+      + '<br />'
+      + '<br />'
+      + 'If you did not make this request, you can safely ignore this email.'
+      + '<br />'
+      + '<br />'
+      + `Here is your temporary password you can use to log in and change your password with: ${tempPassword}`
+      + '<br />'
+      + '<br />'
+      + `This password will expire in ${HOURS_IN_A_DAY} hours.`
+
+    await setup.sendEmail(user['email'], subject, body)
+
+    logger.child({ userId, appId, req: trimReq(req) }).info('Successfully forgot password')
+    return responseBuilder.successResponse()
+  } catch (e) {
+    const message = 'Failed to forget password'
+
+    if (e.status && e.error) {
+      logger.child({ appId, userId, statusCode: e.status, err: e.error, req: trimReq(req) }).warn(message)
+
+      if (e.error.name === 'KeyNotValid') {
+
+        // will return success response to client even if key was not valid. This way someone using the wrong key
+        // won't know whether or not it's the wrong key. Prevent a timing attack by waiting
+        // the average time it takes to generate password token and send the email
+        const LO_TIME_TO_GENERATE_AND_SEND_EMAIL = 400
+        const HI_TIME_TO_GENERATE_AND_SEND_EMAIL = 1000
+        const timeToWait = LO_TIME_TO_GENERATE_AND_SEND_EMAIL + (Math.random() * (HI_TIME_TO_GENERATE_AND_SEND_EMAIL - LO_TIME_TO_GENERATE_AND_SEND_EMAIL))
+        await wait(timeToWait)
+
+        return responseBuilder.successResponse()
+      }
+
+      return responseBuilder.errorResponse(e.status, e.error)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ appId, userId, statusCode, err: e, req: trimReq(req) }).error(message)
+      return responseBuilder.errorResponse(statusCode, message)
     }
   }
 }

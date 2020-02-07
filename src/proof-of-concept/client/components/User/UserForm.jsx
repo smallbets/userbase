@@ -18,6 +18,7 @@ export default class UserForm extends Component {
 
     this.handleInputChange = this.handleInputChange.bind(this)
     this.handleSubmitForm = this.handleSubmitForm.bind(this)
+    this.handleForgotPassword = this.handleForgotPassword.bind(this)
     this.handleToggleRememberMe = this.handleToggleRememberMe.bind(this)
   }
 
@@ -73,6 +74,20 @@ export default class UserForm extends Component {
       else handleSetSignInError(user.error)
     } else {
       handleSubmit(user)
+    }
+  }
+
+  async handleForgotPassword() {
+    const { username } = this.state
+
+    this.setState({ loading: true })
+
+    try {
+      await userLogic.forgotPassword(username)
+      window.alert('Check your email!')
+      this.setState({ loading: false })
+    } catch (e) {
+      this.setState({ error: e.message, loading: false })
     }
   }
 
@@ -156,6 +171,12 @@ export default class UserForm extends Component {
                       onClick={this.handleToggleRememberMe}
                     />
                   </div>
+
+                  {formType === 'Sign In'
+                    && <div className='pt-2 sm:inline-block sm:float-right sm:pt-0 sm:pl-2'>
+                      <a className='cursor-pointer font-light text-xs xs:text-sm' onClick={this.handleForgotPassword}>Forgot password</a>
+                    </div>
+                  }
                 </div>
               </div>
 

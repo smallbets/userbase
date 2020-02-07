@@ -57,3 +57,18 @@ export const estimateSizeOfDdbItem = (item) => {
 }
 
 export const trimReq = (req) => ({ id: req.id, url: req.url })
+
+// matches stringToArrayBuffer from userbase-js/Crypto/utils
+// https://developers.google.com/web/updates/2012/06/How-to-convert-ArrayBuffer-to-and-from-String
+export const stringToArrayBuffer = (str) => {
+  let buf = new ArrayBuffer(str.length * 2) // 2 bytes for each char
+  let bufView = new Uint16Array(buf)
+  for (let i = 0, strLen = str.length; i < strLen; i++) {
+    bufView[i] = str.charCodeAt(i)
+  }
+  return buf
+}
+
+export const wait = (ms) => new Promise((resolve) => {
+  setTimeout(() => resolve(), ms)
+})

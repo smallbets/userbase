@@ -26,6 +26,7 @@ const signOut = async () => {
 const signIn = async (username, password, rememberMe) => {
   try {
     const result = await userbase.signIn({ username, password, rememberMe: rememberMe ? 'session' : 'none' })
+    if (result.usedTempPassword) window.alert('Signed in with temp password!')
     return result
   } catch (e) {
     return _errorHandler(e, 'sign in')
@@ -41,9 +42,19 @@ const init = async (settings) => {
   }
 }
 
+const forgotPassword = async (username) => {
+  try {
+    await userbase.forgotPassword({ username })
+  } catch (e) {
+    _errorHandler(e, 'forgot password')
+    throw e
+  }
+}
+
 export default {
   signUp,
   signOut,
   signIn,
   init,
+  forgotPassword
 }

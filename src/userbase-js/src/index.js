@@ -9,6 +9,7 @@ export default {
   signOut: auth.signOut,
   updateUser: auth.updateUser,
   deleteUser: auth.deleteUser,
+  forgotPassword: auth.forgotPassword,
 
   openDatabase: db.openDatabase,
 

@@ -59,6 +59,8 @@ export interface Userbase {
 
   deleteUser(): Promise<void>
 
+  forgotPassword(params: { username: string }): Promise<void>
+
   openDatabase(params: { databaseName: string, changeHandler: DatabaseChangeHandler }): Promise<void>
 
   insertItem(params: { databaseName: string, item: any, itemId?: string }): Promise<void>

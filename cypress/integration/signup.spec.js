@@ -89,6 +89,64 @@ describe('Signup Testing', function () {
     })
   })
 
+  it('Signup a new user, params missing', function () {
+    cy.window().then((window) => {
+      const { userbase } = window
+      window._userbaseEndpoint = info.endpoint
+      userbase.init({ appId: info.appId })
+
+      return userbase.signUp()
+        .then(() => {
+          expect(true, 'signUp should not be successful').to.be.false
+        })
+        .catch(error => {
+          expect(error).to.be.a('Error')
+          expect(error.name).to.be.equal('ParamsMustBeObject')
+        })
+    })
+  })
+
+  it('Signup a new user, params as string', function () {
+    cy.window().then((window) => {
+      const { userbase } = window
+      window._userbaseEndpoint = info.endpoint
+      userbase.init({ appId: info.appId })
+
+      return userbase.signUp('bad-params')
+        .then(() => {
+          expect(true, 'signUp should not be successful').to.be.false
+        })
+        .catch(error => {
+          expect(error).to.be.a('Error')
+          expect(error.name).to.be.equal('ParamsMustBeObject')
+        })
+    })
+  })
+
+  it('Signup a new user, username missing', function () {
+    let randomInfo
+    cy.getRandomInfoWithParams(null, null, 'local').then((loginInfo) => {
+      randomInfo = { ...loginInfo }
+    })
+
+    cy.window().then((window) => {
+      const { userbase } = window
+      window._userbaseEndpoint = info.endpoint
+      userbase.init({ appId: info.appId })
+
+      delete randomInfo.username
+
+      return userbase.signUp(randomInfo)
+        .then(() => {
+          expect(true, 'signUp should not be successful').to.be.false
+        })
+        .catch(error => {
+          expect(error).to.be.a('Error')
+          expect(error.name).to.be.equal('UsernameMissing')
+        })
+    })
+  })
+
   it('Signup a new user, blank username', function () {
     let randomInfo
     cy.getRandomInfoWithParams(null, null, 'local').then((loginInfo) => {
@@ -177,6 +235,52 @@ describe('Signup Testing', function () {
     })
   })
 
+  it('Signup a new user, username too long', function () {
+    let randomInfo
+    cy.getRandomInfoWithParams(null, null, 'local').then((loginInfo) => {
+      randomInfo = { ...loginInfo, username: 'a'.repeat(101) }
+    })
+
+    cy.window().then((window) => {
+      const { userbase } = window
+      window._userbaseEndpoint = info.endpoint
+      userbase.init({ appId: info.appId })
+
+      return userbase.signUp(randomInfo)
+        .then(() => {
+          expect(true, 'signUp should not be successful').to.be.false
+        })
+        .catch(error => {
+          expect(error).to.be.a('Error')
+          expect(error.name).to.be.equal('UsernameTooLong')
+        })
+    })
+  })
+
+  it('Signup a new user, password missing', function () {
+    let randomInfo
+
+    cy.getRandomInfoWithParams(null, null, 'local').then((loginInfo) => {
+      randomInfo = { ...loginInfo }
+    })
+
+    cy.window().then((window) => {
+      const { userbase } = window
+      window._userbaseEndpoint = info.endpoint
+      userbase.init({ appId: info.appId })
+
+      delete randomInfo.password
+
+      return userbase.signUp(randomInfo)
+        .then(() => {
+          expect(true, 'signUp should not be successful').to.be.false
+        })
+        .catch(error => {
+          expect(error).to.be.a('Error')
+          expect(error.name).to.be.equal('PasswordMissing')
+        })
+    })
+  })
 
   it('Signup a new user, null password', function () {
     let randomInfo

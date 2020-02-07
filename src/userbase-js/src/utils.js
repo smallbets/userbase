@@ -10,7 +10,7 @@ export const readArrayBufferAsString = (arrayBuffer) => {
   })
 }
 
-export const removeProtocolFromEndpoint = (endpoint) => {
+const removeProtocolFromEndpoint = (endpoint) => {
   const http = 'http://'
   const https = 'https://'
 
@@ -23,8 +23,16 @@ export const removeProtocolFromEndpoint = (endpoint) => {
   }
 }
 
-export const getProtocolFromEndpoint = (endpoint) => {
+const getProtocolFromEndpoint = (endpoint) => {
   return endpoint.split(':')[0]
+}
+
+export const getWsUrl = (endpoint) => {
+  const host = removeProtocolFromEndpoint(endpoint)
+  const protocol = getProtocolFromEndpoint(endpoint)
+
+  return ((protocol === 'https') ?
+    'wss://' : 'ws://') + host
 }
 
 export const byteSizeOfString = (string) => {
