@@ -6,7 +6,7 @@ import localData from './localData'
 import config from './config'
 import errors from './errors'
 import statusCodes from './statusCodes'
-import { objectHasOwnProperty } from './utils'
+import { objectHasOwnProperty, getWsUrl } from './utils'
 
 const MAX_PASSWORD_CHAR_LENGTH = 1000
 const MIN_PASSWORD_CHAR_LENGTH = 6
@@ -14,7 +14,7 @@ const MIN_PASSWORD_CHAR_LENGTH = 6
 const _parseGenericErrors = (e) => {
   if (e.response) {
     if (e.response.data === 'App ID not valid') {
-      throw new errors.AppIdNotValid(e.response.status)
+      throw new errors.AppIdNotValid
     } else if (e.response.data === 'UserNotFound') {
       throw new errors.UserNotFound
     } else if (e.response.status === statusCodes['Internal Server Error']) {
@@ -115,9 +115,14 @@ const _validatePassword = (password) => {
   if (password.length > MAX_PASSWORD_CHAR_LENGTH) throw new errors.PasswordTooLong(MAX_PASSWORD_CHAR_LENGTH)
 }
 
-const _validateSignUpOrSignInInput = (username, password) => {
-  _validateUsername(username)
-  _validatePassword(password)
+const _validateSignUpOrSignInInput = (params) => {
+  if (typeof params !== 'object') throw new errors.ParamsMustBeObject
+
+  if (!objectHasOwnProperty(params, 'username')) throw new errors.UsernameMissing
+  if (!objectHasOwnProperty(params, 'password')) throw new errors.PasswordMissing
+
+  _validateUsername(params.username)
+  _validatePassword(params.password)
 }
 
 const _generatePasswordToken = async (password, seed) => {
@@ -191,12 +196,13 @@ const _generateKeysAndSignUp = async (username, password, seed, email, profile) 
   }
 }
 
-const _buildUserResult = (username, userId, email, profile, internalProfile) => {
+const _buildUserResult = (username, userId, email, profile, internalProfile, usedTempPassword) => {
   const result = { username, userId }
 
   if (email) result.email = email
   if (profile) result.profile = profile
   if (internalProfile) result.internalProfile = internalProfile
+  if (usedTempPassword) result.usedTempPassword = usedTempPassword
 
   return result
 }
@@ -220,47 +226,43 @@ const _validateProfile = (profile) => {
 
 const signUp = async (params) => {
   try {
-    if (typeof params !== 'object') throw new errors.ParamsMustBeObject
+    _validateSignUpOrSignInInput(params)
 
-    const { username, password, email, profile, rememberMe = 'session' } = params
+    const { password, profile, rememberMe = 'session' } = params
 
-    _validateSignUpOrSignInInput(username, password)
     if (profile) _validateProfile(profile)
-    if (email && typeof email !== 'string') throw new errors.EmailNotValid
+    if (params.email && typeof params.email !== 'string') throw new errors.EmailNotValid
     if (!config.REMEMBER_ME_OPTIONS[rememberMe]) {
       throw new errors.RememberMeValueNotValid(config.REMEMBER_ME_OPTIONS)
     }
 
-    const appId = config.getAppId()
-    const lowerCaseUsername = username.toLowerCase()
+    const username = params.username.toLowerCase()
+    const email = params.email && params.email.toLowerCase()
 
+    const appId = config.getAppId()
     const seed = await crypto.generateSeed()
 
-    const lowerCaseEmail = email && email.toLowerCase()
-
-    const { sessionId, creationDate, userId } = await _generateKeysAndSignUp(lowerCaseUsername, password, seed, lowerCaseEmail, profile)
-    const session = {
-      username: lowerCaseUsername,
-      sessionId,
-      creationDate
-    }
+    const { sessionId, creationDate, userId } = await _generateKeysAndSignUp(username, password, seed, email, profile)
+    const session = { username, sessionId, creationDate }
 
     const seedString = base64.encode(seed)
 
-    localData.saveSeedString(rememberMe, appId, lowerCaseUsername, seedString)
-    localData.signInSession(rememberMe, lowerCaseUsername, sessionId, creationDate)
+    localData.saveSeedString(rememberMe, appId, username, seedString)
+    localData.signInSession(rememberMe, username, sessionId, creationDate)
 
     await _connectWebSocket(session, seedString, rememberMe)
 
-    return _buildUserResult(lowerCaseUsername, userId, lowerCaseEmail, profile)
+    return _buildUserResult(username, userId, email, profile)
   } catch (e) {
 
     switch (e.name) {
       case 'ParamsMustBeObject':
+      case 'UsernameMissing':
       case 'UsernameAlreadyExists':
       case 'UsernameCannotBeBlank':
       case 'UsernameMustBeString':
       case 'UsernameTooLong':
+      case 'PasswordMissing':
       case 'PasswordCannotBeBlank':
       case 'PasswordTooShort':
       case 'PasswordTooLong':
@@ -384,51 +386,52 @@ const _rebuildPasswordToken = async (password, passwordSalts) => {
 
 const signIn = async (params) => {
   try {
-    if (typeof params !== 'object') throw new errors.ParamsMustBeObject
+    _validateSignUpOrSignInInput(params)
 
-    const { username, password, rememberMe = 'session' } = params
+    const username = params.username.toLowerCase()
+    const { password, rememberMe = 'session' } = params
 
-    _validateSignUpOrSignInInput(username, password)
     if (!config.REMEMBER_ME_OPTIONS[rememberMe]) {
       throw new errors.RememberMeValueNotValid(config.REMEMBER_ME_OPTIONS)
     }
 
     const appId = config.getAppId()
-    const lowerCaseUsername = username.toLowerCase()
 
-    const passwordSalts = await _getPasswordSaltsOverRestEndpoint(lowerCaseUsername)
+    const passwordSalts = await _getPasswordSaltsOverRestEndpoint(username)
     const { passwordHkdfKey, passwordToken } = await _rebuildPasswordToken(password, passwordSalts)
 
-    const apiSignInResult = await _signInWrapper(lowerCaseUsername, passwordToken)
-    const { userId, email, profile, passwordBasedBackup, internalProfile } = apiSignInResult
+    const apiSignInResult = await _signInWrapper(username, passwordToken)
+    const { userId, email, profile, passwordBasedBackup, internalProfile, usedTempPassword } = apiSignInResult
     const session = {
       ...apiSignInResult.session,
-      username: lowerCaseUsername
+      username
     }
 
-    const savedSeedString = localData.getSeedString(appId, lowerCaseUsername)
+    const savedSeedString = localData.getSeedString(appId, username)
 
     let seedStringFromBackup
     if (!savedSeedString) {
       seedStringFromBackup = await _getSeedStringFromPasswordBasedBackup(passwordHkdfKey, passwordBasedBackup)
-      localData.saveSeedString(rememberMe, appId, lowerCaseUsername, seedStringFromBackup)
+      localData.saveSeedString(rememberMe, appId, username, seedStringFromBackup)
     }
 
     const seedString = savedSeedString || seedStringFromBackup
 
-    localData.signInSession(rememberMe, lowerCaseUsername, session.sessionId, session.creationDate)
+    localData.signInSession(rememberMe, username, session.sessionId, session.creationDate)
 
     await _connectWebSocket(session, seedString, rememberMe)
 
-    return _buildUserResult(lowerCaseUsername, userId, email, profile, internalProfile)
+    return _buildUserResult(username, userId, email, profile, internalProfile, usedTempPassword)
   } catch (e) {
 
     switch (e.name) {
       case 'ParamsMustBeObject':
+      case 'UsernameMissing':
       case 'UsernameOrPasswordMismatch':
       case 'UsernameCannotBeBlank':
       case 'UsernameTooLong':
       case 'UsernameMustBeString':
+      case 'PasswordMissing':
       case 'PasswordCannotBeBlank':
       case 'PasswordTooShort':
       case 'PasswordTooLong':
@@ -452,8 +455,9 @@ const init = async (params) => {
   try {
     if (typeof params !== 'object') throw new errors.ParamsMustBeObject
 
-    const { appId } = params
+    if (!objectHasOwnProperty(params, 'appId')) throw new errors.AppIdMissing
 
+    const { appId } = params
     config.configure({ appId })
 
     const session = await signInWithSession(appId)
@@ -462,6 +466,7 @@ const init = async (params) => {
 
     switch (e.name) {
       case 'ParamsMustBeObject':
+      case 'AppIdMissing':
       case 'AppIdAlreadySet':
       case 'AppIdMustBeString':
       case 'AppIdCannotBeBlank':
@@ -681,11 +686,125 @@ const deleteUser = async () => {
   }
 }
 
+const forgotPassword = async (params) => {
+  try {
+    if (typeof params !== 'object') throw new errors.ParamsMustBeObject
+    if (!objectHasOwnProperty(params, 'username')) throw new errors.UsernameMissing
+
+    _validateUsername(params.username)
+    const username = params.username.toLowerCase()
+
+    const appId = config.getAppId()
+
+    const seedString = localData.getSeedString(appId, username)
+    const keyNotFoundMessage = "Your key was not found. Forgot password only works from a device you've signed in from before."
+    if (!seedString) throw new errors.KeyNotFound(keyNotFoundMessage)
+    const seed = base64.decode(seedString)
+    const masterKey = await crypto.hkdf.importHkdfKey(seed)
+
+    // client makes 2 trips to server to first prove it has the correct key and then trigger the temp password email
+    const forgotPasswordWs = new WebSocket(`${getWsUrl(config.getEndpoint())}/api/auth/forgot-password?appId=${appId}&username=${username}`)
+
+    await new Promise((resolve, reject) => {
+      setTimeout(() => reject(new errors.Timeout), 15000)
+
+      forgotPasswordWs.onerror = () => reject(new errors.ServiceUnavailable)
+
+      forgotPasswordWs.onmessage = async (e) => {
+        try {
+          const message = JSON.parse(e.data)
+
+          switch (message.route) {
+            case 'ReceiveEncryptedToken': {
+              // if client decrypts encrypted token successfully, proves to server it has the user's key
+              const encryptedForgotPasswordToken = new Uint8Array(message.encryptedForgotPasswordToken.data)
+
+              const dhPrivateKey = await crypto.diffieHellman.importKeyFromMaster(masterKey, base64.decode(message.dhKeySalt))
+              const sharedKey = await crypto.diffieHellman.getSharedKeyWithServer(dhPrivateKey)
+
+              let forgotPasswordToken
+              try {
+                // if it fails to decrypt, it's almost certainly because key is incorrect
+                forgotPasswordToken = base64.encode(await crypto.aesGcm.decrypt(sharedKey, encryptedForgotPasswordToken))
+              } catch {
+                throw new errors.KeyNotFound(keyNotFoundMessage)
+              }
+
+              forgotPasswordWs.send(JSON.stringify({
+                action: 'ForgotPassword',
+                params: { forgotPasswordToken }
+              }))
+
+              break
+            }
+
+            case 'SuccessfullyForgotPassword': {
+              // server has sent the email
+              resolve()
+              break
+            }
+
+            case 'Error': {
+              const data = message.data
+
+              switch (data.name) {
+                case 'UsernameTooLong': throw new errors.UsernameTooLong(data.maxLen)
+                case 'AppIdNotValid': throw new errors.AppIdNotValid
+                case 'UserNotFound': throw new errors.UserNotFound
+                case 'UserEmailNotFound': throw new errors.UserEmailNotFound
+
+                default: {
+                  if (message.status === statusCodes['Internal Server Error']) throw new errors.ServiceUnavailable
+                  else throw new errors.UnknownServiceUnavailable(data)
+                }
+              }
+            }
+
+            case 'Ping': {
+              // ignore -- websocket connection should only exist for the life of the forgot password request
+              break
+            }
+
+            default:
+              reject(new Error(`Received unknown message from userbase-server: ${e.data}`))
+          }
+        } catch (e) {
+          reject(e)
+        }
+      }
+    })
+
+    forgotPasswordWs.close()
+
+  } catch (e) {
+
+    switch (e.name) {
+      case 'ParamsMustBeObject':
+      case 'UsernameMissing':
+      case 'UsernameMustBeString':
+      case 'UsernameCannotBeBlank':
+      case 'UsernameTooLong':
+      case 'AppIdNotSet':
+      case 'AppIdNotValid':
+      case 'KeyNotFound':
+      case 'UserNotFound':
+      case 'UserEmailNotFound':
+      case 'ServiceUnavailable':
+        throw e
+
+      default:
+        throw new errors.UnknownServiceUnavailable(e)
+
+    }
+  }
+}
+
 export default {
   signUp,
   signOut,
   signIn,
   init,
   updateUser,
-  deleteUser
+  deleteUser,
+  forgotPassword,
 }

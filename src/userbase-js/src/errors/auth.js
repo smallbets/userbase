@@ -10,6 +10,16 @@ class UsernameAlreadyExists extends Error {
   }
 }
 
+class UsernameMissing extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'UsernameMissing'
+    this.message = 'Username missing.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
 class UsernameCannotBeBlank extends Error {
   constructor(...params) {
     super(...params)
@@ -36,6 +46,16 @@ class UsernameMustBeString extends Error {
 
     this.name = 'UsernameMustBeString'
     this.message = 'Username must be a string.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class PasswordMissing extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'PasswordMissing'
+    this.message = 'Password missing.'
     this.status = statusCodes['Bad Request']
   }
 }
@@ -112,13 +132,12 @@ class UserAlreadySignedIn extends Error {
 }
 
 class AppIdNotValid extends Error {
-  constructor(status, username, ...params) {
+  constructor(...params) {
     super(...params)
 
     this.name = 'AppIdNotValid'
     this.message = 'App ID not valid.'
-    this.status = status
-    this.username = username
+    this.status = statusCodes['Unauthorized']
   }
 }
 
@@ -138,6 +157,16 @@ class UserNotFound extends Error {
 
     this.name = 'UserNotFound'
     this.message = 'User not found.'
+    this.status = statusCodes['Not Found']
+  }
+}
+
+class UserEmailNotFound extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'UserEmailNotFound'
+    this.message = 'User does not have an email saved.'
     this.status = statusCodes['Not Found']
   }
 }
@@ -289,11 +318,23 @@ class CurrentPasswordIncorrect extends Error {
   }
 }
 
+class KeyNotFound extends Error {
+  constructor(message, ...params) {
+    super(message, ...params)
+
+    this.name = 'KeyNotFound'
+    this.message = message
+    this.status = statusCodes['Not Found']
+  }
+}
+
 export default {
   UsernameAlreadyExists,
+  UsernameMissing,
   UsernameCannotBeBlank,
   UsernameTooLong,
   UsernameMustBeString,
+  PasswordMissing,
   PasswordCannotBeBlank,
   PasswordTooShort,
   PasswordTooLong,
@@ -304,6 +345,7 @@ export default {
   AppIdNotValid,
   UserNotSignedIn,
   UserNotFound,
+  UserEmailNotFound,
   EmailNotValid,
   ProfileMustBeObject,
   ProfileCannotBeEmpty,
@@ -317,5 +359,6 @@ export default {
   ParamsMissing,
   TrialExceededLimit,
   CurrentPasswordMissing,
-  CurrentPasswordIncorrect
+  CurrentPasswordIncorrect,
+  KeyNotFound,
 }

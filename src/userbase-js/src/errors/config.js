@@ -20,6 +20,16 @@ class AppIdMustBeString extends Error {
     this.status = statusCodes['Bad Request']
   }
 }
+
+class AppIdMissing extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'AppIdMissing'
+    this.message = 'Application ID missing.'
+    this.status = statusCodes['Bad Request']
+  }
+}
 class AppIdCannotBeBlank extends Error {
   constructor(...params) {
     super(...params)
@@ -33,5 +43,6 @@ class AppIdCannotBeBlank extends Error {
 export default {
   AppIdAlreadySet,
   AppIdMustBeString,
+  AppIdMissing,
   AppIdCannotBeBlank,
 }

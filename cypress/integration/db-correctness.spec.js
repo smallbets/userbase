@@ -1,12 +1,4 @@
-const getRandomString = () => Math.random().toString().substring(2)
-const getStringOfByteLength = (byteLength) => {
-  const BYTES_IN_STRING = 2
-  return 'a'.repeat(byteLength / BYTES_IN_STRING)
-}
-
-const wait = (ms) => new Promise(resolve => {
-  setTimeout(() => resolve(), ms)
-})
+import { getRandomString, getStringOfByteLength, wait } from '../support/utils'
 
 const beforeEachHook = function () {
   cy.visit('./cypress/integration/index.html').then(async function (win) {

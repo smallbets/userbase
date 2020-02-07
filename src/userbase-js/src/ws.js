@@ -3,7 +3,7 @@ import uuidv4 from 'uuid/v4'
 import LZString from 'lz-string'
 import localData from './localData'
 import crypto from './Crypto'
-import { removeProtocolFromEndpoint, getProtocolFromEndpoint } from './utils'
+import { getWsUrl } from './utils'
 import statusCodes from './statusCodes'
 import config from './config'
 import errors from './errors'
@@ -94,10 +94,7 @@ class Connection {
         10000
       )
 
-      const host = removeProtocolFromEndpoint(config.getEndpoint())
-      const protocol = getProtocolFromEndpoint(config.getEndpoint())
-      const url = ((protocol === 'https') ?
-        'wss://' : 'ws://') + `${host}/api?appId=${config.getAppId()}&sessionId=${session.sessionId}&clientId=${clientId}`
+      const url = `${getWsUrl(config.getEndpoint())}/api?appId=${config.getAppId()}&sessionId=${session.sessionId}&clientId=${clientId}`
 
       const ws = new WebSocket(url)
 

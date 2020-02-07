@@ -4,7 +4,7 @@ import crypto from './Crypto'
 import ws from './ws'
 import errors from './errors'
 import statusCodes from './statusCodes'
-import { byteSizeOfString, Queue } from './utils'
+import { byteSizeOfString, Queue, objectHasOwnProperty } from './utils'
 
 const success = 'Success'
 
@@ -441,7 +441,13 @@ const _createDatabase = async (dbName) => {
   return newDatabaseParams
 }
 
-const _validateDbInput = (dbName) => {
+const _validateDbInput = (params) => {
+  if (typeof params !== 'object') throw new errors.ParamsMustBeObject
+
+  if (!objectHasOwnProperty(params, 'databaseName')) throw new errors.DatabaseNameMissing
+
+  const dbName = params.databaseName
+
   if (typeof dbName !== 'string') throw new errors.DatabaseNameMustBeString
   if (dbName.length === 0) throw new errors.DatabaseNameCannotBeBlank
   if (dbName.length > MAX_DB_NAME_CHAR_LENGTH) throw new errors.DatabaseNameTooLong(MAX_DB_NAME_CHAR_LENGTH)
@@ -452,11 +458,11 @@ const _validateDbInput = (dbName) => {
 
 const openDatabase = async (params) => {
   try {
-    if (typeof params !== 'object') throw new errors.ParamsMustBeObject
+    _validateDbInput(params)
+    if (!objectHasOwnProperty(params, 'changeHandler')) throw new errors.ChangeHandlerMissing
 
     const { databaseName, changeHandler } = params
 
-    _validateDbInput(databaseName)
     if (typeof changeHandler !== 'function') throw new errors.ChangeHandlerMustBeFunction
 
     const dbNameHash = ws.state.dbNameToHash[databaseName] || await crypto.hmac.signString(ws.keys.hmacKey, databaseName)
@@ -470,8 +476,10 @@ const openDatabase = async (params) => {
       case 'ParamsMustBeObject':
       case 'DatabaseAlreadyOpening':
       case 'DatabaseNameMustBeString':
+      case 'DatabaseNameMissing':
       case 'DatabaseNameCannotBeBlank':
       case 'DatabaseNameTooLong':
+      case 'ChangeHandlerMissing':
       case 'ChangeHandlerMustBeFunction':
       case 'UserNotSignedIn':
       case 'UserNotFound':
@@ -494,16 +502,12 @@ const getOpenDb = (dbName) => {
 
 const insertItem = async (params) => {
   try {
-    if (typeof params !== 'object') throw new errors.ParamsMustBeObject
+    _validateDbInput(params)
 
-    const { databaseName, item, itemId } = params
-
-    _validateDbInput(databaseName)
-
-    const database = getOpenDb(databaseName)
+    const database = getOpenDb(params.databaseName)
 
     const action = 'Insert'
-    const insertParams = await _buildInsertParams(database, item, itemId)
+    const insertParams = await _buildInsertParams(database, params)
 
     await postTransaction(database, action, insertParams)
 
@@ -512,6 +516,7 @@ const insertItem = async (params) => {
     switch (e.name) {
       case 'ParamsMustBeObject':
       case 'DatabaseNotOpen':
+      case 'DatabaseNameMissing':
       case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
       case 'DatabaseNameTooLong':
@@ -534,19 +539,23 @@ const insertItem = async (params) => {
   }
 }
 
-const _buildInsertParams = async (database, item, id) => {
+const _buildInsertParams = async (database, params) => {
+  if (!objectHasOwnProperty(params, 'item')) throw new errors.ItemMissing
+
+  const { item, itemId } = params
+
   if (!item) throw new errors.ItemMissing
-  if (id && typeof id !== 'string') throw new errors.ItemIdMustBeString
-  if (typeof id === 'string' && id.length === 0) throw new errors.ItemIdCannotBeBlank
-  if (id && id.length > MAX_ITEM_ID_CHAR_LENGTH) throw new errors.ItemIdTooLong
+  if (itemId && typeof itemId !== 'string') throw new errors.ItemIdMustBeString
+  if (typeof itemId === 'string' && itemId.length === 0) throw new errors.ItemIdCannotBeBlank
+  if (itemId && itemId.length > MAX_ITEM_ID_CHAR_LENGTH) throw new errors.ItemIdTooLong
 
   const itemString = JSON.stringify(item)
   if (byteSizeOfString(itemString) > MAX_ITEM_BYTES) throw new errors.ItemTooLarge(MAX_ITEM_KB)
 
-  const itemId = id || uuidv4()
+  const id = itemId || uuidv4()
 
-  const itemKey = await crypto.hmac.signString(ws.keys.hmacKey, itemId)
-  const itemRecord = { id: itemId, item }
+  const itemKey = await crypto.hmac.signString(ws.keys.hmacKey, id)
+  const itemRecord = { id, item }
   const encryptedItem = await crypto.aesGcm.encryptJson(database.dbKey, itemRecord)
 
   return { itemKey, encryptedItem }
@@ -554,16 +563,12 @@ const _buildInsertParams = async (database, item, id) => {
 
 const updateItem = async (params) => {
   try {
-    if (typeof params !== 'object') throw new errors.ParamsMustBeObject
+    _validateDbInput(params)
 
-    const { databaseName, item, itemId } = params
-
-    _validateDbInput(databaseName)
-
-    const database = getOpenDb(databaseName)
+    const database = getOpenDb(params.databaseName)
 
     const action = 'Update'
-    const updateParams = await _buildUpdateParams(database, item, itemId)
+    const updateParams = await _buildUpdateParams(database, params)
 
     await postTransaction(database, action, updateParams)
   } catch (e) {
@@ -571,9 +576,11 @@ const updateItem = async (params) => {
     switch (e.name) {
       case 'ParamsMustBeObject':
       case 'DatabaseNotOpen':
+      case 'DatabaseNameMissing':
       case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
       case 'DatabaseNameTooLong':
+      case 'ItemIdMissing':
       case 'ItemIdMustBeString':
       case 'ItemIdCannotBeBlank':
       case 'ItemIdTooLong':
@@ -594,7 +601,12 @@ const updateItem = async (params) => {
   }
 }
 
-const _buildUpdateParams = async (database, item, itemId) => {
+const _buildUpdateParams = async (database, params) => {
+  if (!objectHasOwnProperty(params, 'item')) throw new errors.ItemMissing
+  if (!objectHasOwnProperty(params, 'itemId')) throw new errors.ItemIdMissing
+
+  const { item, itemId } = params
+
   if (typeof itemId !== 'string') throw new errors.ItemIdMustBeString
   if (itemId.length === 0) throw new errors.ItemIdCannotBeBlank
   if (itemId.length > MAX_ITEM_ID_CHAR_LENGTH) throw new errors.ItemIdTooLong
@@ -615,16 +627,12 @@ const _buildUpdateParams = async (database, item, itemId) => {
 
 const deleteItem = async (params) => {
   try {
-    if (typeof params !== 'object') throw new errors.ParamsMustBeObject
+    _validateDbInput(params)
 
-    const { databaseName, itemId } = params
-
-    _validateDbInput(databaseName)
-
-    const database = getOpenDb(databaseName)
+    const database = getOpenDb(params.databaseName)
 
     const action = 'Delete'
-    const deleteParams = await _buildDeleteParams(database, itemId)
+    const deleteParams = await _buildDeleteParams(database, params)
 
     await postTransaction(database, action, deleteParams)
   } catch (e) {
@@ -632,9 +640,11 @@ const deleteItem = async (params) => {
     switch (e.name) {
       case 'ParamsMustBeObject':
       case 'DatabaseNotOpen':
+      case 'DatabaseNameMissing':
       case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
       case 'DatabaseNameTooLong':
+      case 'ItemIdMissing':
       case 'ItemIdMustBeString':
       case 'ItemIdCannotBeBlank':
       case 'ItemIdTooLong':
@@ -653,9 +663,13 @@ const deleteItem = async (params) => {
   }
 }
 
-const _buildDeleteParams = async (database, itemId) => {
+const _buildDeleteParams = async (database, params) => {
+  if (!objectHasOwnProperty(params, 'itemId')) throw new errors.ItemIdMissing
+
+  const { itemId } = params
+
   if (typeof itemId !== 'string') throw new errors.ItemIdMustBeString
-  if (!itemId.length === 0) throw new errors.ItemIdCannotBeBlank
+  if (itemId.length === 0) throw new errors.ItemIdCannotBeBlank
   if (itemId.length > MAX_ITEM_ID_CHAR_LENGTH) throw new errors.ItemIdTooLong
 
   if (!database.itemExists(itemId)) throw new errors.ItemDoesNotExist
@@ -670,11 +684,10 @@ const _buildDeleteParams = async (database, itemId) => {
 
 const putTransaction = async (params) => {
   try {
-    if (typeof params !== 'object') throw new errors.ParamsMustBeObject
+    _validateDbInput(params)
+    if (!objectHasOwnProperty(params, 'operations')) throw new errors.OperationsMissing
 
     const { databaseName, operations } = params
-
-    _validateDbInput(databaseName)
 
     if (!Array.isArray(operations)) throw new errors.OperationsMustBeArray
 
@@ -684,24 +697,21 @@ const putTransaction = async (params) => {
 
     const operationParamsPromises = await Promise.all(operations.map(operation => {
       const command = operation.command
-      const itemId = operation.itemId
 
       switch (command) {
         case 'Insert': {
-          const item = operation.item
-          return _buildInsertParams(database, item, itemId)
+          return _buildInsertParams(database, operation)
         }
 
         case 'Update': {
-          const item = operation.item
-          return _buildUpdateParams(database, item, itemId)
+          return _buildUpdateParams(database, operation)
         }
 
         case 'Delete': {
-          return _buildDeleteParams(database, itemId)
+          return _buildDeleteParams(database, operation)
         }
 
-        default: throw new errors.CommandUnrecognized(command)
+        default: throw new errors.CommandNotRecognized(command)
       }
     }))
     const operationParamsPromiseResults = await Promise.all(operationParamsPromises)
@@ -727,15 +737,20 @@ const putTransaction = async (params) => {
     switch (e.name) {
       case 'ParamsMustBeObject':
       case 'DatabaseNotOpen':
+      case 'DatabaseNameMissing':
       case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
       case 'DatabaseNameTooLong':
+      case 'OperationsMissing':
       case 'OperationsMustBeArray':
       case 'OperationsConflict':
       case 'OperationsExceedLimit':
+      case 'CommandNotRecognized':
+      case 'ItemIdMissing':
       case 'ItemIdMustBeString':
       case 'ItemIdCannotBeBlank':
       case 'ItemIdTooLong':
+      case 'ItemMissing':
       case 'ItemTooLarge':
       case 'ItemAlreadyExists':
       case 'ItemDoesNotExist':

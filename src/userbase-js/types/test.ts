@@ -7,6 +7,7 @@ const {
   signOut,
   updateUser,
   deleteUser,
+  forgotPassword,
   openDatabase,
   insertItem,
   updateItem,
@@ -101,6 +102,12 @@ updateUser({ profile: 'invalid' })
 
 // $ExpectType Promise<void>
 deleteUser()
+
+// $ExpectType Promise<void>
+forgotPassword({ username: 'tuser' })
+
+// $ExpectError
+forgotPassword({})
 
 // $ExpectType Promise<void>
 openDatabase({ databaseName: 'tdb', changeHandler: (items) => { } })

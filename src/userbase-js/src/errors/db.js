@@ -1,5 +1,15 @@
 import statusCodes from '../statusCodes'
 
+class DatabaseNameMissing extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'DatabaseNameMissing'
+    this.message = 'Database name missing.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
 class DatabaseNameCannotBeBlank extends Error {
   constructor(...params) {
     super(...params)
@@ -36,6 +46,16 @@ class DatabaseAlreadyOpening extends Error {
 
     this.name = 'DatabaseAlreadyOpening'
     this.message = 'Already attempting to open database.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class ChangeHandlerMissing extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'ChangeHandlerMissing'
+    this.message = 'Change handler missing.'
     this.status = statusCodes['Bad Request']
   }
 }
@@ -100,6 +120,16 @@ class ItemIdTooLong extends Error {
   }
 }
 
+class ItemIdMissing extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'ItemIdMissing'
+    this.message = 'Item id missing.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
 class ItemIdCannotBeBlank extends Error {
   constructor(...params) {
     super(...params)
@@ -140,6 +170,16 @@ class ItemUpdateConflict extends Error {
   }
 }
 
+class OperationsMissing extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'OperationsMissing'
+    this.message = 'Operations missing.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
 class OperationsMustBeArray extends Error {
   constructor(...params) {
     super(...params)
@@ -150,12 +190,12 @@ class OperationsMustBeArray extends Error {
   }
 }
 
-class CommandUnrecognized extends Error {
+class CommandNotRecognized extends Error {
   constructor(command, ...params) {
     super(command, ...params)
 
-    this.name = 'CommandUnrecognized'
-    this.message = `Command '${command}' unrecognized.`
+    this.name = 'CommandNotRecognized'
+    this.message = `Command '${command}' not recognized.`
     this.status = statusCodes['Bad Request']
   }
 }
@@ -181,22 +221,26 @@ class OperationsExceedLimit extends Error {
 }
 
 export default {
+  DatabaseNameMissing,
   DatabaseNameCannotBeBlank,
   DatabaseNameMustBeString,
   DatabaseNameTooLong,
   DatabaseAlreadyOpening,
+  ChangeHandlerMissing,
   ChangeHandlerMustBeFunction,
   DatabaseNotOpen,
   ItemMissing,
   ItemTooLarge,
   ItemIdMustBeString,
   ItemIdTooLong,
+  ItemIdMissing,
   ItemIdCannotBeBlank,
   ItemAlreadyExists,
   ItemDoesNotExist,
   ItemUpdateConflict,
+  OperationsMissing,
   OperationsMustBeArray,
   OperationsConflict,
   OperationsExceedLimit,
-  CommandUnrecognized
+  CommandNotRecognized
 }

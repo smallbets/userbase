@@ -9,12 +9,13 @@ import cookieParser from 'cookie-parser'
 import logger from './logger'
 import setup from './setup'
 import admin from './admin'
-import user from './user'
+import userController from './user'
 import db from './db'
 import appController from './app'
 import connections from './ws'
 import statusCodes from './statusCodes'
 import responseBuilder from './responseBuilder'
+import { trimReq } from './utils'
 
 const adminPanelDir = '/admin-panel/dist'
 
@@ -22,6 +23,8 @@ const ONE_KB = 1024
 
 // DynamoDB single item limit: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html#limits-items
 const FOUR_HUNDRED_KB = 400 * ONE_KB
+
+const FIVE_KB = 5 * ONE_KB
 
 const HSTS_MAX_AGE = 63072000 // 2 years
 
@@ -78,7 +81,7 @@ async function start(express, app, userbaseConfig = {}) {
       if (conn) {
         const connectionId = conn.id
 
-        const { validationMessage, encryptedValidationMessage } = user.getValidationMessage(userPublicKey)
+        const { validationMessage, encryptedValidationMessage } = userController.getValidationMessage(userPublicKey)
 
         logger.child({ wsRes: { userId, connectionId, adminId, route: 'Connection' } }).info()
         ws.send(JSON.stringify({
@@ -98,7 +101,7 @@ async function start(express, app, userbaseConfig = {}) {
 
           try {
             if (msg.length > FOUR_HUNDRED_KB || msg.byteLength > FOUR_HUNDRED_KB) {
-              logger.child({ wsRes: { userId, connectionId, adminId, size: msg.length } }).error('Received large message')
+              logger.child({ wsRes: { userId, connectionId, adminId, size: msg.length } }).warn('Received large message')
               return ws.send('Message is too large')
             }
 
@@ -124,12 +127,12 @@ async function start(express, app, userbaseConfig = {}) {
             } else {
 
               if (action === 'SignOut') {
-                response = await user.signOut(params.sessionId)
+                response = await userController.signOut(params.sessionId)
               } else if (!conn.keyValidated) {
 
                 switch (action) {
                   case 'ValidateKey': {
-                    response = await user.validateKey(
+                    response = await userController.validateKey(
                       validationMessage,
                       params.validationMessage,
                       res.locals.user,
@@ -150,7 +153,7 @@ async function start(express, app, userbaseConfig = {}) {
                     break
                   }
                   case 'UpdateUser': {
-                    response = await user.updateUser(
+                    response = await userController.updateUser(
                       userId,
                       params.username,
                       params.currentPasswordToken,
@@ -163,7 +166,7 @@ async function start(express, app, userbaseConfig = {}) {
                     break
                   }
                   case 'DeleteUser': {
-                    response = await user.deleteUserController(
+                    response = await userController.deleteUserController(
                       userId,
                       adminId,
                       res.locals.app['app-name']
@@ -202,7 +205,7 @@ async function start(express, app, userbaseConfig = {}) {
                     break
                   }
                   case 'GetPasswordSalts': {
-                    response = await user.getPasswordSaltsByUserId(userId)
+                    response = await userController.getPasswordSaltsByUserId(userId)
                     break
                   }
                   default: {
@@ -247,6 +250,99 @@ async function start(express, app, userbaseConfig = {}) {
       }
     })
 
+    // client first must prove it has access to the user's key by decrypting encryptedFrgotPasswordToken,
+    // then can proceed to request email with temp password be sent to user
+    wss.on('forgot-password', async (ws, req) => {
+      ws.isAlive = true // only gets set once. websocket will terminate automatically in 30-60s
+      const start = Date.now()
+
+      const appId = req.query.appId
+      const username = req.query.username
+
+      logger.child({ appId, username, req: trimReq(req) }).info('Opened forgot-password WebSocket')
+
+      const forgotPasswordTokenResult = await userController.generateForgotPasswordToken(req, appId, username)
+
+      if (forgotPasswordTokenResult.status !== statusCodes['Success']) {
+
+        ws.send(JSON.stringify({
+          route: 'Error',
+          status: forgotPasswordTokenResult.status,
+          data: forgotPasswordTokenResult.data
+        }))
+        ws.terminate()
+
+      } else {
+
+        const {
+          user,
+          app,
+          admin,
+          forgotPasswordToken,
+          encryptedForgotPasswordToken
+        } = forgotPasswordTokenResult.data
+
+        const userId = user['user-id']
+        const adminId = admin['admin-id']
+
+        ws.send(JSON.stringify({
+          route: 'ReceiveEncryptedToken',
+          dhKeySalt: user['diffie-hellman-key-salt'],
+          encryptedForgotPasswordToken
+        }))
+
+        ws.on('message', async (msg) => {
+          try {
+            if (msg.length > FIVE_KB || msg.byteLength > FIVE_KB) {
+              logger.child({ userId, appId, adminId, size: msg.length, req: trimReq(req) }).warn('Received large message over forgot-password')
+              return ws.send('Message is too large')
+            }
+
+            const request = JSON.parse(msg)
+            const { action, params } = request
+
+            if (action === 'ForgotPassword') {
+              const forgotPasswordResponse = await userController.forgotPassword(req, forgotPasswordToken, params.forgotPasswordToken, user, app)
+
+              if (forgotPasswordResponse.status !== statusCodes['Success']) {
+
+                ws.send(JSON.stringify({
+                  route: 'Error',
+                  status: forgotPasswordResponse.status,
+                  data: forgotPasswordResponse.data
+                }))
+                ws.terminate()
+
+              } else {
+                const responseMsg = JSON.stringify({ route: 'SuccessfullyForgotPassword', response: forgotPasswordResponse })
+
+                logger
+                  .child({
+                    userId,
+                    appId,
+                    adminId,
+                    route: action,
+                    statusCode: forgotPasswordResponse.status,
+                    size: responseMsg.length,
+                    req: trimReq(req),
+                    responseTime: Date.now() - start
+                  })
+                  .info('Forgot password finished')
+
+                ws.send(responseMsg)
+                ws.terminate()
+              }
+            } else {
+              throw new Error('Received unknown message')
+            }
+
+          } catch (e) {
+            logger.child({ userId, appId, adminId, err: e, msg, req: trimReq(req) }).error('Error in forgot-password Websocket')
+          }
+        })
+      }
+    })
+
     setInterval(function ping() {
       wss.clients.forEach(ws => {
         if (ws.isAlive === false) return ws.terminate()
@@ -273,16 +369,21 @@ async function start(express, app, userbaseConfig = {}) {
 
     v1Api.use(bodyParser.json())
 
-    v1Api.get('/', user.authenticateUser, (req, res) =>
+    v1Api.get('/', userController.authenticateUser, (req, res) =>
       req.ws
         ? res.ws(socket => wss.emit('connection', socket, req, res))
         : res.send('Not a websocket!')
     )
-    v1Api.post('/auth/sign-up', user.signUp)
-    v1Api.post('/auth/sign-in', user.signIn)
-    v1Api.post('/auth/sign-in-with-session', user.authenticateUser, user.extendSession)
-    v1Api.get('/auth/server-public-key', user.getServerPublicKey)
-    v1Api.get('/auth/get-password-salts', user.getPasswordSaltsController)
+    v1Api.post('/auth/sign-up', userController.signUp)
+    v1Api.post('/auth/sign-in', userController.signIn)
+    v1Api.post('/auth/sign-in-with-session', userController.authenticateUser, userController.extendSession)
+    v1Api.get('/auth/server-public-key', userController.getServerPublicKey)
+    v1Api.get('/auth/get-password-salts', userController.getPasswordSaltsController)
+    v1Api.get('/auth/forgot-password', (req, res) =>
+      req.ws
+        ? res.ws(socket => wss.emit('forgot-password', socket, req, res))
+        : res.send('Not a websocket!')
+    )
 
     // Userbase admin API
     app.use(express.static(path.join(__dirname + adminPanelDir)))
@@ -311,7 +412,7 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.post('/update-admin', admin.authenticateAdmin, admin.updateAdmin)
     v1Admin.post('/change-password', admin.authenticateAdmin, admin.changePassword)
     v1Admin.post('/forgot-password', admin.forgotPassword)
-    v1Admin.put('/internal-profile', admin.authenticateAccessToken, user.updateInternalProfile)
+    v1Admin.put('/internal-profile', admin.authenticateAccessToken, userController.updateInternalProfile)
     v1Admin.get('/payment-status', admin.authenticateAdmin, admin.getSaasSubscriptionController, (req, res) => {
       const subscription = res.locals.subscription
       if (!subscription) return res.end()
