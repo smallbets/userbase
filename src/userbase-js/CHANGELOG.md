@@ -1,6 +1,6 @@
 ## [1.1.0] - 2020-02-10
 ### Added
-- forgotPassword() enables user to have a temporary password sent to their email. They can use it to sign in from a device they've signed in from before with `rememberMe` set to `'local'` and change their password.
+- forgotPassword() enables users to have a temporary password sent to their email. They can use it to sign in from a device they've signed in from before with `rememberMe` set to `'local'` and change their password.
 - signIn() returns usedTempPassword boolean.
 - SDK functions throw "Missing" error when a required parameter is left off the params object.
 
