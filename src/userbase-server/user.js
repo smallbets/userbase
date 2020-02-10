@@ -608,9 +608,11 @@ exports.signIn = async function (req, res) {
     if (usedTempPassword) result.usedTempPassword = true
     if (user['email']) result.email = user['email']
     if (user['profile']) result.profile = user['profile']
-    if (user['password-based-encryption-key-salt'] && user['password-encrypted-seed']) result.passwordBasedBackup = {
-      passwordBasedEncryptionKeySalt: user['password-based-encryption-key-salt'],
-      passwordEncryptedSeed: user['password-encrypted-seed']
+    if (!usedTempPassword && user['password-based-encryption-key-salt'] && user['password-encrypted-seed']) {
+      result.passwordBasedBackup = {
+        passwordBasedEncryptionKeySalt: user['password-based-encryption-key-salt'],
+        passwordEncryptedSeed: user['password-encrypted-seed']
+      }
     }
     if (user['internal-profile']) result.internalProfile = user['internal-profile']
 

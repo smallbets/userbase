@@ -316,19 +316,15 @@ const signOut = async () => {
 }
 
 const _getSeedStringFromPasswordBasedBackup = async (passwordHkdfKey, passwordBasedBackup) => {
-  try {
-    const { passwordBasedEncryptionKeySalt, passwordEncryptedSeed } = passwordBasedBackup
+  const { passwordBasedEncryptionKeySalt, passwordEncryptedSeed } = passwordBasedBackup
 
-    const passwordBasedEncryptionKey = await crypto.aesGcm.getPasswordBasedEncryptionKey(
-      passwordHkdfKey, base64.decode(passwordBasedEncryptionKeySalt))
+  const passwordBasedEncryptionKey = await crypto.aesGcm.getPasswordBasedEncryptionKey(
+    passwordHkdfKey, base64.decode(passwordBasedEncryptionKeySalt))
 
-    const seedFromBackup = await crypto.aesGcm.decrypt(passwordBasedEncryptionKey, base64.decode(passwordEncryptedSeed))
-    const seedStringFromBackup = base64.encode(seedFromBackup)
+  const seedFromBackup = await crypto.aesGcm.decrypt(passwordBasedEncryptionKey, base64.decode(passwordEncryptedSeed))
+  const seedStringFromBackup = base64.encode(seedFromBackup)
 
-    return seedStringFromBackup
-  } catch (e) {
-    throw new errors.UsernameOrPasswordMismatch
-  }
+  return seedStringFromBackup
 }
 
 const _signInWrapper = async (username, passwordToken) => {
@@ -410,7 +406,9 @@ const signIn = async (params) => {
     const savedSeedString = localData.getSeedString(appId, username)
 
     let seedStringFromBackup
-    if (!savedSeedString) {
+    if (!savedSeedString && usedTempPassword) {
+      throw new errors.KeyNotFound("Your key was not found. You can only sign in with a temporary password from a device you've signed in from before.")
+    } else if (!savedSeedString) {
       seedStringFromBackup = await _getSeedStringFromPasswordBasedBackup(passwordHkdfKey, passwordBasedBackup)
       localData.saveSeedString(rememberMe, appId, username, seedStringFromBackup)
     }
@@ -438,6 +436,7 @@ const signIn = async (params) => {
       case 'PasswordMustBeString':
       case 'PasswordAttemptLimitExceeded':
       case 'RememberMeValueNotValid':
+      case 'KeyNotFound':
       case 'AppIdNotSet':
       case 'AppIdNotValid':
       case 'UserAlreadySignedIn':
