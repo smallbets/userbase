@@ -264,7 +264,7 @@ class Database {
   }
 
   itemExists(itemId) {
-    return this.items[itemId] ? true : false
+    return objectHasOwnProperty(this.items, itemId)
   }
 
   applyInsert(itemId, seqNo, record, operationIndex) {
@@ -544,10 +544,11 @@ const _buildInsertParams = async (database, params) => {
 
   const { item, itemId } = params
 
-  if (!item) throw new errors.ItemMissing
-  if (itemId && typeof itemId !== 'string') throw new errors.ItemIdMustBeString
-  if (typeof itemId === 'string' && itemId.length === 0) throw new errors.ItemIdCannotBeBlank
-  if (itemId && itemId.length > MAX_ITEM_ID_CHAR_LENGTH) throw new errors.ItemIdTooLong
+  if (objectHasOwnProperty(params, 'itemId')) {
+    if (typeof itemId !== 'string') throw new errors.ItemIdMustBeString
+    if (itemId.length === 0) throw new errors.ItemIdCannotBeBlank
+    if (itemId.length > MAX_ITEM_ID_CHAR_LENGTH) throw new errors.ItemIdTooLong(MAX_ITEM_ID_CHAR_LENGTH)
+  }
 
   const itemString = JSON.stringify(item)
   if (byteSizeOfString(itemString) > MAX_ITEM_BYTES) throw new errors.ItemTooLarge(MAX_ITEM_KB)
@@ -609,9 +610,8 @@ const _buildUpdateParams = async (database, params) => {
 
   if (typeof itemId !== 'string') throw new errors.ItemIdMustBeString
   if (itemId.length === 0) throw new errors.ItemIdCannotBeBlank
-  if (itemId.length > MAX_ITEM_ID_CHAR_LENGTH) throw new errors.ItemIdTooLong
+  if (itemId.length > MAX_ITEM_ID_CHAR_LENGTH) throw new errors.ItemIdTooLong(MAX_ITEM_ID_CHAR_LENGTH)
 
-  if (!item) throw new errors.ItemMissing
   if (!database.itemExists(itemId)) throw new errors.ItemDoesNotExist
 
   const itemString = JSON.stringify(item)
@@ -670,7 +670,7 @@ const _buildDeleteParams = async (database, params) => {
 
   if (typeof itemId !== 'string') throw new errors.ItemIdMustBeString
   if (itemId.length === 0) throw new errors.ItemIdCannotBeBlank
-  if (itemId.length > MAX_ITEM_ID_CHAR_LENGTH) throw new errors.ItemIdTooLong
+  if (itemId.length > MAX_ITEM_ID_CHAR_LENGTH) throw new errors.ItemIdTooLong(MAX_ITEM_ID_CHAR_LENGTH)
 
   if (!database.itemExists(itemId)) throw new errors.ItemDoesNotExist
 

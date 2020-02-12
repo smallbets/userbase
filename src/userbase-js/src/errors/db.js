@@ -35,7 +35,7 @@ class DatabaseNameTooLong extends Error {
     super(maxLength, ...params)
 
     this.name = 'DatabaseNameTooLong'
-    this.message = `Database name must be less than ${maxLength} characters.`
+    this.message = `Database name cannot be more than ${maxLength} characters.`
     this.status = statusCodes['Bad Request']
   }
 }
@@ -115,7 +115,7 @@ class ItemIdTooLong extends Error {
     super(maxLength, ...params)
 
     this.name = 'ItemIdTooLong'
-    this.message = `Item id must be less than ${maxLength} characters.`
+    this.message = `Item id cannot be more than ${maxLength} characters.`
     this.status = statusCodes['Bad Request']
   }
 }
