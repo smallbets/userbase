@@ -153,7 +153,7 @@ describe('DB Tests', function () {
     describe('Failure Tests', function () {
       beforeEach(function () { beforeEachHook() })
 
-      it('Database params as false boolean', async function () {
+      it('Database params as false', async function () {
         await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
 
         try {
@@ -190,7 +190,7 @@ describe('DB Tests', function () {
         }
       })
 
-      it('Database name as a false boolean', async function () {
+      it('Database name as false', async function () {
         await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
 
         try {
@@ -242,7 +242,7 @@ describe('DB Tests', function () {
         }
       })
 
-      it('Item id as false boolean', async function () {
+      it('Item id as false', async function () {
         await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
 
         try {
@@ -290,6 +290,19 @@ describe('DB Tests', function () {
         } catch (e) {
           expect(e.name, 'error name').to.equal('ItemMissing')
           expect(e.message, 'error message').to.equal('Item missing.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Item undefined', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        try {
+          await this.test.userbase.insertItem({ databaseName, item: undefined })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ItemCannotBeUndefined')
+          expect(e.message, 'error message').to.equal('Item cannot be undefined.')
           expect(e.status, 'error status').to.equal(400)
         }
       })
@@ -396,10 +409,7 @@ describe('DB Tests', function () {
     describe('Failure Tests', function () {
       beforeEach(function () { beforeEachHook() })
 
-      it('Database params as false boolean', async function () {
-        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
-        await this.test.userbase.insertItem({ databaseName, item: 'test-item' })
-
+      it('Database params as false', async function () {
         try {
           await this.test.userbase.updateItem(false)
           throw new Error('should have failed')
@@ -412,7 +422,7 @@ describe('DB Tests', function () {
 
       it('Database not open', async function () {
         try {
-          await this.test.userbase.updateItem({ databaseName, item: 'test-item' })
+          await this.test.userbase.updateItem({ databaseName, item: 'test-item', itemId: 'fake-id' })
           throw new Error('should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.equal('DatabaseNotOpen')
@@ -422,11 +432,8 @@ describe('DB Tests', function () {
       })
 
       it('Database name missing', async function () {
-        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
-        await this.test.userbase.insertItem({ databaseName, item: 'test-item' })
-
         try {
-          await this.test.userbase.updateItem({ item: 'test-item' })
+          await this.test.userbase.updateItem({ item: 'test-item', itemId: 'fake-id' })
           throw new Error('should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.equal('DatabaseNameMissing')
@@ -435,12 +442,9 @@ describe('DB Tests', function () {
         }
       })
 
-      it('Database name as a false boolean', async function () {
-        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
-        await this.test.userbase.insertItem({ databaseName, item: 'test-item' })
-
+      it('Database name as false', async function () {
         try {
-          await this.test.userbase.updateItem({ databaseName: false, item: 'test-item' })
+          await this.test.userbase.updateItem({ databaseName: false, item: 'test-item', itemId: 'fake-id' })
           throw new Error('should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.equal('DatabaseNameMustBeString')
@@ -450,11 +454,8 @@ describe('DB Tests', function () {
       })
 
       it('Database name as null', async function () {
-        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
-        await this.test.userbase.insertItem({ databaseName, item: 'test-item' })
-
         try {
-          await this.test.userbase.updateItem({ databaseName: null, item: 'test-item' })
+          await this.test.userbase.updateItem({ databaseName: null, item: 'test-item', itemId: 'fake-id' })
           throw new Error('should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.equal('DatabaseNameMustBeString')
@@ -464,11 +465,8 @@ describe('DB Tests', function () {
       })
 
       it('Database name as 0 length string', async function () {
-        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
-        await this.test.userbase.insertItem({ databaseName, item: 'test-item' })
-
         try {
-          await this.test.userbase.updateItem({ databaseName: '', item: 'test-item' })
+          await this.test.userbase.updateItem({ databaseName: '', item: 'test-item', itemId: 'fake-id' })
           throw new Error('should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.equal('DatabaseNameCannotBeBlank')
@@ -478,11 +476,8 @@ describe('DB Tests', function () {
       })
 
       it('Database name too long', async function () {
-        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
-        await this.test.userbase.insertItem({ databaseName, item: 'test-item' })
-
         try {
-          await this.test.userbase.updateItem({ databaseName: 'a'.repeat(51), item: 'test-item' })
+          await this.test.userbase.updateItem({ databaseName: 'a'.repeat(51), item: 'test-item', itemId: 'fake-id' })
           throw new Error('should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.equal('DatabaseNameTooLong')
@@ -491,9 +486,8 @@ describe('DB Tests', function () {
         }
       })
 
-      it('Item id as false boolean', async function () {
+      it('Item id as false', async function () {
         await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
-        await this.test.userbase.insertItem({ databaseName, item: 'test-item' })
 
         try {
           await this.test.userbase.updateItem({ databaseName, item: 'test-item', itemId: false })
@@ -507,7 +501,6 @@ describe('DB Tests', function () {
 
       it('Item id missing', async function () {
         await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
-        await this.test.userbase.insertItem({ databaseName, item: 'test-item' })
 
         try {
           await this.test.userbase.updateItem({ databaseName, item: 'test-item' })
@@ -521,7 +514,6 @@ describe('DB Tests', function () {
 
       it('Item id as 0 length string', async function () {
         await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
-        await this.test.userbase.insertItem({ databaseName, item: 'test-item' })
 
         try {
           await this.test.userbase.updateItem({ databaseName, item: 'test-item', itemId: '' })
@@ -535,7 +527,6 @@ describe('DB Tests', function () {
 
       it('Item id too long', async function () {
         await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
-        await this.test.userbase.insertItem({ databaseName, item: 'test-item' })
 
         try {
           await this.test.userbase.updateItem({ databaseName, item: 'test-item', itemId: 'a'.repeat(101) })
@@ -549,7 +540,6 @@ describe('DB Tests', function () {
 
       it('Item missing', async function () {
         await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
-        await this.test.userbase.insertItem({ databaseName, item: 'test-item' })
 
         try {
           await this.test.userbase.updateItem({ databaseName })
@@ -561,11 +551,26 @@ describe('DB Tests', function () {
         }
       })
 
+      it('Item undefined', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        const itemId = 'test-id'
+        await this.test.userbase.insertItem({ databaseName, item: 'test-item', itemId })
+
+        try {
+          await this.test.userbase.updateItem({ databaseName, item: undefined, itemId })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ItemCannotBeUndefined')
+          expect(e.message, 'error message').to.equal('Item cannot be undefined.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
       it('Item too large', async function () {
         await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
 
         const itemId = 'test-id'
-
         await this.test.userbase.insertItem({ databaseName, item: 'test-item', itemId })
 
         const MAX_BYTE_SIZE = 10 * 1024

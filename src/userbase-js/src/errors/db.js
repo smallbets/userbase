@@ -90,6 +90,16 @@ class ItemMissing extends Error {
   }
 }
 
+class ItemCannotBeUndefined extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'ItemCannotBeUndefined'
+    this.message = 'Item cannot be undefined.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
 class ItemTooLarge extends Error {
   constructor(maxKb, ...params) {
     super(maxKb, ...params)
@@ -230,6 +240,7 @@ export default {
   ChangeHandlerMustBeFunction,
   DatabaseNotOpen,
   ItemMissing,
+  ItemCannotBeUndefined,
   ItemTooLarge,
   ItemIdMustBeString,
   ItemIdTooLong,

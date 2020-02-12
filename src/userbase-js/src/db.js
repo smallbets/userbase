@@ -524,6 +524,7 @@ const insertItem = async (params) => {
       case 'ItemIdCannotBeBlank':
       case 'ItemIdTooLong':
       case 'ItemMissing':
+      case 'ItemCannotBeUndefined':
       case 'ItemTooLarge':
       case 'ItemAlreadyExists':
       case 'UserNotSignedIn':
@@ -543,6 +544,8 @@ const _buildInsertParams = async (database, params) => {
   if (!objectHasOwnProperty(params, 'item')) throw new errors.ItemMissing
 
   const { item, itemId } = params
+
+  if (item === undefined) throw new errors.ItemCannotBeUndefined
 
   if (objectHasOwnProperty(params, 'itemId')) {
     if (typeof itemId !== 'string') throw new errors.ItemIdMustBeString
@@ -586,6 +589,7 @@ const updateItem = async (params) => {
       case 'ItemIdCannotBeBlank':
       case 'ItemIdTooLong':
       case 'ItemMissing':
+      case 'ItemCannotBeUndefined':
       case 'ItemTooLarge':
       case 'ItemDoesNotExist':
       case 'ItemUpdateConflict':
@@ -607,6 +611,8 @@ const _buildUpdateParams = async (database, params) => {
   if (!objectHasOwnProperty(params, 'itemId')) throw new errors.ItemIdMissing
 
   const { item, itemId } = params
+
+  if (item === undefined) throw new errors.ItemCannotBeUndefined
 
   if (typeof itemId !== 'string') throw new errors.ItemIdMustBeString
   if (itemId.length === 0) throw new errors.ItemIdCannotBeBlank
