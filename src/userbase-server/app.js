@@ -3,6 +3,7 @@ import connection from './connection'
 import logger from './logger'
 import statusCodes from './statusCodes'
 import setup from './setup'
+import userController from './user'
 
 async function createApp(appName, adminId, appId = uuidv4()) {
   if (!appName || !adminId) throw {
@@ -22,7 +23,6 @@ async function createApp(appName, adminId, appId = uuidv4()) {
       'app-name': trimmedAppName,
       'app-id': appId,
       'creation-date': new Date().toISOString(),
-      'num-users': 0
     }
 
     const params = {
@@ -306,7 +306,7 @@ exports.listAppUsers = async function (req, res) {
     }
 
     return res.status(statusCodes['Success']).send({
-      users,
+      users: users.map(user => userController.buildUserResult(user)),
       appId: app['app-id']
     })
   } catch (e) {

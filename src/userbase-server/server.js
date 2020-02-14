@@ -412,7 +412,6 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.post('/update-admin', admin.authenticateAdmin, admin.updateAdmin)
     v1Admin.post('/change-password', admin.authenticateAdmin, admin.changePassword)
     v1Admin.post('/forgot-password', admin.forgotPassword)
-    v1Admin.put('/internal-profile', admin.authenticateAccessToken, userController.updateInternalProfile)
     v1Admin.get('/payment-status', admin.authenticateAdmin, admin.getSaasSubscriptionController, (req, res) => {
       const subscription = res.locals.subscription
       if (!subscription) return res.end()
@@ -423,6 +422,10 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.post('/stripe/update-saas-payment-session', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.updateSaasSubscriptionPaymentSession)
     v1Admin.post('/stripe/cancel-saas-subscription', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.cancelSaasSubscription)
     v1Admin.post('/stripe/resume-saas-subscription', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.resumeSaasSubscription)
+
+    // Access token endpoints
+    v1Admin.put('/internal-profile', admin.authenticateAccessToken, userController.updateInternalProfile)
+    v1Admin.get('/user', admin.authenticateAccessToken, userController.adminGetUserController)
 
     // internal server used to receive notifications of transactions from peers -- shouldn't be exposed to public
     const internalServer = express()

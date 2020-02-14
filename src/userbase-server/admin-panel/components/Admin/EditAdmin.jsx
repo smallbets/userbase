@@ -11,6 +11,8 @@ export default class EditAdmin extends Component {
       fullName: this.props.fullName,
       currentPassword: '',
       newPassword: '',
+      accessToken: '',
+      loading: true,
       loadingUpdateAdmin: false,
       loadingChangePassword: false,
       loadingDeleteAdmin: false,
@@ -18,6 +20,7 @@ export default class EditAdmin extends Component {
       loadingCancel: false,
       loadingUpdatePaymentMethod: false,
       loadingResumeSubscription: false,
+      errorLoading: '',
       errorUpdatingAdmin: '',
       errorChangingPassword: '',
       errorDeletingAdmin: '',
@@ -41,6 +44,13 @@ export default class EditAdmin extends Component {
   async componentDidMount() {
     this._isMounted = true
     document.addEventListener('keydown', this.handleHitEnter, true)
+
+    try {
+      const accessToken = await adminLogic.getAccessToken()
+      if (this._isMounted) this.setState({ accessToken, loading: false })
+    } catch (e) {
+      if (this._isMounted) this.setState({ errorLoading: e.message, loading: false })
+    }
   }
 
   componentWillUnmount() {
@@ -235,6 +245,7 @@ export default class EditAdmin extends Component {
       email,
       currentPassword,
       newPassword,
+      accessToken,
       loadingUpdateAdmin,
       loadingChangePassword,
       loadingDeleteAdmin,
@@ -249,7 +260,8 @@ export default class EditAdmin extends Component {
       errorCancelling,
       errorUpdatingPaymentMethod,
       errorResumingSubscription,
-      loading
+      loading,
+      errorLoading,
     } = this.state
 
     const disableUpdateButton = (fullName === this.props.fullName || !fullName)
@@ -260,207 +272,217 @@ export default class EditAdmin extends Component {
 
         {loading
           ? <div className='loader inline-block w-6 h-6' />
-          : paymentStatus === 'active' || paymentStatus === 'past_due'
-            ?
-            <div>
-              <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Subscription</div>
+          : errorLoading
+            ? <UnknownError noMarginTop />
+            : <div>
+              {paymentStatus === 'active' || paymentStatus === 'past_due'
+                ?
+                <div>
+                  <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Subscription</div>
 
-              <input
-                className='btn w-56 text-center'
-                type='button'
-                role='link'
-                value={loadingUpdatePaymentMethod ? 'Loading...' : 'Update Payment Method'}
-                disabled={loadingCancel || loadingUpdatePaymentMethod}
-                onClick={this.handleUpdatePaymentMethod}
-              />
+                  <input
+                    className='btn w-56 text-center'
+                    type='button'
+                    role='link'
+                    value={loadingUpdatePaymentMethod ? 'Loading...' : 'Update Payment Method'}
+                    disabled={loadingCancel || loadingUpdatePaymentMethod}
+                    onClick={this.handleUpdatePaymentMethod}
+                  />
 
-              {errorUpdatingPaymentMethod && <UnknownError action='loading the form to update your payment method' />}
+                  {errorUpdatingPaymentMethod && <UnknownError action='loading the form to update your payment method' />}
 
-            </div>
-            :
-            <div>
-              <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Subscription</div>
+                </div>
+                :
+                <div>
+                  <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Subscription</div>
 
-              <div className='font-normal text-left mb-4'>
-                <p>Your trial account is limited to 1 app and 3 users.</p>
-                <p>Remove this limit with a Userbase subscription for only $49 per year.</p>
-              </div>
+                  <div className='font-normal text-left mb-4'>
+                    <p>Your trial account is limited to 1 app and 3 users.</p>
+                    <p>Remove this limit with a Userbase subscription for only $49 per year.</p>
+                  </div>
 
-              {paymentStatus === 'cancel_at_period_end'
-                ? <input
-                  className='btn w-56 text-center'
-                  type='button'
-                  role='link'
-                  value={loadingResumeSubscription ? 'Resuming Subscription...' : 'Resume Subscription'}
-                  disabled={loadingResumeSubscription}
-                  onClick={this.handleResumeSubscription}
-                />
-                : <input
-                  className='btn w-56 text-center'
-                  type='button'
-                  role='link'
-                  disabled={loadingCheckout}
-                  value={loadingCheckout ? 'Loading...' : 'Buy Subscription'}
-                  onClick={this.handleCheckout}
-                />
+                  {paymentStatus === 'cancel_at_period_end'
+                    ? <input
+                      className='btn w-56 text-center'
+                      type='button'
+                      role='link'
+                      value={loadingResumeSubscription ? 'Resuming Subscription...' : 'Resume Subscription'}
+                      disabled={loadingResumeSubscription}
+                      onClick={this.handleResumeSubscription}
+                    />
+                    : <input
+                      className='btn w-56 text-center'
+                      type='button'
+                      role='link'
+                      disabled={loadingCheckout}
+                      value={loadingCheckout ? 'Loading...' : 'Buy Subscription'}
+                      onClick={this.handleCheckout}
+                    />
+                  }
+
+                  {errorCheckingOut && <UnknownError action='loading the checkout form' />}
+                  {errorResumingSubscription && <UnknownError action='resuming your subscription' />}
+
+                </div>
               }
 
-              {errorCheckingOut && <UnknownError action='loading the checkout form' />}
-              {errorResumingSubscription && <UnknownError action='resuming your subscription' />}
+              <hr className='border border-t-0 border-gray-400 mt-8 mb-4' />
 
+              <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Edit Account</div>
+
+              <form onSubmit={this.handleUpdateAcount}>
+                <div className='table'>
+
+                  <div className='table-row'>
+                    <div className='table-cell p-2 w-32 sm:w-40 text-right'>Full Name</div>
+                    <div className='table-cell p-2 w-32 sm:w-40'>
+                      <input
+                        className='font-light text-xs sm:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
+                        type='text'
+                        name='fullName'
+                        autoComplete='name'
+                        value={fullName}
+                        onChange={this.handleInputChange}
+                      />
+                    </div>
+                  </div>
+
+                  <div className='table-row'>
+                    <div className='table-cell p-2 w-32 sm:w-40 text-right'>Email</div>
+                    <div className='table-cell p-2 w-32 sm:w-40'>
+                      <input
+                        className='font-light text-xs sm:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
+                        type='email'
+                        name='email'
+                        autoComplete='email'
+                        onChange={this.handleInputChange}
+                        value={email}
+                      />
+                    </div>
+                  </div>
+
+                </div>
+
+                <div className='text-center'>
+                  <input
+                    className='btn w-56 mt-4'
+                    type='submit'
+                    value={loadingUpdateAdmin ? 'Updating...' : 'Update Account'}
+                    disabled={disableUpdateButton || loadingDeleteAdmin || loadingUpdateAdmin}
+                  />
+
+                  {errorUpdatingAdmin && (
+                    errorUpdatingAdmin === 'Unknown Error'
+                      ? <UnknownError action='updating your account' />
+                      : <div className='error'>{errorUpdatingAdmin}</div>
+                  )}
+                </div>
+
+              </form>
+
+              <hr className='border border-t-0 border-gray-400 mt-8 mb-6' />
+
+              <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Update Password</div>
+
+              <form onSubmit={this.handleChangePassword}>
+                <div className='table'>
+
+                  <div className='table-row'>
+                    <div className='table-cell p-2 w-32 sm:w-40 text-right'>Current Password</div>
+                    <div className='table-cell p-2 w-32 sm:w-40 align-middle'>
+                      <input
+                        className='font-light text-xs sm:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
+                        type='password'
+                        name='currentPassword'
+                        autoComplete='current-password'
+                        onChange={this.handleInputChange}
+                        value={currentPassword}
+                      />
+                    </div>
+                  </div>
+
+                  <div className='table-row'>
+                    <div className='table-cell p-2 w-32 sm:w-40 text-right'>New Password</div>
+                    <div className='table-cell p-2 w-32 sm:w-40 align-middle'>
+                      <input
+                        className='font-light text-xs sm:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
+                        type='password'
+                        name='newPassword'
+                        autoComplete='new-password'
+                        onChange={this.handleInputChange}
+                        value={newPassword}
+                      />
+                    </div>
+                  </div>
+
+                </div>
+
+                <div className='text-center'>
+                  <input
+                    className='btn mt-4 w-56'
+                    type='submit'
+                    value={loadingChangePassword ? 'Changing...' : 'Change Password'}
+                    disabled={(!currentPassword || !newPassword) || loadingDeleteAdmin || loadingUpdateAdmin || loadingChangePassword}
+                  />
+
+                  {errorChangingPassword && (
+                    errorChangingPassword === 'Unknown Error'
+                      ? <UnknownError action='changing your password' />
+                      : <div className='error'>{errorChangingPassword}</div>
+                  )}
+                </div>
+
+              </form>
+
+              <hr className='border border-t-0 border-gray-400 mt-8 mb-6' />
+
+              <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Access Token</div>
+
+              <div className='px-1 font-mono font-light text-center'>{accessToken}</div>
+
+              <hr className='border border-t-0 border-gray-400 mt-8 mb-6' />
+
+              <div className='flex-0 text-lg sm:text-xl text-left mb-4 text-red-600'>Danger Zone</div>
+
+              {(paymentStatus === 'active' || paymentStatus === 'past_due') &&
+                <div>
+                  <div className='flex-0 text-base sm:text-lg text-left mb-1'>Cancel Subscription</div>
+                  <p className='text-left font-normal'>By cancelling your subscription, your account will become limited to 3 users, and no new sign ups will succeed once that limit is reached.</p>
+
+                  <input
+                    className='btn w-56'
+                    type='button'
+                    role='link'
+                    value={loadingCancel ? 'Cancelling Subscription...' : 'Cancel Subscription'}
+                    disabled={loadingCancel || loadingUpdatePaymentMethod}
+                    onClick={this.handleCancelSubscription}
+                  />
+
+                  <br />
+                  <br />
+                </div>
+              }
+
+              <div className='flex-0 text-base sm:text-lg text-left mb-1'>Delete Account</div>
+              <p className='text-left font-normal'>By deleting your account, your apps will stop working, and your users will permanently lose access to their accounts. This action is irreversible.</p>
+
+              <input
+                className='btn w-56'
+                type='button'
+                value={loadingDeleteAdmin ? 'Deleting...' : 'Delete Account'}
+                disabled={loadingDeleteAdmin}
+                onClick={this.handleDeleteAccount}
+              />
+
+              {errorCancelling && <UnknownError action='cancelling your subscription' />}
+
+              {errorDeletingAdmin && (
+                errorDeletingAdmin === 'Unknown Error'
+                  ? <UnknownError action='deleting your account' />
+                  : <div className='error'>{errorDeletingAdmin}</div>
+              )}
             </div>
         }
-
-        <hr className='border border-t-0 border-gray-400 mt-8 mb-4' />
-
-        <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Edit Account</div>
-
-        <form onSubmit={this.handleUpdateAcount}>
-          <div className='table'>
-
-            <div className='table-row'>
-              <div className='table-cell p-2 w-32 sm:w-40 text-right'>Full Name</div>
-              <div className='table-cell p-2 w-32 sm:w-40'>
-                <input
-                  className='font-light text-xs sm:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
-                  type='text'
-                  name='fullName'
-                  autoComplete='name'
-                  value={fullName}
-                  onChange={this.handleInputChange}
-                />
-              </div>
-            </div>
-
-            <div className='table-row'>
-              <div className='table-cell p-2 w-32 sm:w-40 text-right'>Email</div>
-              <div className='table-cell p-2 w-32 sm:w-40'>
-                <input
-                  className='font-light text-xs sm:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
-                  type='email'
-                  name='email'
-                  autoComplete='email'
-                  onChange={this.handleInputChange}
-                  value={email}
-                />
-              </div>
-            </div>
-
-          </div>
-
-          <div className='text-center'>
-            <input
-              className='btn w-56 mt-4'
-              type='submit'
-              value={loadingUpdateAdmin ? 'Updating...' : 'Update Account'}
-              disabled={disableUpdateButton || loadingDeleteAdmin || loadingUpdateAdmin}
-            />
-
-            {errorUpdatingAdmin && (
-              errorUpdatingAdmin === 'Unknown Error'
-                ? <UnknownError action='updating your account' />
-                : <div className='error'>{errorUpdatingAdmin}</div>
-            )}
-          </div>
-
-        </form>
-
-        <hr className='border border-t-0 border-gray-400 mt-8 mb-6' />
-
-        <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Update Password</div>
-
-        <form onSubmit={this.handleChangePassword}>
-          <div className='table'>
-
-            <div className='table-row'>
-              <div className='table-cell p-2 w-32 sm:w-40 text-right'>Current Password</div>
-              <div className='table-cell p-2 w-32 sm:w-40 align-middle'>
-                <input
-                  className='font-light text-xs sm:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
-                  type='password'
-                  name='currentPassword'
-                  autoComplete='current-password'
-                  onChange={this.handleInputChange}
-                  value={currentPassword}
-                />
-              </div>
-            </div>
-
-            <div className='table-row'>
-              <div className='table-cell p-2 w-32 sm:w-40 text-right'>New Password</div>
-              <div className='table-cell p-2 w-32 sm:w-40 align-middle'>
-                <input
-                  className='font-light text-xs sm:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
-                  type='password'
-                  name='newPassword'
-                  autoComplete='new-password'
-                  onChange={this.handleInputChange}
-                  value={newPassword}
-                />
-              </div>
-            </div>
-
-          </div>
-
-          <div className='text-center'>
-            <input
-              className='btn mt-4 w-56'
-              type='submit'
-              value={loadingChangePassword ? 'Changing...' : 'Change Password'}
-              disabled={(!currentPassword || !newPassword) || loadingDeleteAdmin || loadingUpdateAdmin || loadingChangePassword}
-            />
-
-            {errorChangingPassword && (
-              errorChangingPassword === 'Unknown Error'
-                ? <UnknownError action='changing your password' />
-                : <div className='error'>{errorChangingPassword}</div>
-            )}
-          </div>
-
-        </form>
-
-        <hr className='border border-t-0 border-gray-400 mt-8 mb-6' />
-
-        <div className='flex-0 text-lg sm:text-xl text-left mb-4 text-red-600'>Danger Zone</div>
-
-        {(paymentStatus === 'active' || paymentStatus === 'past_due') &&
-          <div>
-            <div className='flex-0 text-base sm:text-lg text-left mb-1'>Cancel Subscription</div>
-            <p className='text-left font-normal'>By cancelling your subscription, your account will become limited to 3 users, and no new sign ups will succeed once that limit is reached.</p>
-
-            <input
-              className='btn w-56'
-              type='button'
-              role='link'
-              value={loadingCancel ? 'Cancelling Subscription...' : 'Cancel Subscription'}
-              disabled={loadingCancel || loadingUpdatePaymentMethod}
-              onClick={this.handleCancelSubscription}
-            />
-
-            <br />
-            <br />
-          </div>
-        }
-
-        <div className='flex-0 text-base sm:text-lg text-left mb-1'>Delete Account</div>
-        <p className='text-left font-normal'>By deleting your account, your apps will stop working, and your users will permanently lose access to their accounts. This action is irreversible.</p>
-
-        <input
-          className='btn w-56'
-          type='button'
-          value={loadingDeleteAdmin ? 'Deleting...' : 'Delete Account'}
-          disabled={loadingDeleteAdmin}
-          onClick={this.handleDeleteAccount}
-        />
-
-        {errorCancelling && <UnknownError action='cancelling your subscription' />}
-
-        {errorDeletingAdmin && (
-          errorDeletingAdmin === 'Unknown Error'
-            ? <UnknownError action='deleting your account' />
-            : <div className='error'>{errorDeletingAdmin}</div>
-        )}
-
 
       </div>
     )

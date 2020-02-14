@@ -250,6 +250,20 @@ const getPaymentStatus = async () => {
   }
 }
 
+const getAccessToken = async () => {
+  try {
+    const accessTokenResponse = await axios({
+      method: 'GET',
+      url: `/access-tokens`,
+      timeout: TEN_SECONDS_MS
+    })
+    const accessToken = accessTokenResponse.data[0]['access-token'] // always returns a single access token for now
+    return accessToken
+  } catch (e) {
+    errorHandler(e)
+  }
+}
+
 export default {
   createAdmin,
   createApp,
@@ -265,5 +279,6 @@ export default {
   updateSaasPaymentMethod,
   cancelSaasSubscription,
   resumeSaasSubscription,
-  getPaymentStatus
+  getPaymentStatus,
+  getAccessToken,
 }
