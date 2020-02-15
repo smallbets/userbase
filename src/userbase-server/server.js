@@ -418,11 +418,10 @@ async function start(express, app, userbaseConfig = {}) {
 
       const result = {
         email: admin['email'],
-        fullName: admin['full-name'],
-        paymentStatus: subscription
-          ? (subscription.cancel_at_period_end ? 'cancel_at_period_end' : subscription.status)
-          : null
+        fullName: admin['full-name']
       }
+
+      if (subscription) result.paymentStatus = subscription.cancel_at_period_end ? 'cancel_at_period_end' : subscription.status
 
       return res.send(result)
     })
