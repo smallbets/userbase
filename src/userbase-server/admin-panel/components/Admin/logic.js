@@ -238,12 +238,13 @@ const resumeSaasSubscription = async () => {
 
 const getPaymentStatus = async () => {
   try {
-    const paymentStatusResponse = await axios({
+    const adminAccountResponse = await axios({
       method: 'GET',
-      url: `/${VERSION}/admin/payment-status`,
+      url: `/${VERSION}/admin/account`,
       timeout: TEN_SECONDS_MS
     })
-    const paymentStatus = paymentStatusResponse.data
+    const { paymentStatus, email, fullName } = adminAccountResponse.data
+    updateLocalSession(email, fullName)
     return paymentStatus
   } catch (e) {
     errorHandler(e)

@@ -412,10 +412,19 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.post('/update-admin', admin.authenticateAdmin, admin.updateAdmin)
     v1Admin.post('/change-password', admin.authenticateAdmin, admin.changePassword)
     v1Admin.post('/forgot-password', admin.forgotPassword)
-    v1Admin.get('/payment-status', admin.authenticateAdmin, admin.getSaasSubscriptionController, (req, res) => {
+    v1Admin.get('/account', admin.authenticateAdmin, admin.getSaasSubscriptionController, (req, res) => {
+      const admin = res.locals.admin
       const subscription = res.locals.subscription
-      if (!subscription) return res.end()
-      return res.send(subscription.cancel_at_period_end ? 'cancel_at_period_end' : subscription.status)
+
+      const result = {
+        email: admin['email'],
+        fullName: admin['full-name'],
+        paymentStatus: subscription
+          ? (subscription.cancel_at_period_end ? 'cancel_at_period_end' : subscription.status)
+          : null
+      }
+
+      return res.send(result)
     })
 
     v1Admin.post('/stripe/create-saas-payment-session', admin.authenticateAdmin, admin.createSaasPaymentSession)
