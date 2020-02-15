@@ -683,6 +683,56 @@ async function getUserByUserId(userId) {
 }
 exports.getUserByUserId = getUserByUserId
 
+const buildUserResult = (user) => {
+  const result = {
+    username: user['username'],
+    userId: user['user-id'],
+    appId: user['app-id'],
+    creationDate: user['creation-date'],
+  }
+
+  if (user['email']) result['email'] = user['email']
+  if (user['profile']) result['profile'] = user['profile']
+  if (user['internal-profile']) result['internalProfile'] = user['internal-profile']
+  if (user['deleted']) result['deleted'] = user['deleted']
+
+  return result
+}
+exports.buildUserResult = buildUserResult
+
+exports.adminGetUserController = async function (req, res) {
+  const { appId, userId } = req.body
+
+  try {
+    logger.child({ appId, userId, req: trimReq(req) }).info('Admin getting user')
+
+    _validateUserId(userId)
+
+    const user = await getUserByUserId(userId)
+    // allow admin to retrieve deleted users and make sure user belongs to app
+    if (!user || user['app-id'] !== appId) {
+      throw { status: statusCodes['Not Found'], error: { message: 'User not found' } }
+    }
+
+    logger
+      .child({ appId, userId, statusCode: statusCodes['Success'], req: trimReq(req) })
+      .info('Successfully retrieved user for admin')
+
+    return res.send(buildUserResult(user))
+  } catch (e) {
+    const message = 'Failed to retrieve user for admin.'
+
+    if (e.status && e.error) {
+      logger.child({ appId, userId, statusCode: e.status, err: e.error, req: trimReq(req) }).info(message)
+      return res.status(e.status).send(e.error)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ appId, userId, statusCode, err: e, req: trimReq(req) }).error(message)
+      return res.status(statusCode).send({ message })
+    }
+  }
+}
+
 exports.extendSession = async function (req, res) {
   const user = res.locals.user
 

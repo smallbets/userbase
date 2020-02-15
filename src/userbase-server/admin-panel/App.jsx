@@ -36,6 +36,7 @@ export default class App extends Component {
     if (signedIn) {
       try {
         paymentStatus = await adminLogic.getPaymentStatus()
+        this.handleReadHash()
 
         if (this.state.signedIn && paymentStatus === 'past_due') {
           window.alert('Please update your payment method!')
