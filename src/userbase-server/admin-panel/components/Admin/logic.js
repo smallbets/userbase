@@ -119,7 +119,10 @@ const forgotPassword = async (email) => {
     const lowerCaseEmail = email.toLowerCase()
     await axios({
       method: 'POST',
-      url: `/${VERSION}/admin/forgot-password?email=${lowerCaseEmail}`,
+      url: `/${VERSION}/admin/forgot-password`,
+      data: {
+        email: lowerCaseEmail
+      },
       timeout: TEN_SECONDS_MS
     })
   } catch (e) {

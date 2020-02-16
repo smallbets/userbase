@@ -165,7 +165,7 @@ exports.deleteApp = async function (req, res) {
     .status(statusCodes['Payment Required'])
     .send('Pay subscription fee to delete an app.')
 
-  const appName = req.query.appName
+  const appName = req.body.appName
 
   const admin = res.locals.admin
   const adminId = admin['admin-id']
@@ -212,8 +212,8 @@ exports.permanentDeleteApp = async function (req, res) {
     .status(statusCodes['Payment Required'])
     .send('Pay subscription fee to permanently delete an app.')
 
-  const appName = req.query.appName
-  const appId = req.query.appId
+  const appName = req.body.appName
+  const appId = req.body.appId
 
   const admin = res.locals.admin
   const adminId = admin['admin-id']
@@ -273,7 +273,7 @@ exports.permanentDeleteApp = async function (req, res) {
 }
 
 exports.listAppUsers = async function (req, res) {
-  const appName = req.query.appName
+  const appName = req.body.appName
 
   const admin = res.locals.admin
   const adminId = admin['admin-id']
