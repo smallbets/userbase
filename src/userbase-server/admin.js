@@ -465,7 +465,7 @@ const setTempPassword = async (email, tempPassword) => {
 }
 
 exports.forgotPassword = async function (req, res) {
-  const email = req.query.email && req.query.email.toLowerCase()
+  const email = req.body.email && req.body.email.toLowerCase()
 
   if (!email) return res
     .status(statusCodes['Bad Request'])

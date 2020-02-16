@@ -23,7 +23,10 @@ const listAppUsers = async (appName) => {
   try {
     const listAppUsersResponse = await axios({
       method: 'POST',
-      url: `/${VERSION}/admin/list-app-users?appName=${appName}`,
+      url: `/${VERSION}/admin/list-app-users`,
+      data: {
+        appName
+      },
       timeout: TEN_SECONDS_MS
     })
 
@@ -38,7 +41,10 @@ const deleteApp = async (appName) => {
   try {
     await axios({
       method: 'POST',
-      url: `/${VERSION}/admin/delete-app?appName=${appName}`,
+      url: `/${VERSION}/admin/delete-app`,
+      data: {
+        appName
+      },
       timeout: TEN_SECONDS_MS
     })
   } catch (e) {
@@ -50,7 +56,11 @@ const permanentDeleteApp = async (appId, appName) => {
   try {
     await axios({
       method: 'POST',
-      url: `/${VERSION}/admin/permanent-delete-app?appId=${appId}&appName=${appName}`,
+      url: `/${VERSION}/admin/permanent-delete-app`,
+      data: {
+        appId,
+        appName,
+      },
       timeout: TEN_SECONDS_MS
     })
   } catch (e) {

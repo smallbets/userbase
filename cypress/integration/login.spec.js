@@ -109,4 +109,31 @@ describe('Login - Signup Testing', function () {
     })
   })
 
+  it('Signin with + character in username', function () {
+    cy.getRandomInfoWithParams(null, null, 'none').then((randomInfo) => {
+      cy.window().then((window) => {
+        const { userbase } = window
+        window._userbaseEndpoint = info.endpoint
+        userbase.init({ appId: info.appId })
+
+        randomInfo.username += '+'
+
+        return userbase.signUp(randomInfo).then((user) => {
+          expect(user.username, 'user.username').to.exists
+          expect(user.username, 'user.username to be the one signed up').to.equal(randomInfo.username)
+
+          return userbase.signOut().then(() => {
+            return userbase.signIn(randomInfo).then((loggedInUser) => {
+              expect(loggedInUser.username, 'loggedInUser.username').to.exists
+              expect(loggedInUser.username, 'loggedInUser.username to be the one signed in').to.equal(randomInfo.username)
+
+              return userbase.deleteUser()
+            })
+          })
+        })
+      })
+    })
+
+  })
+
 })

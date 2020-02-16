@@ -26,7 +26,7 @@ const signUp = async (username, passwordToken, publicKey, passwordSalts, keySalt
 const getPasswordSalts = async (username) => {
   const passwordSaltsResponse = await axios({
     method: 'GET',
-    url: `${config.getEndpoint()}/api/auth/get-password-salts?appId=${config.getAppId()}&username=${username}`,
+    url: `${config.getEndpoint()}/api/auth/get-password-salts?appId=${config.getAppId()}&username=${encodeURIComponent(username)}`,
     timeout: TEN_SECONDS_MS
   })
   return passwordSaltsResponse.data
