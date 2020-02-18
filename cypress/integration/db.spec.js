@@ -27,7 +27,7 @@ const beforeEachHook = function () {
   })
 }
 
-const successfulInsertSingleItem = async function (itemToInsert, userbase) {
+const successfulInsertSingleItem = async function (itemToInsert, userbase, insideTransaction = false) {
   let successful
   let changeHandlerCallCount = 0
 
@@ -49,13 +49,21 @@ const successfulInsertSingleItem = async function (itemToInsert, userbase) {
   }
 
   await userbase.openDatabase({ databaseName, changeHandler })
-  await userbase.insertItem({ databaseName, item: itemToInsert })
+
+  if (!insideTransaction) {
+    await userbase.insertItem({ databaseName, item: itemToInsert })
+  } else {
+    await userbase.putTransaction({
+      databaseName,
+      operations: [{ command: 'Insert', item: itemToInsert }]
+    })
+  }
 
   expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
   expect(successful, 'successful state').to.be.true
 }
 
-const successfulUpdateSingleItem = async function (itemToUpdate, userbase) {
+const successfulUpdateSingleItem = async function (itemToUpdate, userbase, insideTransaction = false) {
   let successful
   let changeHandlerCallCount = 0
 
@@ -80,7 +88,15 @@ const successfulUpdateSingleItem = async function (itemToUpdate, userbase) {
 
   await userbase.openDatabase({ databaseName, changeHandler })
   await userbase.insertItem({ databaseName, item: 'hello world', itemId: testItemId })
-  await userbase.updateItem({ databaseName, item: itemToUpdate, itemId: testItemId })
+
+  if (!insideTransaction) {
+    await userbase.updateItem({ databaseName, item: itemToUpdate, itemId: testItemId })
+  } else {
+    await userbase.putTransaction({
+      databaseName,
+      operations: [{ command: 'Update', item: itemToUpdate, itemId: testItemId }]
+    })
+  }
 
   expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(3)
   expect(successful, 'successful state').to.be.true
@@ -153,7 +169,7 @@ describe('DB Tests', function () {
     describe('Failure Tests', function () {
       beforeEach(function () { beforeEachHook() })
 
-      it('Database params as false boolean', async function () {
+      it('Params as false', async function () {
         await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
 
         try {
@@ -190,7 +206,7 @@ describe('DB Tests', function () {
         }
       })
 
-      it('Database name as a false boolean', async function () {
+      it('Database name as false', async function () {
         await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
 
         try {
@@ -242,7 +258,7 @@ describe('DB Tests', function () {
         }
       })
 
-      it('Item id as false boolean', async function () {
+      it('Item id as false', async function () {
         await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
 
         try {
@@ -290,6 +306,32 @@ describe('DB Tests', function () {
         } catch (e) {
           expect(e.name, 'error name').to.equal('ItemMissing')
           expect(e.message, 'error message').to.equal('Item missing.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Item undefined', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        try {
+          await this.test.userbase.insertItem({ databaseName, item: undefined })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ItemInvalid')
+          expect(e.message, 'error message').to.equal('Item must be serializable to JSON.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Item as function', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        try {
+          await this.test.userbase.insertItem({ databaseName, item: () => { } })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ItemInvalid')
+          expect(e.message, 'error message').to.equal('Item must be serializable to JSON.')
           expect(e.status, 'error status').to.equal(400)
         }
       })
@@ -396,10 +438,7 @@ describe('DB Tests', function () {
     describe('Failure Tests', function () {
       beforeEach(function () { beforeEachHook() })
 
-      it('Database params as false boolean', async function () {
-        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
-        await this.test.userbase.insertItem({ databaseName, item: 'test-item' })
-
+      it('Params as false', async function () {
         try {
           await this.test.userbase.updateItem(false)
           throw new Error('should have failed')
@@ -412,7 +451,7 @@ describe('DB Tests', function () {
 
       it('Database not open', async function () {
         try {
-          await this.test.userbase.updateItem({ databaseName, item: 'test-item' })
+          await this.test.userbase.updateItem({ databaseName, item: 'test-item', itemId: 'fake-id' })
           throw new Error('should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.equal('DatabaseNotOpen')
@@ -422,11 +461,8 @@ describe('DB Tests', function () {
       })
 
       it('Database name missing', async function () {
-        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
-        await this.test.userbase.insertItem({ databaseName, item: 'test-item' })
-
         try {
-          await this.test.userbase.updateItem({ item: 'test-item' })
+          await this.test.userbase.updateItem({ item: 'test-item', itemId: 'fake-id' })
           throw new Error('should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.equal('DatabaseNameMissing')
@@ -435,12 +471,9 @@ describe('DB Tests', function () {
         }
       })
 
-      it('Database name as a false boolean', async function () {
-        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
-        await this.test.userbase.insertItem({ databaseName, item: 'test-item' })
-
+      it('Database name as false', async function () {
         try {
-          await this.test.userbase.updateItem({ databaseName: false, item: 'test-item' })
+          await this.test.userbase.updateItem({ databaseName: false, item: 'test-item', itemId: 'fake-id' })
           throw new Error('should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.equal('DatabaseNameMustBeString')
@@ -450,11 +483,8 @@ describe('DB Tests', function () {
       })
 
       it('Database name as null', async function () {
-        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
-        await this.test.userbase.insertItem({ databaseName, item: 'test-item' })
-
         try {
-          await this.test.userbase.updateItem({ databaseName: null, item: 'test-item' })
+          await this.test.userbase.updateItem({ databaseName: null, item: 'test-item', itemId: 'fake-id' })
           throw new Error('should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.equal('DatabaseNameMustBeString')
@@ -464,11 +494,8 @@ describe('DB Tests', function () {
       })
 
       it('Database name as 0 length string', async function () {
-        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
-        await this.test.userbase.insertItem({ databaseName, item: 'test-item' })
-
         try {
-          await this.test.userbase.updateItem({ databaseName: '', item: 'test-item' })
+          await this.test.userbase.updateItem({ databaseName: '', item: 'test-item', itemId: 'fake-id' })
           throw new Error('should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.equal('DatabaseNameCannotBeBlank')
@@ -478,11 +505,8 @@ describe('DB Tests', function () {
       })
 
       it('Database name too long', async function () {
-        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
-        await this.test.userbase.insertItem({ databaseName, item: 'test-item' })
-
         try {
-          await this.test.userbase.updateItem({ databaseName: 'a'.repeat(51), item: 'test-item' })
+          await this.test.userbase.updateItem({ databaseName: 'a'.repeat(51), item: 'test-item', itemId: 'fake-id' })
           throw new Error('should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.equal('DatabaseNameTooLong')
@@ -491,9 +515,8 @@ describe('DB Tests', function () {
         }
       })
 
-      it('Item id as false boolean', async function () {
+      it('Item id as false', async function () {
         await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
-        await this.test.userbase.insertItem({ databaseName, item: 'test-item' })
 
         try {
           await this.test.userbase.updateItem({ databaseName, item: 'test-item', itemId: false })
@@ -507,7 +530,6 @@ describe('DB Tests', function () {
 
       it('Item id missing', async function () {
         await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
-        await this.test.userbase.insertItem({ databaseName, item: 'test-item' })
 
         try {
           await this.test.userbase.updateItem({ databaseName, item: 'test-item' })
@@ -521,7 +543,6 @@ describe('DB Tests', function () {
 
       it('Item id as 0 length string', async function () {
         await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
-        await this.test.userbase.insertItem({ databaseName, item: 'test-item' })
 
         try {
           await this.test.userbase.updateItem({ databaseName, item: 'test-item', itemId: '' })
@@ -535,7 +556,6 @@ describe('DB Tests', function () {
 
       it('Item id too long', async function () {
         await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
-        await this.test.userbase.insertItem({ databaseName, item: 'test-item' })
 
         try {
           await this.test.userbase.updateItem({ databaseName, item: 'test-item', itemId: 'a'.repeat(101) })
@@ -549,7 +569,6 @@ describe('DB Tests', function () {
 
       it('Item missing', async function () {
         await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
-        await this.test.userbase.insertItem({ databaseName, item: 'test-item' })
 
         try {
           await this.test.userbase.updateItem({ databaseName })
@@ -561,11 +580,42 @@ describe('DB Tests', function () {
         }
       })
 
+      it('Item undefined', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        const itemId = 'test-id'
+        await this.test.userbase.insertItem({ databaseName, item: 'test-item', itemId })
+
+        try {
+          await this.test.userbase.updateItem({ databaseName, item: undefined, itemId })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ItemInvalid')
+          expect(e.message, 'error message').to.equal('Item must be serializable to JSON.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Item as a function', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        const itemId = 'test-id'
+        await this.test.userbase.insertItem({ databaseName, item: 'test-item', itemId })
+
+        try {
+          await this.test.userbase.updateItem({ databaseName, item: () => { }, itemId })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ItemInvalid')
+          expect(e.message, 'error message').to.equal('Item must be serializable to JSON.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
       it('Item too large', async function () {
         await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
 
         const itemId = 'test-id'
-
         await this.test.userbase.insertItem({ databaseName, item: 'test-item', itemId })
 
         const MAX_BYTE_SIZE = 10 * 1024
@@ -591,6 +641,538 @@ describe('DB Tests', function () {
           expect(e.name, 'error name').to.equal('ItemDoesNotExist')
           expect(e.message, 'error message').to.equal('Item with the provided id does not exist.')
           expect(e.status, 'error status').to.equal(404)
+        }
+      })
+
+    })
+
+  })
+
+  describe('Put Transaction', function () {
+
+    describe('Success Tests', function () {
+      const insideTransaction = true
+
+      beforeEach(function () { beforeEachHook() })
+
+      it('Insert null', async function () {
+        const itemToInsert = null
+        await successfulInsertSingleItem(itemToInsert, this.test.userbase, insideTransaction)
+      })
+
+      it('Insert 0 length string', async function () {
+        const itemToInsert = ''
+        await successfulInsertSingleItem(itemToInsert, this.test.userbase, insideTransaction)
+      })
+
+      it('Insert string', async function () {
+        const itemToInsert = 'Hello, world!'
+        await successfulInsertSingleItem(itemToInsert, this.test.userbase, insideTransaction)
+      })
+
+      it('Insert 0', async function () {
+        const itemToInsert = 0
+        await successfulInsertSingleItem(itemToInsert, this.test.userbase, insideTransaction)
+      })
+
+      it('Insert 1', async function () {
+        const itemToInsert = 1
+        await successfulInsertSingleItem(itemToInsert, this.test.userbase, insideTransaction)
+      })
+
+      it('Insert false', async function () {
+        const itemToInsert = false
+        await successfulInsertSingleItem(itemToInsert, this.test.userbase, insideTransaction)
+      })
+
+      it('Insert true', async function () {
+        const itemToInsert = true
+        await successfulInsertSingleItem(itemToInsert, this.test.userbase, insideTransaction)
+      })
+
+      it('Insert empty array', async function () {
+        const itemToInsert = []
+        await successfulInsertSingleItem(itemToInsert, this.test.userbase, insideTransaction)
+      })
+
+      it('Insert array with 1 element', async function () {
+        const itemToInsert = ['hello world']
+        await successfulInsertSingleItem(itemToInsert, this.test.userbase, insideTransaction)
+      })
+
+      it('Insert empty object', async function () {
+        const itemToInsert = {}
+        await successfulInsertSingleItem(itemToInsert, this.test.userbase, insideTransaction)
+      })
+
+      it('Insert object with 1 key set to null', async function () {
+        const itemToInsert = { testKey: null }
+        await successfulInsertSingleItem(itemToInsert, this.test.userbase, insideTransaction)
+      })
+
+      it('Update to null', async function () {
+        const itemToUpdate = null
+        await successfulUpdateSingleItem(itemToUpdate, this.test.userbase, insideTransaction)
+      })
+
+      it('Update to 0 length string', async function () {
+        const itemToUpdate = ''
+        await successfulUpdateSingleItem(itemToUpdate, this.test.userbase, insideTransaction)
+      })
+
+      it('Update to string', async function () {
+        const itemToUpdate = 'Hello, world!'
+        await successfulUpdateSingleItem(itemToUpdate, this.test.userbase, insideTransaction)
+      })
+
+      it('Update to 0', async function () {
+        const itemToUpdate = 0
+        await successfulUpdateSingleItem(itemToUpdate, this.test.userbase, insideTransaction)
+      })
+
+      it('Update to 1', async function () {
+        const itemToUpdate = 1
+        await successfulUpdateSingleItem(itemToUpdate, this.test.userbase, insideTransaction)
+      })
+
+      it('Update to false', async function () {
+        const itemToUpdate = false
+        await successfulUpdateSingleItem(itemToUpdate, this.test.userbase, insideTransaction)
+      })
+
+      it('Update to true', async function () {
+        const itemToUpdate = true
+        await successfulUpdateSingleItem(itemToUpdate, this.test.userbase, insideTransaction)
+      })
+
+      it('Update to empty array', async function () {
+        const itemToUpdate = []
+        await successfulUpdateSingleItem(itemToUpdate, this.test.userbase, insideTransaction)
+      })
+
+      it('Update to array with 1 element', async function () {
+        const itemToUpdate = ['hello world']
+        await successfulUpdateSingleItem(itemToUpdate, this.test.userbase, insideTransaction)
+      })
+
+      it('Update to empty object', async function () {
+        const itemToUpdate = {}
+        await successfulUpdateSingleItem(itemToUpdate, this.test.userbase, insideTransaction)
+      })
+
+      it('Update to object with 1 key set to null', async function () {
+        const itemToUpdate = { testKey: null }
+        await successfulUpdateSingleItem(itemToUpdate, this.test.userbase, insideTransaction)
+      })
+
+    })
+
+    describe('Failure Tests', function () {
+      beforeEach(function () { beforeEachHook() })
+
+      it('Params as false', async function () {
+        try {
+          await this.test.userbase.putTransaction(false)
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ParamsMustBeObject')
+          expect(e.message, 'error message').to.equal('Parameters passed to function must be placed inside an object.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Database not open', async function () {
+        try {
+          await this.test.userbase.putTransaction({ databaseName, operations: [{ command: 'Insert', item: 'test-item', itemId: 'fake-id' }] })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('DatabaseNotOpen')
+          expect(e.message, 'error message').to.equal('Database is not open.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Database name missing', async function () {
+        try {
+          await this.test.userbase.putTransaction({ operations: [{ command: 'Insert', item: 'test-item', itemId: 'fake-id' }] })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('DatabaseNameMissing')
+          expect(e.message, 'error message').to.equal('Database name missing.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Database name as false', async function () {
+        try {
+          await this.test.userbase.putTransaction({ databaseName: false, operations: [{ command: 'Insert', item: 'test-item', itemId: 'fake-id' }] })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('DatabaseNameMustBeString')
+          expect(e.message, 'error message').to.equal('Database name must be a string.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Database name as null', async function () {
+        try {
+          await this.test.userbase.putTransaction({ databaseName: null, operations: [{ command: 'Insert', item: 'test-item', itemId: 'fake-id' }] })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('DatabaseNameMustBeString')
+          expect(e.message, 'error message').to.equal('Database name must be a string.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Database name as 0 length string', async function () {
+        try {
+          await this.test.userbase.putTransaction({ databaseName: '', operations: [{ command: 'Insert', item: 'test-item', itemId: 'fake-id' }] })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('DatabaseNameCannotBeBlank')
+          expect(e.message, 'error message').to.equal('Database name cannot be blank.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Database name too long', async function () {
+        try {
+          await this.test.userbase.putTransaction({ databaseName: 'a'.repeat(51), operations: [{ command: 'Insert', item: 'test-item', itemId: 'fake-id' }] })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('DatabaseNameTooLong')
+          expect(e.message, 'error message').to.equal('Database name cannot be more than 50 characters.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Insert with item id as false', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        try {
+          await this.test.userbase.putTransaction({ databaseName, operations: [{ command: 'Insert', item: 'test-item', itemId: false }] })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ItemIdMustBeString')
+          expect(e.message, 'error message').to.equal('Item id must be a string.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Insert with item id as 0 length string', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        try {
+          await this.test.userbase.putTransaction({ databaseName, operations: [{ command: 'Insert', item: 'test-item', itemId: '' }] })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ItemIdCannotBeBlank')
+          expect(e.message, 'error message').to.equal('Item id cannot be blank.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Insert with item id too long', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        try {
+          await this.test.userbase.putTransaction({ databaseName, operations: [{ command: 'Insert', item: 'test-item', itemId: 'a'.repeat(101) }] })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ItemIdTooLong')
+          expect(e.message, 'error message').to.equal('Item id cannot be more than 100 characters.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Insert with item missing', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        try {
+          await this.test.userbase.putTransaction({ databaseName, operations: [{ command: 'Insert' }] })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ItemMissing')
+          expect(e.message, 'error message').to.equal('Item missing.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Insert with item undefined', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        try {
+          await this.test.userbase.putTransaction({ databaseName, operations: [{ command: 'Insert', item: undefined }] })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ItemInvalid')
+          expect(e.message, 'error message').to.equal('Item must be serializable to JSON.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Insert with item as function', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        try {
+          await this.test.userbase.putTransaction({ databaseName, operations: [{ command: 'Insert', item: () => { } }] })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ItemInvalid')
+          expect(e.message, 'error message').to.equal('Item must be serializable to JSON.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Insert with item too large', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        const MAX_BYTE_SIZE = 10 * 1024
+        const item = getStringOfByteLength(MAX_BYTE_SIZE)
+
+        try {
+          await this.test.userbase.putTransaction({ databaseName, operations: [{ command: 'Insert', item }] })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ItemTooLarge')
+          expect(e.message, 'error message').to.equal('Item must be less than 10 KB.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Update with item id as false', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        try {
+          await this.test.userbase.putTransaction({ databaseName, operations: [{ command: 'Update', item: 'test-item', itemId: false }] })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ItemIdMustBeString')
+          expect(e.message, 'error message').to.equal('Item id must be a string.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Update with item id missing', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        try {
+          await this.test.userbase.putTransaction({ databaseName, operations: [{ command: 'Update', item: 'test-item' }] })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ItemIdMissing')
+          expect(e.message, 'error message').to.equal('Item id missing.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Update with item id as 0 length string', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        try {
+          await this.test.userbase.putTransaction({ databaseName, operations: [{ command: 'Update', item: 'test-item', itemId: '' }] })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ItemIdCannotBeBlank')
+          expect(e.message, 'error message').to.equal('Item id cannot be blank.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Update with item id too long', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        try {
+          await this.test.userbase.putTransaction({ databaseName, operations: [{ command: 'Update', item: 'test-item', itemId: 'a'.repeat(101) }] })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ItemIdTooLong')
+          expect(e.message, 'error message').to.equal('Item id cannot be more than 100 characters.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Update with item missing', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        try {
+          await this.test.userbase.putTransaction({ databaseName, operations: [{ command: 'Update' }] })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ItemMissing')
+          expect(e.message, 'error message').to.equal('Item missing.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Update with item undefined', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        const itemId = 'test-id'
+        await this.test.userbase.insertItem({ databaseName, item: 'test-item', itemId })
+
+        try {
+          await this.test.userbase.putTransaction({ databaseName, operations: [{ command: 'Update', item: undefined, itemId }] })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ItemInvalid')
+          expect(e.message, 'error message').to.equal('Item must be serializable to JSON.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Update with item as function', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        const itemId = 'test-id'
+        await this.test.userbase.insertItem({ databaseName, item: 'test-item', itemId })
+
+        try {
+          await this.test.userbase.putTransaction({ databaseName, operations: [{ command: 'Update', item: () => { }, itemId }] })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ItemInvalid')
+          expect(e.message, 'error message').to.equal('Item must be serializable to JSON.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Update with item too large', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        const itemId = 'test-id'
+        await this.test.userbase.insertItem({ databaseName, item: 'test-item', itemId })
+
+        const MAX_BYTE_SIZE = 10 * 1024
+        const item = getStringOfByteLength(MAX_BYTE_SIZE)
+
+        try {
+          await this.test.userbase.putTransaction({ databaseName, operations: [{ command: 'Update', item, itemId }] })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ItemTooLarge')
+          expect(e.message, 'error message').to.equal('Item must be less than 10 KB.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Update item that does not exist', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        try {
+          await this.test.userbase.putTransaction({ databaseName, operations: [{ command: 'Update', item: false, itemId: 'fake-item-id' }] })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ItemDoesNotExist')
+          expect(e.message, 'error message').to.equal('Item with the provided id does not exist.')
+          expect(e.status, 'error status').to.equal(404)
+        }
+      })
+
+      it('Operations missing', async function () {
+        try {
+          await this.test.userbase.putTransaction({ databaseName })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('OperationsMissing')
+          expect(e.message, 'error message').to.equal('Operations missing.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Operations must be array', async function () {
+        try {
+          await this.test.userbase.putTransaction({ databaseName, operations: false })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('OperationsMustBeArray')
+          expect(e.message, 'error message').to.equal('Operations provided must be an array.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Operations conflict', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        const itemId = 'test-item-id'
+
+        try {
+          await this.test.userbase.putTransaction({
+            databaseName,
+            operations: [
+              { command: 'Insert', item: false, itemId },
+              { command: 'Insert', item: true, itemId },
+            ]
+          })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('OperationsConflict')
+          expect(e.message, 'error message').to.equal('Operations conflict. Only allowed 1 operation per item.')
+          expect(e.status, 'error status').to.equal(409)
+        }
+      })
+
+      it('Operations exceed limit', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        const limit = 10
+
+        const operations = []
+        for (let i = 0; i <= limit; i++) {
+          operations.push({ command: 'Insert', item: i, itemId: i.toString() })
+        }
+
+        try {
+          await this.test.userbase.putTransaction({ databaseName, operations })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('OperationsExceedLimit')
+          expect(e.message, 'error message').to.equal(`Operations exceed limit. Only allowed ${limit} operations.`)
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Command missing', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        try {
+          await this.test.userbase.putTransaction({ databaseName, operations: [{ item: false, itemId: 'fake-item-id' }] })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('CommandNotRecognized')
+          expect(e.message, 'error message').to.equal(`Command '${undefined}' not recognized.`)
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Command as false', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        const command = false
+
+        try {
+          await this.test.userbase.putTransaction({ databaseName, operations: [{ command, item: false, itemId: 'fake-item-id' }] })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('CommandNotRecognized')
+          expect(e.message, 'error message').to.equal(`Command '${command}' not recognized.`)
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Command incorrect', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        const command = 'fake-command'
+
+        try {
+          await this.test.userbase.putTransaction({ databaseName, operations: [{ command, item: false, itemId: 'fake-item-id' }] })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('CommandNotRecognized')
+          expect(e.message, 'error message').to.equal(`Command '${command}' not recognized.`)
+          expect(e.status, 'error status').to.equal(400)
         }
       })
 

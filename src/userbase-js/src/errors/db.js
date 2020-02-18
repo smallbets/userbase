@@ -90,6 +90,16 @@ class ItemMissing extends Error {
   }
 }
 
+class ItemInvalid extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'ItemInvalid'
+    this.message = 'Item must be serializable to JSON.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
 class ItemTooLarge extends Error {
   constructor(maxKb, ...params) {
     super(maxKb, ...params)
@@ -216,7 +226,7 @@ class OperationsExceedLimit extends Error {
 
     this.name = 'OperationsExceedLimit'
     this.message = `Operations exceed limit. Only allowed ${limit} operations.`
-    this.status = statusCodes['Conflict']
+    this.status = statusCodes['Bad Request']
   }
 }
 
@@ -230,6 +240,7 @@ export default {
   ChangeHandlerMustBeFunction,
   DatabaseNotOpen,
   ItemMissing,
+  ItemInvalid,
   ItemTooLarge,
   ItemIdMustBeString,
   ItemIdTooLong,

@@ -524,6 +524,7 @@ const insertItem = async (params) => {
       case 'ItemIdCannotBeBlank':
       case 'ItemIdTooLong':
       case 'ItemMissing':
+      case 'ItemInvalid':
       case 'ItemTooLarge':
       case 'ItemAlreadyExists':
       case 'UserNotSignedIn':
@@ -551,6 +552,7 @@ const _buildInsertParams = async (database, params) => {
   }
 
   const itemString = JSON.stringify(item)
+  if (!itemString) throw new errors.ItemInvalid
   if (byteSizeOfString(itemString) > MAX_ITEM_BYTES) throw new errors.ItemTooLarge(MAX_ITEM_KB)
 
   const id = itemId || uuidv4()
@@ -586,6 +588,7 @@ const updateItem = async (params) => {
       case 'ItemIdCannotBeBlank':
       case 'ItemIdTooLong':
       case 'ItemMissing':
+      case 'ItemInvalid':
       case 'ItemTooLarge':
       case 'ItemDoesNotExist':
       case 'ItemUpdateConflict':
@@ -615,6 +618,7 @@ const _buildUpdateParams = async (database, params) => {
   if (!database.itemExists(itemId)) throw new errors.ItemDoesNotExist
 
   const itemString = JSON.stringify(item)
+  if (!itemString) throw new errors.ItemInvalid
   if (byteSizeOfString(itemString) > MAX_ITEM_BYTES) throw new errors.ItemTooLarge(MAX_ITEM_KB)
 
   const itemKey = await crypto.hmac.signString(ws.keys.hmacKey, itemId)
@@ -751,6 +755,7 @@ const putTransaction = async (params) => {
       case 'ItemIdCannotBeBlank':
       case 'ItemIdTooLong':
       case 'ItemMissing':
+      case 'ItemInvalid':
       case 'ItemTooLarge':
       case 'ItemAlreadyExists':
       case 'ItemDoesNotExist':
