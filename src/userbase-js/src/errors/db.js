@@ -226,7 +226,7 @@ class OperationsExceedLimit extends Error {
 
     this.name = 'OperationsExceedLimit'
     this.message = `Operations exceed limit. Only allowed ${limit} operations.`
-    this.status = statusCodes['Conflict']
+    this.status = statusCodes['Bad Request']
   }
 }
 
