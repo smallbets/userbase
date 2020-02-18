@@ -301,8 +301,21 @@ describe('DB Tests', function () {
           await this.test.userbase.insertItem({ databaseName, item: undefined })
           throw new Error('should have failed')
         } catch (e) {
-          expect(e.name, 'error name').to.equal('ItemCannotBeUndefined')
-          expect(e.message, 'error message').to.equal('Item cannot be undefined.')
+          expect(e.name, 'error name').to.equal('ItemInvalid')
+          expect(e.message, 'error message').to.equal('Item must be serializable to JSON.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Item as function', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        try {
+          await this.test.userbase.insertItem({ databaseName, item: () => { } })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ItemInvalid')
+          expect(e.message, 'error message').to.equal('Item must be serializable to JSON.')
           expect(e.status, 'error status').to.equal(400)
         }
       })
@@ -561,8 +574,24 @@ describe('DB Tests', function () {
           await this.test.userbase.updateItem({ databaseName, item: undefined, itemId })
           throw new Error('should have failed')
         } catch (e) {
-          expect(e.name, 'error name').to.equal('ItemCannotBeUndefined')
-          expect(e.message, 'error message').to.equal('Item cannot be undefined.')
+          expect(e.name, 'error name').to.equal('ItemInvalid')
+          expect(e.message, 'error message').to.equal('Item must be serializable to JSON.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Item as a function', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        const itemId = 'test-id'
+        await this.test.userbase.insertItem({ databaseName, item: 'test-item', itemId })
+
+        try {
+          await this.test.userbase.updateItem({ databaseName, item: () => { }, itemId })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ItemInvalid')
+          expect(e.message, 'error message').to.equal('Item must be serializable to JSON.')
           expect(e.status, 'error status').to.equal(400)
         }
       })

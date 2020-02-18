@@ -90,12 +90,12 @@ class ItemMissing extends Error {
   }
 }
 
-class ItemCannotBeUndefined extends Error {
+class ItemInvalid extends Error {
   constructor(...params) {
     super(...params)
 
-    this.name = 'ItemCannotBeUndefined'
-    this.message = 'Item cannot be undefined.'
+    this.name = 'ItemInvalid'
+    this.message = 'Item must be serializable to JSON.'
     this.status = statusCodes['Bad Request']
   }
 }
@@ -240,7 +240,7 @@ export default {
   ChangeHandlerMustBeFunction,
   DatabaseNotOpen,
   ItemMissing,
-  ItemCannotBeUndefined,
+  ItemInvalid,
   ItemTooLarge,
   ItemIdMustBeString,
   ItemIdTooLong,
