@@ -6,7 +6,7 @@ import statusCodes from './statusCodes'
 import logger from './logger'
 import appController from './app'
 import userController from './user'
-import { validateEmail, trimReq } from './utils'
+import { validateEmail, trimReq, getTtl } from './utils'
 import stripe from './stripe'
 
 // source: https://github.com/OWASP/CheatSheetSeries/blob/master/cheatsheets/Session_Management_Cheat_Sheet.md#session-id-length
@@ -29,7 +29,8 @@ const createSession = async function (adminId) {
   const session = {
     'session-id': sessionId,
     'admin-id': adminId,
-    'creation-date': new Date().toISOString()
+    'creation-date': new Date().toISOString(),
+    ttl: getTtl(SECONDS_IN_A_DAY),
   }
 
   const params = {

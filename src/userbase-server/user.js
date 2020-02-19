@@ -5,7 +5,7 @@ import statusCodes from './statusCodes'
 import responseBuilder from './responseBuilder'
 import crypto from './crypto'
 import logger from './logger'
-import { validateEmail, trimReq, truncateSessionId } from './utils'
+import { validateEmail, trimReq, truncateSessionId, getTtl } from './utils'
 import appController from './app'
 import adminController from './admin'
 
@@ -40,7 +40,8 @@ const createSession = async function (userId, appId) {
     'session-id': sessionId,
     'user-id': userId,
     'app-id': appId,
-    'creation-date': creationDate
+    'creation-date': creationDate,
+    ttl: getTtl(SECONDS_IN_A_DAY),
   }
 
   const params = {
@@ -934,12 +935,14 @@ exports.extendSession = async function (req, res) {
       Key: {
         'session-id': sessionId
       },
-      UpdateExpression: 'set #extendedDate = :extendedDate',
+      UpdateExpression: 'set #extendedDate = :extendedDate, #ttl = :ttl',
       ExpressionAttributeNames: {
-        '#extendedDate': 'extended-date'
+        '#extendedDate': 'extended-date',
+        '#ttl': 'ttl'
       },
       ExpressionAttributeValues: {
-        ':extendedDate': extendedDate
+        ':extendedDate': extendedDate,
+        ':ttl': getTtl(SECONDS_IN_A_DAY)
       }
     }
 

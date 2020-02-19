@@ -229,6 +229,13 @@ async function setupDdb() {
     BillingMode: 'PAY_PER_REQUEST',
     TableName: sessionsTableName
   }
+  const sessionsTimeToLive = {
+    TableName: sessionsTableName,
+    TimeToLiveSpecification: {
+      AttributeName: 'ttl',
+      Enabled: true
+    }
+  }
 
   // the database table holds a record per database
   const databaseTableParams = {
@@ -308,6 +315,10 @@ async function setupDdb() {
     createTable(ddb, deletedAppsTableParams),
   ])
 
+  logger.info('Setting time to live on tables if necessary')
+  await Promise.all([
+    setTimeToLive(ddb, sessionsTimeToLive),
+  ])
 }
 
 async function setupS3() {
@@ -350,6 +361,17 @@ async function createTable(ddb, params) {
   }
 
   enableBackup()
+}
+
+async function setTimeToLive(ddb, params) {
+  try {
+    await ddb.updateTimeToLive(params).promise()
+    logger.info(`Time to live set on ${params.TableName} successfully`)
+  } catch (e) {
+    if (!e.message.includes('TimeToLive is already enabled')) {
+      throw e
+    }
+  }
 }
 
 async function createBucket(s3, params) {
