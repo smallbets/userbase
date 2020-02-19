@@ -5,7 +5,7 @@ import statusCodes from './statusCodes'
 import responseBuilder from './responseBuilder'
 import crypto from './crypto'
 import logger from './logger'
-import { validateEmail, trimReq } from './utils'
+import { validateEmail, trimReq, truncateSessionId } from './utils'
 import appController from './app'
 import adminController from './admin'
 
@@ -174,7 +174,7 @@ const _validatePassword = (passwordToken, user, req) => {
       _suspendUser(user)
 
       logger
-        .child({ userId: user['user-id'], reqId: req && req.id })
+        .child({ userId: user['user-id'], req: trimReq(req) })
         .warn('Someone has exceeded the password attempt limit')
     }
 
@@ -262,6 +262,68 @@ const _validateUsernameInput = (username) => {
   }
 }
 
+const _validateSignUpInput = (appId, username, passwordToken, publicKey, passwordSalts, keySalts, passwordBasedBackup, email, profile) => {
+  try {
+    if (!appId || !username || !passwordToken || !publicKey || !passwordSalts || !keySalts || !passwordBasedBackup) {
+      throw 'Missing required items'
+    }
+
+    const {
+      passwordSalt,
+      passwordTokenSalt
+    } = passwordSalts
+
+    const {
+      encryptionKeySalt,
+      dhKeySalt,
+      hmacKeySalt
+    } = keySalts
+
+    if (!passwordSalt || !passwordTokenSalt || !encryptionKeySalt || !dhKeySalt || !hmacKeySalt) {
+      throw 'Missing required salts'
+    }
+
+    const { passwordBasedEncryptionKeySalt, passwordEncryptedSeed } = passwordBasedBackup
+
+    if (!passwordBasedEncryptionKeySalt || !passwordEncryptedSeed) {
+      throw 'Missing password-based backup items'
+    }
+
+    _validateUsernameInput(username)
+
+    if (email && !validateEmail(email)) {
+      throw {
+        error: 'EmailNotValid',
+        email
+      }
+    }
+
+    if (profile) _validateProfile(profile)
+  } catch (e) {
+    throw {
+      status: statusCodes['Bad Request'],
+      error: {
+        message: e
+      }
+    }
+  }
+}
+
+const _validateSubscription = async (subscription, appId) => {
+  const unpaidSubscription = !subscription || subscription.cancel_at_period_end || subscription.status !== 'active'
+  if (unpaidSubscription) {
+    const numUsers = await appController.countNonDeletedAppUsers(appId, LIMIT_NUM_TRIAL_USERS)
+    if (numUsers >= LIMIT_NUM_TRIAL_USERS) {
+      throw {
+        status: statusCodes['Payment Required'],
+        error: {
+          message: 'TrialExceededLimit',
+        }
+      }
+    }
+  }
+}
+
 exports.signUp = async function (req, res) {
   const appId = req.query.appId
 
@@ -277,58 +339,42 @@ exports.signUp = async function (req, res) {
   const profile = req.body.profile
   const passwordBasedBackup = req.body.passwordBasedBackup
 
-  if (!appId || !username || !passwordToken || !publicKey || !passwordSalts || !keySalts || !passwordBasedBackup) {
-    return res.status(statusCodes['Bad Request']).send('Missing required items')
-  }
-
-  const {
-    passwordSalt,
-    passwordTokenSalt
-  } = passwordSalts
-
-  const {
-    encryptionKeySalt,
-    dhKeySalt,
-    hmacKeySalt
-  } = keySalts
-
-  if (!passwordSalt || !passwordTokenSalt || !encryptionKeySalt || !dhKeySalt || !hmacKeySalt) {
-    return res.status(statusCodes['Bad Request']).send('Missing required salts')
-  }
-
-  const { passwordBasedEncryptionKeySalt, passwordEncryptedSeed } = passwordBasedBackup
-
-  if (!passwordBasedEncryptionKeySalt || !passwordEncryptedSeed) {
-    return res.status(statusCodes['Bad Request']).send('Missing password-based backup items')
-  }
-
+  let logChildObject
   try {
-    _validateUsernameInput(username)
+    logChildObject = { appId, username, req: trimReq(req) }
+    logger.child(logChildObject).info('Signing up user')
 
-    if (email && !validateEmail(email)) return res.status(statusCodes['Bad Request'])
-      .send({ error: 'EmailNotValid' })
+    _validateSignUpInput(appId, username, passwordToken, publicKey, passwordSalts, keySalts, passwordBasedBackup, email, profile)
 
-    if (profile) _validateProfile(profile)
-  } catch (e) {
-    return res.status(statusCodes['Bad Request']).send(e)
-  }
-
-  try {
     const userId = uuidv4()
 
     // Warning: uses secondary index here. It's possible index won't be up to date and this fails
     const app = await appController.getAppByAppId(appId)
-    if (!app || app['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
+    if (!app || app['deleted']) {
+      throw {
+        status: statusCodes['Unauthorized'],
+        error: {
+          message: 'App ID not valid',
+          deletedAppId: app && app['app-id']
+        }
+      }
+    }
 
     const admin = await adminController.findAdminByAdminId(app['admin-id'])
-    if (!admin || admin['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
+    if (!admin || admin['deleted']) {
+      throw {
+        status: statusCodes['Unauthorized'],
+        error: {
+          message: 'App ID not valid',
+          deletedAdminId: admin && admin['admin-id']
+        }
+      }
+    } else {
+      logChildObject.adminId = admin['admin-id']
+    }
 
     const subscription = await adminController.getSaasSubscription(admin['admin-id'], admin['stripe-customer-id'])
-    const unpaidSubscription = !subscription || subscription.cancel_at_period_end || subscription.status !== 'active'
-    if (unpaidSubscription) {
-      const numUsers = await appController.countNonDeletedAppUsers(app['app-id'], LIMIT_NUM_TRIAL_USERS)
-      if (numUsers >= LIMIT_NUM_TRIAL_USERS) return res.status(statusCodes['Payment Required']).send('TrialExceededLimit')
-    }
+    await _validateSubscription(subscription, appId)
 
     const params = _buildSignUpParams(username, passwordToken, appId, userId,
       publicKey, passwordSalts, keySalts, email, profile, passwordBasedBackup)
@@ -338,27 +384,61 @@ exports.signUp = async function (req, res) {
       await ddbClient.put(params).promise()
     } catch (e) {
       if (e.name === 'ConditionalCheckFailedException') {
-        return res.status(statusCodes['Conflict']).send('UsernameAlreadyExists')
+        throw {
+          status: statusCodes['Conflict'],
+          error: {
+            message: 'UsernameAlreadyExists',
+          }
+        }
       }
       throw e
     }
 
     const session = await createSession(userId, appId)
+
+    logger.child(logChildObject).info('Signed up user')
+
     return res.send({ userId, ...session })
   } catch (e) {
-    logger.warn(`Failed to sign up user '${username}' of app '${appId}' with ${e}`)
-    return res.status(statusCodes['Internal Server Error']).end()
+    const message = 'Failed to sign up user'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
+      return res.status(e.status).send(e.error.message)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return res.status(statusCode).send(message)
+    }
   }
 }
 
-exports.authenticateUser = async function (req, res, next) {
-  const sessionId = req.query.sessionId
-  const appId = req.query.appId
+const _validateSession = function (session) {
+  try {
+    const doesNotExist = !session
+    if (doesNotExist) throw { doesNotExist }
 
-  if (!sessionId || !appId) return res
-    .status(statusCodes['Unauthorized'])
-    .send('Missing session token or app id')
+    const invalidated = session.invalidated
+    if (invalidated) throw { invalidated }
 
+    const sessionStartDate = new Date(session['extended-date'] || session['creation-date'])
+    const expired = new Date() - sessionStartDate > SESSION_LENGTH
+    if (expired) throw { expired }
+
+    const isNotUserSession = expired || !session['user-id']
+    if (isNotUserSession) throw { isNotUserSession }
+  } catch (e) {
+    throw {
+      status: statusCodes['Unauthorized'],
+      error: {
+        message: 'Session invalid',
+        ...e
+      }
+    }
+  }
+}
+
+const _getSesssion = async function (sessionId) {
   const params = {
     TableName: setup.sessionsTableName,
     Key: {
@@ -366,26 +446,38 @@ exports.authenticateUser = async function (req, res, next) {
     }
   }
 
+  const ddbClient = connection.ddbClient()
+  const sessionResponse = await ddbClient.get(params).promise()
+
+  return sessionResponse.Item
+}
+
+exports.authenticateUser = async function (req, res, next) {
+  const sessionId = req.query.sessionId
+  const appId = req.query.appId
+
+  let logChildObject
   try {
-    const ddbClient = connection.ddbClient()
-    const sessionResponse = await ddbClient.get(params).promise()
+    logChildObject = { appId, sessionId: truncateSessionId(sessionId), req: trimReq(req) }
+    logger.child(logChildObject).info('Authenticating user')
 
-    const session = sessionResponse.Item
+    if (!sessionId || !appId) {
+      throw { status: statusCodes['Unauthorized'], error: { message: 'Missing session token or app id' } }
+    }
 
-    const doesNotExist = !session
-    const invalidated = doesNotExist || session.invalidated
+    const session = await _getSesssion(sessionId)
+    _validateSession(session)
 
-    const sessionStartDate = invalidated || new Date(session['extended-date'] || session['creation-date'])
-    const expired = invalidated || new Date() - sessionStartDate > SESSION_LENGTH
-
-    const isNotUserSession = expired || !session['user-id']
-
-    if (doesNotExist || invalidated || expired || isNotUserSession) return res
-      .status(statusCodes['Unauthorized']).send('Session invalid')
-
-    const appDoesNotMatch = isNotUserSession || session['app-id'] !== appId
-    if (appDoesNotMatch) return res
-      .status(statusCodes['Unauthorized']).send('App ID not valid')
+    const appDoesNotMatch = session['app-id'] !== appId
+    if (appDoesNotMatch) {
+      throw {
+        status: statusCodes['Unauthorized'],
+        error: {
+          message: 'App ID not valid',
+          appDoesNotMatch
+        }
+      }
+    }
 
     // Warning: uses secondary indexes here. It's possible index won't be up to date and this fails
     const [user, app] = await Promise.all([
@@ -393,22 +485,60 @@ exports.authenticateUser = async function (req, res, next) {
       appController.getAppByAppId(session['app-id'])
     ])
 
-    if (!user || user['deleted']) return res.status(statusCodes['Unauthorized']).send('Session invalid')
-    if (!app || app['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
+    if (!user || user['deleted']) {
+      throw {
+        status: statusCodes['Unauthorized'],
+        error: {
+          message: 'Session invalid',
+          deletedUserId: user && user['user-id']
+        }
+      }
+    } else {
+      logChildObject.userId = user['user-id']
+    }
+
+    if (!app || app['deleted']) {
+      throw {
+        status: statusCodes['Unauthorized'],
+        error: {
+          message: 'App ID not valid',
+          deletedAppId: app && app['app-id'],
+        }
+      }
+    }
 
     const admin = await adminController.findAdminByAdminId(app['admin-id'])
-    if (!admin || admin['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
+    if (!admin || admin['deleted']) {
+      throw {
+        status: statusCodes['Unauthorized'],
+        error: {
+          message: 'App ID not valid',
+          deletedAdminId: admin && admin['admin-id'],
+        }
+      }
+    } else {
+      logChildObject.adminId = admin['admin-id']
+    }
 
     // makes all the following objects available in next route
     res.locals.user = user
     res.locals.admin = admin
     res.locals.app = app
+
+    logger.child(logChildObject).info('User authenticated')
+
     next()
   } catch (e) {
-    logger.error(`Failed to authenticate user session ${sessionId} with ${e}`)
-    return res
-      .status(statusCodes['Internal Server Error'])
-      .send('Failed to authenticate user')
+    const message = 'Failed to authenticate user'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
+      return res.status(e.status).send(e.error.message)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return res.status(statusCode).send(message)
+    }
   }
 }
 
@@ -511,45 +641,69 @@ exports.getPasswordSaltsController = async function (req, res) {
   const appId = req.query.appId
   const username = req.query.username
 
-  if (!appId || !username) return res
-    .status(statusCodes['Bad Request'])
-    .send('Missing required items')
-
+  let logChildObject
   try {
-    _validateUsernameInput(username)
-  } catch (e) {
-    return res.status(statusCodes['Bad Request']).send(e)
-  }
+    logChildObject = { appId, username, req: trimReq(req) }
+    logger.child(logChildObject).info('Getting password salts over REST endpoint')
 
-  try {
-    // Warning: uses secondary index here. It's possible index won't be up to date and this fails
-    const app = await appController.getAppByAppId(appId)
-    if (!app) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
-
-    const params = {
-      TableName: setup.usersTableName,
-      Key: {
-        username: username.toLowerCase(),
-        'app-id': appId
-      },
+    if (!appId || !username) throw {
+      status: statusCodes['Bad Request'],
+      error: { message: 'Missing required items' }
     }
 
-    const ddbClient = connection.ddbClient()
-    const userResponse = await ddbClient.get(params).promise()
+    try {
+      _validateUsernameInput(username)
+    } catch (e) {
+      throw {
+        status: statusCodes['Bad Request'],
+        error: { message: e }
+      }
+    }
 
-    const user = userResponse.Item
+    // Warning: uses secondary index here. It's possible index won't be up to date and this fails
+    const app = await appController.getAppByAppId(appId)
+    if (!app || app['deleted']) {
+      throw {
+        status: statusCodes['Unauthorized'],
+        error: {
+          message: 'App ID not valid',
+          deletedAppId: app && app['app-id'],
+        }
+      }
+    }
 
-    if (!user || user['deleted']) return res.status(statusCodes['Not Found']).send('User not found')
+    const user = await getUser(appId, username.toLowerCase())
+    if (!user || user['deleted']) {
+      throw {
+        status: statusCodes['Unauthorized'],
+        error: {
+          message: 'User not found',
+          deletedUserId: user && user['user-id']
+        }
+      }
+    } else {
+      logChildObject.userId = user['user-id']
+    }
 
     const result = {
       passwordSalt: user['password-salt'],
       passwordTokenSalt: user['password-token-salt']
     }
 
+    logger.child(logChildObject).info('Got password salts over REST endpoint')
+
     return res.send(result)
   } catch (e) {
-    logger.error(`Username '${username}' failed to get password salts with ${e}`)
-    return res.status(statusCodes['Internal Server Error']).end()
+    const message = 'Failed to get password salts over REST endpoint'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
+      return res.status(e.status).send(e.error.message)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return res.status(statusCode).send(message)
+    }
   }
 }
 
@@ -559,47 +713,65 @@ exports.signIn = async function (req, res) {
   const username = req.body.username
   const passwordToken = req.body.passwordToken
 
-  if (!appId || !username || !passwordToken) return res
-    .status(statusCodes['Bad Request'])
-    .send('Missing required items')
-
+  let logChildObject
   try {
-    _validateUsernameInput(username)
-  } catch (e) {
-    return res.status(statusCodes['Bad Request']).send(e)
-  }
+    logChildObject = { appId, username, req: trimReq(req) }
+    logger.child(logChildObject).info('User signing in')
 
-  try {
-    // Warning: uses secondary index here. It's possible index won't be up to date and this fails
-    const app = await appController.getAppByAppId(appId)
-    if (!app || app['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
-
-    const admin = await adminController.findAdminByAdminId(app['admin-id'])
-    if (!admin || admin['deleted']) return res.status(statusCodes['Unauthorized']).send('App ID not valid')
-
-    const params = {
-      TableName: setup.usersTableName,
-      Key: {
-        username: username.toLowerCase(),
-        'app-id': appId
-      },
+    if (!appId || !username || !passwordToken) {
+      throw {
+        status: statusCodes['Bad Request'],
+        error: { message: 'Missing required items' }
+      }
     }
 
-    const ddbClient = connection.ddbClient()
-    const userResponse = await ddbClient.get(params).promise()
+    try {
+      _validateUsernameInput(username)
+    } catch (e) {
+      throw {
+        status: statusCodes['Bad Request'],
+        error: { message: e }
+      }
+    }
 
-    const user = userResponse.Item
+    // Warning: uses secondary index here. It's possible index won't be up to date and this fails
+    const app = await appController.getAppByAppId(appId)
+    if (!app || app['deleted']) {
+      throw {
+        status: statusCodes['Unauthorized'],
+        error: {
+          message: 'App ID not valid',
+          deletedAppId: app && app['app-id'],
+        }
+      }
+    }
+
+    const admin = await adminController.findAdminByAdminId(app['admin-id'])
+    if (!admin || admin['deleted']) {
+      throw {
+        status: statusCodes['Unauthorized'],
+        error: {
+          message: 'App ID not valid',
+          deletedAdminId: admin && admin['admin-id'],
+        }
+      }
+    } else {
+      logChildObject.adminId = admin['admin-id']
+    }
+
+    const user = await getUser(appId, username.toLowerCase())
 
     let usedTempPassword
     try {
       usedTempPassword = _validatePassword(passwordToken, user, req)
     } catch (e) {
-      if (e.error === 'PasswordAttemptLimitExceeded') {
-        return res.status(statusCodes['Unauthorized']).send(e)
+      throw {
+        status: statusCodes['Unauthorized'],
+        error: { message: e.error === 'PasswordAttemptLimitExceeded' ? e : 'Invalid password' }
       }
-
-      return res.status(statusCodes['Unauthorized']).send('Invalid password')
     }
+
+    logChildObject.userId = user['user-id']
 
     const session = await createSession(user['user-id'], appId)
 
@@ -616,10 +788,20 @@ exports.signIn = async function (req, res) {
     }
     if (user['internal-profile']) result.internalProfile = user['internal-profile']
 
+    logger.child(logChildObject).info('User signed in')
+
     return res.send(result)
   } catch (e) {
-    logger.error(`Username '${username}' failed to sign in with ${e}`)
-    return res.status(statusCodes['Internal Server Error']).end()
+    const message = 'User failed to sign in'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
+      return res.status(e.status).send(e.error.message)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return res.status(statusCode).send(message)
+    }
   }
 }
 
@@ -735,26 +917,32 @@ exports.adminGetUserController = async function (req, res) {
 
 exports.extendSession = async function (req, res) {
   const user = res.locals.user
+  const admin = res.locals.admin
+  const app = res.locals.app
 
   const sessionId = req.query.sessionId
 
-  const extendedDate = new Date().toISOString()
-
-  const params = {
-    TableName: setup.sessionsTableName,
-    Key: {
-      'session-id': sessionId
-    },
-    UpdateExpression: 'set #extendedDate = :extendedDate',
-    ExpressionAttributeNames: {
-      '#extendedDate': 'extended-date'
-    },
-    ExpressionAttributeValues: {
-      ':extendedDate': extendedDate
-    }
-  }
-
+  let logChildObject
   try {
+    logChildObject = { userId: user['user-id'], sessionId: truncateSessionId(sessionId), adminId: admin['admin-id'], app: app['app-id'], req: trimReq(req) }
+    logger.child(logChildObject).info('Extending session')
+
+    const extendedDate = new Date().toISOString()
+
+    const params = {
+      TableName: setup.sessionsTableName,
+      Key: {
+        'session-id': sessionId
+      },
+      UpdateExpression: 'set #extendedDate = :extendedDate',
+      ExpressionAttributeNames: {
+        '#extendedDate': 'extended-date'
+      },
+      ExpressionAttributeValues: {
+        ':extendedDate': extendedDate
+      }
+    }
+
     const ddbClient = connection.ddbClient()
     await ddbClient.update(params).promise()
 
@@ -765,21 +953,30 @@ exports.extendSession = async function (req, res) {
     result.backUpKey = (user['password-based-encryption-key-salt'] && user['password-encrypted-seed']) ? true : false
     if (user['internal-profile']) result.internalProfile = user['internal-profile']
 
+    logger.child(logChildObject).info('Extended session')
+
     return res.send(result)
   } catch (e) {
-    logger.error(`Unable to extend session ${sessionId} with: ${e}`)
-    return res
-      .status(statusCodes['Internal Server Error'])
-      .send('Failed to extend session')
+    const message = 'Failed to extend session'
+    const statusCode = statusCodes['Internal Server Error']
+    logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+    return res.status(statusCode).send(message)
   }
 }
 
-exports.getServerPublicKey = async function (_, res) {
+exports.getServerPublicKey = async function (req, res) {
+  let logChildObject
   try {
+    logChildObject = { req: trimReq(req) }
+    logger.child(logChildObject).info('Getting server public key')
+
     return res.send(crypto.diffieHellman.getPublicKey())
   } catch (e) {
-    logger.error(`Failed to get server public key with ${e}`)
-    return res.status(statusCodes['Internal Server Error']).send('Failed to get server public key')
+    const statusCode = statusCodes['Internal Server Error']
+    const message = 'Failed to get server public key'
+
+    logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+    return res.status().send(message)
   }
 }
 
@@ -1200,8 +1397,10 @@ exports.forgotPassword = async function (req, forgotPasswordToken, userProvidedF
   const userId = user['user-id']
   const appId = app['app-id']
 
+  let logChildObject
   try {
-    logger.child({ userId, appId, req: trimReq(req) }).info('User forgot password')
+    logChildObject = { userId, appId, req: trimReq(req) }
+    logger.child(logChildObject).info('User forgot password')
 
     // check if client decrypted forgot password token successfully
     if (forgotPasswordToken.toString('base64') !== userProvidedForgotPasswordToken) {
@@ -1232,17 +1431,17 @@ exports.forgotPassword = async function (req, forgotPasswordToken, userProvidedF
 
     await setup.sendEmail(user['email'], subject, body)
 
-    logger.child({ userId, appId, req: trimReq(req) }).info('Successfully forgot password')
+    logger.child(logChildObject).info('Successfully forgot password')
     return responseBuilder.successResponse()
   } catch (e) {
     const message = 'Failed to forget password'
 
     if (e.status && e.error) {
-      logger.child({ appId, userId, statusCode: e.status, err: e.error, req: trimReq(req) }).warn(message)
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
       return responseBuilder.errorResponse(e.status, e.error)
     } else {
       const statusCode = statusCodes['Internal Server Error']
-      logger.child({ appId, userId, statusCode, err: e, req: trimReq(req) }).error(message)
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
       return responseBuilder.errorResponse(statusCode, message)
     }
   }
