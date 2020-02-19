@@ -58,6 +58,8 @@ export const estimateSizeOfDdbItem = (item) => {
 
 export const trimReq = (req) => ({ id: req.id, url: req.url })
 
+export const truncateSessionId = (sessionId) => typeof sessionId === 'string' && sessionId.substring(0, 8) // limit sensitive logging
+
 // matches stringToArrayBuffer from userbase-js/Crypto/utils
 // https://developers.google.com/web/updates/2012/06/How-to-convert-ArrayBuffer-to-and-from-String
 export const stringToArrayBuffer = (str) => {

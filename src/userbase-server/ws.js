@@ -199,16 +199,14 @@ class Connection {
 
         logger
           .child({
-            wsRes: {
-              connectionId: this.id,
-              userId: this.userId,
-              adminId: this.adminId,
-              databaseId: payload.dbId,
-              route: payload.route,
-              size: msg.length,
-              bundleSeqNo: payload.bundleSeqNo,
-              seqNo: database.lastSeqNo
-            }
+            connectionId: this.id,
+            userId: this.userId,
+            adminId: this.adminId,
+            databaseId: payload.dbId,
+            route: payload.route,
+            size: msg.length,
+            bundleSeqNo: payload.bundleSeqNo,
+            seqNo: database.lastSeqNo
           })
           .info('Sent initial transactions to client')
       }
@@ -299,19 +297,17 @@ class Connection {
 
     logger
       .child({
-        wsRes: {
-          connectionId: this.id,
-          userId: this.userId,
-          adminId: this.adminId,
-          databaseId: payload.dbId,
-          route: payload.route,
-          size: msg.length,
-          bundleSeqNo: payload.bundleSeqNo,
-          transactionLogSize: database.transactionLogSize,
-          buildBundle,
-          startSeqNo,
-          endSeqNo
-        }
+        connectionId: this.id,
+        userId: this.userId,
+        adminId: this.adminId,
+        databaseId: payload.dbId,
+        route: payload.route,
+        size: msg.length,
+        bundleSeqNo: payload.bundleSeqNo,
+        transactionLogSize: database.transactionLogSize,
+        buildBundle,
+        startSeqNo,
+        endSeqNo
       })
       .info('Sent transactions to client')
   }

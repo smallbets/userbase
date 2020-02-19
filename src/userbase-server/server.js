@@ -83,7 +83,7 @@ async function start(express, app, userbaseConfig = {}) {
 
         const { validationMessage, encryptedValidationMessage } = userController.getValidationMessage(userPublicKey)
 
-        logger.child({ wsRes: { userId, connectionId, adminId, route: 'Connection' } }).info()
+        logger.child({ userId, connectionId, adminId, route: 'Connection' }).info('Sending Connection over WebSocket')
         ws.send(JSON.stringify({
           route: 'Connection',
           keySalts: {
@@ -99,9 +99,14 @@ async function start(express, app, userbaseConfig = {}) {
         ws.on('message', async (msg) => {
           ws.isAlive = true
 
+          const start = Date.now()
+          let logChildObject
+
           try {
+            logChildObject = { userId, connectionId, adminId, clientId, size: msg.length || msg.byteLength }
+
             if (msg.length > FOUR_HUNDRED_KB || msg.byteLength > FOUR_HUNDRED_KB) {
-              logger.child({ wsRes: { userId, connectionId, adminId, size: msg.length } }).warn('Received large message')
+              logger.child(logChildObject).warn('Received large message')
               return ws.send('Message is too large')
             }
 
@@ -118,7 +123,9 @@ async function start(express, app, userbaseConfig = {}) {
               return
             }
 
-            logger.child({ wsReq: { userId, connectionId, adminId, requestId, action, size: msg.length } }).info()
+            logChildObject.requestId = requestId
+            logChildObject.action = action
+            logger.child(logChildObject).info('Received WebSocket request')
 
             if (conn.rateLimiter.atCapacity()) {
 
@@ -210,8 +217,8 @@ async function start(express, app, userbaseConfig = {}) {
                   }
                   default: {
                     logger
-                      .child({ wsRes: { userId, connectionId, adminId, route: action, requestId, statusCode: response.status, size: msg.length } })
-                      .error('Received unknown action')
+                      .child(logChildObject)
+                      .error('Received unknown action over WebSocket')
                     return ws.send(`Received unkown action ${action}`)
                   }
                 }
@@ -226,24 +233,19 @@ async function start(express, app, userbaseConfig = {}) {
 
             logger
               .child({
-                wsRes: {
-                  userId,
-                  connectionId,
-                  adminId,
-                  route: action,
-                  requestId,
-                  statusCode: response.status,
-                  size: responseMsg.length
-                }
+                ...logChildObject,
+                statusCode: response.status,
+                size: responseMsg.length,
+                responseTime: Date.now() - start,
               })
-              .info()
+              .info('Sent response over WebSocket')
 
             ws.send(responseMsg)
 
           } catch (e) {
             logger
-              .child({ userId, connectionId, adminId, errorName: e.name, errorMessage: e.message })
-              .error(`Error in Websocket handling the following message: ${msg}`)
+              .child({ ...logChildObject, err: e, msg })
+              .error('Error in Websocket handling message')
           }
 
         })
@@ -446,15 +448,17 @@ async function start(express, app, userbaseConfig = {}) {
       const transaction = req.body.transaction
       const userId = req.body.userId
 
+      let logChildObject
       try {
+        logChildObject = { userId, databaseId: transaction['database-id'], seqNo: transaction['seq-no'], req: trimReq(req) }
         logger
-          .child({ userId, databaseId: transaction['database-id'], seqNo: transaction['seq-no'] })
+          .child(logChildObject)
           .info('Received internal notification to update db')
 
         connections.push(transaction, userId)
       } catch (e) {
         const msg = 'Error pushing internal transaction to connected clients'
-        logger.child({ userId, databaseId: transaction['database-id'], seqNo: transaction['seq-no'], err: e }).error(msg)
+        logger.child({ ...logChildObject, err: e }).error(msg)
         return res.status(statusCodes['Internal Server Error']).send(msg)
       }
 
