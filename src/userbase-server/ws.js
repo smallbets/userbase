@@ -378,4 +378,12 @@ export default class Connections {
     delete Connections.sockets[userId][connectionId]
     delete Connections.uniqueClients[clientId]
   }
+
+  static closeUsersConnectedClients(userId) {
+    if (!Connections.sockets || !Connections.sockets[userId]) return
+
+    for (const conn of Object.values(Connections.sockets[userId])) {
+      this.close(conn)
+    }
+  }
 }

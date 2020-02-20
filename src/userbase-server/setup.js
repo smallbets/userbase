@@ -3,6 +3,7 @@ import os from 'os'
 import logger from './logger'
 import crypto from './crypto'
 import peers from './peers'
+import purge from './purge'
 
 let awsAccountId
 let initialized = false
@@ -119,6 +120,9 @@ exports.init = async function (userbaseConfig) {
   await setupSM()
   await setupSes()
   await setupEc2PeerDiscovery()
+
+  // kick off the interval to purge deleted data
+  purge()
 }
 
 async function setupDdb() {

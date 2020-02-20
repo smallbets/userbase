@@ -1450,6 +1450,53 @@ exports.forgotPassword = async function (req, forgotPasswordToken, userProvidedF
   }
 }
 
+exports.permanentDelete = async function (user) {
+  const username = user['username']
+  const appId = user['app-id']
+  const userId = user['user-id']
+
+  const logChildObject = { username, appId, userId }
+  logger.child(logChildObject).info('Permanent deleting user')
+
+  const existingUserParams = {
+    TableName: setup.usersTableName,
+    Key: {
+      username,
+      'app-id': appId
+    },
+    ConditionExpression: 'attribute_exists(deleted) and #userId = :userId',
+    ExpressionAttributeNames: {
+      '#userId': 'user-id'
+    },
+    ExpressionAttributeValues: {
+      ':userId': userId
+    }
+  }
+
+  const permanentDeletedUserParams = {
+    TableName: setup.deletedUsersTableName,
+    Item: {
+      ...user // still technically can recover user before data is purged, though more difficult
+    },
+    ConditionExpression: 'attribute_not_exists(#userId)',
+    ExpressionAttributeNames: {
+      '#userId': 'user-id'
+    },
+  }
+
+  const transactionParams = {
+    TransactItems: [
+      { Delete: existingUserParams },
+      { Put: permanentDeletedUserParams }
+    ]
+  }
+
+  const ddbClient = connection.ddbClient()
+  await ddbClient.transactWrite(transactionParams).promise()
+
+  logger.child(logChildObject).info('Deleted user permanently')
+}
+
 const conditionCheckUserExists = (username, appId, userId) => {
   return {
     TableName: setup.usersTableName,
