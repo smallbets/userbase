@@ -4,9 +4,27 @@ import setup from './setup'
 import connection from './connection'
 import connections from './ws'
 import userController from './user'
+import appController from './app'
+import adminController from './admin'
 
 const MS_IN_A_DAY = 60 * 60 * 24 * 1000
 const TIME_TO_PURGE = 30 * MS_IN_A_DAY
+
+const ddbWhileLoop = async (params, ddbQuery, action) => {
+  let itemsResponse = await ddbQuery(params)
+  let items = itemsResponse.Items
+
+  await action(items)
+
+  // can be optimized with parallel scan
+  while (itemsResponse.LastEvaluatedKey) {
+    params.ExclusiveStartKey = itemsResponse.LastEvaluatedKey
+    itemsResponse = await ddbQuery(params)
+    items = itemsResponse.Items
+
+    await action(items)
+  }
+}
 
 const permanentDeleteDeletedItems = async (items, closeConnectedClients, permanentDelete) => {
   const permanentDeletePromises = []
@@ -29,21 +47,37 @@ const permanentDeleteDeletedItems = async (items, closeConnectedClients, permane
 
 const scanForDeleted = async (TableName, closeConnectedClients, permanentDelete) => {
   const params = { TableName }
+  const ddbQuery = (params) => connection.ddbClient().scan(params).promise()
+  const action = (items) => permanentDeleteDeletedItems(items, closeConnectedClients, permanentDelete)
+  await ddbWhileLoop(params, ddbQuery, action)
+}
 
-  const ddbClient = connection.ddbClient()
-  let itemsResponse = await ddbClient.scan(params).promise()
-  let items = itemsResponse.Items
+const scanForDeletedApps = async (purgeId) => {
+  const start = Date.now()
+  const logChildObject = { purgeId }
+  logger.child(logChildObject).info('Scanning for deleted apps')
 
-  await permanentDeleteDeletedItems(items, closeConnectedClients, permanentDelete)
+  await scanForDeleted(
+    setup.appsTableName,
+    (app) => connections.closeAppsConnectedClients(app['app-id']),
+    (app) => appController.permanentDelete(app['admin-id'], app['app-name'], app['app-id'])
+  )
 
-  // can be optimized with parallel scan
-  while (itemsResponse.LastEvaluatedKey) {
-    params.ExclusiveStartKey = itemsResponse.LastEvaluatedKey
-    itemsResponse = await ddbClient.scan(params).promise()
-    items = itemsResponse.Items
+  logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished scanning for deleted apps')
+}
 
-    await permanentDeleteDeletedItems(items, closeConnectedClients, permanentDelete)
-  }
+const scanForDeletedAdmins = async (purgeId) => {
+  const start = Date.now()
+  const logChildObject = { purgeId }
+  logger.child(logChildObject).info('Scanning for deleted admins')
+
+  await scanForDeleted(
+    setup.adminTableName,
+    (admin) => connections.closeAppsConnectedClients(admin['admin-id']),
+    (admin) => adminController.permanentDelete(admin)
+  )
+
+  logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished scanning for deleted admins')
 }
 
 const scanForDeletedUsers = async (purgeId) => {
@@ -78,7 +112,7 @@ const purgeTransactions = async (userDb) => {
   const logChildObject = { userId: userDb['user-id'], databaseId: userDb['database-id'] }
   logger.child(logChildObject).info('Purging transactions')
 
-  const transactionParams = {
+  const params = {
     TableName: setup.transactionsTableName,
     KeyConditionExpression: '#dbId = :dbId',
     ExpressionAttributeNames: {
@@ -90,18 +124,10 @@ const purgeTransactions = async (userDb) => {
   }
 
   const ddbClient = connection.ddbClient()
-  let transactionsResponse = await ddbClient.query(transactionParams).promise()
-  let transactions = transactionsResponse.Items
 
-  await Promise.all(transactions.map(tx => removeTransaction(tx)))
-
-  while (transactionsResponse.LastEvaluatedKey) {
-    transactionParams.ExclusiveStartKey = transactionsResponse.LastEvaluatedKey
-    transactionsResponse = await ddbClient.query(transactionParams).promise()
-    transactions = transactionsResponse.Items
-
-    await Promise.all(transactions.map(tx => removeTransaction(tx)))
-  }
+  const ddbQuery = (params) => ddbClient.query(params).promise()
+  const action = (transactions) => Promise.all(transactions.map(tx => removeTransaction(tx)))
+  await ddbWhileLoop(params, ddbQuery, action)
 
   // delete database before deleting user database to maintain reference in case of failure
   await ddbClient.delete({
@@ -124,10 +150,11 @@ const purgeTransactions = async (userDb) => {
 
 const purgeUser = async (user) => {
   const start = Date.now()
-  const logChildObject = { userId: user['user-id'], appId: user['app-id'] }
+  const logChildObject = { userId: user['user-id'], appId: user['app-id'], username: user['username'], deleted: user['deleted'] }
   logger.child(logChildObject).info('Purging user')
 
-  const userDatabasesParams = {
+  // purge all user's databases
+  const params = {
     TableName: setup.userDatabaseTableName,
     KeyConditionExpression: '#userId = :userId',
     ExpressionAttributeNames: {
@@ -139,27 +166,145 @@ const purgeUser = async (user) => {
   }
 
   const ddbClient = connection.ddbClient()
-  let userDbsResponse = await ddbClient.query(userDatabasesParams).promise()
-  let userDbs = userDbsResponse.Items
 
-  await Promise.all(userDbs.map(userDb => purgeTransactions(userDb)))
+  const ddbQuery = (params) => ddbClient.query(params).promise()
+  const action = (userDbs) => Promise.all(userDbs.map(userDb => purgeTransactions(userDb)))
+  await ddbWhileLoop(params, ddbQuery, action)
 
-  while (userDbsResponse.LastEvaluatedKey) {
-    userDatabasesParams.ExclusiveStartKey = userDbsResponse.LastEvaluatedKey
-    userDbsResponse = await ddbClient.query(userDatabasesParams).promise()
-    userDbs = userDbsResponse.Items
+  // should only be present in this table if purging deleted app or admin
+  const deleteFromTable = ddbClient.delete({
+    TableName: setup.usersTableName,
+    Key: {
+      'username': user['username'],
+      'app-id': user['app-id']
+    }
+  }).promise()
 
-    await Promise.all(userDbs.map(userDb => purgeTransactions(userDb)))
-  }
-
-  await ddbClient.delete({
+  // should only be present in this table if purging deleted user
+  const deleteFromDeletedTable = ddbClient.delete({
     TableName: setup.deletedUsersTableName,
     Key: {
       'user-id': user['user-id']
     }
   }).promise()
 
+  // safe to just try and delete from both
+  await Promise.all([deleteFromDeletedTable, deleteFromTable])
+
   logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purging user')
+}
+
+const purgeApp = async (app) => {
+  const start = Date.now()
+  const logChildObject = { userId: app['user-id'], appId: app['app-id'], adminId: app['admin-id'], appName: app['app-name'], deleted: app['deleted'] }
+  logger.child(logChildObject).info('Purging app')
+
+  // purge all app's users
+  const params = {
+    TableName: setup.usersTableName,
+    IndexName: setup.appIdIndex,
+    KeyConditionExpression: '#appId = :appId',
+    ExpressionAttributeNames: {
+      '#appId': 'app-id'
+    },
+    ExpressionAttributeValues: {
+      ':appId': app['app-id']
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+
+  const ddbQuery = (params) => ddbClient.query(params).promise()
+  const action = (users) => Promise.all(users.map(user => purgeUser(user)))
+  await ddbWhileLoop(params, ddbQuery, action)
+
+  // should only be present in this table if purging deleted admin
+  const deleteFromTable = ddbClient.delete({
+    TableName: setup.appsTableName,
+    Key: {
+      'admin-id': app['admin-id'],
+      'app-name': app['app-name']
+    }
+  }).promise()
+
+  // should only be present in this table if purging deleted app
+  const deleteFromDeletedTable = ddbClient.delete({
+    TableName: setup.deletedAppsTableName,
+    Key: {
+      'app-id': app['app-id']
+    }
+  }).promise()
+
+  // safe to just try and delete from both
+  await Promise.all([deleteFromDeletedTable, deleteFromTable])
+
+  logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purging app')
+}
+
+const removeAccessToken = async (accessToken) => {
+  await connection.ddbClient().delete({
+    TableName: setup.adminAccessTokensTableName,
+    Key: {
+      'admin-id': accessToken['admin-id'],
+      'access-token': accessToken['access-token']
+    }
+  }).promise()
+}
+
+const purgeAccessTokens = async (admin) => {
+  const params = {
+    TableName: setup.adminAccessTokensTableName,
+    KeyConditionExpression: '#adminId = :adminId',
+    ExpressionAttributeNames: {
+      '#adminId': 'admin-id'
+    },
+    ExpressionAttributeValues: {
+      ':adminId': admin['admin-id']
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+
+  const ddbQuery = (params) => ddbClient.query(params).promise()
+  const action = (accessTokens) => Promise.all(accessTokens.map(accessToken => removeAccessToken(accessToken)))
+  await ddbWhileLoop(params, ddbQuery, action)
+}
+
+const purgeApps = async (admin) => {
+  const params = {
+    TableName: setup.appsTableName,
+    KeyConditionExpression: '#adminId = :adminId',
+    ExpressionAttributeNames: {
+      '#adminId': 'admin-id'
+    },
+    ExpressionAttributeValues: {
+      ':adminId': admin['admin-id']
+    }
+  }
+
+  const ddbQuery = (params) => connection.ddbClient().query(params).promise()
+  const action = (apps) => Promise.all(apps.map(app => purgeApp(app)))
+  await ddbWhileLoop(params, ddbQuery, action)
+}
+
+const purgeAdmin = async (admin) => {
+  const start = Date.now()
+  const logChildObject = { adminId: admin['admin-id'], email: admin['email'], deleted: admin['deleted'] }
+  logger.child(logChildObject).info('Purging admin')
+
+  await Promise.all([
+    purgeAccessTokens(admin),
+    purgeApps(admin)
+  ])
+
+  await connection.ddbClient().delete({
+    TableName: setup.deletedAdminsTableName,
+    Key: {
+      'admin-id': admin['admin-id']
+    }
+  }).promise()
+
+  logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purging admin')
 }
 
 const purgeDeletedUsers = async (purgeId) => {
@@ -172,20 +317,46 @@ const purgeDeletedUsers = async (purgeId) => {
   }
 
   const ddbClient = connection.ddbClient()
-  let itemsResponse = await ddbClient.scan(params).promise()
-  let items = itemsResponse.Items
 
-  await Promise.all(items.map(user => purgeUser(user)))
-
-  while (itemsResponse.LastEvaluatedKey) {
-    params.ExclusiveStartKey = itemsResponse.LastEvaluatedKey
-    itemsResponse = await ddbClient.scan(params).promise()
-    items = itemsResponse.Items
-
-    await Promise.all(items.map(user => purgeUser(user)))
-  }
+  const ddbQuery = (params) => ddbClient.scan(params).promise()
+  const action = (users) => Promise.all(users.map(user => purgeUser(user)))
+  await ddbWhileLoop(params, ddbQuery, action)
 
   logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purging deleted users')
+}
+
+const purgeDeletedApps = async (purgeId) => {
+  const start = Date.now()
+  const logChildObject = { purgeId }
+  logger.child(logChildObject).info('Purging deleted apps')
+
+  const params = {
+    TableName: setup.deletedAppsTableName
+  }
+
+  const ddbClient = connection.ddbClient()
+
+  const ddbQuery = (params) => ddbClient.scan(params).promise()
+  const action = (apps) => Promise.all(apps.map(app => purgeApp(app)))
+  await ddbWhileLoop(params, ddbQuery, action)
+
+  logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purging deleted apps')
+}
+
+const purgeDeletedAdmins = async (purgeId) => {
+  const start = Date.now()
+  const logChildObject = { purgeId }
+  logger.child(logChildObject).info('Purging deleted admins')
+
+  const params = {
+    TableName: setup.deletedAdminsTableName
+  }
+
+  const ddbQuery = (params) => connection.ddbClient().scan(params).promise()
+  const action = (admins) => Promise.all(admins.map(admin => purgeAdmin(admin)))
+  await ddbWhileLoop(params, ddbQuery, action)
+
+  logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purging deleted admins')
 }
 
 const commencePurge = async () => {
@@ -196,16 +367,26 @@ const commencePurge = async () => {
   try {
     logger.child(logChildObject).info('Commencing purge')
 
-    await scanForDeletedUsers(purgeId)
+    // place deleted items in permanent deleted tables
+    await Promise.all([
+      scanForDeletedAdmins(purgeId),
+      scanForDeletedApps(purgeId),
+      scanForDeletedUsers(purgeId),
+    ])
+
+    // purge items from permanent deleted tables. Do each synchronously because top level may delete level below it;
+    // for example, purging admins will purge apps and users, reducing the number of deleted apps and deleted users
+    await purgeDeletedAdmins(purgeId)
+    await purgeDeletedApps(purgeId)
     await purgeDeletedUsers(purgeId)
 
     logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purge')
   } catch (e) {
-    logger.child({ timeToPurge: Date.now() - start, err: e, ...logChildObject }).warn('Failed purge')
+    logger.child({ timeToPurge: Date.now() - start, err: e, ...logChildObject }).error('Failed purge')
   }
 }
 
 export default async function () {
-  await commencePurge()
+  commencePurge()
   setInterval(commencePurge, MS_IN_A_DAY)
 }

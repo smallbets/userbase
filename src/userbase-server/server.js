@@ -74,16 +74,17 @@ async function start(express, app, userbaseConfig = {}) {
       const userId = res.locals.user['user-id']
       const userPublicKey = res.locals.user['public-key']
       const adminId = res.locals.admin['admin-id']
+      const appId = res.locals.app['app-id']
 
       const clientId = req.query.clientId
 
-      const conn = connections.register(userId, ws, clientId, adminId)
+      const conn = connections.register(userId, ws, clientId, adminId, appId)
       if (conn) {
         const connectionId = conn.id
 
         const { validationMessage, encryptedValidationMessage } = userController.getValidationMessage(userPublicKey)
 
-        logger.child({ userId, connectionId, adminId, route: 'Connection' }).info('Sending Connection over WebSocket')
+        logger.child({ userId, connectionId, adminId, appId, route: 'Connection' }).info('Sending Connection over WebSocket')
         ws.send(JSON.stringify({
           route: 'Connection',
           keySalts: {
@@ -103,7 +104,7 @@ async function start(express, app, userbaseConfig = {}) {
           let logChildObject
 
           try {
-            logChildObject = { userId, connectionId, adminId, clientId, size: msg.length || msg.byteLength }
+            logChildObject = { userId, connectionId, adminId, clientId, appId, size: msg.length || msg.byteLength }
 
             if (msg.length > FOUR_HUNDRED_KB || msg.byteLength > FOUR_HUNDRED_KB) {
               logger.child(logChildObject).warn('Received large message')
@@ -407,7 +408,7 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.post('/list-apps', admin.authenticateAdmin, appController.listApps)
     v1Admin.post('/list-app-users', admin.authenticateAdmin, appController.listAppUsers)
     v1Admin.post('/delete-app', admin.authenticateAdmin, admin.getSaasSubscriptionController, appController.deleteApp)
-    v1Admin.post('/permanent-delete-app', admin.authenticateAdmin, admin.getSaasSubscriptionController, appController.permanentDeleteApp)
+    v1Admin.post('/permanent-delete-app', admin.authenticateAdmin, admin.getSaasSubscriptionController, appController.permanentDeleteAppController)
     v1Admin.post('/delete-user', admin.authenticateAdmin, admin.deleteUser)
     v1Admin.post('/permanent-delete-user', admin.authenticateAdmin, admin.permanentDeleteUser)
     v1Admin.post('/delete-admin', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.deleteAdmin)

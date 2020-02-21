@@ -40,6 +40,7 @@ const userDatabaseTableName = resourceNamePrefix + 'user-databases'
 const transactionsTableName = resourceNamePrefix + 'transactions'
 const deletedUsersTableName = resourceNamePrefix + 'deleted-users'
 const deletedAppsTableName = resourceNamePrefix + 'deleted-apps'
+const deletedAdminsTableName = resourceNamePrefix + 'deleted-admins'
 const dbStatesBucketNamePrefix = resourceNamePrefix + 'database-states'
 const secretManagerSecretId = resourceNamePrefix + 'env'
 
@@ -53,6 +54,7 @@ exports.userDatabaseTableName = userDatabaseTableName
 exports.transactionsTableName = transactionsTableName
 exports.deletedUsersTableName = deletedUsersTableName
 exports.deletedAppsTableName = deletedAppsTableName
+exports.deletedAdminsTableName = deletedAdminsTableName
 
 const adminIdIndex = 'AdminIdIndex'
 const accessTokenIndex = 'AccessTokenIndex'
@@ -305,6 +307,18 @@ async function setupDdb() {
     ]
   }
 
+  // the deleted apps table holds a record per deleted app
+  const deletedAdminsTableParams = {
+    TableName: deletedAdminsTableName,
+    BillingMode: 'PAY_PER_REQUEST',
+    AttributeDefinitions: [
+      { AttributeName: 'admin-id', AttributeType: 'S' }
+    ],
+    KeySchema: [
+      { AttributeName: 'admin-id', KeyType: 'HASH' }
+    ]
+  }
+
   logger.info('Creating DynamoDB tables if necessary')
   await Promise.all([
     createTable(ddb, adminTableParams),
@@ -317,6 +331,7 @@ async function setupDdb() {
     createTable(ddb, transactionsTableParams),
     createTable(ddb, deletedUsersTableParams),
     createTable(ddb, deletedAppsTableParams),
+    createTable(ddb, deletedAdminsTableParams),
   ])
 
   logger.info('Setting time to live on tables if necessary')

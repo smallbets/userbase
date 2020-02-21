@@ -399,6 +399,62 @@ exports.permanentDeleteUser = async function (req, res) {
   }
 }
 
+exports.permanentDelete = async function (admin) {
+  const email = admin['email']
+  const adminId = admin['admin-id']
+  const stripeCustomerId = admin['stripe-customer-id']
+
+  const logChildObject = { email, adminId, stripeCustomerId }
+  logger.child(logChildObject).info('Permanent deleting admin')
+
+  // delete from Stripe before DDB delete to maintain reference
+  if (stripeCustomerId) {
+    try {
+      await stripe.getClient().customers.del(stripeCustomerId)
+    } catch (e) {
+      // only safe to continue if customer is already deleted from Stripe
+      if (!e.message.includes('No such customer')) throw e
+    }
+  }
+
+  const existingAdminParams = {
+    TableName: setup.adminTableName,
+    Key: {
+      email,
+    },
+    ConditionExpression: 'attribute_exists(deleted) and #adminId = :adminId',
+    ExpressionAttributeNames: {
+      '#adminId': 'admin-id'
+    },
+    ExpressionAttributeValues: {
+      ':adminId': adminId
+    }
+  }
+
+  const permanentDeletedAdminParams = {
+    TableName: setup.deletedAdminsTableName,
+    Item: {
+      ...admin // still technically can recover admin before data is purged, though more difficult
+    },
+    ConditionExpression: 'attribute_not_exists(#adminId)',
+    ExpressionAttributeNames: {
+      '#adminId': 'admin-id'
+    }
+  }
+
+  const transactionParams = {
+    TransactItems: [
+      { Delete: existingAdminParams },
+      { Put: permanentDeletedAdminParams }
+    ]
+  }
+
+  const ddbClient = connection.ddbClient()
+  await ddbClient.transactWrite(transactionParams).promise()
+
+  logger.child(logChildObject).info('Deleted admin permanently')
+}
+
 const setTempPassword = async (email, tempPassword) => {
   const params = {
     TableName: setup.adminTableName,
