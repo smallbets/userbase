@@ -673,6 +673,19 @@ exports.getPasswordSaltsController = async function (req, res) {
       }
     }
 
+    const admin = await adminController.findAdminByAdminId(app['admin-id'])
+    if (!admin || admin['deleted']) {
+      throw {
+        status: statusCodes['Unauthorized'],
+        error: {
+          message: 'App ID not valid',
+          deletedAdminId: admin && admin['admin-id'],
+        }
+      }
+    } else {
+      logChildObject.adminId = admin['admin-id']
+    }
+
     const user = await getUser(appId, username.toLowerCase())
     if (!user || user['deleted']) {
       throw {
