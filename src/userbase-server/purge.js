@@ -33,7 +33,7 @@ const permanentDeleteDeletedItems = async (items, closeConnectedClients, permane
     const item = items[i]
 
     if (item['deleted']) {
-      // closing connected clients guarantees no lingering clients will be able to insert data while purge is under way
+      // closing connected clients tries to prevent lingering clients from inserting data while purge is under way
       closeConnectedClients(item)
 
       if (new Date() - new Date(item['deleted']) > TIME_TO_PURGE) {
@@ -73,7 +73,7 @@ const scanForDeletedAdmins = async (purgeId) => {
 
   await scanForDeleted(
     setup.adminTableName,
-    (admin) => connections.closeAppsConnectedClients(admin['admin-id']),
+    (admin) => connections.closeAdminsConnectedClients(admin['admin-id']),
     (admin) => adminController.permanentDelete(admin)
   )
 
@@ -92,6 +92,30 @@ const scanForDeletedUsers = async (purgeId) => {
   )
 
   logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished scanning for deleted users')
+}
+
+const removeDatabase = async (userDb) => {
+  // delete inside transaction to maintain reference in case of failure
+  const params = {
+    TransactItems: [{
+      Delete: {
+        TableName: setup.databaseTableName,
+        Key: {
+          'database-id': userDb['database-id']
+        }
+      }
+    }, {
+      Delete: {
+        TableName: setup.userDatabaseTableName,
+        Key: {
+          'user-id': userDb['user-id'],
+          'database-name-hash': userDb['database-name-hash']
+        }
+      }
+    }]
+  }
+
+  await connection.ddbClient().transactWrite(params).promise()
 }
 
 const removeTransaction = async (transaction) => {
@@ -129,21 +153,7 @@ const purgeTransactions = async (userDb) => {
   const action = (transactions) => Promise.all(transactions.map(tx => removeTransaction(tx)))
   await ddbWhileLoop(params, ddbQuery, action)
 
-  // delete database before deleting user database to maintain reference in case of failure
-  await ddbClient.delete({
-    TableName: setup.databaseTableName,
-    Key: {
-      'database-id': userDb['database-id']
-    }
-  }).promise()
-
-  await ddbClient.delete({
-    TableName: setup.userDatabaseTableName,
-    Key: {
-      'user-id': userDb['user-id'],
-      'database-name-hash': userDb['database-name-hash']
-    }
-  }).promise()
+  await removeDatabase(userDb)
 
   logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purging transactions')
 }
