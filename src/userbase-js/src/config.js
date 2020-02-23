@@ -4,7 +4,6 @@ const VERSION = '/v1'
 const DEFAULT_ENDPOINT = 'https://v1.userbase.com' + VERSION
 
 let userbaseAppId = null
-window._userbaseEndpoint = DEFAULT_ENDPOINT
 
 const REMEMBER_ME_OPTIONS = {
   local: true,
@@ -17,7 +16,9 @@ const getAppId = () => {
   return userbaseAppId
 }
 
-const getEndpoint = () => window._userbaseEndpoint
+const getEndpoint = () => {
+  return window._userbaseEndpoint || DEFAULT_ENDPOINT
+}
 
 const setAppId = (appId) => {
   if (userbaseAppId && userbaseAppId !== appId) throw new errors.AppIdAlreadySet(userbaseAppId)
