@@ -72,3 +72,17 @@ export const stringToArrayBuffer = (str) => {
   }
   return buf
 }
+
+export const getMsUntil1AmPst = () => {
+  const time = new Date()
+
+  const UTC_1_AM_HOUR = 9
+
+  if (time.getUTCHours() >= UTC_1_AM_HOUR) {
+    time.setUTCDate(time.getUTCDate() + 1)
+  }
+
+  time.setUTCHours(UTC_1_AM_HOUR, 0, 0, 0)
+
+  return time.getTime() - Date.now()
+}

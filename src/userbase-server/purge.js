@@ -6,6 +6,7 @@ import connections from './ws'
 import userController from './user'
 import appController from './app'
 import adminController from './admin'
+import { getMsUntil1AmPst } from './utils'
 
 const MS_IN_A_DAY = 60 * 60 * 24 * 1000
 const TIME_TO_PURGE = 30 * MS_IN_A_DAY
@@ -139,10 +140,10 @@ const removeS3DatabaseStates = async (databaseId) => {
   while (dbStatesResponse.IsTruncated) {
     params.ContinuationToken = dbStatesResponse.NextContinuationToken
     dbStatesResponse = await setup.s3().listObjectsV2(params).promise()
-
     if (!dbStatesResponse.KeyCount) return
 
     deleteParams.Delete.Objects = dbStatesResponse.Contents.map(dbState => ({ Key: dbState.Key }))
+
     await setup.s3().deleteObjects(deleteParams).promise()
   }
 }
@@ -402,6 +403,16 @@ const purgeDeletedAdmins = async (purgeId) => {
   logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purging deleted admins')
 }
 
+const schedulePurge = () => {
+  const msUntil1AmPst = getMsUntil1AmPst()
+
+  // schedule purge to start the next time it's 1am PST
+  setTimeout(commencePurge, msUntil1AmPst)
+
+  const nextPurgeStart = new Date(Date.now() + msUntil1AmPst).toISOString()
+  logger.child({ nextPurge: nextPurgeStart }).info('Scheduled purge')
+}
+
 const commencePurge = async () => {
   const start = Date.now()
   const purgeId = uuidv4()
@@ -427,9 +438,10 @@ const commencePurge = async () => {
   } catch (e) {
     logger.child({ timeToPurge: Date.now() - start, err: e, ...logChildObject }).error('Failed purge')
   }
+
+  schedulePurge()
 }
 
 export default async function () {
-  commencePurge()
-  setInterval(commencePurge, MS_IN_A_DAY)
+  schedulePurge()
 }
