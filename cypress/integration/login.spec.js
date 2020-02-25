@@ -12,8 +12,7 @@ describe('Login - Signup Testing', function () {
   })
 
   it('Check all the endpoints exists', function () {
-    cy.window().then(({ userbase, window }) => {
-      expect(window).to.haveOwnProperty('_userbaseEndpoint')
+    cy.window().then(({ userbase }) => {
       expect(userbase)
       expect(userbase).to.respondTo('signIn')
       expect(userbase).to.respondTo('signUp')
