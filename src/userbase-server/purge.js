@@ -116,7 +116,8 @@ const removeDatabase = async (userDb) => {
     }]
   }
 
-  await connection.ddbClient().transactWrite(params).promise()
+  // await connection.ddbClient().transactWrite(params).promise()
+  logger.child(params).info('Log placeholder -- Delete database')
 }
 
 const removeS3DatabaseStates = async (databaseId) => {
@@ -135,7 +136,8 @@ const removeS3DatabaseStates = async (databaseId) => {
     }
   }
 
-  await setup.s3().deleteObjects(deleteParams).promise()
+  // await setup.s3().deleteObjects(deleteParams).promise()
+  logger.child(deleteParams).info('Log placeholder -- deleting S3 states')
 
   while (dbStatesResponse.IsTruncated) {
     params.ContinuationToken = dbStatesResponse.NextContinuationToken
@@ -144,7 +146,8 @@ const removeS3DatabaseStates = async (databaseId) => {
 
     deleteParams.Delete.Objects = dbStatesResponse.Contents.map(dbState => ({ Key: dbState.Key }))
 
-    await setup.s3().deleteObjects(deleteParams).promise()
+    // await setup.s3().deleteObjects(deleteParams).promise()
+    logger.child(deleteParams).info('Log placeholder -- deleting S3 states')
   }
 }
 
@@ -157,8 +160,9 @@ const removeTransaction = async (transaction) => {
     }
   }
 
-  const ddbClient = connection.ddbClient()
-  await ddbClient.delete(transactionParams).promise()
+  // const ddbClient = connection.ddbClient()
+  // await ddbClient.delete(transactionParams).promise()
+  logger.child(transactionParams).info('Log placeholder -- Deleting transaction')
 }
 
 const purgeTransactions = async (userDb) => {
@@ -215,25 +219,26 @@ const purgeUser = async (user) => {
   const action = (userDbs) => Promise.all(userDbs.map(userDb => purgeTransactions(userDb)))
   await ddbWhileLoop(params, ddbQuery, action)
 
-  // should only be present in this table if purging deleted app or admin
-  const deleteFromTable = ddbClient.delete({
-    TableName: setup.usersTableName,
-    Key: {
-      'username': user['username'],
-      'app-id': user['app-id']
-    }
-  }).promise()
+  // // should only be present in this table if purging deleted app or admin
+  // const deleteFromTable = ddbClient.delete({
+  //   TableName: setup.usersTableName,
+  //   Key: {
+  //     'username': user['username'],
+  //     'app-id': user['app-id']
+  //   }
+  // }).promise()
 
-  // should only be present in this table if purging deleted user
-  const deleteFromDeletedTable = ddbClient.delete({
-    TableName: setup.deletedUsersTableName,
-    Key: {
-      'user-id': user['user-id']
-    }
-  }).promise()
+  // // should only be present in this table if purging deleted user
+  // const deleteFromDeletedTable = ddbClient.delete({
+  //   TableName: setup.deletedUsersTableName,
+  //   Key: {
+  //     'user-id': user['user-id']
+  //   }
+  // }).promise()
 
-  // safe to just try and delete from both
-  await Promise.all([deleteFromDeletedTable, deleteFromTable])
+  // // safe to just try and delete from both
+  // await Promise.all([deleteFromDeletedTable, deleteFromTable])
+  logger.child(logChildObject).info('Log placeholder -- Deleting user')
 
   logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purging user')
 }
@@ -262,37 +267,39 @@ const purgeApp = async (app) => {
   const action = (users) => Promise.all(users.map(user => purgeUser(user)))
   await ddbWhileLoop(params, ddbQuery, action)
 
-  // should only be present in this table if purging deleted admin
-  const deleteFromTable = ddbClient.delete({
-    TableName: setup.appsTableName,
-    Key: {
-      'admin-id': app['admin-id'],
-      'app-name': app['app-name']
-    }
-  }).promise()
+  // // should only be present in this table if purging deleted admin
+  // const deleteFromTable = ddbClient.delete({
+  //   TableName: setup.appsTableName,
+  //   Key: {
+  //     'admin-id': app['admin-id'],
+  //     'app-name': app['app-name']
+  //   }
+  // }).promise()
 
-  // should only be present in this table if purging deleted app
-  const deleteFromDeletedTable = ddbClient.delete({
-    TableName: setup.deletedAppsTableName,
-    Key: {
-      'app-id': app['app-id']
-    }
-  }).promise()
+  // // should only be present in this table if purging deleted app
+  // const deleteFromDeletedTable = ddbClient.delete({
+  //   TableName: setup.deletedAppsTableName,
+  //   Key: {
+  //     'app-id': app['app-id']
+  //   }
+  // }).promise()
 
-  // safe to just try and delete from both
-  await Promise.all([deleteFromDeletedTable, deleteFromTable])
+  // // safe to just try and delete from both
+  // await Promise.all([deleteFromDeletedTable, deleteFromTable])
+  logger.child(logChildObject).info('Log placeholder -- Deleting app')
 
   logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purging app')
 }
 
 const removeAccessToken = async (accessToken) => {
-  await connection.ddbClient().delete({
-    TableName: setup.adminAccessTokensTableName,
-    Key: {
-      'admin-id': accessToken['admin-id'],
-      'access-token': accessToken['access-token']
-    }
-  }).promise()
+  // await connection.ddbClient().delete({
+  //   TableName: setup.adminAccessTokensTableName,
+  //   Key: {
+  //     'admin-id': accessToken['admin-id'],
+  //     'access-token': accessToken['access-token']
+  //   }
+  // }).promise()
+  logger.child(accessToken).info('Log placeholder -- Deleting access token')
 }
 
 const purgeAccessTokens = async (admin) => {
@@ -341,12 +348,13 @@ const purgeAdmin = async (admin) => {
     purgeApps(admin)
   ])
 
-  await connection.ddbClient().delete({
-    TableName: setup.deletedAdminsTableName,
-    Key: {
-      'admin-id': admin['admin-id']
-    }
-  }).promise()
+  // await connection.ddbClient().delete({
+  //   TableName: setup.deletedAdminsTableName,
+  //   Key: {
+  //     'admin-id': admin['admin-id']
+  //   }
+  // }).promise()
+  logger.child(logChildObject).info('Log placeholder -- Deleting Admin')
 
   logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purging admin')
 }
