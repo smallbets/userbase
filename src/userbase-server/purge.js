@@ -118,6 +118,35 @@ const removeDatabase = async (userDb) => {
   await connection.ddbClient().transactWrite(params).promise()
 }
 
+const removeS3DatabaseStates = async (databaseId) => {
+  const params = {
+    Bucket: setup.getDbStatesBucketName(),
+    Prefix: databaseId
+  }
+
+  let dbStatesResponse = await setup.s3().listObjectsV2(params).promise()
+  if (!dbStatesResponse.KeyCount) return
+
+  const deleteParams = {
+    Bucket: setup.getDbStatesBucketName(),
+    Delete: {
+      Objects: dbStatesResponse.Contents.map(dbState => ({ Key: dbState.Key }))
+    }
+  }
+
+  await setup.s3().deleteObjects(deleteParams).promise()
+
+  while (dbStatesResponse.IsTruncated) {
+    params.ContinuationToken = dbStatesResponse.NextContinuationToken
+    dbStatesResponse = await setup.s3().listObjectsV2(params).promise()
+
+    if (!dbStatesResponse.KeyCount) return
+
+    deleteParams.Delete.Objects = dbStatesResponse.Contents.map(dbState => ({ Key: dbState.Key }))
+    await setup.s3().deleteObjects(deleteParams).promise()
+  }
+}
+
 const removeTransaction = async (transaction) => {
   const transactionParams = {
     TableName: setup.transactionsTableName,
@@ -151,7 +180,11 @@ const purgeTransactions = async (userDb) => {
 
   const ddbQuery = (params) => ddbClient.query(params).promise()
   const action = (transactions) => Promise.all(transactions.map(tx => removeTransaction(tx)))
-  await ddbWhileLoop(params, ddbQuery, action)
+
+  await Promise.all([
+    ddbWhileLoop(params, ddbQuery, action),
+    removeS3DatabaseStates(userDb['database-id'])
+  ])
 
   await removeDatabase(userDb)
 
