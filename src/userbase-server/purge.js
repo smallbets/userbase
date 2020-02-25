@@ -8,7 +8,8 @@ import appController from './app'
 import adminController from './admin'
 import { getMsUntil1AmPst } from './utils'
 
-const MS_IN_A_DAY = 60 * 60 * 24 * 1000
+const MS_IN_AN_HOUR = 60 * 60 * 1000
+const MS_IN_A_DAY = 24 * MS_IN_AN_HOUR
 const TIME_TO_PURGE = 30 * MS_IN_A_DAY
 
 const ddbWhileLoop = async (params, ddbQuery, action) => {
@@ -411,19 +412,8 @@ const purgeDeletedAdmins = async (purgeId) => {
   logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purging deleted admins')
 }
 
-const schedulePurge = () => {
-  const msUntil1AmPst = getMsUntil1AmPst()
-
-  // schedule purge to start the next time it's 1am PST
-  setTimeout(commencePurge, msUntil1AmPst)
-
-  const nextPurgeStart = new Date(Date.now() + msUntil1AmPst).toISOString()
-  logger.child({ nextPurge: nextPurgeStart }).info('Scheduled purge')
-}
-
-const commencePurge = async () => {
+const commencePurge = async (purgeId) => {
   const start = Date.now()
-  const purgeId = uuidv4()
   const logChildObject = { purgeId }
 
   try {
@@ -450,6 +440,22 @@ const commencePurge = async () => {
   schedulePurge()
 }
 
-export default async function () {
+const schedulePurge = () => {
+  const msUntil1AmPst = getMsUntil1AmPst()
+
+  // quick and dirty way to reduce the chance >1 instances run the purge at the same time. Ok if 2 happen
+  // to run at the same time, worst case is 1 encounters a conflict error and fails, but other should succeed
+  const randomTwoHourWindow = Math.random() * 2 * MS_IN_AN_HOUR
+  const nextPurgeStart = msUntil1AmPst + randomTwoHourWindow
+
+  const purgeId = uuidv4()
+
+  // schedule next purge to start some time between 1am - 3am PST
+  setTimeout(() => commencePurge(purgeId), nextPurgeStart)
+
+  logger.child({ purgeId, nextPurge: new Date(Date.now() + nextPurgeStart).toISOString() }).info('Scheduled purge')
+}
+
+export default function () {
   schedulePurge()
 }
