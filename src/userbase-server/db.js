@@ -229,11 +229,15 @@ const rollbackAttempt = async function (transaction, ddbClient) {
   }
 }
 
-exports.doCommand = async function (command, userId, dbNameHash, databaseId, key, record) {
+exports.doCommand = async function (command, userId, connectionId, dbNameHash, databaseId, key, record) {
   if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
   if (!databaseId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
   if (!key) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing item key')
   if (!record) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing record')
+
+  if (!connections.isDatabaseOpen(userId, connectionId, databaseId)) {
+    return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Database not open')
+  }
 
   const transaction = {
     'database-id': databaseId,
@@ -251,7 +255,7 @@ exports.doCommand = async function (command, userId, dbNameHash, databaseId, key
   }
 }
 
-exports.batchTransaction = async function (userId, dbNameHash, databaseId, operations) {
+exports.batchTransaction = async function (userId, connectionId, dbNameHash, databaseId, operations) {
   if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
   if (!databaseId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
   if (!operations || !operations.length) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing operations')
@@ -260,6 +264,10 @@ exports.batchTransaction = async function (userId, dbNameHash, databaseId, opera
     error: 'OperationsExceedLimit',
     limit: MAX_OPERATIONS_IN_TX
   })
+
+  if (!connections.isDatabaseOpen(userId, connectionId, databaseId)) {
+    return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Database not open')
+  }
 
   const ops = []
   for (let i = 0; i < operations.length; i++) {
@@ -296,7 +304,7 @@ exports.batchTransaction = async function (userId, dbNameHash, databaseId, opera
   }
 }
 
-exports.bundleTransactionLog = async function (databaseId, seqNo, bundle) {
+exports.bundleTransactionLog = async function (userId, connectionId, databaseId, seqNo, bundle) {
   const bundleSeqNo = Number(seqNo)
 
   if (!bundleSeqNo) {
@@ -304,6 +312,10 @@ exports.bundleTransactionLog = async function (databaseId, seqNo, bundle) {
   }
 
   try {
+    if (!connections.isDatabaseOpen(userId, connectionId, databaseId)) {
+      return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Database not open')
+    }
+
     const database = await findDatabaseByDatabaseId(databaseId)
     if (!database) return responseBuilder.errorResponse(statusCodes['Not Found'], 'Database not found')
 

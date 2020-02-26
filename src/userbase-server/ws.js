@@ -350,6 +350,14 @@ export default class Connections {
     return true
   }
 
+  static isDatabaseOpen(userId, connectionId, databaseId) {
+    if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId][connectionId]) return
+
+    const conn = Connections.sockets[userId][connectionId]
+
+    return conn.databases[databaseId] ? true : false
+  }
+
   static push(transaction, userId) {
     if (!Connections.sockets || !Connections.sockets[userId]) return
 
