@@ -196,6 +196,7 @@ async function start(express, app, userbaseConfig = {}) {
                     response = await db.doCommand(
                       action,
                       userId,
+                      connectionId,
                       params.dbNameHash,
                       params.dbId,
                       params.itemKey,
@@ -204,11 +205,11 @@ async function start(express, app, userbaseConfig = {}) {
                     break
                   }
                   case 'BatchTransaction': {
-                    response = await db.batchTransaction(userId, params.dbNameHash, params.dbId, params.operations)
+                    response = await db.batchTransaction(userId, connectionId, params.dbNameHash, params.dbId, params.operations)
                     break
                   }
                   case 'Bundle': {
-                    response = await db.bundleTransactionLog(params.dbId, params.seqNo, params.bundle)
+                    response = await db.bundleTransactionLog(userId, connectionId, params.dbId, params.seqNo, params.bundle)
                     break
                   }
                   case 'GetPasswordSalts': {
