@@ -994,7 +994,6 @@ exports.generateAccessToken = async function (req, res) {
         label,
         'access-token': crypto.sha256.hash(accessToken).toString('base64'),
         'creation-date': creationDate,
-        hashed: true,
       },
       ConditionExpression: 'attribute_not_exists(#adminId)',
       ExpressionAttributeNames: {
