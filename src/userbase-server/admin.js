@@ -197,19 +197,26 @@ const findAdminByAdminId = async (adminId) => {
 exports.findAdminByAdminId = findAdminByAdminId
 
 const _validateAdminPassword = async (password, admin) => {
-  if (!admin || admin['deleted']) throw new Error('Admin not found')
+  try {
+    if (!admin || admin['deleted']) throw new Error('Admin not found')
 
-  const passwordIsCorrect = await crypto.bcrypt.compare(password, admin['password-hash'])
+    const passwordIsCorrect = await crypto.bcrypt.compare(password, admin['password-hash'])
 
-  if (!passwordIsCorrect) {
-    const tempPasswordIsCorrect = await crypto.bcrypt.compare(password, admin['temp-password'])
+    if (!passwordIsCorrect) {
+      const tempPasswordIsCorrect = await crypto.bcrypt.compare(password, admin['temp-password'])
 
-    if (!tempPasswordIsCorrect) {
-      throw new Error('Incorrect password or temp password')
-    } else {
-      if (new Date() - new Date(admin['temp-password-creation-date']) > MS_IN_A_DAY) {
-        throw new Error('Temp password expired')
+      if (!tempPasswordIsCorrect) {
+        throw new Error('Incorrect password or temp password')
+      } else {
+        if (new Date() - new Date(admin['temp-password-creation-date']) > MS_IN_A_DAY) {
+          throw new Error('Temp password expired')
+        }
       }
+    }
+  } catch {
+    throw {
+      status: statusCodes['Unauthorized'],
+      error: { message: 'Incorrect password' }
     }
   }
 }
@@ -956,28 +963,75 @@ exports.resumeSaasSubscription = async function (req, res) {
   }
 }
 
-const createAccessToken = async function (adminId) {
-  const accessToken = crypto
-    .randomBytes(ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID * 2) // the more bytes the safer
-    .toString('base64')
+exports.generateAccessToken = async function (req, res) {
+  let logChildObject
+  try {
+    const { admin } = res.locals
+    const adminId = admin['admin-id']
 
-  const params = {
-    TableName: setup.adminAccessTokensTableName,
-    Item: {
-      'admin-id': adminId,
-      'access-token': accessToken,
-      'creation-date': new Date().toISOString()
-    },
-    ConditionExpression: 'attribute_not_exists(#adminId)',
-    ExpressionAttributeNames: {
-      '#adminId': 'admin-id'
+    logChildObject = { adminId, req: trimReq(req) }
+    logger.child(logChildObject).info('Generating access token')
+
+    const label = req.body.label
+    if (!label || typeof label !== 'string') throw {
+      status: statusCodes['Bad Request'],
+      error: { message: 'Missing label' }
+    }
+
+    const currentPassword = req.body.currentPassword
+    await _validateAdminPassword(currentPassword, admin)
+
+    const accessToken = crypto
+      .randomBytes(ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID * 2) // the more bytes the safer
+      .toString('base64')
+
+    const creationDate = new Date().toISOString()
+
+    const params = {
+      TableName: setup.adminAccessTokensTableName,
+      Item: {
+        'admin-id': adminId,
+        label,
+        'access-token': crypto.sha256.hash(accessToken).toString('base64'),
+        'creation-date': creationDate,
+        hashed: true,
+      },
+      ConditionExpression: 'attribute_not_exists(#adminId)',
+      ExpressionAttributeNames: {
+        '#adminId': 'admin-id'
+      }
+    }
+
+    try {
+      const ddbClient = connection.ddbClient()
+      await ddbClient.put(params).promise()
+    } catch (e) {
+      if (e.message === 'The conditional request failed') throw {
+        status: statusCodes['Conflict'],
+        error: { message: 'Label already exists' }
+      }
+      throw e
+    }
+
+    logger.child(logChildObject).info('Generated access token')
+
+    return res.status(statusCodes['Success']).send({
+      label,
+      accessToken,
+      creationDate
+    })
+  } catch (e) {
+    const message = 'Failed to generate access token'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
+      return res.status(e.status).send(e.error.message)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return res.status(statusCode).send(message)
     }
   }
-
-  const ddbClient = connection.ddbClient()
-  await ddbClient.put(params).promise()
-
-  return accessToken
 }
 
 const getAccessTokens = async function (adminId) {
@@ -993,13 +1047,19 @@ const getAccessTokens = async function (adminId) {
   }
 
   const ddbClient = connection.ddbClient()
-  const adminResponse = await ddbClient.query(params).promise()
+  let accessTokenResponse = await ddbClient.query(params).promise()
+  let accessTokens = accessTokenResponse.Items
 
-  let accessTokens = adminResponse.Items.length === 0
-    ? [{ 'access-token': await createAccessToken(adminId) }]
-    : adminResponse.Items.map(item => ({ 'access-token': item['access-token'] }))
+  while (accessTokenResponse.LastEvaluatedKey) {
+    params.ExclusiveStartKey = accessTokenResponse.LastEvaluatedKey
+    accessTokenResponse = await ddbClient.query(params).promise()
+    accessTokens.push(accessTokenResponse.Items)
+  }
 
-  return accessTokens
+  return accessTokens.map(accessToken => ({
+    label: accessToken['label'],
+    creationDate: accessToken['creation-date'],
+  }))
 }
 
 exports.getAccessTokens = async function (req, res) {
@@ -1020,18 +1080,34 @@ exports.getAccessTokens = async function (req, res) {
   }
 }
 
-const getAccessToken = async function (adminId, accessToken) {
+const getAccessToken = async function (accessToken) {
+  const accessTokenHash = crypto.sha256.hash(accessToken).toString('base64')
+
   const params = {
     TableName: setup.adminAccessTokensTableName,
-    Key: {
-      'admin-id': adminId,
-      'access-token': accessToken
-    }
+    IndexName: setup.accessTokenIndex,
+    KeyConditionExpression: '#accessToken = :accessToken',
+    ExpressionAttributeNames: {
+      '#accessToken': 'access-token'
+    },
+    ExpressionAttributeValues: {
+      ':accessToken': accessTokenHash
+    },
+    Select: 'ALL_ATTRIBUTES'
   }
 
   const ddbClient = connection.ddbClient()
-  const accessTokenResponse = await ddbClient.get(params).promise()
-  return accessTokenResponse.Item
+  const accessTokenResponse = await ddbClient.query(params).promise()
+
+  if (!accessTokenResponse || accessTokenResponse.Items.length === 0) return null
+
+  if (accessTokenResponse.Items.length > 1) {
+    const errorMsg = `Too many access tokens found with hash ${accessTokenHash}`
+    logger.fatal(errorMsg)
+    throw new Error(errorMsg)
+  }
+
+  return accessTokenResponse.Items[0]
 }
 
 const _validateAppId = (appId) => {
@@ -1044,6 +1120,45 @@ const _validateAccessToken = (accessToken) => {
   if (!accessToken) throw { status: statusCodes['Bad Request'], error: { message: 'Missing access token' } }
   if (typeof accessToken !== 'string') throw { status: statusCodes['Bad Request'], error: { message: 'Access token must be a string' } }
   if (accessToken.length !== BASE_64_STRING_LENGTH_FOR_32_BYTES) throw { status: statusCodes['Bad Request'], error: { message: 'Access token invalid' } }
+}
+
+exports.deleteAccessToken = async function (req, res) {
+  let logChildObject
+  try {
+    const { admin } = res.locals
+    const adminId = admin['admin-id']
+
+    const label = req.body.label
+
+    logChildObject = { adminId, label, req: trimReq(req) }
+    logger.child(logChildObject).info('Deleting access token')
+
+    const params = {
+      TableName: setup.adminAccessTokensTableName,
+      Key: {
+        'admin-id': adminId,
+        label
+      }
+    }
+
+    const ddbClient = connection.ddbClient()
+    await ddbClient.delete(params).promise()
+
+    logger.child(logChildObject).info('Deleted access token')
+
+    return res.end()
+  } catch (e) {
+    const message = 'Failed to delete access token'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
+      return res.status(e.status).send(e.error.message)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return res.status(statusCode).send(message)
+    }
+  }
 }
 
 exports.authenticateAccessToken = async function (req, res, next) {
@@ -1060,7 +1175,7 @@ exports.authenticateAccessToken = async function (req, res, next) {
     if (!app || app['deleted']) throw { status: statusCodes['Not Found'], error: { message: 'App not found' } }
 
     const [accessTokenItem, admin] = await Promise.all([
-      getAccessToken(app['admin-id'], accessToken),
+      getAccessToken(accessToken),
       findAdminByAdminId(app['admin-id'])
     ])
 
@@ -1071,7 +1186,7 @@ exports.authenticateAccessToken = async function (req, res, next) {
     logger.child({ appId, req: trimReq(req) }).info('Successfully authenticated access token')
     next()
   } catch (e) {
-    const msg = 'Failed to authenticate access tokens'
+    const msg = 'Failed to authenticate access token'
     logger.child({ appId, err: e, req: trimReq(req) }).error(msg)
 
     return (e.status && e.error)

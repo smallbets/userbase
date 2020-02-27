@@ -4,6 +4,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faTrashAlt } from '@fortawesome/free-regular-svg-icons'
 import dashboardLogic from './logic'
 import UnknownError from '../Admin/UnknownError'
+import { formatDate } from '../../utils'
 
 export default class AppUsersTable extends Component {
   constructor(props) {
@@ -41,24 +42,7 @@ export default class AppUsersTable extends Component {
       for (let i = 0; i < appUsers.length; i++) {
         const appUser = appUsers[i]
 
-        try {
-          appUser['formattedCreationDate'] = new Date(appUser['creationDate'])
-            .toLocaleDateString([], {
-              month: 'short',
-              day: 'numeric',
-              year: 'numeric',
-              hour: 'numeric',
-              minute: 'numeric',
-              second: 'numeric',
-              timeZoneName: 'short'
-            })
-
-          if (appUser['formattedCreationDate'] === new Date(appUser['creationDate']).toLocaleDateString()) {
-            appUser['formattedCreationDate'] = appUser['creationDate']
-          }
-        } catch (e) {
-          appUser['formattedCreationDate'] = appUser['creationDate']
-        }
+        appUser['formattedCreationDate'] = formatDate(appUser['creationDate'])
 
         if (appUser['deleted']) deletedUsers.push(appUser)
         else activeUsers.push(appUser)
@@ -180,7 +164,7 @@ export default class AppUsersTable extends Component {
 
   render() {
     const { appName, paymentStatus } = this.props
-    const { loading, appId, activeUsers, deletedUsers, error, showDeletedUsers } = this.state
+    const { loading, activeUsers, deletedUsers, error, showDeletedUsers } = this.state
 
     return (
       <div className='text-xs sm:text-sm'>

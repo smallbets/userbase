@@ -390,7 +390,6 @@ async function start(express, app, userbaseConfig = {}) {
 
     // Userbase admin API
     app.use(express.static(path.join(__dirname + adminPanelDir)))
-    app.get('/access-tokens', cookieParser(), admin.authenticateAdmin, admin.getAccessTokens)
     const v1Admin = express.Router()
     app.use('/v1/admin', v1Admin)
 
@@ -415,6 +414,9 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.post('/update-admin', admin.authenticateAdmin, admin.updateAdmin)
     v1Admin.post('/change-password', admin.authenticateAdmin, admin.changePassword)
     v1Admin.post('/forgot-password', admin.forgotPassword)
+    v1Admin.get('/access-tokens', admin.authenticateAdmin, admin.getAccessTokens)
+    v1Admin.post('/access-token', admin.authenticateAdmin, admin.generateAccessToken)
+    v1Admin.delete('/access-token', admin.authenticateAdmin, admin.deleteAccessToken)
     v1Admin.get('/account', admin.authenticateAdmin, admin.getSaasSubscriptionController, (req, res) => {
       const admin = res.locals.admin
       const subscription = res.locals.subscription

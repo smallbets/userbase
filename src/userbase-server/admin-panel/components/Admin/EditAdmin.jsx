@@ -1,7 +1,10 @@
 import React, { Component } from 'react'
 import { func, string } from 'prop-types'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { faTrashAlt } from '@fortawesome/free-regular-svg-icons'
 import adminLogic from './logic'
 import UnknownError from './UnknownError'
+import { formatDate } from '../../utils'
 
 export default class EditAdmin extends Component {
   constructor(props) {
@@ -11,12 +14,16 @@ export default class EditAdmin extends Component {
       fullName: this.props.fullName,
       currentPassword: '',
       newPassword: '',
-      accessToken: '',
+      accessTokens: [],
+      accessTokenCurrentPassword: '',
+      accessTokenLabel: '',
+      newAccessTokens: [],
       loading: true,
       loadingUpdateAdmin: false,
       loadingChangePassword: false,
       loadingDeleteAdmin: false,
       loadingCheckout: false,
+      loadingGenerateAccessToken: false,
       loadingCancel: false,
       loadingUpdatePaymentMethod: false,
       loadingResumeSubscription: false,
@@ -25,6 +32,8 @@ export default class EditAdmin extends Component {
       errorChangingPassword: '',
       errorDeletingAdmin: '',
       errorCheckingOut: false,
+      errorGeneratingAccessToken: false,
+      errorDeletingAccessToken: false,
       errorCancelling: false,
       errorUpdatingPaymentMethod: false,
       errorResumingSubscription: false
@@ -33,6 +42,8 @@ export default class EditAdmin extends Component {
     this.handleInputChange = this.handleInputChange.bind(this)
     this.handleUpdateAcount = this.handleUpdateAcount.bind(this)
     this.handleChangePassword = this.handleChangePassword.bind(this)
+    this.handleGenerateAccessToken = this.handleGenerateAccessToken.bind(this)
+    this.handleDeleteAccessToken = this.handleDeleteAccessToken.bind(this)
     this.handleDeleteAccount = this.handleDeleteAccount.bind(this)
     this.handleCancelSubscription = this.handleCancelSubscription.bind(this)
     this.handleResumeSubscription = this.handleResumeSubscription.bind(this)
@@ -46,8 +57,8 @@ export default class EditAdmin extends Component {
     document.addEventListener('keydown', this.handleHitEnter, true)
 
     try {
-      const accessToken = await adminLogic.getAccessToken()
-      if (this._isMounted) this.setState({ accessToken, loading: false })
+      const accessTokens = await adminLogic.getAccessTokens()
+      if (this._isMounted) this.setState({ accessTokens, loading: false })
     } catch (e) {
       if (this._isMounted) this.setState({ errorLoading: e.message, loading: false })
     }
@@ -76,6 +87,8 @@ export default class EditAdmin extends Component {
       || this.state.errorCancelling
       || this.state.errorUpdatingPaymentMethod
       || this.state.errorResumingSubscription
+      || this.state.errorGeneratingAccessToken
+      || this.state.errorDeletingAccessToken
     ) {
       this.setState({
         ...loadingState,
@@ -85,7 +98,9 @@ export default class EditAdmin extends Component {
         errorCheckingOut: false,
         errorCancelling: false,
         errorUpdatingPaymentMethod: false,
-        errorResumingSubscription: false
+        errorResumingSubscription: false,
+        errorGeneratingAccessToken: false,
+        errorDeletingAccessToken: false,
       })
     }
   }
@@ -153,6 +168,61 @@ export default class EditAdmin extends Component {
       }
     } catch (e) {
       if (this._isMounted) this.setState({ errorChangingPassword: e.message, loadingChangePassword: false })
+    }
+  }
+
+  async handleGenerateAccessToken(event) {
+    event.preventDefault()
+
+    const { accessTokenCurrentPassword, accessTokenLabel, newAccessTokens } = this.state
+
+    if (this.state.loadingGenerateAccessToken || !accessTokenCurrentPassword || !accessTokenLabel) return
+
+    this.handleClearErrors({ loadingGenerateAccessToken: true })
+
+    try {
+      newAccessTokens.unshift(await adminLogic.generateAccessToken(accessTokenCurrentPassword, accessTokenLabel))
+
+      if (this._isMounted) this.setState({ loadingGenerateAccessToken: false, accessTokenCurrentPassword: '', accessTokenLabel: '', newAccessTokens })
+    } catch (e) {
+      if (this._isMounted) this.setState({ loadingGenerateAccessToken: false, errorGeneratingAccessToken: e.message })
+    }
+  }
+
+  async handleDeleteAccessToken(label, newToken) {
+    const { accessTokens, newAccessTokens } = this.state
+    const tokens = newToken ? newAccessTokens : accessTokens
+
+    const getTokenIndex = (toks) => toks.findIndex((token) => token['label'] === label)
+
+    try {
+      if (window.confirm(`Are you sure you want to delete access token '${label}'? This cannot be undone.`)) {
+
+        tokens[getTokenIndex(tokens)].deleting = true
+        this.setState({ accessTokens, newAccessTokens })
+
+        await adminLogic.deleteAccessToken(label)
+
+        if (this._isMounted) {
+          const { accessTokens, newAccessTokens } = this.state
+          const tokens = newToken ? newAccessTokens : accessTokens
+          const tokenIndex = getTokenIndex(tokens)
+
+          // remove token
+          tokens.splice(tokenIndex, 1)
+
+          this.setState({ accessTokens, newAccessTokens })
+        }
+      }
+    } catch (e) {
+      if (this._isMounted) {
+        const { accessTokens, newAccessTokens } = this.state
+        const tokens = newToken ? newAccessTokens : accessTokens
+
+        tokens[getTokenIndex(tokens)].deleting = undefined
+
+        this.setState({ errorDeletingAccessToken: e.message, accessTokens, newAccessTokens })
+      }
     }
   }
 
@@ -245,11 +315,15 @@ export default class EditAdmin extends Component {
       email,
       currentPassword,
       newPassword,
-      accessToken,
+      newAccessTokens,
+      accessTokens,
+      accessTokenCurrentPassword,
+      accessTokenLabel,
       loadingUpdateAdmin,
       loadingChangePassword,
       loadingDeleteAdmin,
       loadingCheckout,
+      loadingGenerateAccessToken,
       loadingCancel,
       loadingUpdatePaymentMethod,
       loadingResumeSubscription,
@@ -257,6 +331,8 @@ export default class EditAdmin extends Component {
       errorChangingPassword,
       errorDeletingAdmin,
       errorCheckingOut,
+      errorGeneratingAccessToken,
+      errorDeletingAccessToken,
       errorCancelling,
       errorUpdatingPaymentMethod,
       errorResumingSubscription,
@@ -436,9 +512,129 @@ export default class EditAdmin extends Component {
 
               <hr className='border border-t-0 border-gray-400 mt-8 mb-6' />
 
-              <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Access Token</div>
+              <div className='flex-0 text-lg sm:text-xl text-left mb-1'>Access Tokens</div>
+              <p className='text-left font-normal'>Tokens you have generated to access the Admin API.</p>
 
-              <div className='px-1 font-mono font-light text-center'>{accessToken}</div>
+              {
+                (!newAccessTokens.length && !accessTokens.length)
+                  ? <p className='text-left font-normal'>No tokens yet.</p>
+                  : <table className='mt-6 mb-8 table-auto w-full border-none mx-auto text-xs'>
+
+                    <thead>
+                      <tr className='border-b'>
+                        <th className='px-1 py-1 text-gray-800 text-left'>Label</th>
+                        <th className='px-1 py-1 text-gray-800 text-left'>{newAccessTokens.length ? 'Token (Copy now! It will disappear)' : ''}</th>
+                        <th className='px-1 py-1 text-gray-800 text-left'>Created</th>
+                        <th className='px-1 py-1'></th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+
+                      {newAccessTokens.map((newAccessToken, i) => {
+                        return (
+                          <tr key={i + 'new'} className='border-b bg-green-200 h-8'>
+                            <td className='px-1 font-light text-left'>{newAccessToken['label']}</td>
+                            <td className='px-1 font-mono text-left bg-green-200 '>{newAccessToken['accessToken']}</td>
+                            <td className='px-1 font-light text-left'>{formatDate(newAccessToken['creationDate'], false)}</td>
+                            <td className='px-1 font-light w-8 text-center'>
+
+                              {newAccessToken['deleting']
+                                ? <div className='loader w-4 h-4 inline-block' />
+                                : <div
+                                  className='font-normal text-sm cursor-pointer text-yellow-700'
+                                  onClick={() => this.handleDeleteAccessToken(newAccessToken['label'], true)}
+                                >
+                                  <FontAwesomeIcon icon={faTrashAlt} />
+                                </div>
+                              }
+
+                            </td>
+                          </tr>
+                        )
+                      })}
+
+                      {accessTokens.map((accessToken, i) => {
+                        return (
+                          <tr key={i + 'old'} className='border-b mouse:hover:bg-yellow-200 h-8'>
+                            <td className='px-1 font-light text-left'>{accessToken['label']}</td>
+                            <td className='px-1 font-light text-left'></td>
+                            <td className='px-1 font-light text-left'>{formatDate(accessToken['creationDate'], false)}</td>
+                            <td className='px-1 font-light w-8 text-center'>
+
+                              {accessToken['deleting']
+                                ? <div className='loader w-4 h-4 inline-block' />
+                                : <div
+                                  className='font-normal text-sm cursor-pointer text-yellow-700'
+                                  onClick={() => this.handleDeleteAccessToken(accessToken['label'])}
+                                >
+                                  <FontAwesomeIcon icon={faTrashAlt} />
+                                </div>
+                              }
+
+                            </td>
+                          </tr>
+                        )
+                      })}
+
+                    </tbody>
+                  </table>
+              }
+
+              <form onSubmit={this.handleGenerateAccessToken}>
+                <div className='table'>
+
+                  <div className='table-row'>
+                    <div className='table-cell p-2 w-32 sm:w-40 text-right'>Current Password</div>
+                    <div className='table-cell p-2 w-32 sm:w-40 align-middle'>
+                      <input
+                        className='font-light text-xs sm:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
+                        type='password'
+                        name='accessTokenCurrentPassword'
+                        autoComplete='current-password'
+                        onChange={this.handleInputChange}
+                        value={accessTokenCurrentPassword}
+                      />
+                    </div>
+                  </div>
+
+                  <div className='table-row'>
+                    <div className='table-cell p-2 w-32 sm:w-40 text-right'>Label</div>
+                    <div className='table-cell p-2 w-32 sm:w-40'>
+                      <input
+                        className='font-light text-xs sm:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
+                        type='text'
+                        name='accessTokenLabel'
+                        autoComplete='off'
+                        value={accessTokenLabel}
+                        onChange={this.handleInputChange}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className='text-center'>
+                  <input
+                    className='btn w-56 mt-4'
+                    type='submit'
+                    value={loadingGenerateAccessToken ? 'Generating...' : 'Generate Access Token'}
+                    disabled={!accessTokenLabel || loadingGenerateAccessToken}
+                  />
+
+                  {errorGeneratingAccessToken && (
+                    errorGeneratingAccessToken === 'Unknown Error'
+                      ? <UnknownError action='generating an access token' />
+                      : <div className='error'>{errorGeneratingAccessToken}</div>
+                  )}
+
+                  {errorDeletingAccessToken && (
+                    errorDeletingAccessToken === 'Unknown Error'
+                      ? <UnknownError action='deleting an access token' />
+                      : <div className='error'>{errorDeletingAccessToken}</div>
+                  )}
+                </div>
+
+              </form>
 
               <hr className='border border-t-0 border-gray-400 mt-8 mb-6' />
 

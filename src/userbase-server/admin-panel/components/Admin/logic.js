@@ -254,15 +254,52 @@ const getPaymentStatus = async () => {
   }
 }
 
-const getAccessToken = async () => {
+const getAccessTokens = async () => {
   try {
     const accessTokenResponse = await axios({
       method: 'GET',
-      url: `/access-tokens`,
+      url: `/${VERSION}/admin/access-tokens`,
       timeout: TEN_SECONDS_MS
     })
-    const accessToken = accessTokenResponse.data[0]['access-token'] // always returns a single access token for now
-    return accessToken
+
+    const accessTokens = accessTokenResponse.data
+
+    const sortedAccessTokensByDate = accessTokens.sort((a, b) => new Date(b['creationDate']) - new Date(a['creationDate']))
+
+    return sortedAccessTokensByDate
+  } catch (e) {
+    errorHandler(e)
+  }
+}
+
+const generateAccessToken = async (currentPassword, label) => {
+  try {
+    const accessTokenResponse = await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/access-token`,
+      data: {
+        currentPassword,
+        label
+      },
+      timeout: TEN_SECONDS_MS
+    })
+    return accessTokenResponse.data
+  } catch (e) {
+    errorHandler(e, false)
+  }
+}
+
+const deleteAccessToken = async (label) => {
+  try {
+    const accessTokenResponse = await axios({
+      method: 'DELETE',
+      url: `/${VERSION}/admin/access-token`,
+      data: {
+        label
+      },
+      timeout: TEN_SECONDS_MS
+    })
+    return accessTokenResponse.data
   } catch (e) {
     errorHandler(e)
   }
@@ -284,5 +321,7 @@ export default {
   cancelSaasSubscription,
   resumeSaasSubscription,
   getPaymentStatus,
-  getAccessToken,
+  getAccessTokens,
+  generateAccessToken,
+  deleteAccessToken,
 }
