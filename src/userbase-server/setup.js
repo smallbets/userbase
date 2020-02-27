@@ -59,6 +59,7 @@ const userIdIndex = 'UserIdIndex'
 const appIdIndex = 'AppIdIndex'
 
 exports.adminIdIndex = adminIdIndex
+exports.accessTokenIndex = accessTokenIndex
 exports.userIdIndex = userIdIndex
 exports.appIdIndex = appIdIndex
 
@@ -150,11 +151,12 @@ async function setupDdb() {
     BillingMode: 'PAY_PER_REQUEST',
     AttributeDefinitions: [
       { AttributeName: 'admin-id', AttributeType: 'S' },
+      { AttributeName: 'label', AttributeType: 'S' },
       { AttributeName: 'access-token', AttributeType: 'S' }
     ],
     KeySchema: [
       { AttributeName: 'admin-id', KeyType: 'HASH' },
-      { AttributeName: 'access-token', KeyType: 'RANGE' }
+      { AttributeName: 'label', KeyType: 'RANGE' }
     ],
     GlobalSecondaryIndexes: [{
       IndexName: accessTokenIndex,
