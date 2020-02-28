@@ -1109,16 +1109,32 @@ const getAccessToken = async function (accessToken) {
   return accessTokenResponse.Items[0]
 }
 
-const _validateAppId = (appId) => {
-  if (!appId) throw { status: statusCodes['Bad Request'], error: { message: 'Missing App ID' } }
-  if (typeof appId !== 'string') throw { status: statusCodes['Bad Request'], error: { message: 'App ID must be a string' } }
-  if (appId.length !== UUID_STRING_LENGTH) throw { status: statusCodes['Bad Request'], error: { message: 'App ID invalid' } }
-}
+const _validateAccessTokenHeader = (req, res) => {
+  try {
+    const authorizationHeader = req.get('authorization')
 
-const _validateAccessToken = (accessToken) => {
-  if (!accessToken) throw { status: statusCodes['Bad Request'], error: { message: 'Missing access token' } }
-  if (typeof accessToken !== 'string') throw { status: statusCodes['Bad Request'], error: { message: 'Access token must be a string' } }
-  if (accessToken.length !== BASE_64_STRING_LENGTH_FOR_32_BYTES) throw { status: statusCodes['Bad Request'], error: { message: 'Access token invalid' } }
+    if (!authorizationHeader) throw 'Authorization header missing'
+
+    const authorizationHeaderValues = authorizationHeader.split(' ')
+
+    const authType = authorizationHeaderValues[0]
+    if (!authType || authType !== 'Bearer') throw 'Authorization scheme must be of type Bearer'
+
+    const accessToken = authorizationHeaderValues[1]
+
+    if (!accessToken) throw 'Access token missing'
+    if (typeof accessToken !== 'string') throw 'Access token must be a string'
+    if (accessToken.length !== BASE_64_STRING_LENGTH_FOR_32_BYTES) throw 'Access token invalid'
+
+    return accessToken
+  } catch (e) {
+    res.set('WWW-Authenticate', 'Bearer realm="Acccess to the Admin API"')
+
+    throw {
+      status: statusCodes['Bad Request'],
+      error: { message: e }
+    }
+  }
 }
 
 exports.deleteAccessToken = async function (req, res) {
@@ -1161,32 +1177,41 @@ exports.deleteAccessToken = async function (req, res) {
 }
 
 exports.authenticateAccessToken = async function (req, res, next) {
-  const { accessToken, appId } = req.body
-
+  let logChildObject
   try {
-    logger.child({ appId, req: trimReq(req) }).info('Authenticating access token')
+    logChildObject = { req: trimReq(req) }
+    logger.child(logChildObject).info('Authenticating access token')
 
-    _validateAccessToken(accessToken)
-    _validateAppId(appId)
+    const accessToken = _validateAccessTokenHeader(req, res)
 
-    // check that access token belongs to the admin of the provided app
-    const app = await appController.getAppByAppId(appId)
-    if (!app || app['deleted']) throw { status: statusCodes['Not Found'], error: { message: 'App not found' } }
-
-    const [accessTokenItem, admin] = await Promise.all([
-      getAccessToken(accessToken),
-      findAdminByAdminId(app['admin-id'])
-    ])
-
-    if (!accessTokenItem || !admin || admin['deleted'] || accessTokenItem['admin-id'] !== admin['admin-id']) {
-      throw { status: statusCodes['Unauthorized'], error: { message: 'Access token invalid' } }
+    const accessTokenItem = await getAccessToken(accessToken)
+    if (!accessTokenItem) throw {
+      status: statusCodes['Unauthorized'],
+      error: { message: 'Invalid access token' }
     }
 
-    logger.child({ appId, req: trimReq(req) }).info('Successfully authenticated access token')
+    const adminId = accessTokenItem['admin-id']
+    const admin = await findAdminByAdminId(adminId)
+    if (!admin || admin['deleted']) {
+      throw {
+        status: statusCodes['Unauthorized'],
+        error: {
+          message: 'Invalid access token',
+          deletedAdminId: admin && admin['admin-id'],
+        }
+      }
+    } else {
+      logChildObject.adminId = admin['admin-id']
+    }
+
+    logger.child(logChildObject).info('Successfully authenticated access token')
+
+    res.locals.admin = admin
+    res.locals.logChildObject = logChildObject
     next()
   } catch (e) {
     const msg = 'Failed to authenticate access token'
-    logger.child({ appId, err: e, req: trimReq(req) }).error(msg)
+    logger.child({ ...logChildObject, err: e }).error(msg)
 
     return (e.status && e.error)
       ? res.status(e.status).send(e.error)
