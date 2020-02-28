@@ -786,7 +786,7 @@ exports.signIn = async function (req, res) {
         passwordEncryptedSeed: user['password-encrypted-seed']
       }
     }
-    if (user['internal-profile']) result.internalProfile = user['internal-profile']
+    if (user['protected-profile']) result.protectedProfile = user['protected-profile']
 
     logger.child(logChildObject).info('User signed in')
 
@@ -875,41 +875,72 @@ const buildUserResult = (user) => {
 
   if (user['email']) result['email'] = user['email']
   if (user['profile']) result['profile'] = user['profile']
-  if (user['internal-profile']) result['internalProfile'] = user['internal-profile']
+  if (user['protected-profile']) result['protectedProfile'] = user['protected-profile']
   if (user['deleted']) result['deleted'] = user['deleted']
 
   return result
 }
 exports.buildUserResult = buildUserResult
 
+const adminGetUser = async (userId, adminId, logChildObject) => {
+  const user = await getUserByUserId(userId)
+
+  // allow return of deleted users
+  if (!user) throw { status: statusCodes['Not Found'], error: { message: 'User not found' } }
+
+  const app = await appController.getAppByAppId(user['app-id'])
+  if (!app || app['deleted']) {
+    throw {
+      status: statusCodes['Not Found'],
+      error: {
+        message: 'User not found',
+        deletedAppId: app && app['app-id']
+      }
+    }
+  } else {
+    logChildObject.appId = app['app-id']
+  }
+
+  // make sure admin is creator of app
+  if (app['admin-id'] !== adminId) {
+    throw {
+      status: statusCodes['Forbidden'],
+      error: {
+        message: 'User not found',
+        incorrectAdminId: app['admin-id']
+      }
+    }
+  }
+
+  return { user, app }
+}
+
 exports.adminGetUserController = async function (req, res) {
-  const { appId, userId } = req.body
+  const logChildObject = res.locals.logChildObject
 
   try {
-    logger.child({ appId, userId, req: trimReq(req) }).info('Admin getting user')
+    const { userId } = req.params
+
+    logChildObject.userId = userId
+    logger.child(logChildObject).info('Admin getting user')
 
     _validateUserId(userId)
 
-    const user = await getUserByUserId(userId)
-    // allow admin to retrieve deleted users and make sure user belongs to app
-    if (!user || user['app-id'] !== appId) {
-      throw { status: statusCodes['Not Found'], error: { message: 'User not found' } }
-    }
+    const { user } = await adminGetUser(userId, res.locals.admin['admin-id'], logChildObject)
 
-    logger
-      .child({ appId, userId, statusCode: statusCodes['Success'], req: trimReq(req) })
-      .info('Successfully retrieved user for admin')
+    logChildObject.statusCode = statusCodes['Success']
+    logger.child(logChildObject).info('Successfully retrieved user for admin')
 
     return res.send(buildUserResult(user))
   } catch (e) {
     const message = 'Failed to retrieve user for admin.'
 
     if (e.status && e.error) {
-      logger.child({ appId, userId, statusCode: e.status, err: e.error, req: trimReq(req) }).info(message)
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).info(message)
       return res.status(e.status).send(e.error)
     } else {
       const statusCode = statusCodes['Internal Server Error']
-      logger.child({ appId, userId, statusCode, err: e, req: trimReq(req) }).error(message)
+      logger.child({ ...logChildObject, statusCode, err: e, }).error(message)
       return res.status(statusCode).send({ message })
     }
   }
@@ -951,7 +982,7 @@ exports.extendSession = async function (req, res) {
     if (user['email']) result.email = user['email']
     if (user['profile']) result.profile = user['profile']
     result.backUpKey = (user['password-based-encryption-key-salt'] && user['password-encrypted-seed']) ? true : false
-    if (user['internal-profile']) result.internalProfile = user['internal-profile']
+    if (user['protected-profile']) result.protectedProfile = user['protected-profile']
 
     logger.child(logChildObject).info('Extended session')
 
@@ -1206,17 +1237,17 @@ exports.deleteUserController = async function (userId, adminId, appName) {
   }
 }
 
-const updateInternalProfile = async function (username, appId, userId, internalProfile) {
+const updateProtectedProfile = async function (username, appId, userId, protectedProfile) {
   const updateUserParams = conditionCheckUserExists(username, appId, userId)
 
-  updateUserParams.ExpressionAttributeNames['#internalProfile'] = 'internal-profile'
+  updateUserParams.ExpressionAttributeNames['#protectedProfile'] = 'protected-profile'
 
   let UpdateExpression
-  if (internalProfile) {
-    UpdateExpression = 'SET #internalProfile = :internalProfile'
-    updateUserParams.ExpressionAttributeValues[':internalProfile'] = internalProfile
+  if (protectedProfile) {
+    UpdateExpression = 'SET #protectedProfile = :protectedProfile'
+    updateUserParams.ExpressionAttributeValues[':protectedProfile'] = protectedProfile
   } else {
-    UpdateExpression = 'REMOVE #internalProfile'
+    UpdateExpression = 'REMOVE #protectedProfile'
   }
 
   updateUserParams.UpdateExpression = UpdateExpression
@@ -1238,49 +1269,48 @@ const _validateUserId = (userId) => {
   if (userId.length !== UUID_STRING_LENGTH) throw { status: statusCodes['Bad Request'], error: { message: 'User ID invalid.' } }
 }
 
-exports.updateInternalProfile = async function (req, res) {
-  const { appId, userId, internalProfile } = req.body
+exports.updateProtectedProfile = async function (req, res) {
+  const logChildObject = res.locals.logChildObject
 
   try {
-    logger.child({ appId, userId, req: trimReq(req) }).info('Updating internal profile')
+    const { userId } = req.params
+    const { protectedProfile } = req.body
+
+    logger.child(logChildObject).info('Updating protected profile')
 
     _validateUserId(userId)
 
-    if (!Object.prototype.hasOwnProperty.call(req.body, 'internalProfile')) {
-      throw { status: statusCodes['Bad Request'], error: { message: 'Internal profile missing.' } }
+    if (!Object.prototype.hasOwnProperty.call(req.body, 'protectedProfile')) {
+      throw { status: statusCodes['Bad Request'], error: { message: 'Protected profile missing.' } }
     }
 
     try {
       // if falsey, it gets deleted
-      if (internalProfile) _validateProfile(internalProfile)
+      if (protectedProfile) _validateProfile(protectedProfile)
     } catch (e) {
       const name = e.error
       delete e.error
       throw { status: statusCodes['Bad Request'], error: { name, ...e } }
     }
 
-    // make sure user belongs to app
-    const user = await getUserByUserId(userId)
-    if (!user || user['deleted'] || user['app-id'] !== appId) {
-      throw { status: statusCodes['Not Found'], error: { message: 'User not found' } }
-    }
+    const { user, app } = await adminGetUser(userId, res.locals.admin['admin-id'], logChildObject)
+    if (user['deleted']) throw { status: statusCodes['Not Found'], error: { message: 'User not found' } }
 
-    await updateInternalProfile(user['username'], appId, userId, internalProfile)
+    await updateProtectedProfile(user['username'], app['app-id'], userId, protectedProfile)
 
-    logger
-      .child({ appId, userId, statusCode: statusCodes['Success'], req: trimReq(req) })
-      .info('Successfully updated internal profile')
+    logChildObject.statusCode = statusCodes['Success']
+    logger.child(logChildObject).info('Successfully updated protected profile')
 
     return res.end()
   } catch (e) {
-    const message = 'Failed to update internal profile.'
+    const message = 'Failed to update protected profile.'
 
     if (e.status && e.error) {
-      logger.child({ appId, userId, statusCode: e.status, err: e.error, req: trimReq(req) }).info(message)
-      return res.status(e.status).send(e.error)
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).info(message)
+      return res.status(e.status).send({ message: e.error.message })
     } else {
       const statusCode = statusCodes['Internal Server Error']
-      logger.child({ appId, userId, statusCode, err: e, req: trimReq(req) }).error(message)
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
       return res.status(statusCode).send({ message })
     }
   }

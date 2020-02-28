@@ -437,8 +437,8 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.post('/stripe/resume-saas-subscription', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.resumeSaasSubscription)
 
     // Access token endpoints
-    v1Admin.put('/internal-profile', admin.authenticateAccessToken, userController.updateInternalProfile)
-    v1Admin.get('/user', admin.authenticateAccessToken, userController.adminGetUserController)
+    v1Admin.post('/users/:userId', admin.authenticateAccessToken, userController.updateProtectedProfile)
+    v1Admin.get('/users/:userId', admin.authenticateAccessToken, userController.adminGetUserController)
 
     // internal server used to receive notifications of transactions from peers -- shouldn't be exposed to public
     const internalServer = express()

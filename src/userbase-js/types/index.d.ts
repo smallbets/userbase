@@ -17,7 +17,7 @@ export interface UserResult {
   userId: string
   email?: string
   profile?: UserProfile
-  internalProfile?: UserProfile
+  protectedProfile?: UserProfile
 }
 
 export type DatabaseChangeHandler = (items: Item[]) => void

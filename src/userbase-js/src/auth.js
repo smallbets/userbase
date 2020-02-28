@@ -196,12 +196,12 @@ const _generateKeysAndSignUp = async (username, password, seed, email, profile) 
   }
 }
 
-const _buildUserResult = (username, userId, email, profile, internalProfile, usedTempPassword) => {
+const _buildUserResult = (username, userId, email, profile, protectedProfile, usedTempPassword) => {
   const result = { username, userId }
 
   if (email) result.email = email
   if (profile) result.profile = profile
-  if (internalProfile) result.internalProfile = internalProfile
+  if (protectedProfile) result.protectedProfile = protectedProfile
   if (usedTempPassword) result.usedTempPassword = usedTempPassword
 
   return result
@@ -397,7 +397,7 @@ const signIn = async (params) => {
     const { passwordHkdfKey, passwordToken } = await _rebuildPasswordToken(password, passwordSalts)
 
     const apiSignInResult = await _signInWrapper(username, passwordToken)
-    const { userId, email, profile, passwordBasedBackup, internalProfile, usedTempPassword } = apiSignInResult
+    const { userId, email, profile, passwordBasedBackup, protectedProfile, usedTempPassword } = apiSignInResult
     const session = {
       ...apiSignInResult.session,
       username
@@ -419,7 +419,7 @@ const signIn = async (params) => {
 
     await _connectWebSocket(session, seedString, rememberMe)
 
-    return _buildUserResult(username, userId, email, profile, internalProfile, usedTempPassword)
+    return _buildUserResult(username, userId, email, profile, protectedProfile, usedTempPassword)
   } catch (e) {
 
     switch (e.name) {
@@ -503,7 +503,7 @@ const signInWithSession = async (appId) => {
 
       throw e
     }
-    const { userId, username, email, profile, internalProfile } = apiSignInWithSessionResult
+    const { userId, username, email, profile, protectedProfile } = apiSignInWithSessionResult
 
     // overwrite local data if username has been changed on server
     if (username !== currentSession.username) {
@@ -515,7 +515,7 @@ const signInWithSession = async (appId) => {
     // enable idempotent calls to init()
     if (ws.connectionResolved) {
       if (ws.session.sessionId === sessionId) {
-        return { user: _buildUserResult(username, userId, email, profile, internalProfile) }
+        return { user: _buildUserResult(username, userId, email, profile, protectedProfile) }
       } else {
         throw new errors.UserAlreadySignedIn(ws.session.username)
       }
@@ -523,7 +523,7 @@ const signInWithSession = async (appId) => {
 
     await _connectWebSocket(currentSession, savedSeedString, rememberMe)
 
-    return { user: _buildUserResult(username, userId, email, profile, internalProfile) }
+    return { user: _buildUserResult(username, userId, email, profile, protectedProfile) }
   } catch (e) {
     _parseGenericErrors(e)
     throw e
