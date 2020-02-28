@@ -886,16 +886,14 @@ const adminGetUser = async (userId, adminId, logChildObject) => {
   const user = await getUserByUserId(userId)
 
   // allow return of deleted users
-  if (!user) throw { status: statusCodes['Not Found'], error: { message: 'User not found' } }
+  if (!user) throw { status: statusCodes['Not Found'], error: { message: 'User not found.' } }
 
   const app = await appController.getAppByAppId(user['app-id'])
   if (!app || app['deleted']) {
+    logChildObject.deletedAppId = app && app['app-id']
     throw {
       status: statusCodes['Not Found'],
-      error: {
-        message: 'User not found',
-        deletedAppId: app && app['app-id']
-      }
+      error: { message: 'User not found.' }
     }
   } else {
     logChildObject.appId = app['app-id']
@@ -903,12 +901,10 @@ const adminGetUser = async (userId, adminId, logChildObject) => {
 
   // make sure admin is creator of app
   if (app['admin-id'] !== adminId) {
+    logChildObject.incorrectAdminId = app['admin-id']
     throw {
       status: statusCodes['Forbidden'],
-      error: {
-        message: 'User not found',
-        incorrectAdminId: app['admin-id']
-      }
+      error: { message: 'User not found.' }
     }
   }
 
@@ -1266,7 +1262,7 @@ const updateProtectedProfile = async function (username, appId, userId, protecte
 const _validateUserId = (userId) => {
   if (!userId) throw { status: statusCodes['Bad Request'], error: { message: 'User ID missing.' } }
   if (typeof userId !== 'string') throw { status: statusCodes['Bad Request'], error: { message: 'User ID must be a string.' } }
-  if (userId.length !== UUID_STRING_LENGTH) throw { status: statusCodes['Bad Request'], error: { message: 'User ID invalid.' } }
+  if (userId.length !== UUID_STRING_LENGTH) throw { status: statusCodes['Bad Request'], error: { message: 'User ID is incorrect length.' } }
 }
 
 exports.updateProtectedProfile = async function (req, res) {
@@ -1307,7 +1303,7 @@ exports.updateProtectedProfile = async function (req, res) {
 
     if (e.status && e.error) {
       logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).info(message)
-      return res.status(e.status).send({ message: e.error.message })
+      return res.status(e.status).send(e.error)
     } else {
       const statusCode = statusCodes['Internal Server Error']
       logger.child({ ...logChildObject, statusCode, err: e }).error(message)

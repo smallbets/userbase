@@ -1113,18 +1113,17 @@ const _validateAccessTokenHeader = (req, res) => {
   try {
     const authorizationHeader = req.get('authorization')
 
-    if (!authorizationHeader) throw 'Authorization header missing'
+    if (!authorizationHeader) throw 'Authorization header missing.'
 
     const authorizationHeaderValues = authorizationHeader.split(' ')
 
     const authType = authorizationHeaderValues[0]
-    if (!authType || authType !== 'Bearer') throw 'Authorization scheme must be of type Bearer'
+    if (!authType || authType !== 'Bearer') throw 'Authorization scheme must be of type Bearer.'
 
     const accessToken = authorizationHeaderValues[1]
 
-    if (!accessToken) throw 'Access token missing'
-    if (typeof accessToken !== 'string') throw 'Access token must be a string'
-    if (accessToken.length !== BASE_64_STRING_LENGTH_FOR_32_BYTES) throw 'Access token invalid'
+    if (!accessToken) throw 'Access token missing.'
+    if (accessToken.length !== BASE_64_STRING_LENGTH_FOR_32_BYTES) throw 'Access token is incorrect length.'
 
     return accessToken
   } catch (e) {
@@ -1187,18 +1186,16 @@ exports.authenticateAccessToken = async function (req, res, next) {
     const accessTokenItem = await getAccessToken(accessToken)
     if (!accessTokenItem) throw {
       status: statusCodes['Unauthorized'],
-      error: { message: 'Invalid access token' }
+      error: { message: 'Access token invalid.' }
     }
 
     const adminId = accessTokenItem['admin-id']
     const admin = await findAdminByAdminId(adminId)
     if (!admin || admin['deleted']) {
+      logChildObject.deletedAdminId = admin && admin['admin-id']
       throw {
         status: statusCodes['Unauthorized'],
-        error: {
-          message: 'Invalid access token',
-          deletedAdminId: admin && admin['admin-id'],
-        }
+        error: { message: 'Access token invalid.' }
       }
     } else {
       logChildObject.adminId = admin['admin-id']
@@ -1210,11 +1207,15 @@ exports.authenticateAccessToken = async function (req, res, next) {
     res.locals.logChildObject = logChildObject
     next()
   } catch (e) {
-    const msg = 'Failed to authenticate access token'
-    logger.child({ ...logChildObject, err: e }).error(msg)
+    const message = 'Failed to authenticate access token'
 
-    return (e.status && e.error)
-      ? res.status(e.status).send(e.error)
-      : res.status(statusCodes['Internal Server Error']).send(msg)
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
+      return res.status(e.status).send(e.error)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return res.status(statusCode).send({ message })
+    }
   }
 }
