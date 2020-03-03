@@ -25,6 +25,8 @@ export default class AppUsersTable extends Component {
     this.handleShowDeletedUsers = this.handleShowDeletedUsers.bind(this)
     this.handleHideDeletedUsers = this.handleHideDeletedUsers.bind(this)
     this.handleToggleDisplayUserMetadata = this.handleToggleDisplayUserMetadata.bind(this)
+    this.handleExpandAll = this.handleExpandAll.bind(this)
+    this.handleHideAll = this.handleHideAll.bind(this)
   }
 
   async componentDidMount() {
@@ -181,6 +183,26 @@ export default class AppUsersTable extends Component {
     }
   }
 
+  handleExpandAll(e) {
+    e.preventDefault()
+
+    this.setState({
+      activeUsers: this.state.activeUsers.map((user) => ({ ...user, displayUserMetadata: true })),
+      deletedUsers: this.state.deletedUsers.map((user) => ({ ...user, displayUserMetadata: true })),
+      showDeletedUsers: true
+    })
+  }
+
+  handleHideAll(e) {
+    e.preventDefault()
+
+    this.setState({
+      activeUsers: this.state.activeUsers.map((user) => ({ ...user, displayUserMetadata: false })),
+      deletedUsers: this.state.deletedUsers.map((user) => ({ ...user, displayUserMetadata: false })),
+      showDeletedUsers: false
+    })
+  }
+
   render() {
     const { appName, paymentStatus } = this.props
     const { loading, activeUsers, deletedUsers, error, showDeletedUsers } = this.state
@@ -206,6 +228,21 @@ export default class AppUsersTable extends Component {
                   Your account is limited to 1 app and 3 users. <a href="#edit-account">Remove this limit</a> with a Userbase subscription.
                 </div>
             }
+
+            {(activeUsers.length || deletedUsers.length)
+              ?
+              <div className='text-right'>
+                <span className='mb-0 cursor-pointer mouse:hover:text-orange-700' onClick={this.handleExpandAll}>
+                  +Expand All
+                </span>
+                <span className='ml-1 mr-1'>/</span>
+                <span className='mb-0 cursor-pointer mouse:hover:text-orange-700' onClick={this.handleHideAll}>
+                  -Hide All
+                </span>
+              </div>
+              : null
+            }
+
           </div>
 
           {loading
