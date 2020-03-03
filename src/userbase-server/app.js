@@ -5,6 +5,8 @@ import statusCodes from './statusCodes'
 import setup from './setup'
 import userController from './user'
 
+const UUID_STRING_LENGTH = 36
+
 async function createApp(appName, adminId, appId = uuidv4()) {
   if (!appName || !adminId) throw {
     status: statusCodes['Bad Request'],
@@ -324,6 +326,139 @@ exports.listAppUsers = async function (req, res) {
     return res
       .status(statusCodes['Internal Server Error'])
       .send('Failed to list app users')
+  }
+}
+
+const _validateAppResponseToGetApp = function (app, adminId, logChildObject) {
+  // allow return of deleted app
+  if (!app) {
+    logChildObject.deletedAppId = app && app['app-id']
+    throw {
+      status: statusCodes['Not Found'],
+      error: { message: 'App not found.' }
+    }
+  } else {
+    logChildObject.appId = app['app-id']
+  }
+
+  // make sure admin is creator of app
+  if (app['admin-id'] !== adminId) {
+    logChildObject.incorrectAdminId = app['admin-id']
+    throw {
+      status: statusCodes['Forbidden'],
+      error: { message: 'App not found.' }
+    }
+  }
+}
+
+const _getAppQuery = async function (appId, lastEvaluatedKey) {
+  const params = {
+    TableName: setup.usersTableName,
+    IndexName: setup.appIdIndex,
+    KeyConditionExpression: '#appId = :appId',
+    ExpressionAttributeNames: {
+      '#appId': 'app-id'
+    },
+    ExpressionAttributeValues: {
+      ':appId': appId
+    }
+  }
+
+  if (lastEvaluatedKey) params.ExclusiveStartKey = lastEvaluatedKey
+
+  const ddbClient = connection.ddbClient()
+  const usersResponse = await ddbClient.query(params).promise()
+  return usersResponse
+}
+
+const _buildGetAppResult = function (usersResponse, app) {
+  const users = usersResponse.Items
+
+  const result = {
+    users: users.map(user => userController.buildUserResult(user)),
+    appName: app['app-name'],
+    appId: app['app-id'],
+    deleted: app['deleted'],
+    creationDate: app['creation-date'],
+  }
+
+  // convert last evaluated key to a base64 string so it does not confuse developer
+  if (usersResponse.LastEvaluatedKey) {
+    const lastEvaluatedKeyString = JSON.stringify(usersResponse.LastEvaluatedKey)
+    const base64LastEvaluatedKey = Buffer.from(lastEvaluatedKeyString).toString('base64')
+    result.nextPageToken = base64LastEvaluatedKey
+  }
+
+  return result
+}
+
+const _getLastEvaluatedKeyFromNextPageToken = (nextPageToken, appId) => {
+  try {
+    if (!nextPageToken) return null
+
+    const lastEvaluatedKeyString = Buffer.from(nextPageToken, 'base64').toString('ascii')
+    const lastEvaluatedKey = JSON.parse(lastEvaluatedKeyString)
+
+    userController._validateUsernameInput(lastEvaluatedKey.username)
+    _validateAppId(lastEvaluatedKey['app-id'])
+
+    if (appId !== lastEvaluatedKey['app-id']) throw 'Token app ID must match authenticated app ID'
+    if (Object.keys(lastEvaluatedKey).length !== 2) throw 'Token must only have 2 keys'
+
+    return lastEvaluatedKey
+  } catch {
+    throw {
+      status: statusCodes['Bad Request'],
+      error: { message: 'Next page token invalid.' }
+    }
+  }
+}
+
+const _validateAppId = (appId) => {
+  if (!appId) throw { status: statusCodes['Bad Request'], error: { message: 'App ID missing.' } }
+  if (typeof appId !== 'string') throw { status: statusCodes['Bad Request'], error: { message: 'App ID must be a string.' } }
+
+  // can be less than UUID length because of test app + default admin app
+  if (appId.length > UUID_STRING_LENGTH) throw { status: statusCodes['Bad Request'], error: { message: 'App ID is incorrect length.' } }
+}
+
+exports.getAppController = async function (req, res) {
+  let logChildObject
+  try {
+    const appId = req.params.appId
+    const nextPageToken = req.query.nextPageToken
+
+    logChildObject = { ...res.locals.logChildObject, appId, nextPageToken }
+    logger.child(logChildObject).info('Getting app')
+
+    _validateAppId(appId)
+    const lastEvaluatedKey = _getLastEvaluatedKeyFromNextPageToken(nextPageToken, appId)
+
+    const admin = res.locals.admin
+    const adminId = admin['admin-id']
+
+    const app = await getAppByAppId(appId)
+    _validateAppResponseToGetApp(app, adminId, logChildObject)
+
+    const usersResponse = await _getAppQuery(app['app-id'], lastEvaluatedKey)
+
+    const result = _buildGetAppResult(usersResponse, app)
+
+    logChildObject.statusCode = statusCodes['Success']
+    logger.child(logChildObject).info('Successfully got app')
+
+    return res.status(statusCodes['Success']).send(result)
+  } catch (e) {
+    const message = 'Failed to get app for admin.'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).info(message)
+      return res.status(e.status).send(e.error)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e, }).error(message)
+      return res.status(statusCode).send({ message })
+    }
   }
 }
 

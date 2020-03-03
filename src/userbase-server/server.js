@@ -440,6 +440,7 @@ async function start(express, app, userbaseConfig = {}) {
     // Access token endpoints
     v1Admin.post('/users/:userId', admin.authenticateAccessToken, userController.updateProtectedProfile)
     v1Admin.get('/users/:userId', admin.authenticateAccessToken, userController.adminGetUserController)
+    v1Admin.get('/apps/:appId', admin.authenticateAccessToken, appController.getAppController)
 
     // internal server used to receive notifications of transactions from peers -- shouldn't be exposed to public
     const internalServer = express()
