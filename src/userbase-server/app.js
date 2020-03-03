@@ -205,7 +205,53 @@ exports.deleteApp = async function (req, res) {
   }
 }
 
-exports.permanentDeleteApp = async function (req, res) {
+const permanentDelete = async (adminId, appName, appId) => {
+  const logChildObject = { adminId, appName, appId }
+  logger.child(logChildObject).info('Permanent deleting app')
+
+  const existingAppParams = {
+    TableName: setup.appsTableName,
+    Key: {
+      'admin-id': adminId,
+      'app-name': appName
+    },
+    ConditionExpression: 'attribute_exists(deleted) and #appId = :appId',
+    ExpressionAttributeNames: {
+      '#appId': 'app-id'
+    },
+    ExpressionAttributeValues: {
+      ':appId': appId
+    }
+  }
+
+  const permanentDeletedAppParams = {
+    TableName: setup.deletedAppsTableName,
+    Item: {
+      'app-id': appId,
+      'admin-id': adminId,
+      'app-name': appName
+    },
+    ConditionExpression: 'attribute_not_exists(#appId)',
+    ExpressionAttributeNames: {
+      '#appId': 'app-id'
+    },
+  }
+
+  const transactionParams = {
+    TransactItems: [
+      { Delete: existingAppParams },
+      { Put: permanentDeletedAppParams }
+    ]
+  }
+
+  const ddbClient = connection.ddbClient()
+  await ddbClient.transactWrite(transactionParams).promise()
+
+  logger.child(logChildObject).info('Finished permanent deleting app')
+}
+exports.permanentDelete = permanentDelete
+
+exports.permanentDeleteAppController = async function (req, res) {
   const subscription = res.locals.subscription
 
   if (!subscription || subscription.cancel_at_period_end || subscription.status !== 'active') return res
@@ -223,43 +269,7 @@ exports.permanentDeleteApp = async function (req, res) {
     .send('Missing required items')
 
   try {
-    const existingAppParams = {
-      TableName: setup.appsTableName,
-      Key: {
-        'admin-id': adminId,
-        'app-name': appName
-      },
-      ConditionExpression: 'attribute_exists(deleted) and #appId = :appId',
-      ExpressionAttributeNames: {
-        '#appId': 'app-id'
-      },
-      ExpressionAttributeValues: {
-        ':appId': appId
-      }
-    }
-
-    const permanentDeletedAppParams = {
-      TableName: setup.deletedAppsTableName,
-      Item: {
-        'app-id': appId,
-        'admin-id': adminId,
-        'app-name': appName
-      },
-      ConditionExpression: 'attribute_not_exists(#appId)',
-      ExpressionAttributeNames: {
-        '#appId': 'app-id'
-      },
-    }
-
-    const transactionParams = {
-      TransactItems: [
-        { Delete: existingAppParams },
-        { Put: permanentDeletedAppParams }
-      ]
-    }
-
-    const ddbClient = connection.ddbClient()
-    await ddbClient.transactWrite(transactionParams).promise()
+    await permanentDelete(adminId, appName, appId)
 
     return res.end()
   } catch (e) {

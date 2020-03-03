@@ -60,6 +60,8 @@ export const trimReq = (req) => ({ id: req.id, url: req.url })
 
 export const truncateSessionId = (sessionId) => typeof sessionId === 'string' && sessionId.substring(0, 8) // limit sensitive logging
 
+export const getTtl = (secondsToLive) => Math.floor(Date.now() / 1000) + secondsToLive
+
 // matches stringToArrayBuffer from userbase-js/Crypto/utils
 // https://developers.google.com/web/updates/2012/06/How-to-convert-ArrayBuffer-to-and-from-String
 export const stringToArrayBuffer = (str) => {
@@ -69,4 +71,18 @@ export const stringToArrayBuffer = (str) => {
     bufView[i] = str.charCodeAt(i)
   }
   return buf
+}
+
+export const getMsUntil1AmPst = () => {
+  const time = new Date()
+
+  const UTC_1_AM_HOUR = 9
+
+  if (time.getUTCHours() >= UTC_1_AM_HOUR) {
+    time.setUTCDate(time.getUTCDate() + 1)
+  }
+
+  time.setUTCHours(UTC_1_AM_HOUR, 0, 0, 0)
+
+  return time.getTime() - Date.now()
 }

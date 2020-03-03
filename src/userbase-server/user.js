@@ -5,7 +5,7 @@ import statusCodes from './statusCodes'
 import responseBuilder from './responseBuilder'
 import crypto from './crypto'
 import logger from './logger'
-import { validateEmail, trimReq, truncateSessionId } from './utils'
+import { validateEmail, trimReq, truncateSessionId, getTtl } from './utils'
 import appController from './app'
 import adminController from './admin'
 
@@ -40,7 +40,8 @@ const createSession = async function (userId, appId) {
     'session-id': sessionId,
     'user-id': userId,
     'app-id': appId,
-    'creation-date': creationDate
+    'creation-date': creationDate,
+    ttl: getTtl(SECONDS_IN_A_DAY),
   }
 
   const params = {
@@ -672,6 +673,19 @@ exports.getPasswordSaltsController = async function (req, res) {
       }
     }
 
+    const admin = await adminController.findAdminByAdminId(app['admin-id'])
+    if (!admin || admin['deleted']) {
+      throw {
+        status: statusCodes['Unauthorized'],
+        error: {
+          message: 'App ID not valid',
+          deletedAdminId: admin && admin['admin-id'],
+        }
+      }
+    } else {
+      logChildObject.adminId = admin['admin-id']
+    }
+
     const user = await getUser(appId, username.toLowerCase())
     if (!user || user['deleted']) {
       throw {
@@ -961,12 +975,14 @@ exports.extendSession = async function (req, res) {
       Key: {
         'session-id': sessionId
       },
-      UpdateExpression: 'set #extendedDate = :extendedDate',
+      UpdateExpression: 'set #extendedDate = :extendedDate, #ttl = :ttl',
       ExpressionAttributeNames: {
-        '#extendedDate': 'extended-date'
+        '#extendedDate': 'extended-date',
+        '#ttl': 'ttl'
       },
       ExpressionAttributeValues: {
-        ':extendedDate': extendedDate
+        ':extendedDate': extendedDate,
+        ':ttl': getTtl(SECONDS_IN_A_DAY)
       }
     }
 
@@ -1471,6 +1487,53 @@ exports.forgotPassword = async function (req, forgotPasswordToken, userProvidedF
       return responseBuilder.errorResponse(statusCode, message)
     }
   }
+}
+
+exports.permanentDelete = async function (user) {
+  const username = user['username']
+  const appId = user['app-id']
+  const userId = user['user-id']
+
+  const logChildObject = { username, appId, userId }
+  logger.child(logChildObject).info('Permanent deleting user')
+
+  const existingUserParams = {
+    TableName: setup.usersTableName,
+    Key: {
+      username,
+      'app-id': appId
+    },
+    ConditionExpression: 'attribute_exists(deleted) and #userId = :userId',
+    ExpressionAttributeNames: {
+      '#userId': 'user-id'
+    },
+    ExpressionAttributeValues: {
+      ':userId': userId
+    }
+  }
+
+  const permanentDeletedUserParams = {
+    TableName: setup.deletedUsersTableName,
+    Item: {
+      ...user // still technically can recover user before data is purged, though more difficult
+    },
+    ConditionExpression: 'attribute_not_exists(#userId)',
+    ExpressionAttributeNames: {
+      '#userId': 'user-id'
+    },
+  }
+
+  const transactionParams = {
+    TransactItems: [
+      { Delete: existingUserParams },
+      { Put: permanentDeletedUserParams }
+    ]
+  }
+
+  const ddbClient = connection.ddbClient()
+  await ddbClient.transactWrite(transactionParams).promise()
+
+  logger.child(logChildObject).info('Deleted user permanently')
 }
 
 const conditionCheckUserExists = (username, appId, userId) => {

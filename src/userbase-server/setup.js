@@ -3,6 +3,7 @@ import os from 'os'
 import logger from './logger'
 import crypto from './crypto'
 import peers from './peers'
+import purge from './purge'
 
 let awsAccountId
 let initialized = false
@@ -39,6 +40,7 @@ const userDatabaseTableName = resourceNamePrefix + 'user-databases'
 const transactionsTableName = resourceNamePrefix + 'transactions'
 const deletedUsersTableName = resourceNamePrefix + 'deleted-users'
 const deletedAppsTableName = resourceNamePrefix + 'deleted-apps'
+const deletedAdminsTableName = resourceNamePrefix + 'deleted-admins'
 const dbStatesBucketNamePrefix = resourceNamePrefix + 'database-states'
 const secretManagerSecretId = resourceNamePrefix + 'env'
 
@@ -52,6 +54,7 @@ exports.userDatabaseTableName = userDatabaseTableName
 exports.transactionsTableName = transactionsTableName
 exports.deletedUsersTableName = deletedUsersTableName
 exports.deletedAppsTableName = deletedAppsTableName
+exports.deletedAdminsTableName = deletedAdminsTableName
 
 const adminIdIndex = 'AdminIdIndex'
 const accessTokenIndex = 'AccessTokenIndex'
@@ -120,6 +123,9 @@ exports.init = async function (userbaseConfig) {
   await setupSM()
   await setupSes()
   await setupEc2PeerDiscovery()
+
+  // kick off the interval to purge deleted data
+  purge()
 }
 
 async function setupDdb() {
@@ -231,6 +237,13 @@ async function setupDdb() {
     BillingMode: 'PAY_PER_REQUEST',
     TableName: sessionsTableName
   }
+  const sessionsTimeToLive = {
+    TableName: sessionsTableName,
+    TimeToLiveSpecification: {
+      AttributeName: 'ttl',
+      Enabled: true
+    }
+  }
 
   // the database table holds a record per database
   const databaseTableParams = {
@@ -296,6 +309,18 @@ async function setupDdb() {
     ]
   }
 
+  // the deleted apps table holds a record per deleted app
+  const deletedAdminsTableParams = {
+    TableName: deletedAdminsTableName,
+    BillingMode: 'PAY_PER_REQUEST',
+    AttributeDefinitions: [
+      { AttributeName: 'admin-id', AttributeType: 'S' }
+    ],
+    KeySchema: [
+      { AttributeName: 'admin-id', KeyType: 'HASH' }
+    ]
+  }
+
   logger.info('Creating DynamoDB tables if necessary')
   await Promise.all([
     createTable(ddb, adminTableParams),
@@ -308,8 +333,13 @@ async function setupDdb() {
     createTable(ddb, transactionsTableParams),
     createTable(ddb, deletedUsersTableParams),
     createTable(ddb, deletedAppsTableParams),
+    createTable(ddb, deletedAdminsTableParams),
   ])
 
+  logger.info('Setting time to live on tables if necessary')
+  await Promise.all([
+    setTimeToLive(ddb, sessionsTimeToLive),
+  ])
 }
 
 async function setupS3() {
@@ -352,6 +382,17 @@ async function createTable(ddb, params) {
   }
 
   enableBackup()
+}
+
+async function setTimeToLive(ddb, params) {
+  try {
+    await ddb.updateTimeToLive(params).promise()
+    logger.info(`Time to live set on ${params.TableName} successfully`)
+  } catch (e) {
+    if (!e.message.includes('TimeToLive is already enabled')) {
+      throw e
+    }
+  }
 }
 
 async function createBucket(s3, params) {

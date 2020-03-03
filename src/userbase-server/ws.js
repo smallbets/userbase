@@ -42,12 +42,13 @@ class TokenBucket {
 }
 
 class Connection {
-  constructor(userId, socket, clientId, adminId) {
+  constructor(userId, socket, clientId, adminId, appId) {
     this.userId = userId
     this.socket = socket
     this.clientId = clientId
     this.id = uuidv4()
     this.adminId = adminId
+    this.appId = appId
     this.databases = {}
     this.keyValidated = false
 
@@ -314,9 +315,11 @@ class Connection {
 }
 
 export default class Connections {
-  static register(userId, socket, clientId, adminId) {
+  static register(userId, socket, clientId, adminId, appId) {
     if (!Connections.sockets) Connections.sockets = {}
     if (!Connections.sockets[userId]) Connections.sockets[userId] = {}
+    if (!Connections.sockets[adminId]) Connections.sockets[adminId] = {}
+    if (!Connections.sockets[appId]) Connections.sockets[appId] = {}
 
     if (!Connections.uniqueClients) Connections.uniqueClients = {}
     if (!Connections.uniqueClients[clientId]) {
@@ -327,10 +330,13 @@ export default class Connections {
       return false
     }
 
-    const connection = new Connection(userId, socket, clientId, adminId)
+    const connection = new Connection(userId, socket, clientId, adminId, appId)
 
     Connections.sockets[userId][connection.id] = connection
-    logger.child({ connectionId: connection.id, userId, clientId, adminId }).info('WebSocket connected')
+    Connections.sockets[adminId][connection.id] = userId
+    Connections.sockets[appId][connection.id] = userId
+
+    logger.child({ connectionId: connection.id, userId, clientId, adminId, appId }).info('WebSocket connected')
 
     return connection
   }
@@ -379,11 +385,39 @@ export default class Connections {
   }
 
   static close(connection) {
-    const { userId, id, clientId, adminId } = connection
+    const { userId, id, clientId, adminId, appId } = connection
     const connectionId = id
 
-    logger.child({ userId, connectionId, clientId, adminId }).info('WebSocket closing')
+    logger.child({ userId, connectionId, clientId, adminId, appId }).info('WebSocket closing')
+
     delete Connections.sockets[userId][connectionId]
+    delete Connections.sockets[adminId][connectionId]
+    delete Connections.sockets[appId][connectionId]
+
     delete Connections.uniqueClients[clientId]
+  }
+
+  static closeUsersConnectedClients(userId) {
+    if (!Connections.sockets || !Connections.sockets[userId]) return
+
+    for (const conn of Object.values(Connections.sockets[userId])) {
+      conn.socket.close()
+    }
+  }
+
+  static closeAppsConnectedClients(appId) {
+    if (!Connections.sockets || !Connections.sockets[appId]) return
+
+    for (const userId of Object.values(Connections.sockets[appId])) {
+      this.closeUsersConnectedClients(userId)
+    }
+  }
+
+  static closeAdminsConnectedClients(adminId) {
+    if (!Connections.sockets || !Connections.sockets[adminId]) return
+
+    for (const userId of Object.values(Connections.sockets[adminId])) {
+      this.closeUsersConnectedClients(userId)
+    }
   }
 }

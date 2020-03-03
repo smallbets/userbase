@@ -6,7 +6,7 @@ import statusCodes from './statusCodes'
 import logger from './logger'
 import appController from './app'
 import userController from './user'
-import { validateEmail, trimReq } from './utils'
+import { validateEmail, trimReq, getTtl } from './utils'
 import stripe from './stripe'
 
 // source: https://github.com/OWASP/CheatSheetSeries/blob/master/cheatsheets/Session_Management_Cheat_Sheet.md#session-id-length
@@ -29,7 +29,8 @@ const createSession = async function (adminId) {
   const session = {
     'session-id': sessionId,
     'admin-id': adminId,
-    'creation-date': new Date().toISOString()
+    'creation-date': new Date().toISOString(),
+    ttl: getTtl(SECONDS_IN_A_DAY),
   }
 
   const params = {
@@ -392,41 +393,7 @@ exports.permanentDeleteUser = async function (req, res) {
     if (!app || app['deleted']) return res.status(statusCodes['Not Found']).send('App not found')
     if (!user || user['app-id'] !== app['app-id']) return res.status(statusCodes['Not Found']).send('User not found')
 
-    const existingUserParams = {
-      TableName: setup.usersTableName,
-      Key: {
-        username,
-        'app-id': app['app-id']
-      },
-      ConditionExpression: 'attribute_exists(deleted) and #userId = :userId',
-      ExpressionAttributeNames: {
-        '#userId': 'user-id'
-      },
-      ExpressionAttributeValues: {
-        ':userId': userId
-      }
-    }
-
-    const permanentDeletedUserParams = {
-      TableName: setup.deletedUsersTableName,
-      Item: {
-        ...user // still technically can recover user before data is purged, though more difficult
-      },
-      ConditionExpression: 'attribute_not_exists(#userId)',
-      ExpressionAttributeNames: {
-        '#userId': 'user-id'
-      },
-    }
-
-    const transactionParams = {
-      TransactItems: [
-        { Delete: existingUserParams },
-        { Put: permanentDeletedUserParams }
-      ]
-    }
-
-    const ddbClient = connection.ddbClient()
-    await ddbClient.transactWrite(transactionParams).promise()
+    await userController.permanentDelete(user)
 
     return res.end()
   } catch (e) {
@@ -437,6 +404,62 @@ exports.permanentDeleteUser = async function (req, res) {
     logger.error(`Failed to permanently delete user '${userId}' from admin '${adminId}' with ${e}`)
     return res.status(statusCodes['Internal Server Error']).send('Failed to permanently delete user')
   }
+}
+
+exports.permanentDelete = async function (admin) {
+  const email = admin['email']
+  const adminId = admin['admin-id']
+  const stripeCustomerId = admin['stripe-customer-id']
+
+  const logChildObject = { email, adminId, stripeCustomerId }
+  logger.child(logChildObject).info('Permanent deleting admin')
+
+  // delete from Stripe before DDB delete to maintain reference
+  if (stripeCustomerId) {
+    try {
+      await stripe.getClient().customers.del(stripeCustomerId)
+    } catch (e) {
+      // only safe to continue if customer is already deleted from Stripe
+      if (!e.message.includes('No such customer')) throw e
+    }
+  }
+
+  const existingAdminParams = {
+    TableName: setup.adminTableName,
+    Key: {
+      email,
+    },
+    ConditionExpression: 'attribute_exists(deleted) and #adminId = :adminId',
+    ExpressionAttributeNames: {
+      '#adminId': 'admin-id'
+    },
+    ExpressionAttributeValues: {
+      ':adminId': adminId
+    }
+  }
+
+  const permanentDeletedAdminParams = {
+    TableName: setup.deletedAdminsTableName,
+    Item: {
+      ...admin // still technically can recover admin before data is purged, though more difficult
+    },
+    ConditionExpression: 'attribute_not_exists(#adminId)',
+    ExpressionAttributeNames: {
+      '#adminId': 'admin-id'
+    }
+  }
+
+  const transactionParams = {
+    TransactItems: [
+      { Delete: existingAdminParams },
+      { Put: permanentDeletedAdminParams }
+    ]
+  }
+
+  const ddbClient = connection.ddbClient()
+  await ddbClient.transactWrite(transactionParams).promise()
+
+  logger.child(logChildObject).info('Deleted admin permanently')
 }
 
 const setTempPassword = async (email, tempPassword) => {
