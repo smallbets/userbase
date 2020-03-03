@@ -295,6 +295,12 @@ export default class AppUsersTable extends Component {
                               <tr className='border-b h-auto bg-yellow-200 mt-4'>
                                 <th className='px-1 py-1 text-gray-800 text-left'>
 
+                                  <p>User ID:
+                                    <span className='font-light ml-1'>
+                                      {user['userId']}
+                                    </span>
+                                  </p>
+
                                   <p>Email:
                                     <span className='font-light ml-1'>
                                       {user['email'] || 'No email saved.'}
@@ -383,6 +389,12 @@ export default class AppUsersTable extends Component {
                               {user['displayUserMetadata'] &&
                                 <tr className='border-b h-auto bg-yellow-200 mt-4'>
                                   <th className='px-1 py-1 text-gray-800 text-left'>
+
+                                    <p>User ID:
+                                    <span className='font-light ml-1'>
+                                        {user['userId']}
+                                      </span>
+                                    </p>
 
                                     <p>Email:
                                     <span className='font-light ml-1'>
