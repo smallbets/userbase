@@ -5,6 +5,7 @@ import { faTrashAlt } from '@fortawesome/free-regular-svg-icons'
 import dashboardLogic from './logic'
 import UnknownError from '../Admin/UnknownError'
 import { formatDate } from '../../utils'
+import { ProfileTable } from './ProfileTable'
 
 export default class AppUsersTable extends Component {
   constructor(props) {
@@ -23,6 +24,7 @@ export default class AppUsersTable extends Component {
     this.handlePermanentDeleteUser = this.handlePermanentDeleteUser.bind(this)
     this.handleShowDeletedUsers = this.handleShowDeletedUsers.bind(this)
     this.handleHideDeletedUsers = this.handleHideDeletedUsers.bind(this)
+    this.handleToggleDisplayUserMetadata = this.handleToggleDisplayUserMetadata.bind(this)
   }
 
   async componentDidMount() {
@@ -162,6 +164,23 @@ export default class AppUsersTable extends Component {
     this.setState({ showDeletedUsers: false })
   }
 
+  handleToggleDisplayUserMetadata(e, userId) {
+    e.preventDefault()
+
+    const { activeUsers, deletedUsers } = this.state
+
+    const activeUserIndex = activeUsers.findIndex(user => user['userId'] === userId)
+    const deletedUserIndex = deletedUsers.findIndex(user => user['userId'] === userId)
+
+    if (activeUserIndex !== -1) {
+      activeUsers[activeUserIndex].displayUserMetadata = !activeUsers[activeUserIndex].displayUserMetadata
+      this.setState({ activeUsers })
+    } else {
+      deletedUsers[deletedUserIndex].displayUserMetadata = !deletedUsers[deletedUserIndex].displayUserMetadata
+      this.setState({ deletedUsers })
+    }
+  }
+
   render() {
     const { appName, paymentStatus } = this.props
     const { loading, activeUsers, deletedUsers, error, showDeletedUsers } = this.state
@@ -208,27 +227,70 @@ export default class AppUsersTable extends Component {
                       </thead>
 
                       <tbody>
-
                         {activeUsers.map((user) => (
-                          <tr key={user['userId']} className='border-b mouse:hover:bg-yellow-200 h-8'>
-                            <td className='px-1 font-light text-left'>{user['username']}</td>
-                            <td className='px-1 font-light text-left'>{user['formattedCreationDate']}</td>
-                            <td className='px-1 font-light w-8 text-center'>
-
-                              {user['deleting']
-                                ? <div className='loader w-4 h-4 inline-block' />
-                                : <div
-                                  className='font-normal text-sm cursor-pointer text-yellow-700'
-                                  onClick={() => this.handleDeleteUser(user)}
+                          <React.Fragment key={user['userId']} >
+                            <tr className={`mouse:hover:bg-yellow-200 h-8 ${user['displayUserMetadata'] ? 'bg-yellow-200' : 'border-b'}`}>
+                              <td className='px-1 font-light text-left'>
+                                <a
+                                  className={`font-light cursor-pointer ${user['displayUserMetadata'] ? 'text-orange-700' : ''}`}
+                                  onClick={(e) => this.handleToggleDisplayUserMetadata(e, user['userId'])}
                                 >
-                                  <FontAwesomeIcon icon={faTrashAlt} />
-                                </div>
-                              }
+                                  {user['username']}
+                                </a>
+                              </td>
+                              <td className='px-1 font-light text-left'>{user['formattedCreationDate']}</td>
+                              <td className='px-1 font-light w-8 text-center'>
 
-                            </td>
-                          </tr>
+                                {user['deleting']
+                                  ? <div className='loader w-4 h-4 inline-block' />
+                                  : <div
+                                    className='font-normal text-sm cursor-pointer text-yellow-700'
+                                    onClick={() => this.handleDeleteUser(user)}
+                                  >
+                                    <FontAwesomeIcon icon={faTrashAlt} />
+                                  </div>
+                                }
+
+                              </td>
+                            </tr>
+
+                            {user['displayUserMetadata'] &&
+                              <tr className='border-b h-auto bg-yellow-200 mt-4'>
+                                <th className='px-1 py-1 text-gray-800 text-left'>
+
+                                  <p>Email:
+                                    <span className='font-light ml-1'>
+                                      {user['email'] || 'No email saved.'}
+                                    </span>
+                                  </p>
+
+                                  <p>Profile:
+                                    {user['profile']
+                                      ? ProfileTable(user['profile'])
+                                      : <span className='font-light ml-1'>
+                                        No profile saved.
+                                      </span>
+                                    }
+                                  </p>
+
+
+                                  <p>Protected Profile:
+                                    {user['protectedProfile']
+                                      ? ProfileTable(user['protectedProfile'])
+                                      : <span className='font-light ml-1'>
+                                        No protected profile saved.
+                                      </span>
+                                    }
+                                  </p>
+
+                                </th>
+                                <th></th>
+                                <th></th>
+                              </tr>
+                            }
+
+                          </React.Fragment>
                         ))}
-
                       </tbody>
                     </table>
                   </div>
@@ -255,23 +317,68 @@ export default class AppUsersTable extends Component {
                         <tbody>
 
                           {deletedUsers.map((user) => (
-                            <tr key={user['userId']} className='border-b mouse:hover:bg-yellow-200 h-8'>
-                              <td className='px-1 font-light text-left text-red-700'>{user['username']}</td>
-                              <td className='px-1 font-light text-left'>{user['formattedCreationDate']}</td>
-                              <td className='px-1 font-light w-8 text-center'>
-
-                                {user['permanentDeleting']
-                                  ? <div className='loader w-4 h-4 inline-block' />
-                                  : <div
-                                    className='font-normal text-sm cursor-pointer text-yellow-700'
-                                    onClick={() => this.handlePermanentDeleteUser(user)}
+                            <React.Fragment key={user['userId']} >
+                              <tr className={`mouse:hover:bg-yellow-200 h-8 ${user['displayUserMetadata'] ? 'bg-yellow-200' : 'border-b'}`}>
+                                <td className='px-1 font-light text-left text-red-700'>
+                                  <a
+                                    className={`font-light cursor-pointer ${user['displayUserMetadata'] ? 'text-orange-700' : ''}`}
+                                    onClick={(e) => this.handleToggleDisplayUserMetadata(e, user['userId'])}
                                   >
-                                    <FontAwesomeIcon icon={faTrashAlt} />
-                                  </div>
-                                }
+                                    {user['username']}
+                                  </a>
+                                </td>
+                                <td className='px-1 font-light text-left'>{user['formattedCreationDate']}</td>
+                                <td className='px-1 font-light w-8 text-center'>
 
-                              </td>
-                            </tr>
+                                  {user['permanentDeleting']
+                                    ? <div className='loader w-4 h-4 inline-block' />
+                                    : <div
+                                      className='font-normal text-sm cursor-pointer text-yellow-700'
+                                      onClick={() => this.handlePermanentDeleteUser(user)}
+                                    >
+                                      <FontAwesomeIcon icon={faTrashAlt} />
+                                    </div>
+                                  }
+
+                                </td>
+                              </tr>
+
+                              {user['displayUserMetadata'] &&
+                                <tr className='border-b h-auto bg-yellow-200 mt-4'>
+                                  <th className='px-1 py-1 text-gray-800 text-left'>
+
+                                    <p>Email:
+                                    <span className='font-light ml-1'>
+                                        {user['email'] || 'No email saved.'}
+                                      </span>
+                                    </p>
+
+                                    <p>Profile:
+                                    {user['profile']
+                                        ? ProfileTable(user['profile'])
+                                        : <span className='font-light ml-1'>
+                                          No profile saved.
+                                      </span>
+                                      }
+                                    </p>
+
+
+                                    <p>Protected Profile:
+                                    {user['protectedProfile']
+                                        ? ProfileTable(user['protectedProfile'])
+                                        : <span className='font-light ml-1'>
+                                          No protected profile saved.
+                                      </span>
+                                      }
+                                    </p>
+
+                                  </th>
+                                  <th></th>
+                                  <th></th>
+                                </tr>
+                              }
+
+                            </React.Fragment>
                           ))}
 
                         </tbody>
@@ -318,7 +425,7 @@ export default class AppUsersTable extends Component {
 
         </div>
 
-      </div>
+      </div >
     )
   }
 }
