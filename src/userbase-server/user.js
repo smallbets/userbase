@@ -262,6 +262,7 @@ const _validateUsernameInput = (username) => {
     maxLen: MAX_USERNAME_CHAR_LENGTH
   }
 }
+exports._validateUsernameInput = _validateUsernameInput
 
 const _validateSignUpInput = (appId, username, passwordToken, publicKey, passwordSalts, keySalts, passwordBasedBackup, email, profile) => {
   try {
