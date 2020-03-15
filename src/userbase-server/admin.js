@@ -1075,7 +1075,7 @@ const getAccessTokens = async function (adminId) {
   while (accessTokenResponse.LastEvaluatedKey) {
     params.ExclusiveStartKey = accessTokenResponse.LastEvaluatedKey
     accessTokenResponse = await ddbClient.query(params).promise()
-    accessTokens.push(accessTokenResponse.Items)
+    accessTokens.push(...accessTokenResponse.Items)
   }
 
   return accessTokens.map(accessToken => ({
