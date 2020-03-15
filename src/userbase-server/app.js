@@ -351,7 +351,7 @@ const _validateAppResponseToGetApp = function (app, adminId, logChildObject) {
   }
 }
 
-const _getAppQuery = async function (appId, lastEvaluatedKey) {
+const _getAppQuery = async function (appId) {
   const params = {
     TableName: setup.usersTableName,
     IndexName: setup.appIdIndex,
@@ -364,16 +364,20 @@ const _getAppQuery = async function (appId, lastEvaluatedKey) {
     }
   }
 
-  if (lastEvaluatedKey) params.ExclusiveStartKey = lastEvaluatedKey
-
   const ddbClient = connection.ddbClient()
-  const usersResponse = await ddbClient.query(params).promise()
-  return usersResponse
-}
-
-const _buildGetAppResult = function (usersResponse, app) {
+  let usersResponse = await ddbClient.query(params).promise()
   const users = usersResponse.Items
 
+  while (usersResponse.LastEvaluatedKey) {
+    params.ExclusiveStartKey = usersResponse.LastEvaluatedKey
+    usersResponse = await ddbClient.query(params).promise()
+    users.push(...usersResponse.Items)
+  }
+
+  return users
+}
+
+const _buildGetAppResult = function (users, app) {
   const result = {
     users: users.map(user => userController.buildUserResult(user)),
     appName: app['app-name'],
@@ -382,36 +386,7 @@ const _buildGetAppResult = function (usersResponse, app) {
     creationDate: app['creation-date'],
   }
 
-  // convert last evaluated key to a base64 string so it does not confuse developer
-  if (usersResponse.LastEvaluatedKey) {
-    const lastEvaluatedKeyString = JSON.stringify(usersResponse.LastEvaluatedKey)
-    const base64LastEvaluatedKey = Buffer.from(lastEvaluatedKeyString).toString('base64')
-    result.nextPageToken = base64LastEvaluatedKey
-  }
-
   return result
-}
-
-const _getLastEvaluatedKeyFromNextPageToken = (nextPageToken, appId) => {
-  try {
-    if (!nextPageToken) return null
-
-    const lastEvaluatedKeyString = Buffer.from(nextPageToken, 'base64').toString('ascii')
-    const lastEvaluatedKey = JSON.parse(lastEvaluatedKeyString)
-
-    userController._validateUsernameInput(lastEvaluatedKey.username)
-    _validateAppId(lastEvaluatedKey['app-id'])
-
-    if (appId !== lastEvaluatedKey['app-id']) throw 'Token app ID must match authenticated app ID'
-    if (Object.keys(lastEvaluatedKey).length !== 2) throw 'Token must only have 2 keys'
-
-    return lastEvaluatedKey
-  } catch {
-    throw {
-      status: statusCodes['Bad Request'],
-      error: { message: 'Next page token invalid.' }
-    }
-  }
 }
 
 const _validateAppId = (appId) => {
@@ -426,13 +401,11 @@ exports.getAppController = async function (req, res) {
   let logChildObject
   try {
     const appId = req.params.appId
-    const nextPageToken = req.query.nextPageToken
 
-    logChildObject = { ...res.locals.logChildObject, appId, nextPageToken }
+    logChildObject = { ...res.locals.logChildObject, appId }
     logger.child(logChildObject).info('Getting app')
 
     _validateAppId(appId)
-    const lastEvaluatedKey = _getLastEvaluatedKeyFromNextPageToken(nextPageToken, appId)
 
     const admin = res.locals.admin
     const adminId = admin['admin-id']
@@ -440,9 +413,9 @@ exports.getAppController = async function (req, res) {
     const app = await getAppByAppId(appId)
     _validateAppResponseToGetApp(app, adminId, logChildObject)
 
-    const usersResponse = await _getAppQuery(app['app-id'], lastEvaluatedKey)
+    const users = await _getAppQuery(app['app-id'])
 
-    const result = _buildGetAppResult(usersResponse, app)
+    const result = _buildGetAppResult(users, app)
 
     logChildObject.statusCode = statusCodes['Success']
     logger.child(logChildObject).info('Successfully got app')
