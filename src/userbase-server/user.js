@@ -11,6 +11,7 @@ import adminController from './admin'
 
 // source: https://github.com/OWASP/CheatSheetSeries/blob/master/cheatsheets/Session_Management_Cheat_Sheet.md#session-id-length
 const ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID = 16
+const AUTH_TOKEN_STRING_LENGTH = 32
 
 const VALIDATION_MESSAGE_LENGTH = 16
 const UUID_STRING_LENGTH = 36
@@ -31,13 +32,22 @@ const LIMIT_NUM_TRIAL_USERS = 3
 const MAX_INCORRECT_PASSWORD_GUESSES = 25
 
 const createSession = async function (userId, appId) {
+  // sessionId is used to authenticate that a user is signed in. The sessionId allows
+  // the user to sign in without their password and open a WebSocket connection to the server
   const sessionId = crypto
+    .randomBytes(ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID)
+    .toString('hex')
+
+  // authToken is used to verify the user is signed in to an existing session.
+  // It has no other privileges, unlike the session ID
+  const authToken = crypto
     .randomBytes(ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID)
     .toString('hex')
 
   const creationDate = new Date().toISOString()
   const session = {
     'session-id': sessionId,
+    'auth-token': authToken,
     'user-id': userId,
     'app-id': appId,
     'creation-date': creationDate,
@@ -52,7 +62,7 @@ const createSession = async function (userId, appId) {
   const ddbClient = connection.ddbClient()
   await ddbClient.put(params).promise()
 
-  return { sessionId, creationDate }
+  return { sessionId, authToken, creationDate }
 }
 
 const _buildSignUpParams = (username, passwordToken, appId, userId,
@@ -526,6 +536,7 @@ exports.authenticateUser = async function (req, res, next) {
     res.locals.user = user
     res.locals.admin = admin
     res.locals.app = app
+    res.locals.authToken = session['auth-token']
 
     logger.child(logChildObject).info('User authenticated')
 
@@ -540,6 +551,140 @@ exports.authenticateUser = async function (req, res, next) {
       const statusCode = statusCodes['Internal Server Error']
       logger.child({ ...logChildObject, statusCode, err: e }).error(message)
       return res.status(statusCode).send(message)
+    }
+  }
+}
+
+const _getSessionByAuthToken = async (authToken) => {
+  const params = {
+    TableName: setup.sessionsTableName,
+    IndexName: setup.authTokenIndex,
+    KeyConditionExpression: '#authToken = :authToken',
+    ExpressionAttributeNames: {
+      '#authToken': 'auth-token'
+    },
+    ExpressionAttributeValues: {
+      ':authToken': authToken
+    },
+    Select: 'ALL_ATTRIBUTES'
+  }
+
+  const ddbClient = connection.ddbClient()
+  const sessionResponse = await ddbClient.query(params).promise()
+
+  if (!sessionResponse || sessionResponse.Items.length === 0) return null
+
+  if (sessionResponse.Items.length > 1) {
+    // this should never happen
+    const errorMsg = `Too many sessions found with auht token ${authToken.subString(0, 8)}`
+    logger.fatal(errorMsg)
+    throw new Error(errorMsg)
+  }
+
+  return sessionResponse.Items[0]
+}
+
+const _validateAuthToken = (authToken) => {
+  try {
+    if (typeof authToken !== 'string') throw 'Auth token must be a string.'
+    if (authToken.length !== AUTH_TOKEN_STRING_LENGTH) throw 'Auth token is incorrect length.'
+  } catch (e) {
+    throw {
+      status: statusCodes['Bad Request'],
+      error: { message: e }
+    }
+  }
+}
+
+exports.verifyAuthToken = async function (req, res) {
+  let logChildObject
+  try {
+    const admin = res.locals.admin
+    const adminId = admin['admin-id']
+
+    const authToken = req.params.authToken
+
+    logChildObject = { adminId, req: trimReq(req) }
+    logger.child(logChildObject).info('Verifying auth token')
+
+    // verify auth token is string of correct length
+    _validateAuthToken(authToken)
+
+    const session = await _getSessionByAuthToken(authToken)
+
+    // verify session exists, is not invalidated or expired, and is a session tied to a user
+    try {
+      _validateSession(session)
+    } catch (e) {
+      e.error.message = 'Auth token invalid.'
+      throw e
+    }
+
+    const [user, app] = await Promise.all([
+      getUserByUserId(session['user-id']),
+      appController.getAppByAppId(session['app-id'])
+    ])
+
+    // verify auth token belongs to a user of an app owned by the admin
+    if (app && app['admin-id'] !== adminId) {
+      throw {
+        status: statusCodes['Unauthorized'],
+        error: {
+          message: 'Auth token invalid.',
+          incorrectAdminId: app['admin-id']
+        }
+      }
+    }
+
+    try {
+      // verify app exists and is not deleted
+      if (!app) {
+        throw {
+          message: 'App not found.'
+        }
+      } else if (app['deleted']) {
+        throw {
+          message: 'App was deleted.',
+          deletedAppId: app['app-id'],
+        }
+      }
+
+      logChildObject.appId = app['app-id']
+
+      // verify user exists and is not deleted
+      if (!user) {
+        throw {
+          message: 'User not found.'
+        }
+      } else if (user['deleted']) {
+        throw {
+          message: 'User was deleted.',
+          deletedUserId: user['user-id']
+        }
+      }
+
+      logChildObject.userId = user['user-id']
+
+    } catch (error) {
+      throw {
+        status: statusCodes['Not Found'],
+        error
+      }
+    }
+
+    logger.child(logChildObject).info('Auth token verified')
+
+    return res.send('Auth token verified!')
+  } catch (e) {
+    const message = 'Failed to verify auth token.'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).info(message)
+      return res.status(e.status).send({ message: e.error.message })
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e, }).error(message)
+      return res.status(statusCode).send({ message })
     }
   }
 }
@@ -961,6 +1106,7 @@ exports.extendSession = async function (req, res) {
   const user = res.locals.user
   const admin = res.locals.admin
   const app = res.locals.app
+  const authToken = res.locals.authToken
 
   const sessionId = req.query.sessionId
 
@@ -990,7 +1136,7 @@ exports.extendSession = async function (req, res) {
     const ddbClient = connection.ddbClient()
     await ddbClient.update(params).promise()
 
-    const result = { extendedDate, username: user['username'], userId: user['user-id'] }
+    const result = { extendedDate, authToken, username: user['username'], userId: user['user-id'] }
 
     if (user['email']) result.email = user['email']
     if (user['profile']) result.profile = user['profile']

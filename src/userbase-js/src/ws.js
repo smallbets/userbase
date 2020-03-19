@@ -58,7 +58,8 @@ class Connection {
     this.session = {
       username: session && session.username,
       sessionId: session && session.sessionId,
-      creationDate: session && session.creationDate
+      creationDate: session && session.creationDate,
+      authToken: session && session.authToken,
     }
 
     this.seedString = seedString

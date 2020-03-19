@@ -15,6 +15,7 @@ export type RememberMeOption = 'session' | 'local' | 'none'
 export interface UserResult {
   username: string
   userId: string
+  authToken: string
   email?: string
   profile?: UserProfile
   protectedProfile?: UserProfile

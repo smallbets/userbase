@@ -123,6 +123,10 @@ const _validateSignUpOrSignInInput = (params) => {
 
   _validateUsername(params.username)
   _validatePassword(params.password)
+
+  if (objectHasOwnProperty(params, 'rememberMe') && !config.REMEMBER_ME_OPTIONS[params.rememberMe]) {
+    throw new errors.RememberMeValueNotValid(config.REMEMBER_ME_OPTIONS)
+  }
 }
 
 const _generatePasswordToken = async (password, seed) => {
@@ -196,8 +200,8 @@ const _generateKeysAndSignUp = async (username, password, seed, email, profile) 
   }
 }
 
-const _buildUserResult = (username, userId, email, profile, protectedProfile, usedTempPassword) => {
-  const result = { username, userId }
+const _buildUserResult = (username, userId, authToken, email, profile, protectedProfile, usedTempPassword) => {
+  const result = { username, userId, authToken }
 
   if (email) result.email = email
   if (profile) result.profile = profile
@@ -224,17 +228,18 @@ const _validateProfile = (profile) => {
   if (!keyExists) throw new errors.ProfileCannotBeEmpty
 }
 
+const _validateSignUpInput = (params) => {
+  _validateSignUpOrSignInInput(params)
+
+  if (params.profile) _validateProfile(params.profile)
+  if (params.email && typeof params.email !== 'string') throw new errors.EmailNotValid
+}
+
 const signUp = async (params) => {
   try {
-    _validateSignUpOrSignInInput(params)
+    _validateSignUpInput(params)
 
     const { password, profile, rememberMe = 'session' } = params
-
-    if (profile) _validateProfile(profile)
-    if (params.email && typeof params.email !== 'string') throw new errors.EmailNotValid
-    if (!config.REMEMBER_ME_OPTIONS[rememberMe]) {
-      throw new errors.RememberMeValueNotValid(config.REMEMBER_ME_OPTIONS)
-    }
 
     const username = params.username.toLowerCase()
     const email = params.email && params.email.toLowerCase()
@@ -242,8 +247,8 @@ const signUp = async (params) => {
     const appId = config.getAppId()
     const seed = await crypto.generateSeed()
 
-    const { sessionId, creationDate, userId } = await _generateKeysAndSignUp(username, password, seed, email, profile)
-    const session = { username, sessionId, creationDate }
+    const { sessionId, creationDate, userId, authToken } = await _generateKeysAndSignUp(username, password, seed, email, profile)
+    const session = { username, sessionId, creationDate, authToken }
 
     const seedString = base64.encode(seed)
 
@@ -252,7 +257,7 @@ const signUp = async (params) => {
 
     await _connectWebSocket(session, seedString, rememberMe)
 
-    return _buildUserResult(username, userId, email, profile)
+    return _buildUserResult(username, userId, authToken, email, profile)
   } catch (e) {
 
     switch (e.name) {
@@ -387,10 +392,6 @@ const signIn = async (params) => {
     const username = params.username.toLowerCase()
     const { password, rememberMe = 'session' } = params
 
-    if (!config.REMEMBER_ME_OPTIONS[rememberMe]) {
-      throw new errors.RememberMeValueNotValid(config.REMEMBER_ME_OPTIONS)
-    }
-
     const appId = config.getAppId()
 
     const passwordSalts = await _getPasswordSaltsOverRestEndpoint(username)
@@ -419,7 +420,7 @@ const signIn = async (params) => {
 
     await _connectWebSocket(session, seedString, rememberMe)
 
-    return _buildUserResult(username, userId, email, profile, protectedProfile, usedTempPassword)
+    return _buildUserResult(username, userId, session.authToken, email, profile, protectedProfile, usedTempPassword)
   } catch (e) {
 
     switch (e.name) {
@@ -503,7 +504,7 @@ const signInWithSession = async (appId) => {
 
       throw e
     }
-    const { userId, username, email, profile, protectedProfile } = apiSignInWithSessionResult
+    const { userId, authToken, username, email, profile, protectedProfile } = apiSignInWithSessionResult
 
     // overwrite local data if username has been changed on server
     if (username !== currentSession.username) {
@@ -515,15 +516,16 @@ const signInWithSession = async (appId) => {
     // enable idempotent calls to init()
     if (ws.connectionResolved) {
       if (ws.session.sessionId === sessionId) {
-        return { user: _buildUserResult(username, userId, email, profile, protectedProfile) }
+        return { user: _buildUserResult(username, userId, ws.session.authToken, email, profile, protectedProfile) }
       } else {
         throw new errors.UserAlreadySignedIn(ws.session.username)
       }
     }
 
-    await _connectWebSocket(currentSession, savedSeedString, rememberMe)
+    const session = { ...currentSession, authToken }
+    await _connectWebSocket(session, savedSeedString, rememberMe)
 
-    return { user: _buildUserResult(username, userId, email, profile, protectedProfile) }
+    return { user: _buildUserResult(username, userId, authToken, email, profile, protectedProfile) }
   } catch (e) {
     _parseGenericErrors(e)
     throw e
