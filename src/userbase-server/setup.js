@@ -60,11 +60,13 @@ const adminIdIndex = 'AdminIdIndex'
 const accessTokenIndex = 'AccessTokenIndex'
 const userIdIndex = 'UserIdIndex'
 const appIdIndex = 'AppIdIndex'
+const authTokenIndex = 'AuthTokenIndex'
 
 exports.adminIdIndex = adminIdIndex
 exports.accessTokenIndex = accessTokenIndex
 exports.userIdIndex = userIdIndex
 exports.appIdIndex = appIdIndex
+exports.authTokenIndex = authTokenIndex
 
 const getDbStatesBucketName = function () {
   if (!initialized || !awsAccountId) {
@@ -228,14 +230,24 @@ async function setupDdb() {
 
   // the sessions table holds a record per admin OR user session
   const sessionsTableParams = {
+    TableName: sessionsTableName,
+    BillingMode: 'PAY_PER_REQUEST',
     AttributeDefinitions: [
-      { AttributeName: 'session-id', AttributeType: 'S' }
+      { AttributeName: 'session-id', AttributeType: 'S' },
+      { AttributeName: 'auth-token', AttributeType: 'S' },
     ],
     KeySchema: [
       { AttributeName: 'session-id', KeyType: 'HASH' }
     ],
-    BillingMode: 'PAY_PER_REQUEST',
-    TableName: sessionsTableName
+    GlobalSecondaryIndexes: [
+      {
+        IndexName: authTokenIndex,
+        KeySchema: [
+          { AttributeName: 'auth-token', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' }
+      },
+    ]
   }
   const sessionsTimeToLive = {
     TableName: sessionsTableName,
