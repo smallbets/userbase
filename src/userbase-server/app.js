@@ -103,7 +103,7 @@ exports.listApps = async function (req, res) {
     while (appsResponse.LastEvaluatedKey) {
       params.ExclusiveStartKey = appsResponse.LastEvaluatedKey
       appsResponse = await ddbClient.query(params).promise()
-      apps.push(appsResponse.Items)
+      apps.push(...appsResponse.Items)
     }
 
     return res.status(statusCodes['Success']).send(apps)
@@ -314,7 +314,7 @@ exports.listAppUsers = async function (req, res) {
     while (usersResponse.LastEvaluatedKey) {
       params.ExclusiveStartKey = usersResponse.LastEvaluatedKey
       usersResponse = await ddbClient.query(params).promise()
-      users.push(usersResponse.Items)
+      users.push(...usersResponse.Items)
     }
 
     return res.status(statusCodes['Success']).send({
