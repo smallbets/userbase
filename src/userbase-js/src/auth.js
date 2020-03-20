@@ -453,6 +453,8 @@ const signIn = async (params) => {
 
 const init = async (params) => {
   try {
+    if (!window.crypto.subtle) throw new errors.WebCryptoUnavailable
+
     if (typeof params !== 'object') throw new errors.ParamsMustBeObject
 
     if (!objectHasOwnProperty(params, 'appId')) throw new errors.AppIdMissing
@@ -465,6 +467,7 @@ const init = async (params) => {
   } catch (e) {
 
     switch (e.name) {
+      case 'WebCryptoUnavailable':
       case 'ParamsMustBeObject':
       case 'AppIdMissing':
       case 'AppIdAlreadySet':

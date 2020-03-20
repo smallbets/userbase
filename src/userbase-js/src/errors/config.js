@@ -40,9 +40,20 @@ class AppIdCannotBeBlank extends Error {
   }
 }
 
+class WebCryptoUnavailable extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'WebCryptoUnavailable'
+    this.message = 'The WebCrypto API is unavailable. Please make sure your website uses https.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
 export default {
   AppIdAlreadySet,
   AppIdMustBeString,
   AppIdMissing,
   AppIdCannotBeBlank,
+  WebCryptoUnavailable,
 }
