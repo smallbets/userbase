@@ -158,7 +158,7 @@ exports.createAdminController = async function (req, res) {
   try {
     const sessionId = await createSession(adminId)
     setSessionCookie(res, sessionId)
-    return res.end()
+    return res.send(adminId)
   } catch (e) {
     logger.error(`Failed to create session for admin ${adminId} with ${e}`)
     return res
