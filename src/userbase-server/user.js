@@ -176,7 +176,7 @@ const _incrementIncorrectPasswordAttempt = (user) => {
 }
 
 const _validatePassword = (passwordToken, user, req) => {
-  if (!user || user['deleted']) throw new Error('User does not exist')
+  if (!user) throw new Error('User does not exist')
 
   if (user['incorrect-password-attempts-in-a-row'] >= MAX_INCORRECT_PASSWORD_GUESSES) {
 
@@ -833,12 +833,13 @@ exports.getPasswordSaltsController = async function (req, res) {
     }
 
     const user = await getUser(appId, username.toLowerCase())
-    if (!user || user['deleted']) {
+
+    // return salts even if user is deleted
+    if (!user) {
       throw {
         status: statusCodes['Unauthorized'],
         error: {
           message: 'User not found',
-          deletedUserId: user && user['user-id']
         }
       }
     } else {
@@ -932,6 +933,13 @@ exports.signIn = async function (req, res) {
     }
 
     logChildObject.userId = user['user-id']
+
+    if (user['deleted']) throw {
+      status: statusCodes['Forbidden'],
+      error: {
+        message: 'User pending deletion'
+      }
+    }
 
     const session = await createSession(user['user-id'], appId)
 

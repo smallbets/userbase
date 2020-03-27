@@ -131,6 +131,16 @@ class UserAlreadySignedIn extends Error {
   }
 }
 
+class UserPendingDeletion extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'UserPendingDeletion'
+    this.message = 'User is pending deletion.'
+    this.status = statusCodes['Forbidden']
+  }
+}
+
 class AppIdNotValid extends Error {
   constructor(...params) {
     super(...params)
@@ -342,6 +352,7 @@ export default {
   PasswordAttemptLimitExceeded,
   UsernameOrPasswordMismatch,
   UserAlreadySignedIn,
+  UserPendingDeletion,
   AppIdNotValid,
   UserNotSignedIn,
   UserNotFound,

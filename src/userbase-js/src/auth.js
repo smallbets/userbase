@@ -342,6 +342,8 @@ const _signInWrapper = async (username, passwordToken) => {
 
     if (e.response && e.response.data === 'Invalid password') {
       throw new errors.UsernameOrPasswordMismatch
+    } else if (e.response && e.response.data === 'User pending deletion') {
+      throw new errors.UserPendingDeletion
     }
 
     throw e
@@ -427,6 +429,7 @@ const signIn = async (params) => {
       case 'ParamsMustBeObject':
       case 'UsernameMissing':
       case 'UsernameOrPasswordMismatch':
+      case 'UserPendingDeletion':
       case 'UsernameCannotBeBlank':
       case 'UsernameTooLong':
       case 'UsernameMustBeString':
