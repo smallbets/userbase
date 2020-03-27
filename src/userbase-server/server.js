@@ -441,6 +441,8 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.post('/users/:userId', admin.authenticateAccessToken, userController.updateProtectedProfile)
     v1Admin.get('/users/:userId', admin.authenticateAccessToken, userController.adminGetUserController)
     v1Admin.get('/apps/:appId', admin.authenticateAccessToken, appController.getAppController)
+    v1Admin.get('/apps/:appId/users', admin.authenticateAccessToken, appController.listUsersWithPagination)
+    v1Admin.get('/apps', admin.authenticateAccessToken, appController.listAppsWithPagination)
     v1Admin.get('/auth-tokens/:authToken', admin.authenticateAccessToken, userController.verifyAuthToken)
 
     // internal server used to receive notifications of transactions from peers -- shouldn't be exposed to public

@@ -79,10 +79,7 @@ exports.createAppController = async function (req, res) {
   }
 }
 
-exports.listApps = async function (req, res) {
-  const admin = res.locals.admin
-  const adminId = admin['admin-id']
-
+const queryForApps = async function (adminId, lastEvaluatedKey) {
   const params = {
     TableName: setup.appsTableName,
     KeyConditionExpression: '#adminId = :adminId',
@@ -94,15 +91,23 @@ exports.listApps = async function (req, res) {
     }
   }
 
-  try {
-    const ddbClient = connection.ddbClient()
+  if (lastEvaluatedKey) params.ExclusiveStartKey = lastEvaluatedKey
 
-    let appsResponse = await ddbClient.query(params).promise()
+  const ddbClient = connection.ddbClient()
+  let appsResponse = await ddbClient.query(params).promise()
+  return appsResponse
+}
+
+exports.listApps = async function (req, res) {
+  const admin = res.locals.admin
+  const adminId = admin['admin-id']
+
+  try {
+    let appsResponse = await queryForApps(adminId)
     let apps = appsResponse.Items
 
     while (appsResponse.LastEvaluatedKey) {
-      params.ExclusiveStartKey = appsResponse.LastEvaluatedKey
-      appsResponse = await ddbClient.query(params).promise()
+      appsResponse = await queryForApps(adminId, appsResponse.LastEvaluatedKey)
       apps.push(...appsResponse.Items)
     }
 
@@ -351,7 +356,7 @@ const _validateAppResponseToGetApp = function (app, adminId, logChildObject) {
   }
 }
 
-const _getAppQuery = async function (appId, lastEvaluatedKey) {
+const _getUsersQuery = async function (appId, lastEvaluatedKey) {
   const params = {
     TableName: setup.usersTableName,
     IndexName: setup.appIdIndex,
@@ -371,39 +376,30 @@ const _getAppQuery = async function (appId, lastEvaluatedKey) {
   return usersResponse
 }
 
-const _buildGetAppResult = function (usersResponse, app) {
-  const users = usersResponse.Items
-
-  const result = {
-    users: users.map(user => userController.buildUserResult(user)),
+const _buildAppResult = (app) => {
+  return {
     appName: app['app-name'],
     appId: app['app-id'],
     deleted: app['deleted'],
     creationDate: app['creation-date'],
   }
-
-  // convert last evaluated key to a base64 string so it does not confuse developer
-  if (usersResponse.LastEvaluatedKey) {
-    const lastEvaluatedKeyString = JSON.stringify(usersResponse.LastEvaluatedKey)
-    const base64LastEvaluatedKey = Buffer.from(lastEvaluatedKeyString).toString('base64')
-    result.nextPageToken = base64LastEvaluatedKey
-  }
-
-  return result
 }
 
-const _getLastEvaluatedKeyFromNextPageToken = (nextPageToken, appId) => {
+// convert last evaluated key to a base64 string so it does not confuse developer
+const _lastEvaluatedKeyToNextPageToken = (lastEvaluatedKey) => {
+  const lastEvaluatedKeyString = JSON.stringify(lastEvaluatedKey)
+  const base64LastEvaluatedKey = Buffer.from(lastEvaluatedKeyString).toString('base64')
+  return base64LastEvaluatedKey
+}
+
+const _nextPageTokenToLastEvaluatedKey = (nextPageToken, validateLastEvaluatedKey) => {
   try {
     if (!nextPageToken) return null
 
     const lastEvaluatedKeyString = Buffer.from(nextPageToken, 'base64').toString('ascii')
     const lastEvaluatedKey = JSON.parse(lastEvaluatedKeyString)
 
-    userController._validateUsernameInput(lastEvaluatedKey.username)
-    _validateAppId(lastEvaluatedKey['app-id'])
-
-    if (appId !== lastEvaluatedKey['app-id']) throw 'Token app ID must match authenticated app ID'
-    if (Object.keys(lastEvaluatedKey).length !== 2) throw 'Token must only have 2 keys'
+    validateLastEvaluatedKey(lastEvaluatedKey)
 
     return lastEvaluatedKey
   } catch {
@@ -412,6 +408,44 @@ const _getLastEvaluatedKeyFromNextPageToken = (nextPageToken, appId) => {
       error: { message: 'Next page token invalid.' }
     }
   }
+}
+
+const _buildUsersList = (usersResponse) => {
+  const result = {
+    users: usersResponse.Items.map(user => userController.buildUserResult(user)),
+  }
+
+  if (usersResponse.LastEvaluatedKey) {
+    result.nextPageToken = _lastEvaluatedKeyToNextPageToken(usersResponse.LastEvaluatedKey)
+  }
+
+  return result
+}
+
+const _buildAppsList = (appsResponse) => {
+  const result = {
+    apps: appsResponse.Items.map(app => _buildAppResult(app))
+  }
+
+  if (appsResponse.LastEvaluatedKey) {
+    result.nextPageToken = _lastEvaluatedKeyToNextPageToken(appsResponse.LastEvaluatedKey)
+  }
+
+  return result
+}
+
+const _validateListUsersLastEvaluatedKey = (lastEvaluatedKey, appId) => {
+  userController._validateUsernameInput(lastEvaluatedKey.username)
+  _validateAppId(lastEvaluatedKey['app-id'])
+
+  if (appId !== lastEvaluatedKey['app-id']) throw 'Token app ID must match authenticated app ID'
+  if (Object.keys(lastEvaluatedKey).length !== 2) throw 'Token must only have 2 keys'
+}
+
+const _validateListAppsLastEvaluatedKey = (lastEvaluatedKey, adminId) => {
+  if (adminId !== lastEvaluatedKey['admin-id']) throw 'Token admin ID must match authenticated admin ID'
+  if (!lastEvaluatedKey['app-name']) throw 'Token missing app name'
+  if (Object.keys(lastEvaluatedKey).length !== 2) throw 'Token must only have 2 keys'
 }
 
 const _validateAppId = (appId) => {
@@ -426,13 +460,11 @@ exports.getAppController = async function (req, res) {
   let logChildObject
   try {
     const appId = req.params.appId
-    const nextPageToken = req.query.nextPageToken
 
-    logChildObject = { ...res.locals.logChildObject, appId, nextPageToken }
+    logChildObject = { ...res.locals.logChildObject, appId }
     logger.child(logChildObject).info('Getting app')
 
     _validateAppId(appId)
-    const lastEvaluatedKey = _getLastEvaluatedKeyFromNextPageToken(nextPageToken, appId)
 
     const admin = res.locals.admin
     const adminId = admin['admin-id']
@@ -440,9 +472,7 @@ exports.getAppController = async function (req, res) {
     const app = await getAppByAppId(appId)
     _validateAppResponseToGetApp(app, adminId, logChildObject)
 
-    const usersResponse = await _getAppQuery(app['app-id'], lastEvaluatedKey)
-
-    const result = _buildGetAppResult(usersResponse, app)
+    const result = _buildAppResult(app)
 
     logChildObject.statusCode = statusCodes['Success']
     logger.child(logChildObject).info('Successfully got app')
@@ -450,6 +480,87 @@ exports.getAppController = async function (req, res) {
     return res.status(statusCodes['Success']).send(result)
   } catch (e) {
     const message = 'Failed to get app for admin.'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).info(message)
+      return res.status(e.status).send(e.error)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e, }).error(message)
+      return res.status(statusCode).send({ message })
+    }
+  }
+}
+
+exports.listUsersWithPagination = async function (req, res) {
+  let logChildObject
+  try {
+    const appId = req.params.appId
+    const nextPageToken = req.query.nextPageToken
+
+    logChildObject = { ...res.locals.logChildObject, appId, nextPageToken }
+    logger.child(logChildObject).info('Listing users from Admin API')
+
+    _validateAppId(appId)
+    const lastEvaluatedKey = _nextPageTokenToLastEvaluatedKey(
+      nextPageToken,
+      (lastEvaluatedKey) => _validateListUsersLastEvaluatedKey(lastEvaluatedKey, appId)
+    )
+
+    const admin = res.locals.admin
+    const adminId = admin['admin-id']
+
+    const app = await getAppByAppId(appId)
+    _validateAppResponseToGetApp(app, adminId, logChildObject)
+
+    const usersResponse = await _getUsersQuery(app['app-id'], lastEvaluatedKey)
+
+    const result = _buildUsersList(usersResponse)
+
+    logChildObject.statusCode = statusCodes['Success']
+    logger.child(logChildObject).info('Successfully listed users from Admin API')
+
+    return res.status(statusCodes['Success']).send(result)
+  } catch (e) {
+    const message = 'Failed to list users.'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).info(message)
+      return res.status(e.status).send(e.error)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e, }).error(message)
+      return res.status(statusCode).send({ message })
+    }
+  }
+}
+
+exports.listAppsWithPagination = async function (req, res) {
+  let logChildObject
+  try {
+    const nextPageToken = req.query.nextPageToken
+
+    logChildObject = { ...res.locals.logChildObject, nextPageToken }
+    logger.child(logChildObject).info('Listing apps from Admin API')
+
+    const admin = res.locals.admin
+    const adminId = admin['admin-id']
+
+    const lastEvaluatedKey = _nextPageTokenToLastEvaluatedKey(
+      nextPageToken,
+      (lastEvaluatedKey) => _validateListAppsLastEvaluatedKey(lastEvaluatedKey, adminId)
+    )
+
+    const appsResponse = await queryForApps(adminId, lastEvaluatedKey)
+
+    const result = _buildAppsList(appsResponse)
+
+    logChildObject.statusCode = statusCodes['Success']
+    logger.child(logChildObject).info('Successfully listed apps from Admin API')
+
+    return res.status(statusCodes['Success']).send(result)
+  } catch (e) {
+    const message = 'Failed to list apps.'
 
     if (e.status && e.error) {
       logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).info(message)
