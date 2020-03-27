@@ -410,10 +410,9 @@ const _nextPageTokenToLastEvaluatedKey = (nextPageToken, validateLastEvaluatedKe
   }
 }
 
-const _buildUsersList = (usersResponse, app) => {
+const _buildUsersList = (usersResponse) => {
   const result = {
     users: usersResponse.Items.map(user => userController.buildUserResult(user)),
-    ..._buildAppResult(app)
   }
 
   if (usersResponse.LastEvaluatedKey) {
@@ -516,7 +515,7 @@ exports.listUsersWithPagination = async function (req, res) {
 
     const usersResponse = await _getUsersQuery(app['app-id'], lastEvaluatedKey)
 
-    const result = _buildUsersList(usersResponse, app)
+    const result = _buildUsersList(usersResponse)
 
     logChildObject.statusCode = statusCodes['Success']
     logger.child(logChildObject).info('Successfully listed users from Admin API')

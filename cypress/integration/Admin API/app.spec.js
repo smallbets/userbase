@@ -300,12 +300,9 @@ describe('ListUsers', function () {
             })
             .then(function (response) {
               expect(response.status, 'status').to.eq(200)
+              expect(response.body, 'list users result keys').to.have.keys(['users'])
+              expect(response.body.users, 'users array').to.have.length(1)
 
-              expect(response.body, 'app keys').to.have.keys(['users', 'appId', 'appName', 'creationDate'])
-              expect(response.body.appId, 'app appId').to.eq(appId)
-              expect(response.body.appName, 'app name').to.eq('Trial')
-
-              expect(response.body.users, 'app users').to.have.length(1)
               const user = response.body.users[0]
 
               expect(user, 'user keys').to.have.keys(['username', 'userId', 'appId', 'email', 'profile', 'creationDate'])
@@ -352,12 +349,8 @@ describe('ListUsers', function () {
               })
               .then(function (response) {
                 expect(response.status, 'status').to.eq(200)
-
-                expect(response.body, 'app keys').to.have.keys(['users', 'appId', 'appName', 'creationDate'])
-                expect(response.body.appId, 'app appId').to.eq(appId)
-                expect(response.body.appName, 'app name').to.eq('Trial')
-
-                expect(response.body.users, 'app users').to.have.length(2)
+                expect(response.body, 'list users result keys').to.have.keys(['users'])
+                expect(response.body.users, 'users array').to.have.length(2)
 
                 let actualUserA, actualUserB, tokenUsername, expectedPaginatedUser
                 if (response.body.users[0].username === usernameUserA) {
@@ -400,13 +393,8 @@ describe('ListUsers', function () {
                   })
                   .then(function (response) {
                     expect(response.status, 'status').to.eq(200)
-
-                    expect(response.body, 'app keys').to.have.keys(['users', 'appId', 'appName', 'creationDate'])
-                    expect(response.body.appId, 'app appId').to.eq(appId)
-                    expect(response.body.appName, 'app name').to.eq('Trial')
-
-                    expect(response.body.users, 'app users').to.have.length(1)
-
+                    expect(response.body, 'paginated users result keys').to.have.keys(['users'])
+                    expect(response.body.users, 'paginated users array').to.have.length(1)
                     expect(response.body.users[0], 'paginated user').to.deep.equal(expectedPaginatedUser)
 
                     cy.request({ method: 'POST', url: DELETE_ADMIN_ENDPOINT })
