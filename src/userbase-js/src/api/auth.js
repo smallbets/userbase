@@ -1,13 +1,51 @@
-import axios from 'axios'
 import config from '../config'
 
 const TEN_SECONDS_MS = 10 * 1000
 
-const signUp = async (username, passwordToken, publicKey, passwordSalts, keySalts, email, profile, passwordBasedBackup) => {
-  const signUpResponse = await axios({
-    method: 'POST',
-    url: `${config.getEndpoint()}/api/auth/sign-up?appId=${config.getAppId()}`,
-    data: {
+class RequestError extends Error {
+  constructor(data, status, statusText, ...params) {
+    super(data, status, statusText, ...params)
+
+    this.response = {
+      data,
+      status,
+      statusText,
+    }
+
+    this.message = 'Request failed with status code ' + status
+  }
+}
+
+class TimeoutError extends Error {
+  constructor(timeout, ...params) {
+    super(timeout, ...params)
+
+    this.message = `timeout of ${timeout}ms exceeded`
+  }
+}
+
+const handleResponse = (xhr, resolve, reject) => {
+  let response
+  try {
+    response = JSON.parse(xhr.response)
+  } catch {
+    response = xhr.response
+  }
+
+  if (xhr.status >= 200 && xhr.status < 300) {
+    resolve(response)
+  } else {
+    reject(new RequestError(response, xhr.status, xhr.statusText))
+  }
+}
+
+const signUp = (username, passwordToken, publicKey, passwordSalts, keySalts, email, profile, passwordBasedBackup) => {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+
+    const method = 'POST'
+    const url = `${config.getEndpoint()}/api/auth/sign-up?appId=${config.getAppId()}`
+    const data = JSON.stringify({
       username,
       passwordToken,
       publicKey,
@@ -16,56 +54,92 @@ const signUp = async (username, passwordToken, publicKey, passwordSalts, keySalt
       email,
       profile,
       passwordBasedBackup
-    },
-    timeout: TEN_SECONDS_MS
-  })
+    })
+    const timeout = TEN_SECONDS_MS
 
-  return signUpResponse.data
+    xhr.open(method, url)
+    xhr.setRequestHeader('Content-Type', 'application/json')
+    xhr.timeout = timeout
+    xhr.send(data)
+
+    xhr.onload = () => handleResponse(xhr, resolve, reject)
+    xhr.ontimeout = () => reject(new TimeoutError(timeout))
+  })
 }
 
-const getPasswordSalts = async (username) => {
-  const passwordSaltsResponse = await axios({
-    method: 'GET',
-    url: `${config.getEndpoint()}/api/auth/get-password-salts?appId=${config.getAppId()}&username=${encodeURIComponent(username)}`,
-    timeout: TEN_SECONDS_MS
+const getPasswordSalts = (username) => {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+
+    const method = 'GET'
+    const url = `${config.getEndpoint()}/api/auth/get-password-salts?appId=${config.getAppId()}&username=${encodeURIComponent(username)}`
+    const timeout = TEN_SECONDS_MS
+
+    xhr.open(method, url)
+    xhr.timeout = timeout
+    xhr.send()
+
+    xhr.onload = () => handleResponse(xhr, resolve, reject)
+    xhr.ontimeout = () => reject(new TimeoutError(timeout))
   })
-  return passwordSaltsResponse.data
 }
 
 const signIn = async (username, passwordToken) => {
-  const signInResponse = await axios({
-    method: 'POST',
-    url: `${config.getEndpoint()}/api/auth/sign-in?appId=${config.getAppId()}`,
-    data: {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+
+    const method = 'POST'
+    const url = `${config.getEndpoint()}/api/auth/sign-in?appId=${config.getAppId()}`
+    const data = JSON.stringify({
       username,
       passwordToken,
-    },
-    timeout: TEN_SECONDS_MS
-  })
+    })
+    const timeout = TEN_SECONDS_MS
 
-  return signInResponse.data
+    xhr.open(method, url)
+    xhr.setRequestHeader('Content-Type', 'application/json')
+    xhr.timeout = timeout
+    xhr.send(data)
+
+    xhr.onload = () => handleResponse(xhr, resolve, reject)
+    xhr.ontimeout = () => reject(new TimeoutError(timeout))
+  })
 }
 
-const signInWithSession = async (sessionId) => {
-  const signInWithSessionResponse = await axios({
-    method: 'POST',
-    url: `${config.getEndpoint()}/api/auth/sign-in-with-session?appId=${config.getAppId()}&sessionId=${sessionId}`,
-    timeout: TEN_SECONDS_MS
-  })
+const signInWithSession = (sessionId) => {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
 
-  return signInWithSessionResponse.data
+    const method = 'POST'
+    const url = `${config.getEndpoint()}/api/auth/sign-in-with-session?appId=${config.getAppId()}&sessionId=${sessionId}`
+    const timeout = TEN_SECONDS_MS
+
+    xhr.open(method, url)
+    xhr.timeout = timeout
+    xhr.send()
+
+    xhr.onload = () => handleResponse(xhr, resolve, reject)
+    xhr.ontimeout = () => reject(new TimeoutError(timeout))
+  })
 }
 
 const getServerPublicKey = async () => {
-  const serverPublicKeyResponse = await axios({
-    method: 'GET',
-    url: `${config.getEndpoint()}/api/auth/server-public-key`,
-    timeout: TEN_SECONDS_MS,
-    responseType: 'arraybuffer'
-  })
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
 
-  const serverPublicKey = serverPublicKeyResponse.data
-  return serverPublicKey
+    const method = 'GET'
+    const url = `${config.getEndpoint()}/api/auth/server-public-key`
+    const timeout = timeout
+    const responseType = 'arraybuffer'
+
+    xhr.open(method, url)
+    xhr.timeout = timeout
+    xhr.responseType = responseType
+    xhr.send()
+
+    xhr.onload = () => handleResponse(xhr, resolve, reject)
+    xhr.ontimeout = () => reject(new TimeoutError(timeout))
+  })
 }
 
 export default {

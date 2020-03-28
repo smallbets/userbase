@@ -1,6 +1,6 @@
 module.exports = {
   entry: {
-   main: './src/index.js'
+    main: './src/index.js'
   },
   devtool: 'source-map',
   module: {
@@ -17,10 +17,7 @@ module.exports = {
           loader: 'babel-loader',
           options: {
             presets: ['@babel/preset-env'],
-            plugins: [
-              'emotion',
-              ['@babel/plugin-transform-runtime', { corejs: 3, version: '^7.7.6' }]
-            ]
+            plugins: ['@babel/plugin-transform-runtime']
           }
         }
       }

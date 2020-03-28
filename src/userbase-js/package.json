@@ -3,8 +3,7 @@
     "url": "https://github.com/encrypted-dev/userbase/issues"
   },
   "dependencies": {
-    "@babel/runtime-corejs3": "^7.7.6",
-    "axios": "^0.19.0",
+    "@babel/runtime": "^7.9.2",
     "base64-arraybuffer": "^0.2.0",
     "diffie-hellman": "^5.0.3",
     "lz-string": "^1.4.4",
@@ -62,6 +61,7 @@
     "@babel/core": "^7.7.7",
     "@babel/plugin-transform-runtime": "^7.7.6",
     "@babel/preset-env": "^7.7.7",
+    "@babel/runtime-corejs3": "^7.9.2",
     "@size-limit/preset-big-lib": "^2.2.2",
     "dtslint": "^2.0.2",
     "typescript": "^3.7.3",
