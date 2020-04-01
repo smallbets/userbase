@@ -24,7 +24,7 @@ const _parseGenericErrors = (e) => {
     } else if (e.response.status === statusCodes['Gateway Timeout']) {
       throw new errors.Timeout
     }
-  } else if (e.message && e.message.includes('timeout')) {
+  } else if (e.message && e.message.indexOf('timeout') !== -1) {
     throw new errors.Timeout
   }
 }
