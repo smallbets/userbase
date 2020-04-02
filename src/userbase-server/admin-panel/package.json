@@ -19,7 +19,8 @@
     "babel-polyfill": "^6.26.0",
     "react": "^16.8.6",
     "react-dom": "^16.8.6",
-    "serialize-javascript": ">=2.1.1"
+    "serialize-javascript": ">=2.1.1",
+    "uuid": "^7.0.2"
   },
   "devDependencies": {
     "@babel/cli": "^7.4.4",

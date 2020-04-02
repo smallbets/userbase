@@ -106,9 +106,8 @@ const signIn = async (email, password) => {
       },
       timeout: TEN_SECONDS_MS
     })
-    const { fullName, paymentStatus } = signInResponse.data
-    signInLocalSession(lowerCaseEmail, fullName)
-    return paymentStatus
+    signInLocalSession(lowerCaseEmail, signInResponse.data.fullName)
+    return signInResponse.data
   } catch (e) {
     errorHandler(e, false)
   }
@@ -239,16 +238,16 @@ const resumeSaasSubscription = async () => {
   }
 }
 
-const getPaymentStatus = async () => {
+const getAdminAccount = async () => {
   try {
     const adminAccountResponse = await axios({
       method: 'GET',
       url: `/${VERSION}/admin/account`,
       timeout: TEN_SECONDS_MS
     })
-    const { paymentStatus, email, fullName } = adminAccountResponse.data
+    const { email, fullName } = adminAccountResponse.data
     updateLocalSession(email, fullName)
-    return paymentStatus
+    return adminAccountResponse.data
   } catch (e) {
     errorHandler(e)
   }
@@ -305,6 +304,31 @@ const deleteAccessToken = async (label) => {
   }
 }
 
+const completeStripeConnection = async (authCode) => {
+  try {
+    const connectionResponse = await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/stripe/connection/${authCode}`,
+      timeout: TEN_SECONDS_MS
+    })
+    return connectionResponse.data
+  } catch (e) {
+    errorHandler(e)
+  }
+}
+
+const disconnectStripeAccount = async () => {
+  try {
+    await axios({
+      method: 'DELETE',
+      url: `/${VERSION}/admin/stripe/connection`,
+      timeout: TEN_SECONDS_MS
+    })
+  } catch (e) {
+    errorHandler(e)
+  }
+}
+
 export default {
   createAdmin,
   createApp,
@@ -320,8 +344,10 @@ export default {
   updateSaasPaymentMethod,
   cancelSaasSubscription,
   resumeSaasSubscription,
-  getPaymentStatus,
+  getAdminAccount,
   getAccessTokens,
   generateAccessToken,
   deleteAccessToken,
+  completeStripeConnection,
+  disconnectStripeAccount,
 }

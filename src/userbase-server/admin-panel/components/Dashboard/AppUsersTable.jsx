@@ -1,11 +1,14 @@
 import React, { Component } from 'react'
-import { string } from 'prop-types'
+import { string, bool } from 'prop-types'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faTrashAlt } from '@fortawesome/free-regular-svg-icons'
 import dashboardLogic from './logic'
 import UnknownError from '../Admin/UnknownError'
 import { formatDate } from '../../utils'
 import { ProfileTable } from './ProfileTable'
+import { STRIPE_CLIENT_ID, getStripeState } from '../../config'
+
+const MAX_PLAN_ID_LEN = 19
 
 export default class AppUsersTable extends Component {
   constructor(props) {
@@ -16,7 +19,14 @@ export default class AppUsersTable extends Component {
       activeUsers: [],
       deletedUsers: [],
       loading: true,
-      showDeletedUsers: false
+      showDeletedUsers: false,
+      testSubscriptionPlanId: '',
+      prodSubscriptionPlanId: '',
+      newTestSubscriptionPlanId: '',
+      newProdSubscriptionPlanId: '',
+      loadingSetTestSubscriptionPlanId: false,
+      loadingDeleteTestSubscriptionPlanId: false,
+      errorSubscriptionPlanId: false,
     }
 
     this.handleDeleteApp = this.handleDeleteApp.bind(this)
@@ -27,6 +37,9 @@ export default class AppUsersTable extends Component {
     this.handleToggleDisplayUserMetadata = this.handleToggleDisplayUserMetadata.bind(this)
     this.handleExpandAll = this.handleExpandAll.bind(this)
     this.handleHideAll = this.handleHideAll.bind(this)
+    this.handleInputChange = this.handleInputChange.bind(this)
+    this.handleSetTestSubscriptionPlanId = this.handleSetTestSubscriptionPlanId.bind(this)
+    this.handleDeleteTestSubscriptionPlanId = this.handleDeleteTestSubscriptionPlanId.bind(this)
   }
 
   async componentDidMount() {
@@ -35,7 +48,7 @@ export default class AppUsersTable extends Component {
     const { appName } = this.props
 
     try {
-      const { users, appId } = await dashboardLogic.listAppUsers(appName)
+      const { users, appId, testSubscriptionPlanId, prodSubscriptionPlanId } = await dashboardLogic.listAppUsers(appName)
 
       // sort by date in descending order
       const appUsers = users.sort((a, b) => new Date(b['creationDate']) - new Date(a['creationDate']))
@@ -52,7 +65,7 @@ export default class AppUsersTable extends Component {
         else activeUsers.push(appUser)
       }
 
-      if (this._isMounted) this.setState({ appId, activeUsers, deletedUsers, loading: false })
+      if (this._isMounted) this.setState({ appId, activeUsers, deletedUsers, testSubscriptionPlanId, prodSubscriptionPlanId, loading: false })
     } catch (e) {
       if (this._isMounted) this.setState({ error: e.message, loading: false })
     }
@@ -203,9 +216,66 @@ export default class AppUsersTable extends Component {
     })
   }
 
+  handleInputChange(event) {
+    const target = event.target
+    const value = target.value
+    const name = target.name
+
+    this.setState({
+      [name]: value,
+      errorSubscriptionPlanId: false
+    })
+  }
+
+  async handleSetTestSubscriptionPlanId(event) {
+    event.preventDefault()
+    try {
+      this.setState({ loadingSetTestSubscriptionPlanId: true, errorSubscriptionPlanId: false })
+
+      const { appId, newTestSubscriptionPlanId } = this.state
+
+      await dashboardLogic.setTestSubscriptionPlanId(appId, newTestSubscriptionPlanId)
+
+      if (this._isMounted) this.setState({ loadingSetTestSubscriptionPlanId: false, testSubscriptionPlanId: newTestSubscriptionPlanId })
+    } catch (e) {
+      if (this._isMounted) this.setState({ loadingSetTestSubscriptionPlanId: false, errorSubscriptionPlanId: e.message })
+    }
+  }
+
+  async handleDeleteTestSubscriptionPlanId(event) {
+    event.preventDefault()
+    try {
+      this.setState({ loadingDeleteTestSubscriptionPlanId: true, errorSubscriptionPlanId: false })
+
+      const { appId, testSubscriptionPlanId } = this.state
+
+      const confirmed = window.confirm('Warning! This will not delete your subscription plan in Stripe. If you have customers subscribed to this plan, you will need to cancel their subscriptions manually in the Stripe dashboard.')
+      if (confirmed) {
+        await dashboardLogic.deleteTestSubscriptionPlanId(appId, testSubscriptionPlanId)
+      }
+
+      if (this._isMounted) this.setState({ loadingDeleteTestSubscriptionPlanId: false, testSubscriptionPlanId: confirmed ? '' : testSubscriptionPlanId })
+    } catch (e) {
+      if (this._isMounted) this.setState({ loadingDeleteTestSubscriptionPlanId: false, errorSubscriptionPlanId: e.message })
+    }
+  }
+
   render() {
-    const { appName, paymentStatus } = this.props
-    const { loading, activeUsers, deletedUsers, error, showDeletedUsers } = this.state
+    const { appName, paymentStatus, connectedToStripe } = this.props
+    const {
+      loading,
+      activeUsers,
+      deletedUsers,
+      error,
+      showDeletedUsers,
+      testSubscriptionPlanId,
+      prodSubscriptionPlanId,
+      newTestSubscriptionPlanId,
+      newProdSubscriptionPlanId,
+      loadingSetTestSubscriptionPlanId,
+      loadingDeleteTestSubscriptionPlanId,
+      errorSubscriptionPlanId,
+    } = this.state
 
     return (
       <div className='text-xs sm:text-sm'>
@@ -295,36 +365,36 @@ export default class AppUsersTable extends Component {
                               <tr className='border-b h-auto bg-yellow-200 mt-4'>
                                 <th className='px-1 py-1 text-gray-800 text-left'>
 
-                                  <p>User ID:
+                                  <h6 className='mb-4'>User ID:
                                     <span className='font-light ml-1'>
                                       {user['userId']}
                                     </span>
-                                  </p>
+                                  </h6>
 
-                                  <p>Email:
+                                  <h6 className='mb-4'>Email:
                                     <span className='font-light ml-1'>
                                       {user['email'] || 'No email saved.'}
                                     </span>
-                                  </p>
+                                  </h6>
 
-                                  <p>Profile:
+                                  <h6 className='mb-4'>Profile:
                                     {user['profile']
                                       ? ProfileTable(user['profile'])
                                       : <span className='font-light ml-1'>
                                         No profile saved.
                                       </span>
                                     }
-                                  </p>
+                                  </h6>
 
 
-                                  <p>Protected Profile:
+                                  <h6 className='mb-4'>Protected Profile:
                                     {user['protectedProfile']
                                       ? ProfileTable(user['protectedProfile'])
                                       : <span className='font-light ml-1'>
                                         No protected profile saved.
                                       </span>
                                     }
-                                  </p>
+                                  </h6>
 
                                 </th>
                                 <th></th>
@@ -390,36 +460,36 @@ export default class AppUsersTable extends Component {
                                 <tr className='border-b h-auto bg-yellow-200 mt-4'>
                                   <th className='px-1 py-1 text-gray-800 text-left'>
 
-                                    <p>User ID:
+                                    <h6 className='mb-4'>User ID:
                                     <span className='font-light ml-1'>
                                         {user['userId']}
                                       </span>
-                                    </p>
+                                    </h6>
 
-                                    <p>Email:
+                                    <h6 className='mb-4'>Email:
                                     <span className='font-light ml-1'>
                                         {user['email'] || 'No email saved.'}
                                       </span>
-                                    </p>
+                                    </h6>
 
-                                    <p>Profile:
+                                    <h6 className='mb-4'>Profile:
                                     {user['profile']
                                         ? ProfileTable(user['profile'])
                                         : <span className='font-light ml-1'>
                                           No profile saved.
                                       </span>
                                       }
-                                    </p>
+                                    </h6>
 
 
-                                    <p>Protected Profile:
+                                    <h6 className='mb-4'>Protected Profile:
                                     {user['protectedProfile']
                                         ? ProfileTable(user['protectedProfile'])
                                         : <span className='font-light ml-1'>
                                           No protected profile saved.
                                       </span>
                                       }
-                                    </p>
+                                    </h6>
 
                                   </th>
                                   <th></th>
@@ -451,6 +521,97 @@ export default class AppUsersTable extends Component {
               : <div className='error'>{error}</div>
           )}
 
+          <hr className='border border-t-0 border-gray-400 mt-8 mb-6' />
+
+          <div className='flex-0 text-lg sm:text-xl text-left mb-1'>Payment Portal</div>
+          <p className='text-left font-normal mb-4'>Collect payments on your app with Stripe.</p>
+
+          {
+            connectedToStripe
+              ? <div>
+                <form onSubmit={this.handleSetTestSubscriptionPlanId}>
+
+                  {testSubscriptionPlanId
+                    ? <div className='table-row'>
+                      <div className='table-cell p-2 w-32 sm:w-40 text-right'>Test Plan ID</div>
+
+                      <div className='table-cell p-2 w-32 sm:w-40'>
+                        <div className='font-light w-48 sm:w-84 p-2 text-left'>
+                          <a
+                            href={'https://dashboard.stripe.com/test/plans/' + testSubscriptionPlanId}>
+                            {testSubscriptionPlanId}
+                          </a>
+                        </div>
+                      </div>
+
+                      {
+                        loadingDeleteTestSubscriptionPlanId
+                          ? <div className='loader w-4 h-4 inline-block' />
+                          : <div
+                            className='font-normal text-sm cursor-pointer text-yellow-700'
+                            onClick={this.handleDeleteTestSubscriptionPlanId}
+                          >
+                            <FontAwesomeIcon icon={faTrashAlt} />
+                          </div>
+                      }
+
+                    </div>
+
+                    : <div className='table-row'>
+
+                      <a
+                        href='https://dashboard.stripe.com/test/subscriptions/products/create'
+                        className='table-cell p-2 w-32 sm:w-40 text-right'
+                      >
+                        Test Plan ID
+                      </a>
+
+                      <div className='table-cell p-2 w-32 sm:w-40'>
+                        <input
+                          className='font-light text-xs sm:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
+                          type='text'
+                          name='newTestSubscriptionPlanId'
+                          autoComplete='off'
+                          value={newTestSubscriptionPlanId}
+                          maxLength={MAX_PLAN_ID_LEN}
+                          spellCheck={false}
+                          onChange={this.handleInputChange}
+                          placeholder='plan_'
+                        />
+                      </div>
+
+                      <input
+                        className='btn w-24 ml-2'
+                        type='submit'
+                        value={loadingSetTestSubscriptionPlanId ? 'Saving...' : 'Save'}
+                        disabled={!newTestSubscriptionPlanId || newTestSubscriptionPlanId.length !== MAX_PLAN_ID_LEN || loadingSetTestSubscriptionPlanId}
+                      />
+
+                    </div>
+
+                  }
+
+                </form>
+              </div>
+              :
+
+              <div className='text-center'>
+                <a
+                  href={`https://connect.stripe.com/oauth/authorize?response_type=code&client_id=${STRIPE_CLIENT_ID}&scope=read_write&state=${getStripeState()}`}
+                  className='stripe-connect light-blue'>
+                  <span>Connect with Stripe</span>
+                </a>
+              </div>
+          }
+
+          <div className='text-center'>
+            {errorSubscriptionPlanId && (
+              errorSubscriptionPlanId === 'Unknown Error'
+                ? <UnknownError />
+                : <div className='error'>{errorSubscriptionPlanId}</div>
+            )}
+          </div>
+
           {paymentStatus === 'active'
             ? <div>
               <hr className='border border-t-0 border-gray-400 mt-8 mb-6' />
@@ -481,5 +642,6 @@ export default class AppUsersTable extends Component {
 
 AppUsersTable.propTypes = {
   appName: string,
-  paymentStatus: string
+  paymentStatus: string,
+  connectedToStripe: bool
 }

@@ -102,11 +102,37 @@ const permanentDeleteUser = async (userId, appName, username) => {
   }
 }
 
+const setTestSubscriptionPlanId = async (appId, testSubscriptionPlanId) => {
+  try {
+    await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/stripe/connected/apps/${appId}/test-subscription/${testSubscriptionPlanId}`,
+      timeout: TEN_SECONDS_MS
+    })
+  } catch (e) {
+    adminLogic.errorHandler(e)
+  }
+}
+
+const deleteTestSubscriptionPlanId = async (appId, testSubscriptionPlanId) => {
+  try {
+    await axios({
+      method: 'DELETE',
+      url: `/${VERSION}/admin/stripe/connected/apps/${appId}/test-subscription/${testSubscriptionPlanId}`,
+      timeout: TEN_SECONDS_MS
+    })
+  } catch (e) {
+    adminLogic.errorHandler(e)
+  }
+}
+
 export default {
   listApps,
   listAppUsers,
   deleteApp,
   permanentDeleteApp,
   deleteUser,
-  permanentDeleteUser
+  permanentDeleteUser,
+  setTestSubscriptionPlanId,
+  deleteTestSubscriptionPlanId,
 }

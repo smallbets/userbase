@@ -418,24 +418,19 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.get('/access-tokens', admin.authenticateAdmin, admin.getAccessTokens)
     v1Admin.post('/access-token', admin.authenticateAdmin, admin.generateAccessToken)
     v1Admin.delete('/access-token', admin.authenticateAdmin, admin.deleteAccessToken)
-    v1Admin.get('/account', admin.authenticateAdmin, admin.getSaasSubscriptionController, (req, res) => {
-      const admin = res.locals.admin
-      const subscription = res.locals.subscription
+    v1Admin.get('/account', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.getAdminAccount)
 
-      const result = {
-        email: admin['email'],
-        fullName: admin['full-name']
-      }
-
-      if (subscription) result.paymentStatus = subscription.cancel_at_period_end ? 'cancel_at_period_end' : subscription.status
-
-      return res.send(result)
-    })
-
+    // endpoints for admin to manage their own account's payments to Userbase
     v1Admin.post('/stripe/create-saas-payment-session', admin.authenticateAdmin, admin.createSaasPaymentSession)
     v1Admin.post('/stripe/update-saas-payment-session', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.updateSaasSubscriptionPaymentSession)
     v1Admin.post('/stripe/cancel-saas-subscription', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.cancelSaasSubscription)
     v1Admin.post('/stripe/resume-saas-subscription', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.resumeSaasSubscription)
+
+    // endpoints for admin to use payment portal to accept payments from their users
+    v1Admin.post('/stripe/connection/:authorizationCode', admin.authenticateAdmin, admin.completeStripeConnection)
+    v1Admin.delete('/stripe/connection', admin.authenticateAdmin, admin.disconnectStripeAccount)
+    v1Admin.post('/stripe/connected/apps/:appId/test-subscription/:testSubscriptionPlanId', admin.authenticateAdmin, appController.setConnectedTestSubscriptionPlan)
+    v1Admin.delete('/stripe/connected/apps/:appId/test-subscription/:testSubscriptionPlanId', admin.authenticateAdmin, appController.deleteConnectedTestSubscriptionPlan)
 
     // Access token endpoints
     v1Admin.post('/users/:userId', admin.authenticateAccessToken, userController.updateProtectedProfile)

@@ -4,6 +4,8 @@ import logger from './logger'
 import statusCodes from './statusCodes'
 import setup from './setup'
 import userController from './user'
+import stripe from './stripe'
+import { trimReq } from './utils'
 
 const UUID_STRING_LENGTH = 36
 
@@ -324,7 +326,7 @@ exports.listAppUsers = async function (req, res) {
 
     return res.status(statusCodes['Success']).send({
       users: users.map(user => userController.buildUserResult(user)),
-      appId: app['app-id']
+      ..._buildAppResult(app)
     })
   } catch (e) {
     logger.error(`Failed to list app users for app ${appName} and admin ${adminId} with ${e}`)
@@ -382,6 +384,8 @@ const _buildAppResult = (app) => {
     appId: app['app-id'],
     deleted: app['deleted'],
     creationDate: app['creation-date'],
+    testSubscriptionPlanId: app['test-subscription-plan-id'],
+    prodSubscriptionPlanId: app['prod-subscription-plan-id'],
   }
 }
 
@@ -607,4 +611,163 @@ exports.countNonDeletedAppUsers = async function (appId, limit) {
   }
 
   return count
+}
+
+const _setConnectedTestPlanInDdb = async function (app, testSubscriptionPlanId) {
+  const params = {
+    TableName: setup.appsTableName,
+    Key: {
+      'admin-id': app['admin-id'],
+      'app-name': app['app-name']
+    },
+    ConditionExpression: '#appId = :appId and attribute_not_exists(deleted)',
+    ExpressionAttributeValues: {
+      ':appId': app['app-id']
+    },
+    ExpressionAttributeNames: {
+      '#appId': 'app-id'
+    }
+  }
+
+  params.UpdateExpression = 'SET #testSubscriptionPlanId = :testSubscriptionPlanId'
+  params.ExpressionAttributeNames['#testSubscriptionPlanId'] = 'test-subscription-plan-id'
+  params.ExpressionAttributeValues[':testSubscriptionPlanId'] = testSubscriptionPlanId
+
+  const ddbClient = connection.ddbClient()
+  await ddbClient.update(params).promise()
+}
+
+exports.setConnectedTestSubscriptionPlan = async function (req, res) {
+  let logChildObject
+  try {
+    const admin = res.locals.admin
+    const adminId = admin['admin-id']
+    const stripeAccountId = admin['stripe-account-id']
+    const appId = req.params.appId
+    const testSubscriptionPlanId = req.params.testSubscriptionPlanId
+
+    logChildObject = { adminId, stripeAccountId, appId, testSubscriptionPlanId, req: trimReq(req) }
+    logger.child(logChildObject).info('Setting test subscription plan')
+
+    if (!stripeAccountId) throw {
+      status: statusCodes['Forbidden'],
+      error: { message: 'Stripe account not connected.' }
+    }
+
+    if (admin['deleted']) throw {
+      status: statusCodes['Not Found'],
+      error: { message: 'Admin not found.' }
+    }
+
+    try {
+      const [app] = await Promise.all([
+        getAppByAppId(appId),
+        stripe.getClient().plans.retrieve(testSubscriptionPlanId, {
+          stripe_account: stripeAccountId
+        })
+      ])
+
+      if (!app || app['deleted']) throw {
+        status: statusCodes['Not Found'],
+        error: { message: 'App not found.' }
+      }
+
+      await _setConnectedTestPlanInDdb(app, testSubscriptionPlanId)
+
+      logger
+        .child({ ...logChildObject, statusCode: statusCodes['Success'] })
+        .info('Successfully set test subscription plan')
+
+      return res.send('success!')
+    } catch (e) {
+      if (e.message.includes('No such plan')) {
+        throw {
+          status: statusCodes['Not Found'],
+          error: { message: 'Test plan not found.' }
+        }
+      }
+      throw e
+    }
+
+  } catch (e) {
+    const message = 'Failed to set test subscription plan'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
+      return res.status(e.status).send(e.error.message)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return res.status(statusCode).send(message)
+    }
+  }
+}
+
+exports.deleteConnectedTestSubscriptionPlan = async function (req, res) {
+  let logChildObject
+  try {
+    const admin = res.locals.admin
+    const adminId = admin['admin-id']
+    const stripeAccountId = admin['stripe-account-id']
+    const appId = req.params.appId
+    const testSubscriptionPlanId = req.params.testSubscriptionPlanId
+
+    logChildObject = { adminId, stripeAccountId, appId, testSubscriptionPlanId, req: trimReq(req) }
+    logger.child(logChildObject).info('Deleting test subscription plan on connected admin')
+
+    if (!stripeAccountId) throw {
+      status: statusCodes['Forbidden'],
+      error: { message: 'Stripe account not connected.' }
+    }
+
+    if (admin['deleted']) throw {
+      status: statusCodes['Not Found'],
+      error: { message: 'Admin not found.' }
+    }
+
+    const app = await getAppByAppId(appId)
+
+    if (!app || app['deleted']) throw {
+      status: statusCodes['Not Found'],
+      error: { message: 'App not found.' }
+    }
+
+    const params = {
+      TableName: setup.appsTableName,
+      Key: {
+        'admin-id': adminId,
+        'app-name': app['app-name']
+      },
+      ConditionExpression: '#appId = :appId and attribute_not_exists(deleted)',
+      ExpressionAttributeValues: {
+        ':appId': appId
+      },
+      ExpressionAttributeNames: {
+        '#appId': 'app-id'
+      }
+    }
+
+    params.UpdateExpression = 'REMOVE #testSubscriptionPlanId'
+    params.ExpressionAttributeNames['#testSubscriptionPlanId'] = 'test-subscription-plan-id'
+
+    const ddbClient = connection.ddbClient()
+    await ddbClient.update(params).promise()
+
+    logger
+      .child({ ...logChildObject, statusCode: statusCodes['Success'] })
+      .info('Successfully deleted test subscription plan on connected admin')
+
+    return res.send('success!')
+  } catch (e) {
+    const message = 'Failed to delete test subscription plan on connected admin'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
+      return res.status(e.status).send(e.error)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return res.status(statusCode).send({ message })
+    }
+  }
 }

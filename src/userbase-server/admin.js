@@ -221,6 +221,15 @@ const _validateAdminPassword = async (password, admin) => {
   }
 }
 
+const _buildAdminResult = (admin, subscription) => {
+  return {
+    email: admin['email'],
+    fullName: admin['full-name'],
+    paymentStatus: subscription && (subscription.cancel_at_period_end ? 'cancel_at_period_end' : subscription.status),
+    connectedToStripe: admin['stripe-account-id'] ? true : false,
+  }
+}
+
 exports.signInAdmin = async function (req, res) {
   const email = req.body.email
   const password = req.body.password
@@ -259,10 +268,7 @@ exports.signInAdmin = async function (req, res) {
 
     return res
       .status(statusCodes['Success'])
-      .send({
-        fullName: admin['full-name'],
-        paymentStatus: subscription && (subscription.cancel_at_period_end ? 'cancel_at_period_end' : subscription.status)
-      })
+      .send(_buildAdminResult(admin, subscription))
   } catch (e) {
     logger.error(`Admin '${email}' failed to sign in with ${e}`)
     return res
@@ -985,6 +991,81 @@ exports.resumeSaasSubscription = async function (req, res) {
   }
 }
 
+exports.completeStripeConnection = async function (req, res) {
+  let logChildObject
+  try {
+    const admin = res.locals.admin
+    const adminId = admin['admin-id']
+
+    logChildObject = { adminId, req: trimReq(req) }
+    logger.child(logChildObject).info('Completing Stripe connection')
+
+    const stripeConnectedAccount = await stripe.getClient().oauth.token({
+      grant_type: 'authorization_code',
+      code: req.params.authorizationCode,
+    })
+
+    const stripeUserId = stripeConnectedAccount.stripe_user_id
+    if (!stripeUserId) throw stripeConnectedAccount
+    else {
+      // successfully authorized user. Now store Stripe account ID in DDB
+      logChildObject.stripeAccountId = stripeUserId
+      const params = conditionExpressionAdminExists(admin['email'], adminId)
+
+      params.UpdateExpression = 'SET #stripeAccountId = :stripeAccountId'
+      params.ExpressionAttributeNames['#stripeAccountId'] = 'stripe-account-id'
+      params.ExpressionAttributeValues[':stripeAccountId'] = stripeUserId
+
+      const ddbClient = connection.ddbClient()
+      await ddbClient.update(params).promise()
+    }
+
+    logger
+      .child({ ...logChildObject, statusCode: statusCodes['Success'] })
+      .info('Successfully connected Stripe account')
+
+    return res.send('success!')
+  } catch (e) {
+    const statusCode = statusCodes['Internal Server Error']
+    const message = 'Failed to complete Stripe connection'
+
+    logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+    return res.status(statusCode).send(message)
+  }
+}
+
+exports.disconnectStripeAccount = async function (req, res) {
+  let logChildObject
+  try {
+    const admin = res.locals.admin
+    const adminId = admin['admin-id']
+    const stripeAccountId = admin['stripe-account-id']
+
+    logChildObject = { adminId, stripeAccountId, req: trimReq(req) }
+    logger.child(logChildObject).info('Disconnecting Stripe account')
+
+    const params = conditionExpressionAdminExists(admin['email'], adminId)
+
+    params.UpdateExpression = 'REMOVE #stripeAccountId'
+    params.ExpressionAttributeNames['#stripeAccountId'] = 'stripe-account-id'
+
+    const ddbClient = connection.ddbClient()
+    await ddbClient.update(params).promise()
+
+    logger
+      .child({ ...logChildObject, statusCode: statusCodes['Success'] })
+      .info('Successfully disconnected Stripe account')
+
+    return res.send('success!')
+  } catch (e) {
+    const statusCode = statusCodes['Internal Server Error']
+    const message = 'Failed to disonnect Stripe account'
+
+    logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+    return res.status(statusCode).send(message)
+  }
+}
+
 exports.generateAccessToken = async function (req, res) {
   let logChildObject
   try {
@@ -1240,4 +1321,10 @@ exports.authenticateAccessToken = async function (req, res, next) {
       return res.status(statusCode).send({ message })
     }
   }
+}
+
+exports.getAdminAccount = async function (req, res) {
+  const admin = res.locals.admin
+  const subscription = res.locals.subscription
+  return res.send(_buildAdminResult(admin, subscription))
 }

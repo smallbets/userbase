@@ -1,17 +1,18 @@
 import React, { Component } from 'react'
-import { func, string } from 'prop-types'
+import { func, object } from 'prop-types'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faTrashAlt } from '@fortawesome/free-regular-svg-icons'
 import adminLogic from './logic'
 import UnknownError from './UnknownError'
 import { formatDate } from '../../utils'
+import { STRIPE_CLIENT_ID, getStripeState } from '../../config'
 
 export default class EditAdmin extends Component {
   constructor(props) {
     super(props)
     this.state = {
-      email: this.props.email,
-      fullName: this.props.fullName,
+      email: this.props.admin.email,
+      fullName: this.props.admin.fullName,
       currentPassword: '',
       newPassword: '',
       accessTokens: [],
@@ -27,6 +28,7 @@ export default class EditAdmin extends Component {
       loadingCancel: false,
       loadingUpdatePaymentMethod: false,
       loadingResumeSubscription: false,
+      loadingDisconnectStripeAccount: false,
       errorLoading: '',
       errorUpdatingAdmin: '',
       errorChangingPassword: '',
@@ -36,7 +38,8 @@ export default class EditAdmin extends Component {
       errorDeletingAccessToken: false,
       errorCancelling: false,
       errorUpdatingPaymentMethod: false,
-      errorResumingSubscription: false
+      errorResumingSubscription: false,
+      errorDisconnectingStripeAccount: false,
     }
 
     this.handleInputChange = this.handleInputChange.bind(this)
@@ -49,6 +52,7 @@ export default class EditAdmin extends Component {
     this.handleResumeSubscription = this.handleResumeSubscription.bind(this)
     this.handleCheckout = this.handleCheckout.bind(this)
     this.handleUpdatePaymentMethod = this.handleUpdatePaymentMethod.bind(this)
+    this.handleDisconnectStripeAccount = this.handleDisconnectStripeAccount.bind(this)
     this.handleClearErrors = this.handleClearErrors.bind(this)
   }
 
@@ -89,6 +93,7 @@ export default class EditAdmin extends Component {
       || this.state.errorResumingSubscription
       || this.state.errorGeneratingAccessToken
       || this.state.errorDeletingAccessToken
+      || this.state.errorDisconnectingStripeAccount
     ) {
       this.setState({
         ...loadingState,
@@ -101,6 +106,7 @@ export default class EditAdmin extends Component {
         errorResumingSubscription: false,
         errorGeneratingAccessToken: false,
         errorDeletingAccessToken: false,
+        errorDisconnectingStripeAccount: false,
       })
     }
   }
@@ -122,20 +128,25 @@ export default class EditAdmin extends Component {
 
     if (this.state.loadingUpdateAdmin) return
 
-    const fullName = this.state.fullName !== this.props.fullName && this.state.fullName
-    const email = this.state.email !== this.props.email && this.state.email
+    const fullName = this.state.fullName !== this.props.admin.fullName && this.state.fullName
+    const email = this.state.email !== this.props.admin.email && this.state.email
 
+    const updatedAdmin = {}
     if (!fullName && !email) return
+    else {
+      if (fullName) updatedAdmin.fullName = fullName
+      if (email) updatedAdmin.email = email
+    }
 
     this.handleClearErrors({ loadingUpdateAdmin: true })
 
     try {
       await adminLogic.updateAdmin({ fullName, email })
-      if (email || fullName) this.props.handleUpdateAccount(email, fullName)
+      if (email || fullName) this.props.handleUpdateAccount(updatedAdmin)
       if (this._isMounted) {
         this.setState({
-          fullName: fullName || this.props.fullName,
-          email: email || this.props.email,
+          fullName: fullName || this.props.admin.fullName,
+          email: email || this.props.admin.email,
           loadingUpdateAdmin: false
         })
       }
@@ -282,7 +293,7 @@ export default class EditAdmin extends Component {
         this.setState({ loadingCancel: true })
         const paymentStatus = await adminLogic.cancelSaasSubscription()
 
-        this.props.handleUpdatePaymentStatus(paymentStatus)
+        this.props.handleUpdateAccount({ paymentStatus })
 
         if (this._isMounted) this.setState({ loadingCancel: false })
       }
@@ -298,9 +309,9 @@ export default class EditAdmin extends Component {
       this.handleClearErrors({ loadingResumeSubscription: true })
 
       await adminLogic.resumeSaasSubscription()
-      const paymentStatus = await adminLogic.getPaymentStatus()
+      const { paymentStatus } = await adminLogic.getAdminAccount()
 
-      this.props.handleUpdatePaymentStatus(paymentStatus)
+      this.props.handleUpdateAccount({ paymentStatus })
 
       if (this._isMounted) this.setState({ loadingResumeSubscription: false })
     } catch (e) {
@@ -308,8 +319,27 @@ export default class EditAdmin extends Component {
     }
   }
 
+  async handleDisconnectStripeAccount(event) {
+    event.preventDefault()
+
+    try {
+      if (window.confirm('Are you sure you want to disconnect your Stripe account?')) {
+        this.handleClearErrors({ loadingDisconnectStripeAccount: true })
+
+        await adminLogic.disconnectStripeAccount()
+
+        this.props.handleUpdateAccount({ connectedToStripe: false })
+
+        if (this._isMounted) this.setState({ loadingDisconnectStripeAccount: false })
+      }
+    } catch (e) {
+      if (this._isMounted) this.setState({ loadingDisconnectStripeAccount: false, errorDisconnectingStripeAccount: e.message })
+    }
+  }
+
   render() {
-    const { paymentStatus } = this.props
+    const { admin } = this.props
+    const { paymentStatus, connectedToStripe } = admin
     const {
       fullName,
       email,
@@ -326,6 +356,7 @@ export default class EditAdmin extends Component {
       loadingGenerateAccessToken,
       loadingCancel,
       loadingUpdatePaymentMethod,
+      loadingDisconnectStripeAccount,
       loadingResumeSubscription,
       errorUpdatingAdmin,
       errorChangingPassword,
@@ -335,13 +366,14 @@ export default class EditAdmin extends Component {
       errorDeletingAccessToken,
       errorCancelling,
       errorUpdatingPaymentMethod,
+      errorDisconnectingStripeAccount,
       errorResumingSubscription,
       loading,
       errorLoading,
     } = this.state
 
-    const disableUpdateButton = (fullName === this.props.fullName || !fullName)
-      && (email === this.props.email || !email)
+    const disableUpdateButton = (fullName === this.props.admin.fullName || !fullName)
+      && (email === this.props.admin.email || !email)
 
     return (
       <div className='container content text-xs sm:text-base text-center mb-8'>
@@ -354,7 +386,7 @@ export default class EditAdmin extends Component {
               {paymentStatus === 'active' || paymentStatus === 'past_due'
                 ?
                 <div>
-                  <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Subscription</div>
+                  <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Userbase Subscription</div>
 
                   <input
                     className='btn w-56 text-center'
@@ -370,7 +402,7 @@ export default class EditAdmin extends Component {
                 </div>
                 :
                 <div>
-                  <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Subscription</div>
+                  <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Userbase Subscription</div>
 
                   <div className='font-normal text-left mb-4'>
                     <p>Your trial account is limited to 1 app and 3 users.</p>
@@ -403,6 +435,21 @@ export default class EditAdmin extends Component {
               }
 
               <hr className='border border-t-0 border-gray-400 mt-8 mb-4' />
+
+              {!connectedToStripe &&
+                <div>
+                  <div className='flex-0 text-lg sm:text-xl text-left mb-1'>Payment Portal</div>
+                  <p className='text-left font-normal mb-4'>Collect payments on your apps with Stripe.</p>
+
+                  <a
+                    href={`https://connect.stripe.com/oauth/authorize?response_type=code&client_id=${STRIPE_CLIENT_ID}&scope=read_write&state=${getStripeState()}`}
+                    className='stripe-connect light-blue'>
+                    <span>Connect with Stripe</span>
+                  </a>
+
+                  <hr className='border border-t-0 border-gray-400 mt-8 mb-4' />
+                </div>
+              }
 
               <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Edit Account</div>
 
@@ -659,6 +706,27 @@ export default class EditAdmin extends Component {
                 </div>
               }
 
+              {connectedToStripe &&
+                <div>
+                  <div className='flex-0 text-base sm:text-lg text-left mb-1'>Disconnect Stripe Account</div>
+                  <p className='text-left font-normal'>By disconnecting your Stripe account, you will no longer be able to accept new payments on your apps.</p>
+
+                  <input
+                    className='btn w-56'
+                    type='button'
+                    value={loadingDisconnectStripeAccount ? 'Disconnecting...' : 'Disconnect Stripe'}
+                    onClick={this.handleDisconnectStripeAccount}
+                    disabled={loadingDisconnectStripeAccount}
+                  />
+
+                  {errorDisconnectingStripeAccount && <UnknownError action='disconnecting your Stripe account' />}
+
+                  <br />
+                  <br />
+                </div>
+              }
+
+
               <div className='flex-0 text-base sm:text-lg text-left mb-1'>Delete Account</div>
               <p className='text-left font-normal'>By deleting your account, your apps will stop working, and your users will permanently lose access to their accounts. This action is irreversible.</p>
 
@@ -687,8 +755,5 @@ export default class EditAdmin extends Component {
 
 EditAdmin.propTypes = {
   handleUpdateAccount: func,
-  paymentStatus: string,
-  handleUpdatePaymentStatus: func,
-  fullName: string,
-  email: string
+  admin: object,
 }
