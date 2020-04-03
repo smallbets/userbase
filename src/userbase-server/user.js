@@ -227,7 +227,6 @@ const _validateProfile = (profile) => {
 
   let counter = 0
   for (const key in profile) {
-    if (typeof key !== 'string') throw { error: 'ProfileKeyMustBeString', message: 'Profile key must be a string.', key }
     if (key.length > MAX_PROFILE_OBJECT_KEY_CHAR_LENGTH) {
       const maxLen = MAX_PROFILE_OBJECT_KEY_CHAR_LENGTH
       throw { error: 'ProfileKeyTooLong', message: `Profile key too long. Must be a max of ${maxLen} characters.`, key, maxLen }
