@@ -61,7 +61,6 @@
     "@babel/core": "^7.7.7",
     "@babel/plugin-transform-runtime": "^7.7.6",
     "@babel/preset-env": "^7.7.7",
-    "@babel/runtime-corejs3": "^7.9.2",
     "@size-limit/preset-big-lib": "^2.2.2",
     "dtslint": "^2.0.2",
     "typescript": "^3.7.3",

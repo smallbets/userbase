@@ -129,7 +129,7 @@ const getServerPublicKey = async () => {
 
     const method = 'GET'
     const url = `${config.getEndpoint()}/api/auth/server-public-key`
-    const timeout = timeout
+    const timeout = TEN_SECONDS_MS
     const responseType = 'arraybuffer'
 
     xhr.open(method, url)
