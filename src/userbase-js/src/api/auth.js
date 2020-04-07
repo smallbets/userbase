@@ -63,13 +63,12 @@ const signUp = (username, passwordToken, publicKey, passwordSalts, keySalts, ema
       profile,
       passwordBasedBackup
     })
-    const timeout = TEN_SECONDS_MS
 
     xhr.open(method, url)
     xhr.setRequestHeader('Content-Type', 'application/json')
     xhr.send(data)
 
-    processXhr(xhr, resolve, reject, timeout)
+    processXhr(xhr, resolve, reject)
   })
 }
 
