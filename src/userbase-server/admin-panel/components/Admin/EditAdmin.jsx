@@ -438,7 +438,7 @@ export default class EditAdmin extends Component {
 
               {!connectedToStripe &&
                 <div>
-                  <div className='flex-0 text-lg sm:text-xl text-left mb-1'>Payment Portal</div>
+                  <div className='flex-0 text-lg sm:text-xl text-left mb-1'>Payments Portal</div>
                   <p className='text-left font-normal mb-4'>Collect payments on your apps with Stripe.</p>
 
                   <a

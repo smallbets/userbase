@@ -68,6 +68,8 @@ class Connection {
       salts: {}
     }
 
+    this.stripeData = {}
+
     this.rememberMe = rememberMe
 
     this.requests = {}
@@ -128,11 +130,13 @@ class Connection {
 
               const {
                 keySalts,
-                encryptedValidationMessage
+                encryptedValidationMessage,
+                stripeData,
               } = message
 
               this.keys.salts = keySalts
               this.encryptedValidationMessage = new Uint8Array(encryptedValidationMessage.data)
+              this.stripeData = stripeData
 
               await this.setKeys(this.seedString)
 
@@ -215,7 +219,11 @@ class Connection {
             case 'BatchTransaction':
             case 'Bundle':
             case 'ValidateKey':
-            case 'GetPasswordSalts': {
+            case 'GetPasswordSalts':
+            case 'PurchaseSubscription':
+            case 'CancelSubscription':
+            case 'ResumeSubscription':
+            case 'UpdatePaymentMethod': {
               const requestId = message.requestId
 
               if (!requestId) return console.warn('Missing request id')

@@ -12,10 +12,17 @@ export interface UserProfile {
 
 export type RememberMeOption = 'session' | 'local' | 'none'
 
+export type PaymentsMode = 'disabled' | 'test' | 'prod'
+
+export type SubscriptionStatus = 'active' | 'trialing' | 'incomplete' | 'incomplete_expired' | 'past_due' | 'canceled' | 'unpaid'
+
 export interface UserResult {
   username: string
   userId: string
   authToken: string
+  paymentsMode: PaymentsMode
+  subscriptionStatus?: SubscriptionStatus
+  cancelSubscriptionAt?: Date
   email?: string
   profile?: UserProfile
   protectedProfile?: UserProfile

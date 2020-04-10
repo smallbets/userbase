@@ -1,6 +1,7 @@
 import auth from './auth'
 import db from './db'
 import config from './config'
+import payments from './payments'
 import statusCodes from '../statusCodes'
 
 class AppIdNotSet extends Error {
@@ -81,6 +82,7 @@ export default {
   ...auth,
   ...db,
   ...config,
+  ...payments,
   AppIdNotSet,
   InternalServerError,
   ServiceUnavailable,

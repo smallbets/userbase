@@ -11,7 +11,7 @@ const stripePk = isProd
 export const STRIPE = window.Stripe(stripePk)
 
 export const STRIPE_CLIENT_ID = isProd
-  ? 'ca_GqwvowzyZv7NU34cyEpZkUA9MMZUGjb0'
+  ? 'ca_GqwvhgXHQNhdWgsy23PiMO3v3TIDQrGr'
   : 'ca_GqwvowzyZv7NU34cyEpZkUA9MMZUGjb0'
 
 export const getStripeState = () => {

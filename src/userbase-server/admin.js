@@ -852,49 +852,27 @@ exports.updateSaasSubscriptionPaymentSession = async function (req, res) {
   }
 }
 
-const saveDefaultPaymentMethod = async function (session) {
-  const subscription_id = session.subscription
-  const subscription = await stripe.getClient().subscriptions.retrieve(subscription_id)
+const saveDefaultPaymentMethod = async function (logChildObject, session) {
+  const subscriptionId = session.subscription
+  logChildObject.subscriptionId = subscriptionId
 
+  logger.child(logChildObject).info(`Saving admin's default payment method`)
+
+  const subscription = await stripe.getClient().subscriptions.retrieve(subscriptionId)
   const { customer, default_payment_method } = subscription
+
+  logChildObject.customerId = customer
+
   await stripe.getClient().customers.update(
     customer,
-    {
-      invoice_settings: { default_payment_method },
-    }
+    { invoice_settings: { default_payment_method } }
   )
 
-  logger.child({ customer }).info(`Successfully saved admin's default payment method`)
-}
-
-const updateStripePaymentMethod = async function (session) {
-  const setupIntent = await stripe.getClient().setupIntents.retrieve(session.setup_intent)
-  const { payment_method, metadata: { customer_id, subscription_id } } = setupIntent
-
-  await stripe.getClient().paymentMethods.attach(
-    payment_method,
-    {
-      customer: customer_id,
-    }
-  )
-  await stripe.getClient().customers.update(
-    customer_id,
-    {
-      invoice_settings: { default_payment_method: payment_method },
-    }
-  )
-  logger.child({ customer: customer_id }).info(`Successfully updated admin's payment method`)
-
-  const subscription = await stripe.getClient().subscriptions.retrieve(subscription_id)
-  if (subscription.status === 'past_due' || subscription.status === 'unpaid') {
-    const latestInvoiceId = subscription.latest_invoice
-
-    await stripe.getClient().invoices.pay(latestInvoiceId, { payment_method })
-    logger.child({ customer: customer_id }).info('Successfully charged admin with updated payment method')
-  }
+  logger.child(logChildObject).info(`Successfully saved admin's default payment method`)
 }
 
 exports.handleStripeWebhook = async function (req, res) {
+  let logChildObject = {}
   try {
     const event = stripe.getClient().webhooks.constructEvent(
       req.body,
@@ -906,15 +884,17 @@ exports.handleStripeWebhook = async function (req, res) {
       const session = event.data.object
 
       if (session.mode === 'setup') {
-        await updateStripePaymentMethod(session)
+        await stripe.updateStripePaymentMethod(logChildObject, session)
       } else if (session.mode === 'subscription') {
-        await saveDefaultPaymentMethod(session)
+        await saveDefaultPaymentMethod(logChildObject, session)
       }
     }
 
     res.json({ received: true })
   } catch (err) {
-    logger.warn(`Stripe webhook failed with ${err}`)
+    logChildObject.err = err
+
+    logger.child(logChildObject).warn('Stripe admin webhook failed')
     return res.status(statusCodes['Bad Request']).send(`Webhook Error: ${err.message}`)
   }
 }

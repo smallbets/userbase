@@ -8,6 +8,7 @@ import logger from './logger'
 import { validateEmail, trimReq, truncateSessionId, getTtl } from './utils'
 import appController from './app'
 import adminController from './admin'
+import stripe from './stripe'
 
 // source: https://github.com/OWASP/CheatSheetSeries/blob/master/cheatsheets/Session_Management_Cheat_Sheet.md#session-id-length
 const ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID = 16
@@ -1704,6 +1705,534 @@ const conditionCheckUserExists = (username, appId, userId) => {
     },
     ExpressionAttributeValues: {
       ':userId': userId
+    }
+  }
+}
+
+const _createStripePaymentSession = async function (user, admin, subscriptionPlanId, success_url, cancel_url) {
+  const stripeAccountId = admin['stripe-account-id']
+
+  try {
+    const session = await stripe.getClient().checkout.sessions.create({
+      customer_email: user['email'],
+      client_reference_id: user['user-id'],
+      payment_method_types: ['card'],
+      subscription_data: {
+        items: [{
+          plan: subscriptionPlanId,
+        }],
+        trial_from_plan: true,
+        metadata: {
+          userId: user['user-id'],
+          adminId: admin['admin-id'],
+          appId: user['app-id'],
+        }
+      },
+      metadata: {
+        adminId: admin['admin-id'],
+        appId: user['app-id']
+      },
+      success_url,
+      cancel_url,
+    },
+      {
+        stripe_account: stripeAccountId,
+        idempotency_key: user['email'] + user['user-id'] + subscriptionPlanId // user can only checkout a single subscription plan
+      }
+    )
+
+    return session
+  } catch (e) {
+    if (e.code === 'url_invalid') {
+      throw {
+        status: statusCodes['Bad Request'],
+        error: e.param === 'success_url'
+          ? 'SuccessUrlInvalid'
+          : 'CancelUrlInvalid'
+      }
+    }
+
+    throw e
+  }
+}
+
+exports.createSubscriptionPaymentSession = async function (logChildObject, app, admin, user, success_url, cancel_url) {
+  try {
+    const stripeAccountId = admin['stripe-account-id']
+    logChildObject.stripeAccountId = stripeAccountId
+    logChildObject.userEmail = user['email']
+    logger.child(logChildObject).info('Creating payment session for user')
+
+    let subscriptionPlanId, isProduction
+    if (app['payments-mode'] === 'prod') {
+      subscriptionPlanId = app['prod-subscription-plan-id']
+      isProduction = true
+    } else if (app['payments-mode'] === 'test') {
+      subscriptionPlanId = app['test-subscription-plan-id']
+    } else {
+      throw {
+        status: statusCodes['Forbidden'],
+        error: 'PaymentsDisabled'
+      }
+    }
+
+    logChildObject.subscriptionPlanId = subscriptionPlanId
+
+    if (!subscriptionPlanId) throw {
+      status: statusCodes['Forbidden'],
+      error: 'SubscriptionPlanNotSet'
+    }
+
+    if ((isProduction && user['prod-subscription-plan-id'] === subscriptionPlanId) ||
+      (!isProduction && user['test-subscription-plan-id'] === subscriptionPlanId)) {
+      throw {
+        status: statusCodes['Conflict'],
+        error: 'SubscriptionPlanAlreadyPurchased'
+      }
+    }
+
+    const session = await _createStripePaymentSession(user, admin, subscriptionPlanId, success_url, cancel_url)
+
+    logger
+      .child({ ...logChildObject, statusCode: statusCodes['Success'] })
+      .info('Successfully created payment session for user')
+
+    return responseBuilder.successResponse(session.id)
+  } catch (e) {
+    const message = 'Failed to create payment session for user.'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).error(message)
+      return responseBuilder.errorResponse(e.status, e.error)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return responseBuilder.errorResponse(statusCode, message)
+    }
+  }
+}
+
+const saveDefaultPaymetMethod = async (subscription, stripeAccountId) => {
+  const { customer, default_payment_method } = subscription
+  await stripe.getClient().customers.update(
+    customer,
+    { invoice_settings: { default_payment_method } },
+    { stripe_account: stripeAccountId }
+  )
+}
+
+const _setStripeAttributes = (updateUserParams, isProduction, customerId, subscriptionId, planId, status, cancelAt) => {
+  updateUserParams.ExpressionAttributeNames['#stripeCustomerId'] = (isProduction ? 'prod' : 'test') + '-stripe-customer-id'
+  updateUserParams.ExpressionAttributeNames['#stripeSubscriptionId'] = (isProduction ? 'prod' : 'test') + '-subscription-id'
+  updateUserParams.ExpressionAttributeNames['#stripePlanId'] = (isProduction ? 'prod' : 'test') + '-subscription-plan-id'
+  updateUserParams.ExpressionAttributeNames['#stripeSubscriptionStatus'] = (isProduction ? 'prod' : 'test') + '-subscription-status'
+  updateUserParams.ExpressionAttributeNames['#cancelAt'] = (isProduction ? 'prod' : 'test') + '-cancel-subscription-at'
+
+  updateUserParams.ExpressionAttributeValues[':stripeCustomerId'] = customerId
+  updateUserParams.ExpressionAttributeValues[':stripeSubscriptionId'] = subscriptionId
+  updateUserParams.ExpressionAttributeValues[':stripePlanId'] = planId
+  updateUserParams.ExpressionAttributeValues[':stripeSubscriptionStatus'] = status
+
+  if (cancelAt) updateUserParams.ExpressionAttributeValues[':cancelAt'] = cancelAt
+}
+
+const saveStripeSubscriptionInDdb = async (userId, customerId, subscriptionId, planId, status, isProduction) => {
+  const user = await getUserByUserId(userId)
+  const updateUserParams = conditionCheckUserExists(user['username'], user['app-id'], userId)
+
+  updateUserParams.UpdateExpression = `SET
+    #stripeCustomerId = :stripeCustomerId,
+    #stripeSubscriptionId = :stripeSubscriptionId,
+    #stripePlanId = :stripePlanId,
+    #stripeSubscriptionStatus = :stripeSubscriptionStatus
+  `
+
+  _setStripeAttributes(updateUserParams, isProduction, customerId, subscriptionId, planId, status)
+
+  try {
+    const ddbClient = connection.ddbClient()
+    await ddbClient.update(updateUserParams).promise()
+  } catch (e) {
+    if (e.name === 'ConditionalCheckFailedException') {
+      throw new Error('UserNotFound')
+    }
+    throw e
+  }
+}
+
+const _handleCheckoutSubscriptionCompleted = async (logChildObject, session, stripeAccountId) => {
+  const userId = session.client_reference_id
+  const customerId = session.customer
+  const subscriptionId = session.subscription
+  const planId = session.display_items[0].plan.id
+  const isProduction = session.livemode
+
+  logChildObject = { ...logChildObject, ...session.metadata, userId, customerId, subscriptionId, planId, isProduction }
+  logger.child(logChildObject).info('Fulfilling connected account subscription payment')
+
+  const subscription = await stripe.getClient().subscriptions.retrieve(subscriptionId, { stripe_account: stripeAccountId })
+
+  await Promise.all([
+    saveStripeSubscriptionInDdb(userId, customerId, subscriptionId, planId, subscription.status, isProduction),
+    saveDefaultPaymetMethod(subscription, stripeAccountId)
+  ])
+
+  logger.child(logChildObject).info('Successfully fulfilled connected account subscription payment')
+}
+
+const _handleUpdateSubscription = async (logChildObject, subscription, previousAttributes) => {
+  const { userId, adminId, appId } = subscription.metadata
+  const isProduction = subscription.livemode
+  const subscriptionId = subscription.id
+  const subscriptionPlanId = subscription.items.data[0].plan.id
+  const customerId = subscription.customer
+  const status = subscription.status
+  const cancelAt = subscription.cancel_at && new Date(subscription.cancel_at * 1000).toISOString()
+
+  logChildObject = { ...logChildObject, userId, adminId, appId, isProduction, subscriptionId, subscriptionPlanId, customerId, subscription, previousAttributes }
+  logger.child(logChildObject).info('Updating connected account subscription')
+
+  const user = await getUserByUserId(userId)
+  const updateUserParams = conditionCheckUserExists(user['username'], user['app-id'], userId)
+
+  updateUserParams.ConditionExpression += `
+    and #stripeCustomerId = :stripeCustomerId
+    and #stripeSubscriptionId = :stripeSubscriptionId
+    and #stripePlanId = :stripePlanId
+    ${cancelAt ? 'and #cancelAt = :cancelAt' : ''}
+  `
+
+  updateUserParams.UpdateExpression = 'SET #stripeSubscriptionStatus = :stripeSubscriptionStatus'
+  if (!cancelAt) updateUserParams.UpdateExpression += ' REMOVE #cancelAt'
+
+  _setStripeAttributes(updateUserParams, isProduction, customerId, subscriptionId, subscriptionPlanId, status, cancelAt)
+
+  try {
+    const ddbClient = connection.ddbClient()
+    await ddbClient.update(updateUserParams).promise()
+
+    logger.child(logChildObject).info('Successfully updated connected account subscription')
+  } catch (e) {
+    logger.child({ ...logChildObject, err: e }).info('Failed to update connected account subscription')
+    throw e
+  }
+}
+
+exports.handleStripeConnectWebhook = async function (req, res) {
+  let logChildObject = {}
+  try {
+    const event = stripe.getClient().webhooks.constructEvent(
+      req.body,
+      req.headers['stripe-signature'],
+      stripe.getConnectWebhookSecret()
+    )
+
+    const stripeAccountId = event.account
+    logChildObject.stripeAccountId = stripeAccountId
+
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object
+
+      if (session.mode === 'subscription') {
+        await _handleCheckoutSubscriptionCompleted(logChildObject, session, stripeAccountId)
+      } else if (session.mode === 'setup') {
+        await stripe.updateStripePaymentMethod(logChildObject, session, stripeAccountId)
+      }
+
+    } else if (event.type === 'customer.subscription.updated') {
+      const subscription = event.data.object
+      const previousAttributes = event.data.previous_attributes
+      await _handleUpdateSubscription(logChildObject, subscription, previousAttributes, stripeAccountId)
+    }
+
+    res.json({ received: true })
+  } catch (err) {
+    logChildObject.err = err
+    logger.child(logChildObject).warn('Stripe Connect webhook failed')
+    return res.status(statusCodes['Bad Request']).send(`Webhook Error: ${err.message}`)
+  }
+}
+
+const _throwPaymentErrors = (subscriptionPlanNotSet, subscriptionNotFound, subscribedToIncorrectPlan, subscriptionInactive, subscriptionStatus) => {
+  if (subscriptionPlanNotSet) {
+    throw {
+      status: statusCodes['Forbidden'],
+      error: {
+        name: 'SubscriptionPlanNotSet'
+      }
+    }
+  } else if (subscriptionNotFound) {
+    throw {
+      status: statusCodes['Not Found'],
+      error: {
+        name: 'SubscriptionNotFound'
+      }
+    }
+  } else if (subscribedToIncorrectPlan) {
+    throw {
+      status: statusCodes['Payment Required'],
+      error: {
+        name: 'SubscribedToIncorrectPlan'
+      }
+    }
+  } else if (subscriptionInactive) {
+    throw {
+      status: statusCodes['Payment Required'],
+      error: {
+        name: 'SubscriptionInactive',
+        subscriptionStatus
+      }
+    }
+  }
+}
+
+exports.validatePayment = function (user, app) {
+  if (app['payments-mode'] === 'prod') {
+    const subscriptionPlanNotSet = !app['prod-subscription-plan-id']
+
+    const subscriptionNotFound = !user['prod-subscription-plan-id']
+
+    const subscribedToIncorrectPlan = app['prod-subscription-plan-id'] !== user['prod-subscription-plan-id']
+
+    const subscriptionStatus = user['prod-subscription-status']
+    const subscriptionInactive = subscriptionStatus !== 'active' && subscriptionStatus !== 'trialing'
+
+    _throwPaymentErrors(subscriptionPlanNotSet, subscriptionNotFound, subscribedToIncorrectPlan, subscriptionInactive, subscriptionStatus)
+  } else if (app['payments-mode'] === 'test') {
+    const subscriptionPlanNotSet = !app['test-subscription-plan-id']
+
+    const subscriptionNotFound = !user['test-subscription-plan-id']
+
+    const subscribedToIncorrectPlan = app['test-subscription-plan-id'] !== user['test-subscription-plan-id']
+
+    const subscriptionStatus = user['test-subscription-status']
+    const subscriptionInactive = subscriptionStatus !== 'active' && subscriptionStatus !== 'trialing'
+
+    _throwPaymentErrors(subscriptionPlanNotSet, subscriptionNotFound, subscribedToIncorrectPlan, subscriptionInactive, subscriptionStatus)
+  }
+}
+
+const _cancelStripeSubscriptionInDdb = async (userId, isProduction, cancel_at) => {
+  const user = await getUserByUserId(userId)
+  const updateUserParams = conditionCheckUserExists(user['username'], user['app-id'], userId)
+
+  const cancelAt = new Date(cancel_at * 1000).toISOString()
+
+  updateUserParams.UpdateExpression = 'SET #cancelAt = :cancelAt'
+  updateUserParams.ExpressionAttributeNames['#cancelAt'] = (isProduction ? 'prod' : 'test') + '-cancel-subscription-at'
+  updateUserParams.ExpressionAttributeValues[':cancelAt'] = cancelAt
+
+  try {
+    const ddbClient = connection.ddbClient()
+    await ddbClient.update(updateUserParams).promise()
+    return cancelAt
+  } catch (e) {
+    if (e.name === 'ConditionalCheckFailedException') {
+      throw new Error('UserNotFound')
+    }
+    throw e
+  }
+}
+
+const _resumeStripeSubscriptionInDdb = async (userId, isProduction) => {
+  const user = await getUserByUserId(userId)
+  const updateUserParams = conditionCheckUserExists(user['username'], user['app-id'], userId)
+
+  updateUserParams.UpdateExpression = 'REMOVE #cancelAt'
+  updateUserParams.ExpressionAttributeNames['#cancelAt'] = (isProduction ? 'prod' : 'test') + '-cancel-subscription-at'
+
+  try {
+    const ddbClient = connection.ddbClient()
+    await ddbClient.update(updateUserParams).promise()
+  } catch (e) {
+    if (e.name === 'ConditionalCheckFailedException') {
+      throw new Error('UserNotFound')
+    }
+    throw e
+  }
+}
+
+const _validateModifySubscription = (logChildObject, app, user) => {
+  let subscriptionId, isProduction
+  if (app['payments-mode'] === 'prod') {
+    subscriptionId = user['prod-subscription-id']
+    isProduction = true
+  } else if (app['payments-mode'] === 'test') {
+    subscriptionId = user['test-subscription-id']
+  } else {
+    throw {
+      status: statusCodes['Forbidden'],
+      error: 'PaymentsDisabled'
+    }
+  }
+
+  logChildObject.subscriptionId = subscriptionId
+
+  if (!subscriptionId) throw {
+    status: statusCodes['Forbidden'],
+    error: 'SubscriptionPlanNotSet'
+  }
+
+  return { subscriptionId, isProduction }
+}
+
+
+exports.cancelSubscription = async function (logChildObject, app, admin, user) {
+  try {
+    const stripeAccountId = admin['stripe-account-id']
+    logChildObject.stripeAccountId = stripeAccountId
+    logger.child(logChildObject).info('Cancelling user subscription')
+
+    const { subscriptionId, isProduction } = _validateModifySubscription(logChildObject, app, user)
+
+    const updatedSubscription = await stripe.getClient().subscriptions.update(
+      subscriptionId,
+      { cancel_at_period_end: true },
+      { stripe_account: stripeAccountId }
+    )
+
+    const cancelAt = await _cancelStripeSubscriptionInDdb(user['user-id'], isProduction, updatedSubscription.cancel_at)
+
+    logger
+      .child({ ...logChildObject, statusCode: statusCodes['Success'] })
+      .info('Successfully cancelled user subscription')
+
+    return responseBuilder.successResponse(cancelAt)
+  } catch (e) {
+    const message = 'Failed to cancel subscription for user.'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).error(message)
+      return responseBuilder.errorResponse(e.status, e.error)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return responseBuilder.errorResponse(statusCode, message)
+    }
+  }
+}
+
+exports.resumeSubscription = async function (logChildObject, app, admin, user) {
+  try {
+    const stripeAccountId = admin['stripe-account-id']
+    logChildObject.stripeAccountId = stripeAccountId
+    logger.child(logChildObject).info('Resuming user subscription')
+
+    const { subscriptionId, isProduction } = _validateModifySubscription(logChildObject, app, user)
+
+    await stripe.getClient().subscriptions.update(
+      subscriptionId,
+      { cancel_at_period_end: false },
+      { stripe_account: stripeAccountId }
+    )
+
+    await _resumeStripeSubscriptionInDdb(user['user-id'], isProduction)
+
+    logger
+      .child({ ...logChildObject, statusCode: statusCodes['Success'] })
+      .info('Successfully resumed user subscription')
+
+    return responseBuilder.successResponse()
+  } catch (e) {
+    const message = 'Failed to resume subscription for user.'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).error(message)
+      return responseBuilder.errorResponse(e.status, e.error)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return responseBuilder.errorResponse(statusCode, message)
+    }
+  }
+}
+
+const _createStripeUpdatePaymentMethodSession = async function (user, admin, customer_id, subscription_id, success_url, cancel_url) {
+  const stripeAccountId = admin['stripe-account-id']
+
+  try {
+    const session = await stripe.getClient().checkout.sessions.create({
+      customer_email: user['email'],
+      client_reference_id: user['user-id'],
+      payment_method_types: ['card'],
+      mode: 'setup',
+      setup_intent_data: {
+        metadata: {
+          customer_id,
+          subscription_id,
+        },
+      },
+      success_url,
+      cancel_url,
+    }, {
+      stripe_account: stripeAccountId
+    })
+
+    return session
+  } catch (e) {
+    if (e.code === 'url_invalid') {
+      throw {
+        status: statusCodes['Bad Request'],
+        error: e.param === 'success_url'
+          ? 'SuccessUrlInvalid'
+          : 'CancelUrlInvalid'
+      }
+    }
+
+    throw e
+  }
+}
+
+exports.updatePaymentMethod = async function (logChildObject, app, admin, user, success_url, cancel_url) {
+  try {
+    const stripeAccountId = admin['stripe-account-id']
+    logChildObject.stripeAccountId = stripeAccountId
+    logChildObject.userEmail = user['email']
+    logger.child(logChildObject).info('Creating update payment method session for user')
+
+    let customerId, subscriptionId
+    if (app['payments-mode'] === 'prod') {
+      customerId = user['prod-stripe-customer-id']
+      subscriptionId = user['prod-subscription-id']
+    } else if (app['payments-mode'] === 'test') {
+      customerId = user['test-stripe-customer-id']
+      subscriptionId = user['test-subscription-id']
+    } else {
+      throw {
+        status: statusCodes['Forbidden'],
+        error: 'PaymentsDisabled'
+      }
+    }
+
+    logChildObject.customerId = customerId
+    logChildObject.subscriptionId = subscriptionId
+
+    if (!customerId || !subscriptionId) throw {
+      status: statusCodes['Payment Required'],
+      error: 'SubscriptionNotPurchased'
+    }
+
+    const session = await _createStripeUpdatePaymentMethodSession(user, admin, customerId, subscriptionId, success_url, cancel_url)
+
+    logger
+      .child({ ...logChildObject, statusCode: statusCodes['Success'] })
+      .info('Successfully created update payment session for user')
+
+    return responseBuilder.successResponse(session.id)
+  } catch (e) {
+    const message = 'Failed to create update payment method session for user.'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).error(message)
+      return responseBuilder.errorResponse(e.status, e.error)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return responseBuilder.errorResponse(statusCode, message)
     }
   }
 }

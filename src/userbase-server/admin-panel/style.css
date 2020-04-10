@@ -64,6 +64,21 @@ strong {
   margin-top: 2px;
 }
 
+.toggle-dot {
+  top: -.25rem;
+  left: -.25rem;
+  transition: all 0.3s ease-in-out;
+}
+
+input:checked ~ .toggle-dot {
+  @apply bg-green-500;
+  transform: translateX(100%);
+}
+
+.fit-content {
+  width: fit-content;
+}
+
 .input-text {
   @apply font-light text-sm h-8 p-2 border border-gray-500 outline-none;
 }

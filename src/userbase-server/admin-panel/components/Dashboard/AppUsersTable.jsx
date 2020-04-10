@@ -20,13 +20,20 @@ export default class AppUsersTable extends Component {
       deletedUsers: [],
       loading: true,
       showDeletedUsers: false,
-      testSubscriptionPlanId: '',
-      prodSubscriptionPlanId: '',
-      newTestSubscriptionPlanId: '',
-      newProdSubscriptionPlanId: '',
-      loadingSetTestSubscriptionPlanId: false,
-      loadingDeleteTestSubscriptionPlanId: false,
-      errorSubscriptionPlanId: false,
+      paymentsState: {
+        paymentsMode: 'disabled',
+        testSubscriptionPlanId: '',
+        prodSubscriptionPlanId: '',
+        newTestSubscriptionPlanId: '',
+        newProdSubscriptionPlanId: '',
+        loadingSetTestSubscriptionPlanId: false,
+        loadingSetProdSubscriptionPlanId: false,
+        loadingDeleteTestSubscriptionPlanId: false,
+        loadingDeleteProdSubscriptionPlanId: false,
+        loadingPaymentsMode: false,
+        loadingPlanMode: false,
+        errorPaymentsPortal: false,
+      }
     }
 
     this.handleDeleteApp = this.handleDeleteApp.bind(this)
@@ -37,18 +44,24 @@ export default class AppUsersTable extends Component {
     this.handleToggleDisplayUserMetadata = this.handleToggleDisplayUserMetadata.bind(this)
     this.handleExpandAll = this.handleExpandAll.bind(this)
     this.handleHideAll = this.handleHideAll.bind(this)
-    this.handleInputChange = this.handleInputChange.bind(this)
+    this.handlePaymentsPlanInputChange = this.handlePaymentsPlanInputChange.bind(this)
     this.handleSetTestSubscriptionPlanId = this.handleSetTestSubscriptionPlanId.bind(this)
+    this.handleSetProdSubscriptionPlanId = this.handleSetProdSubscriptionPlanId.bind(this)
     this.handleDeleteTestSubscriptionPlanId = this.handleDeleteTestSubscriptionPlanId.bind(this)
+    this.handleDeleteProdSubscriptionPlanId = this.handleDeleteProdSubscriptionPlanId.bind(this)
+    this.handleEnableTestPayments = this.handleEnableTestPayments.bind(this)
+    this.handleEnableProdPayments = this.handleEnableProdPayments.bind(this)
+    this.handleDisablePayments = this.handleDisablePayments.bind(this)
   }
 
   async componentDidMount() {
     this._isMounted = true
 
     const { appName } = this.props
+    const { paymentsState } = this.state
 
     try {
-      const { users, appId, testSubscriptionPlanId, prodSubscriptionPlanId } = await dashboardLogic.listAppUsers(appName)
+      const { users, appId, paymentsMode, testSubscriptionPlanId, prodSubscriptionPlanId } = await dashboardLogic.listAppUsers(appName)
 
       // sort by date in descending order
       const appUsers = users.sort((a, b) => new Date(b['creationDate']) - new Date(a['creationDate']))
@@ -65,7 +78,9 @@ export default class AppUsersTable extends Component {
         else activeUsers.push(appUser)
       }
 
-      if (this._isMounted) this.setState({ appId, activeUsers, deletedUsers, testSubscriptionPlanId, prodSubscriptionPlanId, loading: false })
+      const updatedPaymentsState = { ...paymentsState, paymentsMode, testSubscriptionPlanId, prodSubscriptionPlanId }
+
+      if (this._isMounted) this.setState({ appId, activeUsers, deletedUsers, loading: false, paymentsState: updatedPaymentsState })
     } catch (e) {
       if (this._isMounted) this.setState({ error: e.message, loading: false })
     }
@@ -216,47 +231,318 @@ export default class AppUsersTable extends Component {
     })
   }
 
-  handleInputChange(event) {
+  handlePaymentsPlanInputChange(event) {
+    const { paymentsState } = this.state
+
     const target = event.target
     const value = target.value
     const name = target.name
 
     this.setState({
-      [name]: value,
-      errorSubscriptionPlanId: false
+      paymentsState: {
+        ...paymentsState,
+        [name]: value,
+        errorPaymentsPortal: false,
+      }
     })
   }
 
   async handleSetTestSubscriptionPlanId(event) {
     event.preventDefault()
+    const { appName } = this.props
+    const { appId, paymentsState } = this.state
+
     try {
-      this.setState({ loadingSetTestSubscriptionPlanId: true, errorSubscriptionPlanId: false })
+      this.setState({
+        paymentsState: {
+          ...paymentsState,
+          loadingSetTestSubscriptionPlanId: true,
+          errorPaymentsPortal: false
+        }
+      })
 
-      const { appId, newTestSubscriptionPlanId } = this.state
+      const { newTestSubscriptionPlanId } = paymentsState
 
-      await dashboardLogic.setTestSubscriptionPlanId(appId, newTestSubscriptionPlanId)
+      await dashboardLogic.setTestSubscriptionPlanId(appName, appId, newTestSubscriptionPlanId)
 
-      if (this._isMounted) this.setState({ loadingSetTestSubscriptionPlanId: false, testSubscriptionPlanId: newTestSubscriptionPlanId })
+      if (this._isMounted) {
+        this.setState({
+          paymentsState: {
+            ...paymentsState,
+            loadingSetTestSubscriptionPlanId: false,
+            testSubscriptionPlanId: newTestSubscriptionPlanId
+          }
+        })
+      }
     } catch (e) {
-      if (this._isMounted) this.setState({ loadingSetTestSubscriptionPlanId: false, errorSubscriptionPlanId: e.message })
+      if (this._isMounted) {
+        this.setState({
+          paymentsState: {
+            ...paymentsState,
+            loadingSetTestSubscriptionPlanId: false,
+            errorPaymentsPortal: e.message
+          }
+        })
+      }
+    }
+  }
+
+  async handleSetProdSubscriptionPlanId(event) {
+    event.preventDefault()
+    const { appName } = this.props
+    const { appId, paymentsState } = this.state
+
+    try {
+      this.setState({
+        paymentsState: {
+          ...paymentsState,
+          loadingSetProdSubscriptionPlanId: true,
+          errorPaymentsPortal: false
+        }
+      })
+
+      const { newProdSubscriptionPlanId } = paymentsState
+
+      await dashboardLogic.setProdSubscriptionPlanId(appName, appId, newProdSubscriptionPlanId)
+
+      if (this._isMounted) {
+        this.setState({
+          paymentsState: {
+            ...paymentsState,
+            loadingSetProdSubscriptionPlanId: false,
+            prodSubscriptionPlanId: newProdSubscriptionPlanId
+          }
+        })
+      }
+    } catch (e) {
+      if (this._isMounted) {
+        this.setState({
+          paymentsState: {
+            ...paymentsState,
+            loadingSetProdSubscriptionPlanId: false,
+            errorPaymentsPortal: e.message
+          }
+        })
+      }
     }
   }
 
   async handleDeleteTestSubscriptionPlanId(event) {
     event.preventDefault()
-    try {
-      this.setState({ loadingDeleteTestSubscriptionPlanId: true, errorSubscriptionPlanId: false })
+    const { appName } = this.props
+    const { appId, paymentsState } = this.state
 
-      const { appId, testSubscriptionPlanId } = this.state
+    try {
+      this.setState({
+        paymentsState: {
+          ...paymentsState,
+          loadingDeleteTestSubscriptionPlanId: true,
+          errorPaymentsPortal: false
+        }
+      })
+
+      const { testSubscriptionPlanId } = paymentsState
 
       const confirmed = window.confirm('Warning! This will not delete your subscription plan in Stripe. If you have customers subscribed to this plan, you will need to cancel their subscriptions manually in the Stripe dashboard.')
       if (confirmed) {
-        await dashboardLogic.deleteTestSubscriptionPlanId(appId, testSubscriptionPlanId)
+        await dashboardLogic.deleteTestSubscriptionPlanId(appName, appId, testSubscriptionPlanId)
       }
 
-      if (this._isMounted) this.setState({ loadingDeleteTestSubscriptionPlanId: false, testSubscriptionPlanId: confirmed ? '' : testSubscriptionPlanId })
+      if (this._isMounted) {
+        this.setState({
+          paymentsState: {
+            ...paymentsState,
+            loadingDeleteTestSubscriptionPlanId: false,
+            testSubscriptionPlanId: confirmed ? '' : testSubscriptionPlanId
+          }
+        })
+      }
     } catch (e) {
-      if (this._isMounted) this.setState({ loadingDeleteTestSubscriptionPlanId: false, errorSubscriptionPlanId: e.message })
+      if (this._isMounted) {
+        this.setState({
+          paymentsState: {
+            ...paymentsState,
+            loadingDeleteTestSubscriptionPlanId: false,
+            errorPaymentsPortal: e.message
+          }
+        })
+      }
+    }
+  }
+
+  async handleDeleteProdSubscriptionPlanId(event) {
+    event.preventDefault()
+    const { appName } = this.props
+    const { appId, paymentsState } = this.state
+
+    try {
+      this.setState({
+        paymentsState: {
+          ...paymentsState,
+          loadingDeleteProdSubscriptionPlanId: true,
+          errorPaymentsPortal: false
+        }
+      })
+
+      const { prodSubscriptionPlanId } = paymentsState
+
+      const confirmed = window.confirm('Warning! This will not delete your subscription plan in Stripe. If you have customers subscribed to this plan, you will need to cancel their subscriptions manually in the Stripe dashboard.')
+      if (confirmed) {
+        await dashboardLogic.deleteProdSubscriptionPlanId(appName, appId, prodSubscriptionPlanId)
+      }
+
+      if (this._isMounted) {
+        this.setState({
+          paymentsState: {
+            ...paymentsState,
+            loadingDeleteProdSubscriptionPlanId: false,
+            prodSubscriptionPlanId: confirmed ? '' : prodSubscriptionPlanId
+          }
+        })
+      }
+    } catch (e) {
+      if (this._isMounted) {
+        this.setState({
+          paymentsState: {
+            ...paymentsState,
+            loadingDeleteProdSubscriptionPlanId: false,
+            errorPaymentsPortal: e.message
+          }
+        })
+      }
+    }
+  }
+
+  async handleDisablePayments(event) {
+    event.preventDefault()
+    const { appName } = this.props
+    const { appId, paymentsState } = this.state
+
+    try {
+      this.setState({
+        paymentsState: {
+          ...paymentsState,
+          loadingPaymentsMode: true,
+          errorPaymentsPortal: false
+        }
+      })
+
+      let confirmed = true
+      if (paymentsState.paymentsMode === 'prod') {
+        confirmed = window.confirm('Are you sure you want to disable production payments?')
+      }
+
+      let paymentsMode = paymentsState.paymentsMode
+      if (confirmed) {
+        paymentsMode = await dashboardLogic.disablePayments(appName, appId)
+      }
+
+      if (this._isMounted) {
+        this.setState({
+          paymentsState: {
+            ...paymentsState,
+            loadingPaymentsMode: false,
+            paymentsMode
+          }
+        })
+      }
+    } catch (e) {
+      if (this._isMounted) {
+        this.setState({
+          paymentsState: {
+            ...paymentsState,
+            loadingPaymentsMode: false,
+            errorPaymentsPortal: e.message
+          }
+        })
+      }
+    }
+  }
+
+  async handleEnableTestPayments(event, loadingPaymentsMode, loadingPlanMode) {
+    event.preventDefault()
+    const { appName } = this.props
+    const { appId, paymentsState } = this.state
+
+    try {
+      this.setState({
+        paymentsState: {
+          ...paymentsState,
+          loadingPaymentsMode,
+          loadingPlanMode,
+          errorPaymentsPortal: false
+        }
+      })
+
+      let confirmed = true
+      if (paymentsState.paymentsMode === 'prod') {
+        confirmed = window.confirm('Are you sure you want to disable production payments?')
+      }
+
+      let paymentsMode = paymentsState.paymentsMode
+      if (confirmed) {
+        paymentsMode = await dashboardLogic.enableTestPayments(appName, appId)
+      }
+
+      if (this._isMounted) {
+        this.setState({
+          paymentsState: {
+            ...paymentsState,
+            loadingPaymentsMode: false,
+            loadingPlanMode: false,
+            paymentsMode
+          }
+        })
+      }
+    } catch (e) {
+      if (this._isMounted) {
+        this.setState({
+          paymentsState: {
+            ...paymentsState,
+            loadingPaymentsMode: false,
+            loadingPlanMode: false,
+            errorPaymentsPortal: e.message
+          }
+        })
+      }
+    }
+  }
+
+  async handleEnableProdPayments(event) {
+    event.preventDefault()
+    const { appName } = this.props
+    const { appId, paymentsState } = this.state
+
+    try {
+      this.setState({
+        paymentsState: {
+          ...paymentsState,
+          loadingPlanMode: true,
+          errorPaymentsPortal: false
+        }
+      })
+
+      const paymentsMode = await dashboardLogic.enableProdPayments(appName, appId)
+
+      if (this._isMounted) {
+        this.setState({
+          paymentsState: {
+            ...paymentsState,
+            loadingPlanMode: false,
+            paymentsMode
+          }
+        })
+      }
+    } catch (e) {
+      if (this._isMounted) {
+        this.setState({
+          paymentsState: {
+            ...paymentsState,
+            loadingPlanMode: false,
+            errorPaymentsPortal: e.message
+          }
+        })
+      }
     }
   }
 
@@ -268,14 +554,23 @@ export default class AppUsersTable extends Component {
       deletedUsers,
       error,
       showDeletedUsers,
+      paymentsState,
+    } = this.state
+
+    const {
+      paymentsMode,
       testSubscriptionPlanId,
       prodSubscriptionPlanId,
       newTestSubscriptionPlanId,
       newProdSubscriptionPlanId,
+      loadingPaymentsMode,
+      loadingPlanMode,
       loadingSetTestSubscriptionPlanId,
+      loadingSetProdSubscriptionPlanId,
       loadingDeleteTestSubscriptionPlanId,
-      errorSubscriptionPlanId,
-    } = this.state
+      loadingDeleteProdSubscriptionPlanId,
+      errorPaymentsPortal,
+    } = paymentsState
 
     return (
       <div className='text-xs sm:text-sm'>
@@ -523,12 +818,56 @@ export default class AppUsersTable extends Component {
 
           <hr className='border border-t-0 border-gray-400 mt-8 mb-6' />
 
-          <div className='flex-0 text-lg sm:text-xl text-left mb-1'>Payment Portal</div>
+          <div className='flex-0 text-lg sm:text-xl text-left mb-1'>Payments Portal</div>
           <p className='text-left font-normal mb-4'>Collect payments on your app with Stripe.</p>
 
-          {
-            connectedToStripe
+          {loading
+            ? <div className='text-center'><div className='loader w-6 h-6 inline-block' /></div>
+            : connectedToStripe
               ? <div>
+
+                <label className='flex items-center mb-4 fit-content'>
+                  <div className='relative cursor-pointer'>
+                    <input
+                      type='checkbox'
+                      className='hidden'
+                      checked={paymentsMode === 'test' || paymentsMode === 'prod'}
+                      onChange={(e) => paymentsMode === 'disabled' ? this.handleEnableTestPayments(e, true, loadingPlanMode) : this.handleDisablePayments(e)}
+                      disabled={loadingPaymentsMode}
+                    />
+                    <div className='w-10 h-4 bg-gray-400 rounded-full shadow-inner' />
+                    <div className='toggle-dot absolute w-6 h-6 bg-white rounded-full shadow' />
+                  </div>
+
+                  <div className='ml-3 text-gray-500 hover:text-gray-600 font-medium cursor-pointer'>
+                    {paymentsMode === 'disabled' ? 'Enable Payments' : 'Payments Enabled'}
+                  </div>
+
+                  {loadingPaymentsMode && <div className='loader w-4 h-4 ml-4 inline-block' />}
+                </label>
+
+                {(paymentsMode === 'test' || paymentsMode === 'prod') &&
+                  <label className='flex items-center mb-4 fit-content'>
+                    <div className='relative cursor-pointer'>
+                      <input
+                        type='checkbox'
+                        className='hidden'
+                        checked={paymentsMode === 'prod'}
+                        onChange={(e) => paymentsMode === 'prod' ? this.handleEnableTestPayments(e, loadingPaymentsMode, true) : this.handleEnableProdPayments(e)}
+                        disabled={loadingPlanMode}
+                      />
+                      <div className='w-10 h-4 bg-gray-400 rounded-full shadow-inner' />
+                      <div className='toggle-dot absolute w-6 h-6 bg-white rounded-full shadow' />
+                    </div>
+
+                    <div className='ml-3 text-gray-500 hover:text-gray-600 font-medium cursor-pointer'>
+                      {paymentsMode === 'test' ? 'Use Production Plan' : 'Using Prod Plan'}
+                    </div>
+
+                    {loadingPlanMode && <div className='loader w-4 h-4 ml-4 inline-block' />}
+                  </label>
+                }
+
                 <form onSubmit={this.handleSetTestSubscriptionPlanId}>
 
                   {testSubscriptionPlanId
@@ -536,7 +875,7 @@ export default class AppUsersTable extends Component {
                       <div className='table-cell p-2 w-32 sm:w-40 text-right'>Test Plan ID</div>
 
                       <div className='table-cell p-2 w-32 sm:w-40'>
-                        <div className='font-light w-48 sm:w-84 p-2 text-left'>
+                        <div className='font-light w-48 sm:w-84 text-left'>
                           <a
                             href={'https://dashboard.stripe.com/test/plans/' + testSubscriptionPlanId}>
                             {testSubscriptionPlanId}
@@ -575,7 +914,7 @@ export default class AppUsersTable extends Component {
                           value={newTestSubscriptionPlanId}
                           maxLength={MAX_PLAN_ID_LEN}
                           spellCheck={false}
-                          onChange={this.handleInputChange}
+                          onChange={this.handlePaymentsPlanInputChange}
                           placeholder='plan_'
                         />
                       </div>
@@ -588,10 +927,73 @@ export default class AppUsersTable extends Component {
                       />
 
                     </div>
-
                   }
 
                 </form>
+
+                <form onSubmit={this.handleSetProdSubscriptionPlanId}>
+
+                  {prodSubscriptionPlanId
+                    ? <div className='table-row'>
+                      <div className='table-cell p-2 w-32 sm:w-40 text-right'>Prod Plan ID</div>
+
+                      <div className='table-cell p-2 w-32 sm:w-40'>
+                        <div className='font-light w-48 sm:w-84 text-left'>
+                          <a
+                            href={'https://dashboard.stripe.com/plans/' + prodSubscriptionPlanId}>
+                            {prodSubscriptionPlanId}
+                          </a>
+                        </div>
+                      </div>
+
+                      {
+                        loadingDeleteProdSubscriptionPlanId
+                          ? <div className='loader w-4 h-4 inline-block' />
+                          : <div
+                            className='font-normal text-sm cursor-pointer text-yellow-700'
+                            onClick={this.handleDeleteProdSubscriptionPlanId}
+                          >
+                            <FontAwesomeIcon icon={faTrashAlt} />
+                          </div>
+                      }
+
+                    </div>
+
+                    : <div className='table-row'>
+
+                      <a
+                        href='https://dashboard.stripe.com/subscriptions/products/create'
+                        className='table-cell p-2 w-32 sm:w-40 text-right'
+                      >
+                        Prod Plan ID
+                      </a>
+
+                      <div className='table-cell p-2 w-32 sm:w-40'>
+                        <input
+                          className='font-light text-xs sm:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
+                          type='text'
+                          name='newProdSubscriptionPlanId'
+                          autoComplete='off'
+                          value={newProdSubscriptionPlanId}
+                          maxLength={MAX_PLAN_ID_LEN}
+                          spellCheck={false}
+                          onChange={this.handlePaymentsPlanInputChange}
+                          placeholder='plan_'
+                        />
+                      </div>
+
+                      <input
+                        className='btn w-24 ml-2'
+                        type='submit'
+                        value={loadingSetProdSubscriptionPlanId ? 'Saving...' : 'Save'}
+                        disabled={!newProdSubscriptionPlanId || newProdSubscriptionPlanId.length !== MAX_PLAN_ID_LEN || loadingSetProdSubscriptionPlanId}
+                      />
+
+                    </div>
+                  }
+
+                </form>
+
               </div>
               :
 
@@ -605,10 +1007,10 @@ export default class AppUsersTable extends Component {
           }
 
           <div className='text-center'>
-            {errorSubscriptionPlanId && (
-              errorSubscriptionPlanId === 'Unknown Error'
+            {errorPaymentsPortal && (
+              errorPaymentsPortal === 'Unknown Error'
                 ? <UnknownError />
-                : <div className='error'>{errorSubscriptionPlanId}</div>
+                : <div className='error'>{errorPaymentsPortal}</div>
             )}
           </div>
 

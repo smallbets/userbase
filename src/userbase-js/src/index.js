@@ -1,5 +1,6 @@
 import auth from './auth'
 import db from './db'
+import payments from './payments'
 
 export default {
   init: auth.init,
@@ -16,5 +17,10 @@ export default {
   insertItem: db.insertItem,
   updateItem: db.updateItem,
   deleteItem: db.deleteItem,
-  putTransaction: db.putTransaction
+  putTransaction: db.putTransaction,
+
+  purchaseSubscription: payments.purchaseSubscription,
+  cancelSubscription: payments.cancelSubscription,
+  resumeSubscription: payments.resumeSubscription,
+  updatePaymentMethod: payments.updatePaymentMethod,
 }
