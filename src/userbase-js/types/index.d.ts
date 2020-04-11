@@ -54,6 +54,10 @@ export interface Item {
   item: any
 }
 
+export interface CancelSubscriptionResult {
+  cancelSubscriptionAt: Date
+}
+
 export interface Userbase {
   init(params: { appId: string }): Promise<Session>
 
@@ -78,6 +82,14 @@ export interface Userbase {
   deleteItem(params: { databaseName: string, itemId: string }): Promise<void>
 
   putTransaction(params: { databaseName: string, operations: DatabaseOperation[] }): Promise<void>
+
+  purchaseSubscription(params: { successUrl: string, cancelUrl: string }): Promise<void>
+
+  cancelSubscription(): Promise<CancelSubscriptionResult>
+
+  resumeSubscription(): Promise<void>
+
+  updatePaymentMethod(params: { successUrl: string, cancelUrl: string }): Promise<void>
 }
 
 declare let userbase: Userbase

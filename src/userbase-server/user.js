@@ -1822,41 +1822,58 @@ const saveDefaultPaymetMethod = async (subscription, stripeAccountId) => {
   )
 }
 
-const _setStripeAttributes = (updateUserParams, isProduction, customerId, subscriptionId, planId, status, cancelAt) => {
-  updateUserParams.ExpressionAttributeNames['#stripeCustomerId'] = (isProduction ? 'prod' : 'test') + '-stripe-customer-id'
-  updateUserParams.ExpressionAttributeNames['#stripeSubscriptionId'] = (isProduction ? 'prod' : 'test') + '-subscription-id'
-  updateUserParams.ExpressionAttributeNames['#stripePlanId'] = (isProduction ? 'prod' : 'test') + '-subscription-plan-id'
-  updateUserParams.ExpressionAttributeNames['#stripeSubscriptionStatus'] = (isProduction ? 'prod' : 'test') + '-subscription-status'
-  updateUserParams.ExpressionAttributeNames['#cancelAt'] = (isProduction ? 'prod' : 'test') + '-cancel-subscription-at'
-
-  updateUserParams.ExpressionAttributeValues[':stripeCustomerId'] = customerId
-  updateUserParams.ExpressionAttributeValues[':stripeSubscriptionId'] = subscriptionId
-  updateUserParams.ExpressionAttributeValues[':stripePlanId'] = planId
-  updateUserParams.ExpressionAttributeValues[':stripeSubscriptionStatus'] = status
-
-  if (cancelAt) updateUserParams.ExpressionAttributeValues[':cancelAt'] = cancelAt
-}
-
-const saveStripeSubscriptionInDdb = async (userId, customerId, subscriptionId, planId, status, isProduction) => {
+const _buildStripeSubscriptionDdbParams = async (userId, isProduction, customerId, subscriptionId, planId, status, stripeEventTimestamp) => {
   const user = await getUserByUserId(userId)
-  const updateUserParams = conditionCheckUserExists(user['username'], user['app-id'], userId)
+  const stripeSubscriptionDdbParams = conditionCheckUserExists(user['username'], user['app-id'], userId)
 
-  updateUserParams.UpdateExpression = `SET
+  stripeSubscriptionDdbParams.ConditionExpression += ' and (attribute_not_exists(#stripeEventTimestamp) or :stripeEventTimestamp > #stripeEventTimestamp)'
+
+  stripeSubscriptionDdbParams.UpdateExpression = `SET
     #stripeCustomerId = :stripeCustomerId,
     #stripeSubscriptionId = :stripeSubscriptionId,
     #stripePlanId = :stripePlanId,
-    #stripeSubscriptionStatus = :stripeSubscriptionStatus
+    #stripeSubscriptionStatus = :stripeSubscriptionStatus,
+    #stripeEventTimestamp = :stripeEventTimestamp
   `
 
-  _setStripeAttributes(updateUserParams, isProduction, customerId, subscriptionId, planId, status)
+  stripeSubscriptionDdbParams.ExpressionAttributeNames['#stripeCustomerId'] = (isProduction ? 'prod' : 'test') + '-stripe-customer-id'
+  stripeSubscriptionDdbParams.ExpressionAttributeNames['#stripeSubscriptionId'] = (isProduction ? 'prod' : 'test') + '-subscription-id'
+  stripeSubscriptionDdbParams.ExpressionAttributeNames['#stripePlanId'] = (isProduction ? 'prod' : 'test') + '-subscription-plan-id'
+  stripeSubscriptionDdbParams.ExpressionAttributeNames['#stripeSubscriptionStatus'] = (isProduction ? 'prod' : 'test') + '-subscription-status'
+  stripeSubscriptionDdbParams.ExpressionAttributeNames['#stripeEventTimestamp'] = (isProduction ? 'prod' : 'test') + '-stripe-event-timestamp'
+
+  stripeSubscriptionDdbParams.ExpressionAttributeValues[':stripeCustomerId'] = customerId
+  stripeSubscriptionDdbParams.ExpressionAttributeValues[':stripeSubscriptionId'] = subscriptionId
+  stripeSubscriptionDdbParams.ExpressionAttributeValues[':stripePlanId'] = planId
+  stripeSubscriptionDdbParams.ExpressionAttributeValues[':stripeSubscriptionStatus'] = status
+  stripeSubscriptionDdbParams.ExpressionAttributeValues[':stripeEventTimestamp'] = stripeEventTimestamp
+
+  return stripeSubscriptionDdbParams
+}
+
+const _saveStripeSubscriptionInDdb = async (userId, customerId, subscriptionId, planId, status, stripeEventTimestamp, isProduction) => {
+  const stripeSubscriptionDdbParams = await _buildStripeSubscriptionDdbParams(userId, isProduction, customerId, subscriptionId, planId, status, stripeEventTimestamp)
+  const ddbClient = connection.ddbClient()
+  await ddbClient.update(stripeSubscriptionDdbParams).promise()
+}
+
+const _handleSaveSubscription = async (logChildObject, subscription, stripeEventTimestamp) => {
+  const { userId, adminId, appId } = subscription.metadata
+  const customerId = subscription.customer
+  const subscriptionId = subscription.id
+  const subscriptionPlanId = subscription.items.data[0].plan.id
+  const status = subscription.status
+  const isProduction = subscription.livemode
+
+  logChildObject = { ...logChildObject, userId, adminId, appId, isProduction, subscriptionId, subscriptionPlanId, customerId, stripeEventTimestamp }
+  logger.child(logChildObject).info('Saving connected account subscription')
 
   try {
-    const ddbClient = connection.ddbClient()
-    await ddbClient.update(updateUserParams).promise()
+    await _saveStripeSubscriptionInDdb(userId, customerId, subscriptionId, subscriptionPlanId, status, stripeEventTimestamp, isProduction)
+
+    logger.child(logChildObject).info('Successfully saved connected account subscription')
   } catch (e) {
-    if (e.name === 'ConditionalCheckFailedException') {
-      throw new Error('UserNotFound')
-    }
+    logger.child({ ...logChildObject, err: e }).info('Failed to save connected account subscription')
     throw e
   }
 }
@@ -1873,44 +1890,40 @@ const _handleCheckoutSubscriptionCompleted = async (logChildObject, session, str
 
   const subscription = await stripe.getClient().subscriptions.retrieve(subscriptionId, { stripe_account: stripeAccountId })
 
-  await Promise.all([
-    saveStripeSubscriptionInDdb(userId, customerId, subscriptionId, planId, subscription.status, isProduction),
-    saveDefaultPaymetMethod(subscription, stripeAccountId)
-  ])
+  await saveDefaultPaymetMethod(subscription, stripeAccountId)
 
   logger.child(logChildObject).info('Successfully fulfilled connected account subscription payment')
 }
 
-const _handleUpdateSubscription = async (logChildObject, subscription, previousAttributes) => {
+const _updateSubscriptionInDdb = async (userId, isProduction, customerId, subscriptionId, subscriptionPlanId, status, stripeEventTimestamp, cancelAt) => {
+  const updateUserParams = await _buildStripeSubscriptionDdbParams(userId, isProduction, customerId, subscriptionId, subscriptionPlanId, status, stripeEventTimestamp)
+
+  updateUserParams.ExpressionAttributeNames['#cancelAt'] = (isProduction ? 'prod' : 'test') + '-cancel-subscription-at'
+
+  if (!cancelAt) {
+    updateUserParams.UpdateExpression += ' REMOVE #cancelAt'
+  } else {
+    updateUserParams.UpdateExpression += ', #cancelAt = :cancelAt'
+    updateUserParams.ExpressionAttributeValues[':cancelAt'] = stripe.convertStripeTimestamptToIsoString(cancelAt)
+  }
+
+  const ddbClient = connection.ddbClient()
+  await ddbClient.update(updateUserParams).promise()
+}
+
+const _handleUpdateSubscription = async (logChildObject, subscription, stripeEventTimestamp) => {
   const { userId, adminId, appId } = subscription.metadata
   const isProduction = subscription.livemode
   const subscriptionId = subscription.id
   const subscriptionPlanId = subscription.items.data[0].plan.id
   const customerId = subscription.customer
   const status = subscription.status
-  const cancelAt = subscription.cancel_at && new Date(subscription.cancel_at * 1000).toISOString()
 
-  logChildObject = { ...logChildObject, userId, adminId, appId, isProduction, subscriptionId, subscriptionPlanId, customerId, subscription, previousAttributes }
+  logChildObject = { ...logChildObject, userId, adminId, appId, isProduction, subscriptionId, subscriptionPlanId, customerId, stripeEventTimestamp }
   logger.child(logChildObject).info('Updating connected account subscription')
 
-  const user = await getUserByUserId(userId)
-  const updateUserParams = conditionCheckUserExists(user['username'], user['app-id'], userId)
-
-  updateUserParams.ConditionExpression += `
-    and #stripeCustomerId = :stripeCustomerId
-    and #stripeSubscriptionId = :stripeSubscriptionId
-    and #stripePlanId = :stripePlanId
-    ${cancelAt ? 'and #cancelAt = :cancelAt' : ''}
-  `
-
-  updateUserParams.UpdateExpression = 'SET #stripeSubscriptionStatus = :stripeSubscriptionStatus'
-  if (!cancelAt) updateUserParams.UpdateExpression += ' REMOVE #cancelAt'
-
-  _setStripeAttributes(updateUserParams, isProduction, customerId, subscriptionId, subscriptionPlanId, status, cancelAt)
-
   try {
-    const ddbClient = connection.ddbClient()
-    await ddbClient.update(updateUserParams).promise()
+    await _updateSubscriptionInDdb(userId, isProduction, customerId, subscriptionId, subscriptionPlanId, status, stripeEventTimestamp, subscription.cancel_at)
 
     logger.child(logChildObject).info('Successfully updated connected account subscription')
   } catch (e) {
@@ -1927,6 +1940,7 @@ exports.handleStripeConnectWebhook = async function (req, res) {
       req.headers['stripe-signature'],
       stripe.getConnectWebhookSecret()
     )
+    logChildObject.event = event
 
     const stripeAccountId = event.account
     logChildObject.stripeAccountId = stripeAccountId
@@ -1940,10 +1954,16 @@ exports.handleStripeConnectWebhook = async function (req, res) {
         await stripe.updateStripePaymentMethod(logChildObject, session, stripeAccountId)
       }
 
+    } else if (event.type === 'customer.subscription.created') {
+      const subscription = event.data.object
+      const stripeEventTimestamp = event.created
+
+      await _handleSaveSubscription(logChildObject, subscription, stripeEventTimestamp)
     } else if (event.type === 'customer.subscription.updated') {
       const subscription = event.data.object
-      const previousAttributes = event.data.previous_attributes
-      await _handleUpdateSubscription(logChildObject, subscription, previousAttributes, stripeAccountId)
+      const stripeEventTimestamp = event.created
+
+      await _handleUpdateSubscription(logChildObject, subscription, stripeEventTimestamp)
     }
 
     res.json({ received: true })
@@ -2017,7 +2037,7 @@ const _cancelStripeSubscriptionInDdb = async (userId, isProduction, cancel_at) =
   const user = await getUserByUserId(userId)
   const updateUserParams = conditionCheckUserExists(user['username'], user['app-id'], userId)
 
-  const cancelAt = new Date(cancel_at * 1000).toISOString()
+  const cancelAt = stripe.convertStripeTimestamptToIsoString(cancel_at)
 
   updateUserParams.UpdateExpression = 'SET #cancelAt = :cancelAt'
   updateUserParams.ExpressionAttributeNames['#cancelAt'] = (isProduction ? 'prod' : 'test') + '-cancel-subscription-at'

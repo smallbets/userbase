@@ -69,10 +69,13 @@ const updateStripePaymentMethod = async function (logChildObject, session, strip
   }
 }
 
+const convertStripeTimestamptToIsoString = timestamp => new Date(timestamp * 1000).toISOString()
+
 export default {
   getClient,
   getWebhookSecret,
   getConnectWebhookSecret,
   getStripeSaasSubscriptionPlanId,
   updateStripePaymentMethod,
+  convertStripeTimestamptToIsoString,
 }

@@ -213,7 +213,7 @@ const _buildUserResult = ({ username, userId, authToken, email, profile, protect
 
     if (paymentsMode) result.paymentsMode = paymentsMode
     if (subscriptionStatus) result.subscriptionStatus = subscriptionStatus
-    if (cancelSubscriptionAt) result.cancelSubscriptionAtPeriodEnd = cancelSubscriptionAt
+    if (cancelSubscriptionAt) result.cancelSubscriptionAt = cancelSubscriptionAt
   }
 
   return result

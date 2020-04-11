@@ -121,9 +121,11 @@ const cancelSubscription = async () => {
 
     try {
       const action = 'CancelSubscription'
-      const cancelAt = await ws.request(action)
+      const cancelResponse = await ws.request(action)
+      const cancelSubscriptionAt = cancelResponse.data
 
-      ws.stripeData.cancelAt = cancelAt
+      ws.stripeData.cancelAt = cancelSubscriptionAt
+      return { cancelSubscriptionAt }
     } catch (e) {
       _parseGenericErrors(e)
 
