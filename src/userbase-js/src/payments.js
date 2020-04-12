@@ -47,7 +47,9 @@ const _validatePurchaseOrUpdate = (params) => {
 
 const purchaseSubscription = async (params) => {
   try {
-    if (ws.stripeData.subscriptionStatus) throw new errors.SubscriptionPlanAlreadyPurchased
+    if (ws.stripeData.subscriptionStatus && ws.stripeData.subscriptionStatus !== 'canceled') {
+      throw new errors.SubscriptionPlanAlreadyPurchased
+    }
     _validatePurchaseOrUpdate(params)
 
     try {
@@ -113,6 +115,8 @@ const _validateModifySubscriptionConditions = () => {
 
   if (!ws.stripeData.stripeAccountId) throw new errors.StripeAccountNotConnected
   if (ws.stripeData.paymentsMode === 'disabled') throw new errors.PaymentsDisabled
+
+  if (ws.stripeData.subscriptionStatus === 'canceled') throw new errors.SubscriptionAlreadyCanceled
 }
 
 const cancelSubscription = async () => {
@@ -142,6 +146,7 @@ const cancelSubscription = async () => {
       case 'SubscriptionPlanNotSet':
       case 'StripeAccountNotConnected':
       case 'PaymentsDisabled':
+      case 'SubscriptionAlreadyCanceled':
       case 'UserNotSignedIn':
       case 'TooManyRequests':
       case 'ServiceUnavailable':
@@ -178,6 +183,7 @@ const resumeSubscription = async () => {
       case 'SubscriptionPlanNotSet':
       case 'StripeAccountNotConnected':
       case 'PaymentsDisabled':
+      case 'SubscriptionAlreadyCanceled':
       case 'UserNotSignedIn':
       case 'TooManyRequests':
       case 'ServiceUnavailable':

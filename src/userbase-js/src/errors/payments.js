@@ -146,6 +146,16 @@ class SubscriptionNotPurchased extends Error {
   }
 }
 
+class SubscriptionAlreadyCanceled extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'SubscriptionAlreadyCanceled'
+    this.message = 'Subscription already canceled. User must purchase a new subscription.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
 export default {
   SuccessUrlMissing,
   SuccessUrlMustBeString,
@@ -162,4 +172,5 @@ export default {
   SubscribedToIncorrectPlan,
   SubscriptionInactive,
   SubscriptionNotPurchased,
+  SubscriptionAlreadyCanceled,
 }
