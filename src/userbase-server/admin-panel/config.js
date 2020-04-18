@@ -22,3 +22,5 @@ export const getStripeState = () => {
   }
   return state
 }
+
+export const getStripeCancelWarning = (usePlural) => `\n\nWarning! If you have any customers subscribed to your ${usePlural ? 'apps' : 'app'}, you will need to cancel their subscriptions manually in the Stripe dashboard.`

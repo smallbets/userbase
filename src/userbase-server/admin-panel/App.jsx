@@ -247,10 +247,7 @@ export default class App extends Component {
                 case 'app-users-table':
                   return <AppUsersTable
                     appName={decodeURIComponent(window.location.hash.substring(5))}
-                    connectedToStripe={admin.connectedToStripe}
-                    paymentStatus={admin.paymentStatus}
-                    cancelSaasSubscriptionAt={admin.cancelSaasSubscriptionAt}
-                    paymentsAddOnSubscriptionStatus={admin.paymentsAddOnSubscriptionStatus}
+                    admin={admin}
                     key={window.location.hash} // re-renders on hash change
                   />
 

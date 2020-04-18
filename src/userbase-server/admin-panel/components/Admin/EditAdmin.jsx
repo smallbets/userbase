@@ -5,7 +5,7 @@ import { faTrashAlt } from '@fortawesome/free-regular-svg-icons'
 import adminLogic from './logic'
 import UnknownError from './UnknownError'
 import { formatDate } from '../../utils'
-import { STRIPE_CLIENT_ID, getStripeState } from '../../config'
+import { STRIPE_CLIENT_ID, getStripeState, getStripeCancelWarning } from '../../config'
 
 export default class EditAdmin extends Component {
   constructor(props) {
@@ -304,11 +304,11 @@ export default class EditAdmin extends Component {
     this.handleClearErrors()
 
     try {
-      if (window.confirm('Are you sure you want to cancel your subscription?')) {
+      if (window.confirm('Are you sure you want to cancel your subscription? ' + getStripeCancelWarning(true))) {
         this.setState({ loadingCancel: true })
-        const cancelSaasSubscriptionAt = await adminLogic.cancelSaasSubscription()
+        const { cancelSaasSubscriptionAt, cancelPaymentsAddOnSubscriptionAt } = await adminLogic.cancelSaasSubscription()
 
-        this.props.handleUpdateAccount({ cancelSaasSubscriptionAt })
+        this.props.handleUpdateAccount({ cancelSaasSubscriptionAt, cancelPaymentsAddOnSubscriptionAt })
 
         if (this._isMounted) this.setState({ loadingCancel: false })
       }
@@ -360,7 +360,7 @@ export default class EditAdmin extends Component {
     this.handleClearErrors()
 
     try {
-      if (window.confirm('Are you sure you want to cancel your add-on subscription?')) {
+      if (window.confirm('Are you sure you want to cancel your add-on subscription? ' + getStripeCancelWarning(true))) {
         this.setState({ loadingCancelAddOn: true })
 
         const cancelPaymentsAddOnSubscriptionAt = await adminLogic.cancelPaymentsAddOnSubscription()
@@ -395,7 +395,7 @@ export default class EditAdmin extends Component {
     event.preventDefault()
 
     try {
-      if (window.confirm('Are you sure you want to disconnect your Stripe account?')) {
+      if (window.confirm('Are you sure you want to disconnect your Stripe account? ' + getStripeCancelWarning(true))) {
         this.handleClearErrors({ loadingDisconnectStripeAccount: true })
 
         await adminLogic.disconnectStripeAccount()

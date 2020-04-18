@@ -204,6 +204,7 @@ async function start(express, app, userbaseConfig = {}) {
                     response = await db.openDatabase(
                       res.locals.user,
                       res.locals.app,
+                      res.locals.admin,
                       connectionId,
                       params.dbNameHash,
                       params.newDatabaseParams,

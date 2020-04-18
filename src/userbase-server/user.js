@@ -1757,7 +1757,7 @@ exports.createSubscriptionPaymentSession = async function (logChildObject, app, 
     logger.child(logChildObject).info('Creating payment session for user')
 
     let subscriptionPlanId, userPlanId, subscriptionStatus, customerId
-    if (app['payments-mode'] === 'prod') {
+    if (app['payments-mode'] === 'prod' && adminController.prodPaymentsEnabled(admin)) {
       subscriptionPlanId = app['prod-subscription-plan-id']
       userPlanId = user['prod-subscription-plan-id']
       subscriptionStatus = user['prod-subscription-status']
@@ -1775,6 +1775,7 @@ exports.createSubscriptionPaymentSession = async function (logChildObject, app, 
     }
 
     logChildObject.subscriptionPlanId = subscriptionPlanId
+    logChildObject.customerId = customerId
 
     if (!subscriptionPlanId) throw {
       status: statusCodes['Forbidden'],
@@ -1945,8 +1946,12 @@ const _throwPaymentErrors = (subscriptionPlanNotSet, subscriptionNotFound, subsc
   }
 }
 
-exports.validatePayment = function (user, app) {
+exports.validatePayment = function (user, app, admin) {
   if (app['payments-mode'] !== 'prod' && app['payments-mode'] !== 'test') return
+
+  // payments mode set to prod but subscriptions not paid for gets same functional treatment as disabled payments mode
+  if (app['payments-mode'] === 'prod' && !adminController.prodPaymentsEnabled(admin)) return
+
   const prefix = app['payments-mode'] === 'prod' ? 'prod' : 'test'
 
   const subscriptionPlanNotSet = !app[prefix + '-subscription-plan-id']

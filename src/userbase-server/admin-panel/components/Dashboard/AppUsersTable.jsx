@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import { string, bool } from 'prop-types'
+import { string, object } from 'prop-types'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faTrashAlt } from '@fortawesome/free-regular-svg-icons'
 import dashboardLogic from './logic'
@@ -9,6 +9,14 @@ import { ProfileTable } from './ProfileTable'
 import { STRIPE_CLIENT_ID, getStripeState } from '../../config'
 
 const MAX_PLAN_ID_LEN = 19
+
+// admin must have an active Userbase subscripion & active payments add-on subscription to enable prod payments
+const prodPaymentsAllowed = ({ paymentStatus, cancelSaasSubscriptionAt, paymentsAddOnSubscriptionStatus, cancelPaymentsAddOnSubscriptionAt }) => {
+  return (
+    paymentStatus === 'active' && !cancelSaasSubscriptionAt &&
+    paymentsAddOnSubscriptionStatus === 'active' && !cancelPaymentsAddOnSubscriptionAt
+  )
+}
 
 export default class AppUsersTable extends Component {
   constructor(props) {
@@ -57,7 +65,7 @@ export default class AppUsersTable extends Component {
   async componentDidMount() {
     this._isMounted = true
 
-    const { appName } = this.props
+    const { appName, admin } = this.props
     const { paymentsState } = this.state
 
     try {
@@ -78,7 +86,12 @@ export default class AppUsersTable extends Component {
         else activeUsers.push(appUser)
       }
 
-      const updatedPaymentsState = { ...paymentsState, paymentsMode, testSubscriptionPlanId, prodSubscriptionPlanId }
+      const updatedPaymentsState = {
+        ...paymentsState, testSubscriptionPlanId, prodSubscriptionPlanId,
+        paymentsMode: (paymentsMode === 'prod' && !prodPaymentsAllowed(admin))
+          ? 'disabled' // app's payments mode considered functionally disabled if set to prod but cannot take prod payments
+          : paymentsMode
+      }
 
       if (this._isMounted) this.setState({ appId, activeUsers, deletedUsers, loading: false, paymentsState: updatedPaymentsState })
     } catch (e) {
@@ -96,7 +109,7 @@ export default class AppUsersTable extends Component {
     if (this._isMounted) this.setState({ loading: false })
 
     try {
-      if (window.confirm(`Are you sure you want to delete app '${appName}'?`)) {
+      if (window.confirm(`Are you sure you want to delete app '${appName}'? `)) {
         await dashboardLogic.deleteApp(appName)
         window.location.hash = '' // eslint-disable-line require-atomic-updates
       }
@@ -547,7 +560,8 @@ export default class AppUsersTable extends Component {
   }
 
   render() {
-    const { appName, paymentStatus, cancelSaasSubscriptionAt, paymentsAddOnSubscriptionStatus, connectedToStripe } = this.props
+    const { appName, admin } = this.props
+    const { paymentStatus, cancelSaasSubscriptionAt, connectedToStripe } = admin
     const {
       loading,
       activeUsers,
@@ -822,9 +836,9 @@ export default class AppUsersTable extends Component {
           <p className='text-left font-normal mb-4'>Collect payments on your app with Stripe.</p>
 
           {
-            paymentsAddOnSubscriptionStatus === 'active' ? <div />
+            prodPaymentsAllowed(admin) ? <div />
               : <div className='text-left mb-6 text-red-600 font-normal'>
-                Your account is limited to test payments. <a href="#edit-account">Remove this limit</a> with {paymentStatus !== 'active' || cancelSaasSubscriptionAt ? 'a Userbase subscription and' : ''} the payments portal add-on.
+                Your account is limited to test payments. <a href="#edit-account">Remove this limit</a> with {(paymentStatus !== 'active' || cancelSaasSubscriptionAt) ? 'a Userbase subscription and' : ''} the payments portal add-on.
               </div>
           }
 
@@ -855,19 +869,19 @@ export default class AppUsersTable extends Component {
 
                 {(paymentsMode === 'test' || paymentsMode === 'prod') &&
                   <label className='flex items-center mb-4 fit-content'>
-                    <div className={`relative ${paymentsAddOnSubscriptionStatus === 'active' ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
+                    <div className={`relative ${prodPaymentsAllowed(admin) ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
                       <input
                         type='checkbox'
                         className='hidden'
                         checked={paymentsMode === 'prod'}
                         onChange={(e) => paymentsMode === 'prod' ? this.handleEnableTestPayments(e, loadingPaymentsMode, true) : this.handleEnableProdPayments(e)}
-                        disabled={paymentsAddOnSubscriptionStatus !== 'active' || loadingPlanMode}
+                        disabled={!prodPaymentsAllowed(admin) || loadingPlanMode}
                       />
                       <div className='w-10 h-4 bg-gray-400 rounded-full shadow-inner' />
                       <div className='toggle-dot absolute w-6 h-6 bg-white rounded-full shadow' />
                     </div>
 
-                    <div className={`ml-3 font-medium ${paymentsAddOnSubscriptionStatus === ' active' ? 'cursor-pointer text-gray-500 hover:text-gray-600' : 'cursor-not-allowed text-gray-400'}`}>
+                    <div className={`ml-3 font-medium ${prodPaymentsAllowed(admin) ? 'cursor-pointer text-gray-500 hover:text-gray-600' : 'cursor-not-allowed text-gray-400'}`}>
                       {paymentsMode === 'test' ? 'Use Production Plan' : 'Using Prod Plan'}
                     </div>
 
@@ -980,7 +994,7 @@ export default class AppUsersTable extends Component {
 
                       <div className='table-cell p-2 w-32 sm:w-40'>
                         <input
-                          className={`font-light text-xs sm:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none ${paymentsAddOnSubscriptionStatus !== 'active' ? 'cursor-not-allowed' : ''}`}
+                          className={`font-light text-xs sm:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none ${prodPaymentsAllowed(admin) ? '' : 'cursor-not-allowed'}`}
                           type='text'
                           name='newProdSubscriptionPlanId'
                           autoComplete='off'
@@ -989,7 +1003,7 @@ export default class AppUsersTable extends Component {
                           spellCheck={false}
                           onChange={this.handlePaymentsPlanInputChange}
                           placeholder='plan_'
-                          disabled={paymentsAddOnSubscriptionStatus !== 'active'}
+                          disabled={!prodPaymentsAllowed(admin)}
                         />
                       </div>
 
@@ -1055,8 +1069,5 @@ export default class AppUsersTable extends Component {
 
 AppUsersTable.propTypes = {
   appName: string,
-  paymentStatus: string,
-  cancelSaasSubscriptionAt: string,
-  paymentsAddOnSubscriptionStatus: string,
-  connectedToStripe: bool
+  admin: object,
 }

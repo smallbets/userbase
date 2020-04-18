@@ -217,8 +217,8 @@ const cancelSaasSubscription = async () => {
       url: `/${VERSION}/admin/stripe/cancel-saas-subscription`,
       timeout: TEN_SECONDS_MS
     })
-    const cancelSaasSubscriptionAt = cancelResponse.data
-    return cancelSaasSubscriptionAt
+    const { cancelSaasSubscriptionAt, cancelPaymentsAddOnSubscriptionAt } = cancelResponse.data
+    return { cancelSaasSubscriptionAt, cancelPaymentsAddOnSubscriptionAt }
   } catch (e) {
     errorHandler(e)
   }

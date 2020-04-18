@@ -109,14 +109,14 @@ const getDatabase = async function (userId, dbNameHash) {
   return { ...userDb, ...database }
 }
 
-exports.openDatabase = async function (user, app, connectionId, dbNameHash, newDatabaseParams, reopenAtSeqNo) {
+exports.openDatabase = async function (user, app, admin, connectionId, dbNameHash, newDatabaseParams, reopenAtSeqNo) {
   if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
   if (reopenAtSeqNo && typeof reopenAtSeqNo !== 'number') return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Reopen at seq no must be number')
   const userId = user['user-id']
 
   try {
     try {
-      userController.validatePayment(user, app)
+      userController.validatePayment(user, app, admin)
     } catch (e) {
       return responseBuilder.errorResponse(e.status, e.error)
     }
