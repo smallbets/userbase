@@ -16,6 +16,7 @@ import connections from './ws'
 import statusCodes from './statusCodes'
 import responseBuilder from './responseBuilder'
 import { trimReq } from './utils'
+import stripe from './stripe'
 
 const adminPanelDir = '/admin-panel/dist'
 
@@ -455,8 +456,7 @@ async function start(express, app, userbaseConfig = {}) {
 
     v1Admin.use(cookieParser())
 
-    v1Admin.post('/stripe/webhook', bodyParser.raw({ type: 'application/json' }), admin.handleStripeWebhook)
-    v1Admin.post('/stripe/connect/webhook', bodyParser.raw({ type: 'application/json' }), userController.handleStripeConnectWebhook)
+    v1Admin.post('/stripe/webhook', bodyParser.raw({ type: 'application/json' }), stripe.handleWebhook)
 
     // must come after stripe/webhook to ensure parsing done correctly
     v1Admin.use(bodyParser.json())
@@ -464,27 +464,30 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.post('/create-admin', admin.createAdminController)
     v1Admin.post('/sign-in', admin.signInAdmin)
     v1Admin.post('/sign-out', admin.authenticateAdmin, admin.signOutAdmin)
-    v1Admin.post('/create-app', admin.authenticateAdmin, admin.getSaasSubscriptionController, appController.createAppController)
+    v1Admin.post('/create-app', admin.authenticateAdmin, appController.createAppController)
     v1Admin.post('/list-apps', admin.authenticateAdmin, appController.listApps)
     v1Admin.post('/list-app-users', admin.authenticateAdmin, appController.listAppUsers)
-    v1Admin.post('/delete-app', admin.authenticateAdmin, admin.getSaasSubscriptionController, appController.deleteApp)
-    v1Admin.post('/permanent-delete-app', admin.authenticateAdmin, admin.getSaasSubscriptionController, appController.permanentDeleteAppController)
+    v1Admin.post('/delete-app', admin.authenticateAdmin, appController.deleteApp)
+    v1Admin.post('/permanent-delete-app', admin.authenticateAdmin, appController.permanentDeleteAppController)
     v1Admin.post('/delete-user', admin.authenticateAdmin, admin.deleteUser)
     v1Admin.post('/permanent-delete-user', admin.authenticateAdmin, admin.permanentDeleteUser)
-    v1Admin.post('/delete-admin', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.deleteAdmin)
+    v1Admin.post('/delete-admin', admin.authenticateAdmin, admin.deleteAdmin)
     v1Admin.post('/update-admin', admin.authenticateAdmin, admin.updateAdmin)
     v1Admin.post('/change-password', admin.authenticateAdmin, admin.changePassword)
     v1Admin.post('/forgot-password', admin.forgotPassword)
     v1Admin.get('/access-tokens', admin.authenticateAdmin, admin.getAccessTokens)
     v1Admin.post('/access-token', admin.authenticateAdmin, admin.generateAccessToken)
     v1Admin.delete('/access-token', admin.authenticateAdmin, admin.deleteAccessToken)
-    v1Admin.get('/account', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.getAdminAccount)
+    v1Admin.get('/account', admin.authenticateAdmin, admin.getAdminAccount)
 
     // endpoints for admin to manage their own account's payments to Userbase
     v1Admin.post('/stripe/create-saas-payment-session', admin.authenticateAdmin, admin.createSaasPaymentSession)
-    v1Admin.post('/stripe/update-saas-payment-session', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.updateSaasSubscriptionPaymentSession)
-    v1Admin.post('/stripe/cancel-saas-subscription', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.cancelSaasSubscription)
-    v1Admin.post('/stripe/resume-saas-subscription', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.resumeSaasSubscription)
+    v1Admin.post('/stripe/update-saas-payment-session', admin.authenticateAdmin, admin.updateSubscriptionPaymentSession)
+    v1Admin.post('/stripe/cancel-saas-subscription', admin.authenticateAdmin, admin.cancelSaasSubscription)
+    v1Admin.post('/stripe/resume-saas-subscription', admin.authenticateAdmin, admin.resumeSaasSubscription)
+    v1Admin.post('/stripe/payments-add-on', admin.authenticateAdmin, admin.subscribeToPaymentsAddOn)
+    v1Admin.post('/stripe/cancel-payments-add-on', admin.authenticateAdmin, admin.cancelPaymentsAddOnSubscription)
+    v1Admin.post('/stripe/resume-payments-add-on', admin.authenticateAdmin, admin.resumePaymentsAddOnSubscription)
 
     // endpoints for admin to use payment portal to accept payments from their users
     v1Admin.post('/stripe/connection/:authorizationCode', admin.authenticateAdmin, admin.completeStripeConnection)

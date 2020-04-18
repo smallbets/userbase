@@ -28,6 +28,9 @@ export default class EditAdmin extends Component {
       loadingCancel: false,
       loadingUpdatePaymentMethod: false,
       loadingResumeSubscription: false,
+      loadingBuyAddOn: false,
+      loadingCancelAddOn: false,
+      loadingResumeAddOn: false,
       loadingDisconnectStripeAccount: false,
       errorLoading: '',
       errorUpdatingAdmin: '',
@@ -39,6 +42,9 @@ export default class EditAdmin extends Component {
       errorCancelling: false,
       errorUpdatingPaymentMethod: false,
       errorResumingSubscription: false,
+      errorBuyingAddOn: false,
+      errorCancellingAddOn: false,
+      errorResumingAddOn: false,
       errorDisconnectingStripeAccount: false,
     }
 
@@ -51,6 +57,9 @@ export default class EditAdmin extends Component {
     this.handleCancelSubscription = this.handleCancelSubscription.bind(this)
     this.handleResumeSubscription = this.handleResumeSubscription.bind(this)
     this.handleCheckout = this.handleCheckout.bind(this)
+    this.handleBuyAddOn = this.handleBuyAddOn.bind(this)
+    this.handleCancelAddOn = this.handleCancelAddOn.bind(this)
+    this.handleResumeAddOn = this.handleResumeAddOn.bind(this)
     this.handleUpdatePaymentMethod = this.handleUpdatePaymentMethod.bind(this)
     this.handleDisconnectStripeAccount = this.handleDisconnectStripeAccount.bind(this)
     this.handleClearErrors = this.handleClearErrors.bind(this)
@@ -91,6 +100,9 @@ export default class EditAdmin extends Component {
       || this.state.errorCancelling
       || this.state.errorUpdatingPaymentMethod
       || this.state.errorResumingSubscription
+      || this.state.errorBuyingAddOn
+      || this.state.errorCancellingAddOn
+      || this.state.errorResumingAddOn
       || this.state.errorGeneratingAccessToken
       || this.state.errorDeletingAccessToken
       || this.state.errorDisconnectingStripeAccount
@@ -104,6 +116,9 @@ export default class EditAdmin extends Component {
         errorCancelling: false,
         errorUpdatingPaymentMethod: false,
         errorResumingSubscription: false,
+        errorBuyingAddOn: false,
+        errorCancellingAddOn: false,
+        errorResumingAddOn: false,
         errorGeneratingAccessToken: false,
         errorDeletingAccessToken: false,
         errorDisconnectingStripeAccount: false,
@@ -291,9 +306,9 @@ export default class EditAdmin extends Component {
     try {
       if (window.confirm('Are you sure you want to cancel your subscription?')) {
         this.setState({ loadingCancel: true })
-        const paymentStatus = await adminLogic.cancelSaasSubscription()
+        const cancelSaasSubscriptionAt = await adminLogic.cancelSaasSubscription()
 
-        this.props.handleUpdateAccount({ paymentStatus })
+        this.props.handleUpdateAccount({ cancelSaasSubscriptionAt })
 
         if (this._isMounted) this.setState({ loadingCancel: false })
       }
@@ -309,15 +324,72 @@ export default class EditAdmin extends Component {
       this.handleClearErrors({ loadingResumeSubscription: true })
 
       await adminLogic.resumeSaasSubscription()
-      const { paymentStatus } = await adminLogic.getAdminAccount()
 
-      this.props.handleUpdateAccount({ paymentStatus })
+      this.props.handleUpdateAccount({ cancelSaasSubscriptionAt: undefined })
 
       if (this._isMounted) this.setState({ loadingResumeSubscription: false })
     } catch (e) {
       if (this._isMounted) this.setState({ loadingResumeSubscription: false, errorResumingSubscription: true })
     }
   }
+
+  async handleBuyAddOn(event) {
+    event.preventDefault()
+
+    this.handleClearErrors({ loadingBuyAddOn: true })
+
+    try {
+      const paymentsAddOnSubscriptionStatus = await adminLogic.buyAddOn()
+
+      this.props.handleUpdateAccount({ paymentsAddOnSubscriptionStatus })
+      if (paymentsAddOnSubscriptionStatus === 'incomplete') {
+        window.alert('Please update your payment method!')
+      }
+
+      if (this._isMounted) this.setState({ loadingBuyAddOn: false })
+    } catch (e) {
+      if (this._isMounted) this.setState({ loadingBuyAddOn: false, errorBuyingAddOn: true })
+    }
+  }
+
+  async handleCancelAddOn(event) {
+    event.preventDefault()
+
+    if (this.state.loadingCancelAddOn) return
+
+    this.handleClearErrors()
+
+    try {
+      if (window.confirm('Are you sure you want to cancel your add-on subscription?')) {
+        this.setState({ loadingCancelAddOn: true })
+
+        const cancelPaymentsAddOnSubscriptionAt = await adminLogic.cancelPaymentsAddOnSubscription()
+
+        this.props.handleUpdateAccount({ cancelPaymentsAddOnSubscriptionAt })
+
+        if (this._isMounted) this.setState({ loadingCancelAddOn: false })
+      }
+    } catch (e) {
+      if (this._isMounted) this.setState({ loadingCancelAddOn: false, errorCancellingAddOn: true })
+    }
+  }
+
+  async handleResumeAddOn(event) {
+    event.preventDefault()
+
+    try {
+      this.handleClearErrors({ loadingResumeAddOn: true })
+
+      await adminLogic.resumePaymentsAddOnSubscription()
+
+      this.props.handleUpdateAccount({ cancelPaymentsAddOnSubscriptionAt: undefined })
+
+      if (this._isMounted) this.setState({ loadingResumeAddOn: false })
+    } catch (e) {
+      if (this._isMounted) this.setState({ loadingResumeAddOn: false, errorResumingAddOn: true })
+    }
+  }
+
 
   async handleDisconnectStripeAccount(event) {
     event.preventDefault()
@@ -339,7 +411,7 @@ export default class EditAdmin extends Component {
 
   render() {
     const { admin } = this.props
-    const { paymentStatus, connectedToStripe } = admin
+    const { paymentStatus, cancelSaasSubscriptionAt, connectedToStripe, paymentsAddOnSubscriptionStatus, cancelPaymentsAddOnSubscriptionAt } = admin
     const {
       fullName,
       email,
@@ -353,6 +425,9 @@ export default class EditAdmin extends Component {
       loadingChangePassword,
       loadingDeleteAdmin,
       loadingCheckout,
+      loadingBuyAddOn,
+      loadingCancelAddOn,
+      loadingResumeAddOn,
       loadingGenerateAccessToken,
       loadingCancel,
       loadingUpdatePaymentMethod,
@@ -362,6 +437,9 @@ export default class EditAdmin extends Component {
       errorChangingPassword,
       errorDeletingAdmin,
       errorCheckingOut,
+      errorBuyingAddOn,
+      errorCancellingAddOn,
+      errorResumingAddOn,
       errorGeneratingAccessToken,
       errorDeletingAccessToken,
       errorCancelling,
@@ -383,7 +461,7 @@ export default class EditAdmin extends Component {
           : errorLoading
             ? <UnknownError noMarginTop />
             : <div>
-              {paymentStatus === 'active' || paymentStatus === 'past_due'
+              {(paymentStatus === 'active' || paymentStatus === 'past_due') && !cancelSaasSubscriptionAt
                 ?
                 <div>
                   <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Userbase Subscription</div>
@@ -409,7 +487,7 @@ export default class EditAdmin extends Component {
                     <p>Remove this limit with a Userbase subscription for only $49 per year.</p>
                   </div>
 
-                  {paymentStatus === 'cancel_at_period_end'
+                  {cancelSaasSubscriptionAt
                     ? <input
                       className='btn w-56 text-center'
                       type='button'
@@ -436,16 +514,48 @@ export default class EditAdmin extends Component {
 
               <hr className='border border-t-0 border-gray-400 mt-8 mb-4' />
 
-              {!connectedToStripe &&
+              {(!connectedToStripe || !paymentsAddOnSubscriptionStatus || cancelPaymentsAddOnSubscriptionAt) &&
                 <div>
-                  <div className='flex-0 text-lg sm:text-xl text-left mb-1'>Payments Portal</div>
-                  <p className='text-left font-normal mb-4'>Collect payments on your apps with Stripe.</p>
+                  <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Payments Portal Add-On</div>
+                  <div className='font-normal text-left mb-4'>
+                    <p>Collect payments on your apps with Stripe for an additional $149 per year.</p>
+                    {(paymentStatus !== 'active' || cancelSaasSubscriptionAt) && <p>You must have an active Userbase subscription.</p>}
+                  </div>
 
-                  <a
-                    href={`https://connect.stripe.com/oauth/authorize?response_type=code&client_id=${STRIPE_CLIENT_ID}&scope=read_write&state=${getStripeState()}`}
-                    className='stripe-connect light-blue'>
-                    <span>Connect with Stripe</span>
-                  </a>
+                  {
+                    cancelPaymentsAddOnSubscriptionAt
+                      ?
+                      <input
+                        className='btn w-56 text-center'
+                        type='button'
+                        role='link'
+                        value={loadingResumeAddOn ? 'Resuming Add-On...' : 'Resume Add-On'}
+                        disabled={loadingResumeAddOn || paymentStatus !== 'active' || cancelSaasSubscriptionAt}
+                        onClick={this.handleResumeAddOn}
+                      />
+                      :
+                      <input
+                        className='btn w-56 text-center'
+                        type='button'
+                        role='link'
+                        disabled={loadingBuyAddOn || paymentStatus !== 'active' || cancelSaasSubscriptionAt}
+                        value={loadingBuyAddOn ? 'Loading...' : 'Buy Add-On'}
+                        onClick={this.handleBuyAddOn}
+                      />
+                  }
+
+                  {errorBuyingAddOn && <UnknownError action='buying the add-on' />}
+                  {errorResumingAddOn && <UnknownError action='resuming the add-on' />}
+
+                  {!connectedToStripe &&
+                    <div>
+                      <a
+                        href={`https://connect.stripe.com/oauth/authorize?response_type=code&client_id=${STRIPE_CLIENT_ID}&scope=read_write&state=${getStripeState()}`}
+                        className={`stripe-connect light-blue ${!paymentsAddOnSubscriptionStatus ? 'mt-6' : ''}`}>
+                        <span>Connect with Stripe</span>
+                      </a>
+                    </div>
+                  }
 
                   <hr className='border border-t-0 border-gray-400 mt-8 mb-4' />
                 </div>
@@ -687,7 +797,7 @@ export default class EditAdmin extends Component {
 
               <div className='flex-0 text-lg sm:text-xl text-left mb-4 text-red-600'>Danger Zone</div>
 
-              {(paymentStatus === 'active' || paymentStatus === 'past_due') &&
+              {(paymentStatus === 'active' || paymentStatus === 'past_due') && !cancelSaasSubscriptionAt &&
                 <div>
                   <div className='flex-0 text-base sm:text-lg text-left mb-1'>Cancel Subscription</div>
                   <p className='text-left font-normal'>By cancelling your subscription, your account will become limited to 3 users, and no new sign ups will succeed once that limit is reached.</p>
@@ -697,9 +807,32 @@ export default class EditAdmin extends Component {
                     type='button'
                     role='link'
                     value={loadingCancel ? 'Cancelling Subscription...' : 'Cancel Subscription'}
-                    disabled={loadingCancel || loadingUpdatePaymentMethod}
+                    disabled={loadingCancel}
                     onClick={this.handleCancelSubscription}
                   />
+
+                  {errorCancelling && <UnknownError action='cancelling your subscription' />}
+
+                  <br />
+                  <br />
+                </div>
+              }
+
+              {(paymentsAddOnSubscriptionStatus === 'active' || paymentsAddOnSubscriptionStatus === 'past_due') && !cancelPaymentsAddOnSubscriptionAt &&
+                <div>
+                  <div className='flex-0 text-base sm:text-lg text-left mb-1'>Cancel Payments Add-On</div>
+                  <p className='text-left font-normal'>By cancelling your payments add-on, you will no longer be able to accept new payments on your apps.</p>
+
+                  <input
+                    className='btn w-56'
+                    type='button'
+                    role='link'
+                    value={loadingCancelAddOn ? 'Cancelling Add-On...' : 'Cancel Add-On'}
+                    disabled={loadingCancelAddOn}
+                    onClick={this.handleCancelAddOn}
+                  />
+
+                  {errorCancellingAddOn && <UnknownError action='cancelling your payments add-on' />}
 
                   <br />
                   <br />
@@ -737,8 +870,6 @@ export default class EditAdmin extends Component {
                 disabled={loadingDeleteAdmin}
                 onClick={this.handleDeleteAccount}
               />
-
-              {errorCancelling && <UnknownError action='cancelling your subscription' />}
 
               {errorDeletingAdmin && (
                 errorDeletingAdmin === 'Unknown Error'

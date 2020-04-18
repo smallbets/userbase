@@ -547,7 +547,7 @@ export default class AppUsersTable extends Component {
   }
 
   render() {
-    const { appName, paymentStatus, connectedToStripe } = this.props
+    const { appName, paymentStatus, cancelSaasSubscriptionAt, paymentsAddOnSubscriptionStatus, connectedToStripe } = this.props
     const {
       loading,
       activeUsers,
@@ -588,7 +588,7 @@ export default class AppUsersTable extends Component {
               </span>
             </div>
             {
-              paymentStatus === 'active' ? <div />
+              paymentStatus === 'active' && !cancelSaasSubscriptionAt ? <div />
                 : <div className='text-left mb-4 text-red-600 font-normal'>
                   Your account is limited to 1 app and 3 users. <a href="#edit-account">Remove this limit</a> with a Userbase subscription.
                 </div>
@@ -821,6 +821,13 @@ export default class AppUsersTable extends Component {
           <div className='flex-0 text-lg sm:text-xl text-left mb-1'>Payments Portal</div>
           <p className='text-left font-normal mb-4'>Collect payments on your app with Stripe.</p>
 
+          {
+            paymentsAddOnSubscriptionStatus === 'active' ? <div />
+              : <div className='text-left mb-6 text-red-600 font-normal'>
+                Your account is limited to test payments. <a href="#edit-account">Remove this limit</a> with {paymentStatus !== 'active' || cancelSaasSubscriptionAt ? 'a Userbase subscription and' : ''} the payments portal add-on.
+              </div>
+          }
+
           {loading
             ? <div className='text-center'><div className='loader w-6 h-6 inline-block' /></div>
             : connectedToStripe
@@ -848,19 +855,19 @@ export default class AppUsersTable extends Component {
 
                 {(paymentsMode === 'test' || paymentsMode === 'prod') &&
                   <label className='flex items-center mb-4 fit-content'>
-                    <div className='relative cursor-pointer'>
+                    <div className={`relative ${paymentsAddOnSubscriptionStatus === 'active' ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
                       <input
                         type='checkbox'
                         className='hidden'
                         checked={paymentsMode === 'prod'}
                         onChange={(e) => paymentsMode === 'prod' ? this.handleEnableTestPayments(e, loadingPaymentsMode, true) : this.handleEnableProdPayments(e)}
-                        disabled={loadingPlanMode}
+                        disabled={paymentsAddOnSubscriptionStatus !== 'active' || loadingPlanMode}
                       />
                       <div className='w-10 h-4 bg-gray-400 rounded-full shadow-inner' />
                       <div className='toggle-dot absolute w-6 h-6 bg-white rounded-full shadow' />
                     </div>
 
-                    <div className='ml-3 text-gray-500 hover:text-gray-600 font-medium cursor-pointer'>
+                    <div className={`ml-3 font-medium ${paymentsAddOnSubscriptionStatus === ' active' ? 'cursor-pointer text-gray-500 hover:text-gray-600' : 'cursor-not-allowed text-gray-400'}`}>
                       {paymentsMode === 'test' ? 'Use Production Plan' : 'Using Prod Plan'}
                     </div>
 
@@ -883,27 +890,28 @@ export default class AppUsersTable extends Component {
                         </div>
                       </div>
 
-                      {
-                        loadingDeleteTestSubscriptionPlanId
-                          ? <div className='loader w-4 h-4 inline-block' />
-                          : <div
-                            className='font-normal text-sm cursor-pointer text-yellow-700'
-                            onClick={this.handleDeleteTestSubscriptionPlanId}
-                          >
-                            <FontAwesomeIcon icon={faTrashAlt} />
-                          </div>
-                      }
+                      <div className='ml-2 w-24 text-center'>
+                        {
+                          loadingDeleteTestSubscriptionPlanId
+                            ? <div className='loader w-4 h-4 inline-block' />
+                            : <div className='font-normal text-sm text-yellow-700'>
+                              <FontAwesomeIcon
+                                className='cursor-pointer'
+                                onClick={this.handleDeleteTestSubscriptionPlanId}
+                                icon={faTrashAlt}
+                              />
+                            </div>
+                        }
+                      </div>
 
                     </div>
 
                     : <div className='table-row'>
-
-                      <a
-                        href='https://dashboard.stripe.com/test/subscriptions/products/create'
-                        className='table-cell p-2 w-32 sm:w-40 text-right'
-                      >
-                        Test Plan ID
-                      </a>
+                      <div className='table-cell p-2 w-32 sm:w-40 text-right'>
+                        <a href='https://dashboard.stripe.com/test/subscriptions/products/create'>
+                          Test Plan ID
+                        </a>
+                      </div>
 
                       <div className='table-cell p-2 w-32 sm:w-40'>
                         <input
@@ -946,31 +954,33 @@ export default class AppUsersTable extends Component {
                         </div>
                       </div>
 
-                      {
-                        loadingDeleteProdSubscriptionPlanId
-                          ? <div className='loader w-4 h-4 inline-block' />
-                          : <div
-                            className='font-normal text-sm cursor-pointer text-yellow-700'
-                            onClick={this.handleDeleteProdSubscriptionPlanId}
-                          >
-                            <FontAwesomeIcon icon={faTrashAlt} />
-                          </div>
-                      }
+                      <div className='ml-2 w-24 text-center'>
+                        {
+                          loadingDeleteProdSubscriptionPlanId
+                            ? <div className='loader w-4 h-4 inline-block' />
+                            : <div className='font-normal text-sm cursor-pointer text-yellow-700'>
+                              <FontAwesomeIcon
+                                className='cursor-pointer'
+                                onClick={this.handleDeleteProdSubscriptionPlanId}
+                                icon={faTrashAlt}
+                              />
+                            </div>
+                        }
+                      </div>
 
                     </div>
 
                     : <div className='table-row'>
 
-                      <a
-                        href='https://dashboard.stripe.com/subscriptions/products/create'
-                        className='table-cell p-2 w-32 sm:w-40 text-right'
-                      >
-                        Prod Plan ID
-                      </a>
+                      <div className='table-cell p-2 w-32 sm:w-40 text-right'>
+                        <a href='https://dashboard.stripe.com/subscriptions/products/create'>
+                          Prod Plan ID
+                        </a>
+                      </div>
 
                       <div className='table-cell p-2 w-32 sm:w-40'>
                         <input
-                          className='font-light text-xs sm:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
+                          className={`font-light text-xs sm:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none ${paymentsAddOnSubscriptionStatus !== 'active' ? 'cursor-not-allowed' : ''}`}
                           type='text'
                           name='newProdSubscriptionPlanId'
                           autoComplete='off'
@@ -979,6 +989,7 @@ export default class AppUsersTable extends Component {
                           spellCheck={false}
                           onChange={this.handlePaymentsPlanInputChange}
                           placeholder='plan_'
+                          disabled={paymentsAddOnSubscriptionStatus !== 'active'}
                         />
                       </div>
 
@@ -1014,7 +1025,7 @@ export default class AppUsersTable extends Component {
             )}
           </div>
 
-          {paymentStatus === 'active'
+          {(paymentStatus === 'active' && !cancelSaasSubscriptionAt)
             ? <div>
               <hr className='border border-t-0 border-gray-400 mt-8 mb-6' />
 
@@ -1045,5 +1056,7 @@ export default class AppUsersTable extends Component {
 AppUsersTable.propTypes = {
   appName: string,
   paymentStatus: string,
+  cancelSaasSubscriptionAt: string,
+  paymentsAddOnSubscriptionStatus: string,
   connectedToStripe: bool
 }

@@ -36,7 +36,10 @@ export default class App extends Component {
       try {
         admin = await adminLogic.getAdminAccount()
 
-        if (admin.paymentStatus === 'past_due') {
+        if (
+          admin.paymentStatus === 'past_due' || admin.paymentStatus === 'incomplete' ||
+          admin.paymentsAddOnSubscriptionStatus === 'past_due' || admin.paymentsAddOnSubscriptionStatus === 'incomplete'
+        ) {
           window.alert('Please update your payment method!')
         }
 
@@ -236,13 +239,18 @@ export default class App extends Component {
                   />
 
                 case 'dashboard':
-                  return <Dashboard paymentStatus={admin.paymentStatus} />
+                  return <Dashboard
+                    paymentStatus={admin.paymentStatus}
+                    cancelSaasSubscriptionAt={admin.cancelSaasSubscriptionAt}
+                  />
 
                 case 'app-users-table':
                   return <AppUsersTable
                     appName={decodeURIComponent(window.location.hash.substring(5))}
                     connectedToStripe={admin.connectedToStripe}
                     paymentStatus={admin.paymentStatus}
+                    cancelSaasSubscriptionAt={admin.cancelSaasSubscriptionAt}
+                    paymentsAddOnSubscriptionStatus={admin.paymentsAddOnSubscriptionStatus}
                     key={window.location.hash} // re-renders on hash change
                   />
 

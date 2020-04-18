@@ -217,8 +217,8 @@ const cancelSaasSubscription = async () => {
       url: `/${VERSION}/admin/stripe/cancel-saas-subscription`,
       timeout: TEN_SECONDS_MS
     })
-    const paymentStatus = cancelResponse.data
-    return paymentStatus
+    const cancelSaasSubscriptionAt = cancelResponse.data
+    return cancelSaasSubscriptionAt
   } catch (e) {
     errorHandler(e)
   }
@@ -226,13 +226,49 @@ const cancelSaasSubscription = async () => {
 
 const resumeSaasSubscription = async () => {
   try {
-    const resumeResponse = await axios({
+    await axios({
       method: 'POST',
       url: `/${VERSION}/admin/stripe/resume-saas-subscription`,
       timeout: TEN_SECONDS_MS
     })
-    const paymentStatus = resumeResponse.data
-    return paymentStatus
+  } catch (e) {
+    errorHandler(e)
+  }
+}
+
+const buyAddOn = async () => {
+  try {
+    await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/stripe/payments-add-on`,
+      timeout: TEN_SECONDS_MS
+    })
+  } catch (e) {
+    errorHandler(e)
+  }
+}
+
+const cancelPaymentsAddOnSubscription = async () => {
+  try {
+    const cancelResponse = await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/stripe/cancel-payments-add-on`,
+      timeout: TEN_SECONDS_MS
+    })
+    const cancelPaymentsAddOnSubscriptionAt = cancelResponse.data
+    return cancelPaymentsAddOnSubscriptionAt
+  } catch (e) {
+    errorHandler(e)
+  }
+}
+
+const resumePaymentsAddOnSubscription = async () => {
+  try {
+    await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/stripe/resume-payments-add-on`,
+      timeout: TEN_SECONDS_MS
+    })
   } catch (e) {
     errorHandler(e)
   }
@@ -344,6 +380,9 @@ export default {
   updateSaasPaymentMethod,
   cancelSaasSubscription,
   resumeSaasSubscription,
+  buyAddOn,
+  cancelPaymentsAddOnSubscription,
+  resumePaymentsAddOnSubscription,
   getAdminAccount,
   getAccessTokens,
   generateAccessToken,

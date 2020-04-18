@@ -221,12 +221,15 @@ const _validateAdminPassword = async (password, admin) => {
   }
 }
 
-const _buildAdminResult = (admin, subscription) => {
+const _buildAdminResult = (admin) => {
   return {
     email: admin['email'],
     fullName: admin['full-name'],
-    paymentStatus: subscription && (subscription.cancel_at_period_end ? 'cancel_at_period_end' : subscription.status),
+    paymentStatus: admin['stripe-saas-subscription-status'],
+    cancelSaasSubscriptionAt: admin['stripe-cancel-saas-subscription-at'],
     connectedToStripe: admin['stripe-account-id'] ? true : false,
+    paymentsAddOnSubscriptionStatus: admin['stripe-payments-add-on-subscription-status'],
+    cancelPaymentsAddOnSubscriptionAt: admin['stripe-cancel-payments-add-on-subscription-at'],
   }
 }
 
@@ -259,16 +262,13 @@ exports.signInAdmin = async function (req, res) {
         .send('Incorrect password')
     }
 
-    const [sessionId, subscription] = await Promise.all([
-      createSession(admin['admin-id']),
-      getSaasSubscription(admin['admin-id'], admin['stripe-customer-id'])
-    ])
+    const sessionId = await createSession(admin['admin-id'])
 
     setSessionCookie(res, sessionId)
 
     return res
       .status(statusCodes['Success'])
-      .send(_buildAdminResult(admin, subscription))
+      .send(_buildAdminResult(admin))
   } catch (e) {
     logger.error(`Admin '${email}' failed to sign in with ${e}`)
     return res
@@ -715,11 +715,12 @@ exports.deleteAdmin = async function (req, res) {
   const email = admin['email']
   const adminId = admin['admin-id']
 
-  const subscription = res.locals.subscription
-
   try {
-    if (subscription && !subscription.cancel_at_period_end) {
-      await stripe.getClient().subscriptions.update(subscription.id, { cancel_at_period_end: true })
+    if (admin['stripe-saas-subscription-id'] && !admin['stripe-cancel-saas-subscription-at']) {
+      await stripe.getClient().subscriptions.update(
+        admin['stripe-saas-subscription-id'],
+        { cancel_at_period_end: true }
+      )
     }
 
     const params = {
@@ -752,64 +753,23 @@ exports.deleteAdmin = async function (req, res) {
   }
 }
 
-const createStripeCustomer = async function (email, adminId) {
-  // There may be multiple Stripe customers with same admin ID. Only one that
-  // matters to us is the one that ultimately gets stored on the admin in DDB
-  const stripeCustomer = await stripe.getClient().customers.create({
-    email,
-    metadata: { adminId }
-  })
-  const stripeCustomerId = stripeCustomer.id
-
-  const params = {
-    TableName: setup.adminTableName,
-    Key: {
-      email
-    },
-    UpdateExpression: 'set #stripeCustomerId = :stripeCustomerId',
-    // only 1 stripe customer id can ever be saved on an admin
-    ConditionExpression: 'attribute_not_exists(#stripeCustomerId)',
-    ExpressionAttributeNames: {
-      '#stripeCustomerId': 'stripe-customer-id',
-    },
-    ExpressionAttributeValues: {
-      ':stripeCustomerId': stripeCustomerId,
-    }
-  }
-
-  try {
-    const ddbClient = connection.ddbClient()
-    await ddbClient.update(params).promise()
-  } catch (e) {
-    if (e && e.name === 'ConditionalCheckFailedException') {
-      await stripe.getClient().customers.del(stripeCustomerId)
-    }
-    throw e
-  }
-
-  return stripeCustomerId
-}
-
 exports.createSaasPaymentSession = async function (req, res) {
   const admin = res.locals.admin
   const adminId = admin['admin-id']
 
   try {
-    const stripeCustomerId = admin['stripe-customer-id'] || await createStripeCustomer(admin['email'], adminId)
-
     const session = await stripe.getClient().checkout.sessions.create({
-      customer: stripeCustomerId,
+      customer_email: admin['email'],
       payment_method_types: ['card'],
       subscription_data: {
-        items: [{
-          plan: stripe.getStripeSaasSubscriptionPlanId(),
-        }]
+        items: [{ plan: stripe.getStripeSaasSubscriptionPlanId() }],
+        metadata: { adminId }
       },
       success_url: `${process.env['STRIPE_REDIRECT_URL'] || req.headers.referer}#success`,
       cancel_url: `${process.env['STRIPE_REDIRECT_URL'] || req.headers.referer}#edit-account`,
     },
       {
-        idempotency_key: stripeCustomerId // admin can only checkout a single subscription plan
+        idempotency_key: admin['email'] + adminId // admin can only checkout a single subscription plan
       })
 
     return res.send(session.id)
@@ -819,7 +779,64 @@ exports.createSaasPaymentSession = async function (req, res) {
   }
 }
 
-exports.updateSaasSubscriptionPaymentSession = async function (req, res) {
+const _buildStripeSubscriptionDdbParams = async (admin, customerId, subscriptionId, subscriptionPlanId, status, cancelAt, stripeEventTimestamp) => {
+  const stripeSubscriptionDdbParams = conditionExpressionAdminExists(admin['email'], admin['admin-id'])
+
+  // Making sure event timestamp provided is greater than one stored ensures latest gets stored in DDB (Stripe sends events out of order)
+  stripeSubscriptionDdbParams.ConditionExpression += ' and (attribute_not_exists(#stripeEventTimestamp) or :stripeEventTimestamp > #stripeEventTimestamp)'
+
+  stripeSubscriptionDdbParams.UpdateExpression = `SET
+    #stripeCustomerId = :stripeCustomerId,
+    #stripeSubscriptionId = :stripeSubscriptionId,
+    #stripeSubscriptionStatus = :stripeSubscriptionStatus,
+    #stripeEventTimestamp = :stripeEventTimestamp
+  `
+
+  const isSaasPlan = stripe.getStripeSaasSubscriptionPlanId() === subscriptionPlanId
+
+  stripeSubscriptionDdbParams.ExpressionAttributeNames['#stripeCustomerId'] = 'stripe-customer-id'
+  stripeSubscriptionDdbParams.ExpressionAttributeNames['#stripeSubscriptionId'] = 'stripe-' + (isSaasPlan ? 'saas' : 'payments-add-on') + '-subscription-id'
+  stripeSubscriptionDdbParams.ExpressionAttributeNames['#stripeSubscriptionStatus'] = 'stripe-' + (isSaasPlan ? 'saas' : 'payments-add-on') + '-subscription-status'
+  stripeSubscriptionDdbParams.ExpressionAttributeNames['#stripeEventTimestamp'] = 'stripe-' + (isSaasPlan ? 'saas' : 'payments-add-on') + '-event-timestamp'
+  stripeSubscriptionDdbParams.ExpressionAttributeNames['#cancelAt'] = 'stripe-cancel-' + (isSaasPlan ? 'saas' : 'payments-add-on') + '-subscription-at'
+
+  stripeSubscriptionDdbParams.ExpressionAttributeValues[':stripeCustomerId'] = customerId
+  stripeSubscriptionDdbParams.ExpressionAttributeValues[':stripeSubscriptionId'] = subscriptionId
+  stripeSubscriptionDdbParams.ExpressionAttributeValues[':stripeSubscriptionStatus'] = status
+  stripeSubscriptionDdbParams.ExpressionAttributeValues[':stripeEventTimestamp'] = stripeEventTimestamp
+
+  if (!cancelAt) {
+    stripeSubscriptionDdbParams.UpdateExpression += ' REMOVE #cancelAt'
+  } else {
+    stripeSubscriptionDdbParams.UpdateExpression += ', #cancelAt = :cancelAt'
+    stripeSubscriptionDdbParams.ExpressionAttributeValues[':cancelAt'] = cancelAt
+  }
+
+  return stripeSubscriptionDdbParams
+}
+
+exports.updateSubscriptionInDdb = async (logChildObject, logs, metadata, customerId, subscriptionId, subscriptionPlanId, status, cancelAt, stripeEventTimestamp) => {
+  const adminId = metadata.adminId
+
+  logChildObject.adminId = adminId
+  logger.child(logChildObject).info(logs.startingLog)
+
+  if (!adminId) throw new Error('MissingAdminIdFromAdminSubscriptionMetadata')
+
+  const admin = await findAdminByAdminId(adminId)
+
+  if (!admin) throw new Error('MissingFromDdb')
+
+  if (subscriptionPlanId !== stripe.getStripeSaasSubscriptionPlanId() && subscriptionPlanId !== stripe.getStripePaymentsAddOnPlanId()) {
+    throw new Error('UnknownPlanId')
+  }
+
+  const updateUserParams = await _buildStripeSubscriptionDdbParams(admin, customerId, subscriptionId, subscriptionPlanId, status, cancelAt, stripeEventTimestamp)
+  const ddbClient = connection.ddbClient()
+  await ddbClient.update(updateUserParams).promise()
+}
+
+exports.updateSubscriptionPaymentSession = async function (req, res) {
   const admin = res.locals.admin
   const adminId = admin['admin-id']
   const email = admin['email']
@@ -837,8 +854,7 @@ exports.updateSaasSubscriptionPaymentSession = async function (req, res) {
       customer_email: email,
       setup_intent_data: {
         metadata: {
-          customer_id: stripeCustomerId,
-          subscription_id: res.locals.subscription.id
+          customer_id: stripeCustomerId
         },
       },
       success_url: `${process.env['STRIPE_REDIRECT_URL'] || req.headers.referer}#update-success`,
@@ -847,101 +863,49 @@ exports.updateSaasSubscriptionPaymentSession = async function (req, res) {
 
     return res.send(session.id)
   } catch (e) {
-    logger.error(`Failed to generate update SaaS payment session for admin '${adminId}' with ${e}`)
+    logger.error(`Failed to generate update payment session for admin '${adminId}' with ${e}`)
     return res.status(statusCodes['Internal Server Error']).send('Failed to update payment session')
   }
 }
 
-const saveDefaultPaymentMethod = async function (logChildObject, session) {
-  const subscriptionId = session.subscription
-  logChildObject.subscriptionId = subscriptionId
+const _cancelStripeSubscriptionInDdb = async (admin, cancelAt, subscriptionType) => {
+  const updateAdminParams = conditionExpressionAdminExists(admin['email'], admin['admin-id'])
 
-  logger.child(logChildObject).info(`Saving admin's default payment method`)
+  updateAdminParams.UpdateExpression = 'SET #cancelAt = :cancelAt'
+  updateAdminParams.ExpressionAttributeNames['#cancelAt'] = 'stripe-cancel-' + subscriptionType + '-subscription-at'
+  updateAdminParams.ExpressionAttributeValues[':cancelAt'] = cancelAt
 
-  const subscription = await stripe.getClient().subscriptions.retrieve(subscriptionId)
-  const { customer, default_payment_method } = subscription
-
-  logChildObject.customerId = customer
-
-  await stripe.getClient().customers.update(
-    customer,
-    { invoice_settings: { default_payment_method } }
-  )
-
-  logger.child(logChildObject).info(`Successfully saved admin's default payment method`)
+  const ddbClient = connection.ddbClient()
+  await ddbClient.update(updateAdminParams).promise()
 }
 
-exports.handleStripeWebhook = async function (req, res) {
-  let logChildObject = {}
-  try {
-    const event = stripe.getClient().webhooks.constructEvent(
-      req.body,
-      req.headers['stripe-signature'],
-      stripe.getWebhookSecret()
-    )
+const _resumeStripeSubscriptionInDdb = async (admin, subscriptionType) => {
+  const updateAdminParams = conditionExpressionAdminExists(admin['email'], admin['admin-id'])
 
-    if (event.type === 'checkout.session.completed') {
-      const session = event.data.object
+  updateAdminParams.UpdateExpression = 'REMOVE #cancelAt'
+  updateAdminParams.ExpressionAttributeNames['#cancelAt'] = 'stripe-cancel-' + subscriptionType + '-subscription-at'
 
-      if (session.mode === 'setup') {
-        await stripe.updateStripePaymentMethod(logChildObject, session)
-      } else if (session.mode === 'subscription') {
-        await saveDefaultPaymentMethod(logChildObject, session)
-      }
-    }
-
-    res.json({ received: true })
-  } catch (err) {
-    logChildObject.err = err
-
-    logger.child(logChildObject).warn('Stripe admin webhook failed')
-    return res.status(statusCodes['Bad Request']).send(`Webhook Error: ${err.message}`)
-  }
-}
-
-const getSaasSubscription = async function (adminId, stripeCustomerId) {
-  if (!stripeCustomerId) return null
-
-  const customer = await stripe.getClient().customers.retrieve(stripeCustomerId)
-
-  if (customer.subscriptions.data.length > 1) {
-    logger.fatal(`Admin ${adminId} has more than 1 subscription (${customer.subscriptions.data.length} total)`)
-  }
-
-  return customer.subscriptions.data.find((subscription => {  // eslint-disable-line require-atomic-updates
-    return subscription.plan.id === stripe.getStripeSaasSubscriptionPlanId()
-  }))
-}
-exports.getSaasSubscription = getSaasSubscription
-
-exports.getSaasSubscriptionController = async function (req, res, next) {
-  const admin = res.locals.admin
-  const adminId = admin['admin-id']
-  const stripeCustomerId = admin['stripe-customer-id']
-
-  try {
-    res.locals.subscription = await getSaasSubscription(adminId, stripeCustomerId)
-    next()
-  } catch (e) {
-    logger.error(`Failed to verify subscription payment for admin '${adminId}' with ${e}`)
-    return res.status(statusCodes['Internal Server Error']).send('Failed to verify subscription payment')
-  }
+  const ddbClient = connection.ddbClient()
+  await ddbClient.update(updateAdminParams).promise()
 }
 
 exports.cancelSaasSubscription = async function (req, res) {
-  const { admin, subscription } = res.locals
+  const { admin } = res.locals
   const adminId = admin['admin-id']
 
-  if (!subscription) return res.status(statusCodes['Not Found']).send('No subscription found')
-  if (subscription.cancel_at_period_end) return res.end()
+  if (!admin['stripe-saas-subscription-id']) return res.status(statusCodes['Not Found']).send('No subscription found')
+  if (admin['stripe-cancel-saas-subscription-at']) return res.send(admin['stripe-cancel-saas-subscription-at'])
 
   try {
-    await stripe.getClient().subscriptions.update(subscription.id, {
-      cancel_at_period_end: true
-    })
+    const subscription = await stripe.getClient().subscriptions.update(
+      admin['stripe-saas-subscription-id'],
+      { cancel_at_period_end: true }
+    )
 
-    // subscription status will remain active, but cancel_at_period_end boolean will be set to true
-    return res.send('cancel_at_period_end')
+    const cancelAt = stripe.convertStripeTimestamptToIsoString(subscription.cancel_at)
+    await _cancelStripeSubscriptionInDdb(admin, cancelAt, 'saas')
+
+    return res.send(cancelAt)
   } catch (e) {
     logger.error(`Failed to cancel subscription for admin '${adminId}' with ${e}`)
     return res.status(statusCodes['Internal Server Error']).send('Failed to cancel subscription')
@@ -949,25 +913,158 @@ exports.cancelSaasSubscription = async function (req, res) {
 }
 
 exports.resumeSaasSubscription = async function (req, res) {
-  const { admin, subscription } = res.locals
+  const { admin } = res.locals
   const adminId = admin['admin-id']
 
-  if (!subscription) return res.status(statusCodes['Not Found']).send('No subscription found')
-  if (!subscription.cancel_at_period_end) return res.end()
+  if (!admin['stripe-saas-subscription-id']) return res.status(statusCodes['Not Found']).send('No subscription found')
+  if (!admin['stripe-cancel-saas-subscription-at']) return res.end()
 
   try {
-    const updatedSubscription = await stripe.getClient().subscriptions.update(subscription.id, {
-      cancel_at_period_end: false,
-      items: [{
-        id: subscription.items.data[0].id,
-        plan: subscription.plan.id,
-      }]
-    })
+    await stripe.getClient().subscriptions.update(
+      admin['stripe-saas-subscription-id'],
+      { cancel_at_period_end: false }
+    )
 
-    return res.send(updatedSubscription.status)
+    await _resumeStripeSubscriptionInDdb(admin, 'saas')
+
+    return res.end()
   } catch (e) {
     logger.error(`Failed to resume subscription for admin '${adminId}' with ${e}`)
     return res.status(statusCodes['Internal Server Error']).send('Failed to resume subscription')
+  }
+}
+
+exports.subscribeToPaymentsAddOn = async function (req, res) {
+  const admin = res.locals.admin
+  const adminId = admin['admin-id']
+
+  let logChildObject = {}
+  try {
+    const stripeCustomerId = admin['stripe-customer-id']
+    logChildObject = { adminId, stripeCustomerId }
+    logger.child(logChildObject).info('Subscribing to Stripe payments add-on')
+
+    if (admin['stripe-saas-subscription-status'] !== 'active' || admin['stripe-cancel-saas-subscription-at']) throw {
+      status: statusCodes['Payment Required'],
+      error: { message: 'Must have an active Userbase subscription.' }
+    }
+
+    const subscription = await stripe.getClient().subscriptions.create({
+      customer: stripeCustomerId,
+      items: [{ plan: stripe.getStripePaymentsAddOnPlanId() }],
+      metadata: { adminId }
+    },
+      {
+        idempotency_key: stripeCustomerId + '-payments-add-on' // admin can only checkout a single subscription plan
+      })
+
+    logger
+      .child({ ...logChildObject, subscriptionId: subscription.id, statusCode: statusCodes['Success'] })
+      .info('Successfully subscribed to Stripe payments add-on')
+
+
+    logger.child(subscription).info('What does the subscription look like here')
+
+    return res.send(subscription.status)
+  } catch (e) {
+    const message = 'Failed to subscribe to Stripe payments add-on.'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).info(message)
+      return res.status(e.status).send(e.error.message)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return res.status(statusCode).send(message)
+    }
+  }
+}
+
+exports.cancelPaymentsAddOnSubscription = async function (req, res) {
+  let logChildObject = {}
+  try {
+    const { admin } = res.locals
+    const adminId = admin['admin-id']
+    const subscriptionId = admin['stripe-payments-add-on-subscription-id']
+
+    logChildObject = { adminId, subscriptionId, req: trimReq(req) }
+    logger.child(logChildObject).info('Cancelling payments add-on subscription')
+
+    if (!subscriptionId) throw {
+      status: statusCodes['Not Found'],
+      error: { message: 'No payments add-on subscription found.' }
+    }
+
+    if (admin['stripe-cancel-saas-subscription-at']) return res
+      .send(admin['stripe-cancel-saas-subscription-at'])
+
+    const subscription = await stripe.getClient().subscriptions.update(
+      subscriptionId,
+      { cancel_at_period_end: true }
+    )
+
+    const cancelAt = stripe.convertStripeTimestamptToIsoString(subscription.cancel_at)
+    await _cancelStripeSubscriptionInDdb(admin, cancelAt, 'payments-add-on')
+
+    logger
+      .child({ ...logChildObject, statusCode: statusCodes['Success'] })
+      .info('Successfully cancelled payments add-on subscription')
+
+    return res.send(cancelAt)
+  } catch (e) {
+    const message = 'Failed to cancel payments add-on subscription'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
+      return res.status(e.status).send(message)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).warn(message)
+      return res.status(statusCode).send(message)
+    }
+  }
+}
+
+exports.resumePaymentsAddOnSubscription = async function (req, res) {
+  let logChildObject = {}
+  try {
+    const { admin } = res.locals
+    const adminId = admin['admin-id']
+    const subscriptionId = admin['stripe-payments-add-on-subscription-id']
+
+    logChildObject = { adminId, subscriptionId, req: trimReq(req) }
+    logger.child(logChildObject).info('Resuming payments add-on subscription')
+
+    if (!subscriptionId) throw {
+      status: statusCodes['Not Found'],
+      error: { message: 'No payments add-on subscription found.' }
+    }
+
+    if (!admin['stripe-cancel-saas-subscription-at']) return res.end()
+
+    await stripe.getClient().subscriptions.update(
+      subscriptionId,
+      { cancel_at_period_end: false }
+    )
+
+    await _resumeStripeSubscriptionInDdb(admin, 'payments-add-on')
+
+    logger
+      .child({ ...logChildObject, statusCode: statusCodes['Success'] })
+      .info('Successfully resumed payments add-on subscription')
+
+    return res.send()
+  } catch (e) {
+    const message = 'Failed to resume payments add-on subscription'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
+      return res.status(e.status).send(message)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).warn(message)
+      return res.status(statusCode).send(message)
+    }
   }
 }
 
@@ -1305,6 +1402,5 @@ exports.authenticateAccessToken = async function (req, res, next) {
 
 exports.getAdminAccount = async function (req, res) {
   const admin = res.locals.admin
-  const subscription = res.locals.subscription
-  return res.send(_buildAdminResult(admin, subscription))
+  return res.send(_buildAdminResult(admin))
 }

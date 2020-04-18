@@ -60,16 +60,14 @@ async function createApp(appName, adminId, appId = uuidv4()) {
 exports.createApp = createApp
 
 exports.createAppController = async function (req, res) {
-  const subscription = res.locals.subscription
-
-  if (!subscription || subscription.cancel_at_period_end || subscription.status !== 'active') return res
-    .status(statusCodes['Payment Required'])
-    .send('Pay subscription fee to create an app.')
-
   const appName = req.body.appName
 
   const admin = res.locals.admin
   const adminId = admin['admin-id']
+
+  if (admin['stripe-saas-subscription-status'] !== 'active' || admin['stripe-cancel-saas-subscription-at']) return res
+    .status(statusCodes['Payment Required'])
+    .send('Pay subscription fee to create an app.')
 
   try {
     const app = await createApp(appName, adminId)
@@ -168,16 +166,14 @@ async function getAppByAppId(appId) {
 exports.getAppByAppId = getAppByAppId
 
 exports.deleteApp = async function (req, res) {
-  const subscription = res.locals.subscription
-
-  if (!subscription || subscription.cancel_at_period_end || subscription.status !== 'active') return res
-    .status(statusCodes['Payment Required'])
-    .send('Pay subscription fee to delete an app.')
-
   const appName = req.body.appName
 
   const admin = res.locals.admin
   const adminId = admin['admin-id']
+
+  if (admin['stripe-saas-subscription-status'] !== 'active' || admin['stripe-cancel-saas-subscription-at']) return res
+    .status(statusCodes['Payment Required'])
+    .send('Pay subscription fee to delete an app.')
 
   if (!appName || !adminId) return res
     .status(statusCodes['Bad Request'])
@@ -261,17 +257,15 @@ const permanentDelete = async (adminId, appName, appId) => {
 exports.permanentDelete = permanentDelete
 
 exports.permanentDeleteAppController = async function (req, res) {
-  const subscription = res.locals.subscription
-
-  if (!subscription || subscription.cancel_at_period_end || subscription.status !== 'active') return res
-    .status(statusCodes['Payment Required'])
-    .send('Pay subscription fee to permanently delete an app.')
-
   const appName = req.body.appName
   const appId = req.body.appId
 
   const admin = res.locals.admin
   const adminId = admin['admin-id']
+
+  if (admin['stripe-saas-subscription-status'] !== 'active' || admin['stripe-cancel-saas-subscription-at']) return res
+    .status(statusCodes['Payment Required'])
+    .send('Pay subscription fee to permanently delete an app.')
 
   if (!appName || !appId || !adminId) return res
     .status(statusCodes['Bad Request'])

@@ -322,8 +322,8 @@ const _validateSignUpInput = (appId, username, passwordToken, publicKey, passwor
   }
 }
 
-const _validateSubscription = async (subscription, appId) => {
-  const unpaidSubscription = !subscription || subscription.cancel_at_period_end || subscription.status !== 'active'
+const _validateSubscription = async (status, cancelAt, appId) => {
+  const unpaidSubscription = status !== 'active' || cancelAt
   if (unpaidSubscription) {
     const numUsers = await appController.countNonDeletedAppUsers(appId, LIMIT_NUM_TRIAL_USERS)
     if (numUsers >= LIMIT_NUM_TRIAL_USERS) {
@@ -386,8 +386,7 @@ exports.signUp = async function (req, res) {
       logChildObject.adminId = admin['admin-id']
     }
 
-    const subscription = await adminController.getSaasSubscription(admin['admin-id'], admin['stripe-customer-id'])
-    await _validateSubscription(subscription, appId)
+    await _validateSubscription(admin['stripe-saas-subscription-status'], admin['stripe-cancel-saas-subscription-at'], appId)
 
     const params = _buildSignUpParams(username, passwordToken, appId, userId,
       publicKey, passwordSalts, keySalts, email, profile, passwordBasedBackup)
@@ -1699,7 +1698,7 @@ const conditionCheckUserExists = (username, appId, userId) => {
       username,
       'app-id': appId
     },
-    ConditionExpression: 'attribute_exists(username) and attribute_not_exists(deleted) and #userId = :userId',
+    ConditionExpression: 'attribute_exists(username) and #userId = :userId',
     ExpressionAttributeNames: {
       '#userId': 'user-id'
     },
@@ -1724,14 +1723,10 @@ const _createStripePaymentSession = async function (user, admin, subscriptionPla
         }],
         trial_from_plan: true,
         metadata: {
-          userId: user['user-id'],
-          adminId: admin['admin-id'],
-          appId: user['app-id'],
+          __userbase_user_id: user['user-id'],
+          __userbase_admin_id: admin['admin-id'],
+          __userbase_app_id: user['app-id'],
         }
-      },
-      metadata: {
-        adminId: admin['admin-id'],
-        appId: user['app-id']
       },
       success_url,
       cancel_url,
@@ -1815,20 +1810,11 @@ exports.createSubscriptionPaymentSession = async function (logChildObject, app, 
   }
 }
 
-const saveDefaultPaymetMethod = async (subscription, stripeAccountId) => {
-  const { customer, default_payment_method } = subscription
-  await stripe.getClient().customers.update(
-    customer,
-    { invoice_settings: { default_payment_method } },
-    { stripe_account: stripeAccountId }
-  )
-}
+const _buildStripeSubscriptionDdbParams = async (user, customerId, subscriptionId, planId, status, cancelAt, stripeEventTimestamp, isProduction) => {
+  const stripeSubscriptionDdbParams = conditionCheckUserExists(user['username'], user['app-id'], user['user-id'])
 
-const _buildStripeSubscriptionDdbParams = async (userId, isProduction, customerId, subscriptionId, planId, status, cancelAt, stripeEventTimestamp) => {
-  const user = await getUserByUserId(userId)
-  const stripeSubscriptionDdbParams = conditionCheckUserExists(user['username'], user['app-id'], userId)
-
-  stripeSubscriptionDdbParams.ConditionExpression += ' and (attribute_not_exists(#stripeEventTimestamp) or :stripeEventTimestamp > #stripeEventTimestamp)'
+  // Making sure event timestamp provided is greater than one stored ensures latest gets stored in DDB (Stripe sends events out of order)
+  stripeSubscriptionDdbParams.ConditionExpression += ' and (attribute_not_exists(#stripeEventTimestamp) or #stripeEventTimestamp < :stripeEventTimestamp)'
 
   stripeSubscriptionDdbParams.UpdateExpression = `SET
     #stripeCustomerId = :stripeCustomerId,
@@ -1855,121 +1841,74 @@ const _buildStripeSubscriptionDdbParams = async (userId, isProduction, customerI
     stripeSubscriptionDdbParams.UpdateExpression += ' REMOVE #cancelAt'
   } else {
     stripeSubscriptionDdbParams.UpdateExpression += ', #cancelAt = :cancelAt'
-    stripeSubscriptionDdbParams.ExpressionAttributeValues[':cancelAt'] = stripe.convertStripeTimestamptToIsoString(cancelAt)
+    stripeSubscriptionDdbParams.ExpressionAttributeValues[':cancelAt'] = cancelAt
   }
 
   return stripeSubscriptionDdbParams
 }
 
-const _handleCheckoutSubscriptionCompleted = async (logChildObject, session, stripeAccountId) => {
-  const userId = session.client_reference_id
-  const customerId = session.customer
-  const subscriptionId = session.subscription
-  const planId = session.display_items[0].plan.id
-  const isProduction = session.livemode
-
-  logChildObject = { ...logChildObject, ...session.metadata, userId, customerId, subscriptionId, planId, isProduction }
-  logger.child(logChildObject).info('Fulfilling connected account subscription payment')
-
-  const subscription = await stripe.getClient().subscriptions.retrieve(subscriptionId, { stripe_account: stripeAccountId })
-
-  await saveDefaultPaymetMethod(subscription, stripeAccountId)
-
-  logger.child(logChildObject).info('Successfully fulfilled connected account subscription payment')
-}
-
-const _updateSubscriptionInDdb = async (userId, isProduction, customerId, subscriptionId, subscriptionPlanId, status, cancelAt, stripeEventTimestamp) => {
-  const updateUserParams = await _buildStripeSubscriptionDdbParams(userId, isProduction, customerId, subscriptionId, subscriptionPlanId, status, cancelAt, stripeEventTimestamp)
-  const ddbClient = connection.ddbClient()
-  await ddbClient.update(updateUserParams).promise()
-}
-
-const _handleUpdateOrDeleteSubscription = async (logChildObject, subscription, stripeEventTimestamp, log1, log2, log3) => {
-  const { userId, adminId, appId } = subscription.metadata
-  const isProduction = subscription.livemode
-  const subscriptionId = subscription.id
-  const subscriptionPlanId = subscription.items.data[0].plan.id
-  const customerId = subscription.customer
-  const status = subscription.status
-
-  logChildObject = { ...logChildObject, userId, adminId, appId, isProduction, subscriptionId, subscriptionPlanId, customerId, stripeEventTimestamp }
-  logger.child(logChildObject).info(log1)
-
+exports.updateSubscriptionInDdb = async (logChildObject, logs, metadata, customerId, subscriptionId, subscriptionPlanId, status, cancelAt, stripeEventTimestamp, isProduction, stripeAccountId) => {
   try {
-    await _updateSubscriptionInDdb(userId, isProduction, customerId, subscriptionId, subscriptionPlanId, status, subscription.cancel_at, stripeEventTimestamp)
+    const userId = metadata.__userbase_user_id
+    const adminId = metadata.__userbase_admin_id
+    const appId = metadata.__userbase_app_id
 
-    logger.child(logChildObject).info(log2)
-  } catch (e) {
-    logger.child({ ...logChildObject, err: e }).info(log3)
-    throw e
-  }
-}
+    logChildObject.userId = userId
+    logChildObject.adminId = adminId
+    logChildObject.appId = appId
+    logger.child(logChildObject).info(logs.startingLog)
 
-exports.handleStripeConnectWebhook = async function (req, res) {
-  let logChildObject = {}
-  try {
-    const event = stripe.getClient().webhooks.constructEvent(
-      req.body,
-      req.headers['stripe-signature'],
-      stripe.getConnectWebhookSecret()
-    )
-    logChildObject.event = event
+    if (!userId) throw new Error('MissingUserIdFromUserSubscriptionMetadata')
+    if (!appId) throw new Error('MissingAppIdFromUserSubscriptionMetadata')
+    if (!adminId) throw new Error('MissingAdminIdFromUserSubscriptionMetadata')
 
-    const stripeAccountId = event.account
-    logChildObject.stripeAccountId = stripeAccountId
+    const [admin, app, user] = await Promise.all([
+      adminController.findAdminByAdminId(adminId),
+      appController.getAppByAppId(appId),
+      getUserByUserId(userId)
+    ])
 
-    switch (event.type) {
-      case 'checkout.session.completed': {
-        const session = event.data.object
+    // possible these were deleted from DDB before Stripe called the webhook
+    if (!admin || !app || !user) throw new Error('MissingFromDdb')
 
-        if (session.mode === 'subscription') {
-          await _handleCheckoutSubscriptionCompleted(logChildObject, session, stripeAccountId)
-        } else if (session.mode === 'setup') {
-          await stripe.updateStripePaymentMethod(logChildObject, session, stripeAccountId)
-        }
-        break
-      }
+    // possible the admin altered metadata fields to be valid, existing ID's
+    if (app['admin-id'] !== adminId) throw new Error('IncorrectAppIdInMetadata')
+    if (user['app-id'] !== appId) throw new Error('IncorrectUserIdInMetadata')
 
-      case 'customer.subscription.created':
-      case 'customer.subscription.updated':
-      case 'customer.subscription.deleted': {
-        const subscription = event.data.object
-        const stripeEventTimestamp = event.created
+    // possible admin has disconnected or changed their Stripe Connect account but there is a user still subscribed to a plan
+    // the admin created with a prior Stripe Connect account
+    if (admin['stripe-account-id'] !== stripeAccountId) throw new Error('IncorrectStripeAccount')
 
-        switch (event.type) {
-          case 'customer.subscription.created': {
-            const log1 = 'Saving connected account subscription'
-            const log2 = 'Successfully saved connected account subscription'
-            const log3 = 'Failed to save connected account subscription'
-            await _handleUpdateOrDeleteSubscription(logChildObject, subscription, stripeEventTimestamp, log1, log2, log3)
-            break
-          }
-          case 'customer.subscription.updated': {
-            const log1 = 'Updating connected account subscription'
-            const log2 = 'Successfully updated connected account subscription'
-            const log3 = 'Failed to update connected account subscription'
-            await _handleUpdateOrDeleteSubscription(logChildObject, subscription, stripeEventTimestamp, log1, log2, log3)
-            break
-          }
-          case 'customer.subscription.deleted': {
-            const log1 = 'Deleting connected account subscription'
-            const log2 = 'Successfully deleted connected account subscription'
-            const log3 = 'Failed to delete connected account subscription'
-            await _handleUpdateOrDeleteSubscription(logChildObject, subscription, stripeEventTimestamp, log1, log2, log3)
-            break
-          }
-        }
-
-        break
-      }
-
+    // possible admin has deleted or changed the Stripe Plan ID in the admin panel, but there is a user still subscribed to a prior plan
+    // the admin had stored
+    if ((isProduction && app['prod-subscription-plan-id'] !== subscriptionPlanId) ||
+      (!isProduction && app['test-subscription-plan-id'] !== subscriptionPlanId)
+    ) {
+      throw new Error('IncorrectSubscriptionPlanId')
     }
 
-    res.json({ received: true })
-  } catch (err) {
-    logChildObject.err = err
-    logger.child(logChildObject).warn('Stripe Connect webhook failed')
-    return res.status(statusCodes['Bad Request']).send(`Webhook Error: ${err.message}`)
+    const updateUserParams = await _buildStripeSubscriptionDdbParams(user, customerId, subscriptionId, subscriptionPlanId, status, cancelAt, stripeEventTimestamp, isProduction, stripeAccountId)
+    const ddbClient = connection.ddbClient()
+    await ddbClient.update(updateUserParams).promise()
+  } catch (e) {
+    switch (e.message) {
+      case 'MissingUserIdFromUserSubscriptionMetadata':
+      case 'MissingAppIdFromUserSubscriptionMetadata':
+      case 'MissingAdminIdFromUserSubscriptionMetadata':
+      case 'MissingFromDdb':
+      case 'IncorrectAppIdInMetadata':
+      case 'IncorrectUserIdInMetadata':
+      case 'IncorrectStripeAccount':
+      case 'IncorrectSubscriptionPlanId': {
+        // if error is any one of the above, no need to make the webhook throw
+        logger.child({ ...logChildObject, err: e }).warn(logs.issueLog)
+        break
+      }
+
+      default:
+        throw e
+    }
+
   }
 }
 
@@ -2007,34 +1946,23 @@ const _throwPaymentErrors = (subscriptionPlanNotSet, subscriptionNotFound, subsc
 }
 
 exports.validatePayment = function (user, app) {
-  if (app['payments-mode'] === 'prod') {
-    const subscriptionPlanNotSet = !app['prod-subscription-plan-id']
+  if (app['payments-mode'] !== 'prod' && app['payments-mode'] !== 'test') return
+  const prefix = app['payments-mode'] === 'prod' ? 'prod' : 'test'
 
-    const subscriptionNotFound = !user['prod-subscription-plan-id']
+  const subscriptionPlanNotSet = !app[prefix + '-subscription-plan-id']
 
-    const subscribedToIncorrectPlan = app['prod-subscription-plan-id'] !== user['prod-subscription-plan-id']
+  const subscriptionNotFound = !user[prefix + '-subscription-plan-id']
 
-    const subscriptionStatus = user['prod-subscription-status']
-    const subscriptionInactive = subscriptionStatus !== 'active' && subscriptionStatus !== 'trialing'
+  const subscribedToIncorrectPlan = app[prefix + '-subscription-plan-id'] !== user[prefix + '-subscription-plan-id']
 
-    _throwPaymentErrors(subscriptionPlanNotSet, subscriptionNotFound, subscribedToIncorrectPlan, subscriptionInactive, subscriptionStatus)
-  } else if (app['payments-mode'] === 'test') {
-    const subscriptionPlanNotSet = !app['test-subscription-plan-id']
+  const subscriptionStatus = user[prefix + '-subscription-status']
+  const subscriptionInactive = subscriptionStatus !== 'active' && subscriptionStatus !== 'trialing'
 
-    const subscriptionNotFound = !user['test-subscription-plan-id']
-
-    const subscribedToIncorrectPlan = app['test-subscription-plan-id'] !== user['test-subscription-plan-id']
-
-    const subscriptionStatus = user['test-subscription-status']
-    const subscriptionInactive = subscriptionStatus !== 'active' && subscriptionStatus !== 'trialing'
-
-    _throwPaymentErrors(subscriptionPlanNotSet, subscriptionNotFound, subscribedToIncorrectPlan, subscriptionInactive, subscriptionStatus)
-  }
+  _throwPaymentErrors(subscriptionPlanNotSet, subscriptionNotFound, subscribedToIncorrectPlan, subscriptionInactive, subscriptionStatus)
 }
 
-const _cancelStripeSubscriptionInDdb = async (userId, isProduction, cancel_at) => {
-  const user = await getUserByUserId(userId)
-  const updateUserParams = conditionCheckUserExists(user['username'], user['app-id'], userId)
+const _cancelStripeSubscriptionInDdb = async (user, isProduction, cancel_at) => {
+  const updateUserParams = conditionCheckUserExists(user['username'], user['app-id'], user['user-id'])
 
   const cancelAt = stripe.convertStripeTimestamptToIsoString(cancel_at)
 
@@ -2054,9 +1982,8 @@ const _cancelStripeSubscriptionInDdb = async (userId, isProduction, cancel_at) =
   }
 }
 
-const _resumeStripeSubscriptionInDdb = async (userId, isProduction) => {
-  const user = await getUserByUserId(userId)
-  const updateUserParams = conditionCheckUserExists(user['username'], user['app-id'], userId)
+const _resumeStripeSubscriptionInDdb = async (user, isProduction) => {
+  const updateUserParams = conditionCheckUserExists(user['username'], user['app-id'], user['user-id'])
 
   updateUserParams.UpdateExpression = 'REMOVE #cancelAt'
   updateUserParams.ExpressionAttributeNames['#cancelAt'] = (isProduction ? 'prod' : 'test') + '-cancel-subscription-at'
@@ -2111,7 +2038,7 @@ exports.cancelSubscription = async function (logChildObject, app, admin, user) {
       { stripe_account: stripeAccountId }
     )
 
-    const cancelAt = await _cancelStripeSubscriptionInDdb(user['user-id'], isProduction, updatedSubscription.cancel_at)
+    const cancelAt = await _cancelStripeSubscriptionInDdb(user, isProduction, updatedSubscription.cancel_at)
 
     logger
       .child({ ...logChildObject, statusCode: statusCodes['Success'] })
@@ -2147,7 +2074,7 @@ exports.resumeSubscription = async function (logChildObject, app, admin, user) {
       { stripe_account: stripeAccountId }
     )
 
-    await _resumeStripeSubscriptionInDdb(user['user-id'], isProduction)
+    await _resumeStripeSubscriptionInDdb(user, isProduction)
 
     logger
       .child({ ...logChildObject, statusCode: statusCodes['Success'] })
