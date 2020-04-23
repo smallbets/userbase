@@ -1046,6 +1046,26 @@ const buildUserResult = (user) => {
   if (user['protected-profile']) result['protectedProfile'] = user['protected-profile']
   if (user['deleted']) result['deleted'] = user['deleted']
 
+  if (user['test-stripe-customer-id']) {
+    result.testStripeData = {
+      customerId: user['test-stripe-customer-id'],
+      subscriptionStatus: user['test-subscription-status'],
+      cancelSubscriptionAt: user['test-cancel-subscription-at'],
+      subscriptionId: user['test-subscription-id'],
+      subscriptionPlanId: user['test-subscription-plan-id'],
+    }
+  }
+
+  if (user['prod-stripe-customer-id']) {
+    result.prodStripeData = {
+      customerId: user['prod-stripe-customer-id'],
+      subscriptionStatus: user['prod-subscription-status'],
+      cancelSubscriptionAt: user['prod-cancel-subscription-at'],
+      subscriptionId: user['prod-subscription-id'],
+      subscriptionPlanId: user['prod-subscription-plan-id'],
+    }
+  }
+
   return result
 }
 exports.buildUserResult = buildUserResult
@@ -1372,8 +1392,22 @@ exports.updateUser = async function (userId, username, currentPasswordToken, pas
   }
 }
 
-const deleteUser = async (username, appId, userId) => {
-  const params = conditionCheckUserExists(username, appId, userId)
+const deleteUser = async (user, stripeAccountId) => {
+  // First: delete user's Stripe subscriptions so long as admin has Stripe account connected
+  const testSubscriptionId = user['test-subscription-id']
+  const testSubscriptionStatus = user['test-subscription-status']
+  const useTestClient = true
+
+  const prodSubscriptionId = user['prod-subscription-id']
+  const prodSubscriptionStatus = user['prod-subscription-status']
+
+  await Promise.all([
+    stripeAccountId && stripe.deleteSubscription(testSubscriptionId, testSubscriptionStatus, stripeAccountId, useTestClient),
+    stripeAccountId && stripe.deleteSubscription(prodSubscriptionId, prodSubscriptionStatus, stripeAccountId),
+  ])
+
+  // Second: delete user from DDB
+  const params = conditionCheckUserExists(user['username'], user['app-id'], user['user-id'])
 
   params.UpdateExpression = 'set deleted = :deleted'
   params.ExpressionAttributeValues[':deleted'] = new Date().toISOString()
@@ -1383,7 +1417,7 @@ const deleteUser = async (username, appId, userId) => {
 }
 exports.deleteUser = deleteUser
 
-exports.deleteUserController = async function (userId, adminId, appName) {
+exports.deleteUserController = async function (userId, adminId, appName, stripeAccountId) {
   try {
     if (!userId || !adminId || !appName) return responseBuilder
       .errorResponse(statusCodes['Bad Request'], 'Missing params')
@@ -1391,7 +1425,7 @@ exports.deleteUserController = async function (userId, adminId, appName) {
     const user = await getUserByUserId(userId)
     if (!user || user['deleted']) return responseBuilder.errorResponse(statusCodes['Not Found'], 'UserNotFound')
 
-    await deleteUser(user['username'], user['app-id'], userId)
+    await deleteUser(user, stripeAccountId)
 
     return responseBuilder.successResponse()
   } catch (e) {
@@ -1708,11 +1742,11 @@ const conditionCheckUserExists = (username, appId, userId) => {
   }
 }
 
-const _createStripePaymentSession = async function (user, admin, subscriptionPlanId, customerId, success_url, cancel_url) {
+const _createStripePaymentSession = async function (user, admin, subscriptionPlanId, customerId, success_url, cancel_url, useTestClient) {
   const stripeAccountId = admin['stripe-account-id']
 
   try {
-    const session = await stripe.getClient().checkout.sessions.create({
+    const session = await stripe.getClient(useTestClient).checkout.sessions.create({
       customer_email: user['email'],
       customer: customerId,
       client_reference_id: user['user-id'],
@@ -1743,9 +1777,16 @@ const _createStripePaymentSession = async function (user, admin, subscriptionPla
           ? 'SuccessUrlInvalid'
           : 'CancelUrlInvalid'
       }
+    } else {
+      throw {
+        status: e.statusCode,
+        error: {
+          name: 'StripeError',
+          type: e.type,
+          message: e.message,
+        }
+      }
     }
-
-    throw e
   }
 }
 
@@ -1789,7 +1830,7 @@ exports.createSubscriptionPaymentSession = async function (logChildObject, app, 
       }
     }
 
-    const session = await _createStripePaymentSession(user, admin, subscriptionPlanId, customerId, success_url, cancel_url)
+    const session = await _createStripePaymentSession(user, admin, subscriptionPlanId, customerId, success_url, cancel_url, app['payments-mode'] === 'test')
 
     logger
       .child({ ...logChildObject, statusCode: statusCodes['Success'] })
@@ -2036,8 +2077,9 @@ exports.cancelSubscription = async function (logChildObject, app, admin, user) {
     logger.child(logChildObject).info('Cancelling user subscription')
 
     const { subscriptionId, isProduction } = _validateModifySubscription(logChildObject, app, user)
+    const useTestClient = !isProduction
 
-    const updatedSubscription = await stripe.getClient().subscriptions.update(
+    const updatedSubscription = await stripe.getClient(useTestClient).subscriptions.update(
       subscriptionId,
       { cancel_at_period_end: true },
       { stripe_account: stripeAccountId }
@@ -2072,8 +2114,9 @@ exports.resumeSubscription = async function (logChildObject, app, admin, user) {
     logger.child(logChildObject).info('Resuming user subscription')
 
     const { subscriptionId, isProduction } = _validateModifySubscription(logChildObject, app, user)
+    const useTestClient = !isProduction
 
-    await stripe.getClient().subscriptions.update(
+    await stripe.getClient(useTestClient).subscriptions.update(
       subscriptionId,
       { cancel_at_period_end: false },
       { stripe_account: stripeAccountId }
@@ -2101,12 +2144,12 @@ exports.resumeSubscription = async function (logChildObject, app, admin, user) {
   }
 }
 
-const _createStripeUpdatePaymentMethodSession = async function (user, admin, customer_id, subscription_id, success_url, cancel_url) {
+const _createStripeUpdatePaymentMethodSession = async function (user, admin, customer_id, subscription_id, success_url, cancel_url, useTestClient) {
   const stripeAccountId = admin['stripe-account-id']
 
   try {
-    const session = await stripe.getClient().checkout.sessions.create({
-      customer_email: user['email'],
+    const session = await stripe.getClient(useTestClient).checkout.sessions.create({
+      customer: customer_id,
       client_reference_id: user['user-id'],
       payment_method_types: ['card'],
       mode: 'setup',
@@ -2144,13 +2187,14 @@ exports.updatePaymentMethod = async function (logChildObject, app, admin, user, 
     logChildObject.userEmail = user['email']
     logger.child(logChildObject).info('Creating update payment method session for user')
 
-    let customerId, subscriptionId
+    let customerId, subscriptionId, useTestClient
     if (app['payments-mode'] === 'prod') {
       customerId = user['prod-stripe-customer-id']
       subscriptionId = user['prod-subscription-id']
     } else if (app['payments-mode'] === 'test') {
       customerId = user['test-stripe-customer-id']
       subscriptionId = user['test-subscription-id']
+      useTestClient = true
     } else {
       throw {
         status: statusCodes['Forbidden'],
@@ -2166,7 +2210,7 @@ exports.updatePaymentMethod = async function (logChildObject, app, admin, user, 
       error: 'SubscriptionNotPurchased'
     }
 
-    const session = await _createStripeUpdatePaymentMethodSession(user, admin, customerId, subscriptionId, success_url, cancel_url)
+    const session = await _createStripeUpdatePaymentMethodSession(user, admin, customerId, subscriptionId, success_url, cancel_url, useTestClient)
 
     logger
       .child({ ...logChildObject, statusCode: statusCodes['Success'] })

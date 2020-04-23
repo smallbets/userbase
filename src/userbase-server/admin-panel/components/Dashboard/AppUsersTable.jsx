@@ -6,6 +6,7 @@ import dashboardLogic from './logic'
 import UnknownError from '../Admin/UnknownError'
 import { formatDate } from '../../utils'
 import { ProfileTable } from './ProfileTable'
+import { StripeDataTable } from './StripeDataTable'
 import { STRIPE_CLIENT_ID, getStripeState } from '../../config'
 
 const MAX_PLAN_ID_LEN = 19
@@ -143,6 +144,17 @@ export default class AppUsersTable extends Component {
           const deletedUser = activeUsers.splice(userIndex, 1)[0]
           deletedUser.deleting = undefined
           deletedUser.deleted = true
+
+          // client-side updates that are safe to make considering server succeeded
+          if (deletedUser.prodStripeData && deletedUser.prodStripeData.subscriptionId) {
+            deletedUser.prodStripeData.cancelSubscriptionAt = undefined
+            deletedUser.prodStripeData.subscriptionStatus = 'canceled'
+          }
+
+          if (deletedUser.testStripeData && deletedUser.testStripeData.subscriptionId) {
+            deletedUser.testStripeData.cancelSubscriptionAt = undefined
+            deletedUser.testStripeData.subscriptionStatus = 'canceled'
+          }
 
           let insertionIndex = deletedUsers.findIndex((user) => new Date(deletedUser['creationDate']) > new Date(user['creationDate']))
           if (insertionIndex === -1) {
@@ -705,6 +717,25 @@ export default class AppUsersTable extends Component {
                                     }
                                   </h6>
 
+
+                                  <h6 className='mb-4'>Test Stripe Data:
+                                    {user['testStripeData']
+                                      ? StripeDataTable(user['testStripeData'])
+                                      : <span className='font-light ml-1'>
+                                        No test Stripe data saved.
+                                      </span>
+                                    }
+                                  </h6>
+
+                                  <h6 className='mb-4'>Prod Stripe Data:
+                                    {user['prodStripeData']
+                                      ? StripeDataTable(user['prodStripeData'], true)
+                                      : <span className='font-light ml-1'>
+                                        No prod Stripe data saved.
+                                      </span>
+                                    }
+                                  </h6>
+
                                 </th>
                                 <th></th>
                                 <th></th>
@@ -796,6 +827,24 @@ export default class AppUsersTable extends Component {
                                         ? ProfileTable(user['protectedProfile'])
                                         : <span className='font-light ml-1'>
                                           No protected profile saved.
+                                      </span>
+                                      }
+                                    </h6>
+
+                                    <h6 className='mb-4'>Test Stripe Data:
+                                    {user['testStripeData']
+                                        ? StripeDataTable(user['testStripeData'])
+                                        : <span className='font-light ml-1'>
+                                          No test Stripe data saved.
+                                      </span>
+                                      }
+                                    </h6>
+
+                                    <h6 className='mb-4'>Prod Stripe Data:
+                                    {user['prodStripeData']
+                                        ? StripeDataTable(user['prodStripeData'], true)
+                                        : <span className='font-light ml-1'>
+                                          No prod Stripe data saved.
                                       </span>
                                       }
                                     </h6>

@@ -5,20 +5,41 @@ import userController from './user'
 import adminController from './admin'
 
 let client
-const getClient = () => {
-  if (client) return client
+let testClient
+const getClient = (useTestClient = false) => {
+  if (useTestClient && testClient) return testClient
+  if (!useTestClient && client) return client
 
   const stripeSecretKey = process.env['sm.STRIPE_SECRET_KEY']
   if (!stripeSecretKey) throw new Error('Missing Stripe secret key')
 
+  const stripeSecretTestKey = process.env['sm.STRIPE_SECRET_TEST_KEY']
+  if (!stripeSecretTestKey) throw new Error('Missing Stripe secret test key')
+
   client = Stripe(stripeSecretKey)
-  return client
+  testClient = Stripe(stripeSecretTestKey)
+
+  return useTestClient
+    ? testClient
+    : client
 }
 
 const getWebhookSecret = () => {
   const webhookSecret = process.env['sm.STRIPE_WEBHOOK_SECRET']
   if (!webhookSecret) throw new Error('Missing Stripe webhook secret')
   return webhookSecret
+}
+
+const getTestConnectWebhookSecret = () => {
+  const testConnectWebhookSecret = process.env['sm.STRIPE_TEST_CONNECT_WEBHOOK_SECRET']
+  if (!testConnectWebhookSecret) throw new Error('Missing Stripe test connect webhook secret')
+  return testConnectWebhookSecret
+}
+
+const getProdConnectWebhookSecret = () => {
+  const prodConnectWebhookSecret = process.env['sm.STRIPE_PROD_CONNECT_WEBHOOK_SECRET']
+  if (!prodConnectWebhookSecret) throw new Error('Missing Stripe prod connect webhook secret')
+  return prodConnectWebhookSecret
 }
 
 const getStripeSaasSubscriptionPlanId = () => {
@@ -33,10 +54,18 @@ const getStripePaymentsAddOnPlanId = () => {
   return paymentsAddOnPlanId
 }
 
-const _payUnpaidSubscription = async function (subscription, payment_method, stripe_account) {
+const _setSubscriptionDefaultPaymentMethod = async function (subscription, payment_method, stripe_account, useTestClient) {
+  await getClient(useTestClient).subscriptions.update(
+    subscription.id,
+    { default_payment_method: payment_method },
+    { stripe_account }
+  )
+}
+
+const _payUnpaidSubscription = async function (subscription, payment_method, stripe_account, useTestClient) {
   const latestInvoiceId = subscription.latest_invoice
 
-  await getClient().invoices.pay(
+  await getClient(useTestClient).invoices.pay(
     latestInvoiceId,
     { payment_method },
     { stripe_account }
@@ -83,19 +112,20 @@ const _handleUpdateOrDeleteSubscription = async (logChildObject, subscription, s
 }
 
 const _updateStripePaymentMethod = async function (logChildObject, session, stripe_account = undefined) {
-  const setupIntent = await getClient().setupIntents.retrieve(session.setup_intent, { stripe_account })
+  const useTestClient = !session.livemode
+  const setupIntent = await getClient(useTestClient).setupIntents.retrieve(session.setup_intent, { stripe_account })
   const { payment_method, metadata: { customer_id, subscription_id } } = setupIntent
 
   logChildObject.customerId = customer_id
   const type = stripe_account ? 'user' : 'admin'
   logger.child(logChildObject).info(`Updating ${type}'s payment method`)
 
-  await getClient().paymentMethods.attach(
+  await getClient(useTestClient).paymentMethods.attach(
     payment_method,
     { customer: customer_id },
     { stripe_account }
   )
-  const customer = await getClient().customers.update(
+  const customer = await getClient(useTestClient).customers.update(
     customer_id,
     { invoice_settings: { default_payment_method: payment_method } },
     { stripe_account }
@@ -108,10 +138,9 @@ const _updateStripePaymentMethod = async function (logChildObject, session, stri
     // pay off the subscription passed in as metadata
     const subscription = customer.subscriptions.data.find(subscription => subscription.id === subscription_id)
     if (subscription && (subscription.status === 'past_due' || subscription.status === 'unpaid')) {
-      await _payUnpaidSubscription(subscription, payment_method, stripe_account)
+      await _payUnpaidSubscription(subscription, payment_method, stripe_account, useTestClient)
       logger.child(logChildObject).info(`Successfully charged ${type} with updated payment method`)
     }
-
   } else {
     // pay off all of a customer's unpaid subscriptions if no subscription provided in metadata
     const unpaidSubscriptions = customer.subscriptions.data.filter(subscription => subscription.status === 'past_due' || subscription.status === 'unpaid')
@@ -119,13 +148,17 @@ const _updateStripePaymentMethod = async function (logChildObject, session, stri
 
     if (unpaidSubscriptions.length) logger.child(logChildObject).info(`Successfully charged ${type} with updated payment method`)
   }
+
+  // set card as default on all of a customer's subscriptions
+  await Promise.all(customer.subscriptions.data.map(subscription => _setSubscriptionDefaultPaymentMethod(subscription, payment_method, stripe_account, useTestClient)))
+  logger.child(logChildObject).info(`Successfully updated ${type}'s subscription payment methods`)
 }
 
 const convertStripeTimestamptToIsoString = timestamp => new Date(timestamp * 1000).toISOString()
 
-const _saveDefaultPaymetMethod = async (subscription, stripe_account) => {
+const _saveDefaultPaymentMethod = async (subscription, stripe_account, useTestClient) => {
   const { customer, default_payment_method } = subscription
-  await getClient().customers.update(
+  await getClient(useTestClient).customers.update(
     customer,
     { invoice_settings: { default_payment_method } },
     { stripe_account }
@@ -146,9 +179,10 @@ const _handleCheckoutSubscriptionCompleted = async (logChildObject, session, str
   const type = stripe_account ? 'user' : 'admin'
   logger.child(logChildObject).info(`Fulfilling ${type}'s subscription payment`)
 
-  const subscription = await getClient().subscriptions.retrieve(subscriptionId, { stripe_account })
+  const useTestClient = !isProduction
+  const subscription = await getClient(useTestClient).subscriptions.retrieve(subscriptionId, { stripe_account })
 
-  await _saveDefaultPaymetMethod(subscription, stripe_account)
+  await _saveDefaultPaymentMethod(subscription, stripe_account, useTestClient)
 
   logger.child(logChildObject).info(`Successfully fulfilled ${type}'s subscription payment`)
 
@@ -194,13 +228,25 @@ const _handleCheckoutSessionCompleted = async (logChildObject, session, stripeAc
   }
 }
 
-const handleWebhook = async function (req, res) {
+const handleWebhook = async function (req, res, webhookOption) {
   let logChildObject = {}
   try {
+    let webhookSecret
+    switch (webhookOption) {
+      case WEBHOOK_OPTIONS['TEST_CONNECT']:
+        webhookSecret = getTestConnectWebhookSecret()
+        break
+      case WEBHOOK_OPTIONS['PROD_CONNECT']:
+        webhookSecret = getProdConnectWebhookSecret()
+        break
+      default:
+        webhookSecret = getWebhookSecret()
+    }
+
     const event = getClient().webhooks.constructEvent(
       req.body,
       req.headers['stripe-signature'],
-      getWebhookSecret()
+      webhookSecret
     )
     logChildObject.event = event.id
     logChildObject.eventType = event.type
@@ -244,10 +290,28 @@ const handleWebhook = async function (req, res) {
   }
 }
 
+const deleteSubscription = async (subscriptionId, subscriptionStatus, stripe_account, useTestClient) => {
+  if (subscriptionId && subscriptionStatus !== 'canceled') {
+    try {
+      await getClient(useTestClient).subscriptions.del(subscriptionId, { stripe_account })
+    } catch (e) {
+      // if subscription not found, it's already deleted and don't need to worry about it
+      if (e.message !== 'No such subscription: ' + subscriptionId) throw e
+    }
+  }
+}
+
+const WEBHOOK_OPTIONS = {
+  TEST_CONNECT: 1,
+  PROD_CONNECT: 2
+}
+
 export default {
   getClient,
   getStripeSaasSubscriptionPlanId,
   getStripePaymentsAddOnPlanId,
   convertStripeTimestamptToIsoString,
   handleWebhook,
+  deleteSubscription,
+  WEBHOOK_OPTIONS,
 }

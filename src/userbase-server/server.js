@@ -196,7 +196,8 @@ async function start(express, app, userbaseConfig = {}) {
                     response = await userController.deleteUserController(
                       userId,
                       adminId,
-                      res.locals.app['app-name']
+                      res.locals.app['app-name'],
+                      res.locals.admin['stripe-account-id']
                     )
                     break
                   }
@@ -458,6 +459,8 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.use(cookieParser())
 
     v1Admin.post('/stripe/webhook', bodyParser.raw({ type: 'application/json' }), stripe.handleWebhook)
+    v1Admin.post('/stripe/test/conect/webhook', bodyParser.raw({ type: 'application/json' }), (req, res) => stripe.handleWebhook(req, res, stripe.WEBHOOK_OPTIONS['TEST_CONNECT']))
+    v1Admin.post('/stripe/prod/conect/webhook', bodyParser.raw({ type: 'application/json' }), (req, res) => stripe.handleWebhook(req, res, stripe.WEBHOOK_OPTIONS['PROD_CONNECT']))
 
     // must come after stripe/webhook to ensure parsing done correctly
     v1Admin.use(bodyParser.json())

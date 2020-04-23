@@ -656,7 +656,10 @@ const _setSubscriptionPlan = async function (req, res, paymentsMode) {
 
     try {
       // make sure subscription plan exists in Stripe
-      const subscription = await stripe.getClient().plans.retrieve(subscriptionPlanId, { stripe_account: stripeAccountId })
+      const subscription = await stripe.getClient(paymentsMode === 'test').plans.retrieve(
+        subscriptionPlanId,
+        { stripe_account: stripeAccountId }
+      )
 
       if (paymentsMode === 'prod' && !subscription.livemode) {
         throw {

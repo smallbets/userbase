@@ -156,6 +156,19 @@ class SubscriptionAlreadyCanceled extends Error {
   }
 }
 
+class StripeError extends Error {
+  constructor(error, ...params) {
+    super(error, ...params)
+
+    const { status, type, message } = error
+
+    this.name = 'StripeError'
+    this.message = message
+    this.type = type
+    this.status = status
+  }
+}
+
 export default {
   SuccessUrlMissing,
   SuccessUrlMustBeString,
@@ -173,4 +186,5 @@ export default {
   SubscriptionInactive,
   SubscriptionNotPurchased,
   SubscriptionAlreadyCanceled,
+  StripeError,
 }

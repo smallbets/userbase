@@ -514,7 +514,7 @@ export default class EditAdmin extends Component {
 
               <hr className='border border-t-0 border-gray-400 mt-8 mb-4' />
 
-              {(!connectedToStripe || !paymentsAddOnSubscriptionStatus || cancelPaymentsAddOnSubscriptionAt) &&
+              {(!paymentsAddOnSubscriptionStatus || cancelPaymentsAddOnSubscriptionAt) &&
                 <div>
                   <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Payments Portal Add-On</div>
                   <div className='font-normal text-left mb-4'>

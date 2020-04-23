@@ -22,9 +22,8 @@ const _validatePurchaseOrUpdate = (params) => {
 
   if (!ws.stripeData.stripeAccountId) throw new errors.StripeAccountNotConnected
   if (ws.stripeData.paymentsMode === 'disabled') throw new errors.PaymentsDisabled
-  else
 
-    if (!objectHasOwnProperty(window, 'Stripe')) throw new errors.StripeJsLibraryMissing
+  if (!objectHasOwnProperty(window, 'Stripe')) throw new errors.StripeJsLibraryMissing
 
   if (typeof params !== 'object') throw new errors.ParamsMustBeObject
 
@@ -77,6 +76,8 @@ const purchaseSubscription = async (params) => {
           throw new errors.SuccessUrlInvalid
         } else if (e.response.data === 'CancelUrlInvalid') {
           throw new errors.CancelUrlInvalid
+        } else if (e.response.data && e.response.data.name === 'StripeError') {
+          throw new errors.StripeError(e.response.data)
         }
       }
 
@@ -93,6 +94,7 @@ const purchaseSubscription = async (params) => {
       case 'CancelUrlMissing':
       case 'CancelUrlMustBeString':
       case 'CancelUrlInvalid':
+      case 'StripeError':
       case 'StripeJsLibraryMissing':
       case 'SubscriptionPlanNotSet':
       case 'SubscriptionPlanAlreadyPurchased':

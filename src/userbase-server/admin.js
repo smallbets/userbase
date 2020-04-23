@@ -363,10 +363,15 @@ exports.deleteUser = async function (req, res) {
     .send('Missing required items')
 
   try {
-    const app = await appController.getApp(adminId, appName)
-    if (!app || app['deleted']) return res.status(statusCodes['Not Found']).send('App not found')
+    const [user, app] = await Promise.all([
+      userController.getUserByUserId(userId),
+      appController.getApp(adminId, appName)
+    ])
 
-    await userController.deleteUser(username, app['app-id'], userId, adminId, appName)
+    if (!app || app['deleted'] || app['admin-id'] !== adminId) return res.status(statusCodes['Not Found']).send('App not found')
+    if (!user || app['app-id'] !== user['app-id']) return res.status(statusCodes['Not Found']).send('User not found')
+
+    await userController.deleteUser(user, res.locals.admin['stripe-account-id'])
 
     return res.end()
   } catch (e) {
@@ -544,7 +549,7 @@ const conditionExpressionAdminExists = (email, adminId) => {
     Key: {
       email
     },
-    ConditionExpression: '#adminId = :adminId and attribute_not_exists(deleted)',
+    ConditionExpression: '#adminId = :adminId',
     ExpressionAttributeValues: {
       ':adminId': adminId
     },
@@ -716,12 +721,10 @@ exports.deleteAdmin = async function (req, res) {
   const adminId = admin['admin-id']
 
   try {
-    if (admin['stripe-saas-subscription-id'] && !admin['stripe-cancel-saas-subscription-at']) {
-      await stripe.getClient().subscriptions.update(
-        admin['stripe-saas-subscription-id'],
-        { cancel_at_period_end: true }
-      )
-    }
+    await Promise.all([
+      stripe.deleteSubscription(admin['stripe-saas-subscription-id'], admin['stripe-saas-subscription-status']),
+      stripe.deleteSubscription(admin['stripe-payments-add-on-subscription-id'], admin['stripe-payments-add-on-subscription-status']),
+    ])
 
     const params = {
       TableName: setup.adminTableName,

@@ -238,11 +238,12 @@ const resumeSaasSubscription = async () => {
 
 const buyAddOn = async () => {
   try {
-    await axios({
+    const paymentsAddOnStatusResponse = await axios({
       method: 'POST',
       url: `/${VERSION}/admin/stripe/payments-add-on`,
       timeout: TEN_SECONDS_MS
     })
+    return paymentsAddOnStatusResponse.data
   } catch (e) {
     errorHandler(e)
   }
