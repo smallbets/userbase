@@ -260,7 +260,7 @@ const signUp = async (params) => {
 
     await _connectWebSocket(session, seedString, rememberMe)
 
-    return _buildUserResult({ username, userId, authToken, email, profile })
+    return _buildUserResult({ username, userId, authToken, email, profile, stripeData: ws.stripeData })
   } catch (e) {
 
     switch (e.name) {
