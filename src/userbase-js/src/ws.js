@@ -131,12 +131,10 @@ class Connection {
               const {
                 keySalts,
                 encryptedValidationMessage,
-                stripeData,
               } = message
 
               this.keys.salts = keySalts
               this.encryptedValidationMessage = new Uint8Array(encryptedValidationMessage.data)
-              this.stripeData = stripeData
 
               await this.setKeys(this.seedString)
 
@@ -411,7 +409,8 @@ class Connection {
     this.keys.dhPrivateKey = await crypto.diffieHellman.importKeyFromMaster(masterKey, base64.decode(salts.dhKeySalt))
     this.keys.hmacKey = await crypto.hmac.importKeyFromMaster(masterKey, base64.decode(salts.hmacKeySalt))
 
-    await this.validateKey()
+    const stripeData = await this.validateKey()
+    this.stripeData = stripeData
 
     this.keys.init = true
 
@@ -427,7 +426,9 @@ class Connection {
     const action = 'ValidateKey'
     const params = { validationMessage }
 
-    await this.request(action, params)
+    const response = await this.request(action, params)
+    const { stripeData } = response.data
+    return stripeData
   }
 
   async request(action, params) {

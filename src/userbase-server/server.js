@@ -33,22 +33,6 @@ if (process.env.NODE_ENV == 'development') {
   logger.warn('Development Mode')
 }
 
-const _buildStripeData = (admin, app, user) => {
-  const stripeData = {}
-  stripeData.stripeAccountId = admin['stripe-account-id']
-  stripeData.paymentsMode = app['payments-mode'] || 'disabled'
-
-  if (app['payments-mode'] === 'test') {
-    stripeData.subscriptionStatus = user['test-subscription-status']
-    stripeData.cancelSubscriptionAt = user['test-cancel-subscription-at']
-  } else if (app['payments-mode'] === 'prod') {
-    stripeData.subscriptionStatus = user['prod-subscription-status']
-    stripeData.cancelSubscriptionAt = user['prod-cancel-subscription-at']
-  }
-
-  return stripeData
-}
-
 async function start(express, app, userbaseConfig = {}) {
   try {
     const {
@@ -111,7 +95,6 @@ async function start(express, app, userbaseConfig = {}) {
             hmacKeySalt: res.locals.user['hmac-key-salt'],
           },
           encryptedValidationMessage,
-          stripeData: _buildStripeData(res.locals.admin, res.locals.app, res.locals.user),
         }))
 
         ws.on('close', () => connections.close(conn))
@@ -162,8 +145,10 @@ async function start(express, app, userbaseConfig = {}) {
                     response = await userController.validateKey(
                       validationMessage,
                       params.validationMessage,
+                      conn,
+                      res.locals.admin,
+                      res.locals.app,
                       res.locals.user,
-                      conn
                     )
                     break
                   }
@@ -459,8 +444,8 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.use(cookieParser())
 
     v1Admin.post('/stripe/webhook', bodyParser.raw({ type: 'application/json' }), stripe.handleWebhook)
-    v1Admin.post('/stripe/test/conect/webhook', bodyParser.raw({ type: 'application/json' }), (req, res) => stripe.handleWebhook(req, res, stripe.WEBHOOK_OPTIONS['TEST_CONNECT']))
-    v1Admin.post('/stripe/prod/conect/webhook', bodyParser.raw({ type: 'application/json' }), (req, res) => stripe.handleWebhook(req, res, stripe.WEBHOOK_OPTIONS['PROD_CONNECT']))
+    v1Admin.post('/stripe/test/connect/webhook', bodyParser.raw({ type: 'application/json' }), (req, res) => stripe.handleWebhook(req, res, stripe.WEBHOOK_OPTIONS['TEST_CONNECT']))
+    v1Admin.post('/stripe/prod/connect/webhook', bodyParser.raw({ type: 'application/json' }), (req, res) => stripe.handleWebhook(req, res, stripe.WEBHOOK_OPTIONS['PROD_CONNECT']))
 
     // must come after stripe/webhook to ensure parsing done correctly
     v1Admin.use(bodyParser.json())

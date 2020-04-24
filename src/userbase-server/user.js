@@ -704,6 +704,22 @@ const _getValidationMessage = (publicKey) => {
 }
 exports.getValidationMessage = _getValidationMessage
 
+const _buildStripeData = (admin, app, user) => {
+  const stripeData = {}
+  stripeData.stripeAccountId = admin['stripe-account-id']
+  stripeData.paymentsMode = app['payments-mode'] || 'disabled'
+
+  if (app['payments-mode'] === 'test') {
+    stripeData.subscriptionStatus = user['test-subscription-status']
+    stripeData.cancelSubscriptionAt = user['test-cancel-subscription-at']
+  } else if (app['payments-mode'] === 'prod') {
+    stripeData.subscriptionStatus = user['prod-subscription-status']
+    stripeData.cancelSubscriptionAt = user['prod-cancel-subscription-at']
+  }
+
+  return stripeData
+}
+
 const userSavedSeed = async function (userId, appId, username, publicKey) {
   const updateUserParams = {
     TableName: setup.usersTableName,
@@ -728,7 +744,7 @@ const userSavedSeed = async function (userId, appId, username, publicKey) {
   await ddbClient.update(updateUserParams).promise()
 }
 
-exports.validateKey = async function (validationMessage, userProvidedValidationMessage, user, conn) {
+exports.validateKey = async function (validationMessage, userProvidedValidationMessage, conn, admin, app, user) {
   const seedNotSavedYet = user['seed-not-saved-yet']
   const userId = user['user-id']
   const appId = user['app-id']
@@ -751,7 +767,7 @@ exports.validateKey = async function (validationMessage, userProvidedValidationM
 
       conn.validateKey()
 
-      return responseBuilder.successResponse('Success!')
+      return responseBuilder.successResponse({ stripeData: _buildStripeData(admin, app, user) })
     } catch (e) {
       logger.error(`Failed to validate key with ${e}`)
       return responseBuilder.errorResponse(
