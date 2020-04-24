@@ -22,7 +22,7 @@ const _parseGenericErrors = (e) => {
     } else if (e.response.status === statusCodes['Gateway Timeout']) {
       throw new errors.Timeout
     }
-  } else if (e.message && e.message.includes('timeout')) {
+  } else if (e.message && e.message.indexOf('timeout') !== -1) {
     throw new errors.Timeout
   }
 }
@@ -76,9 +76,6 @@ const _parseUserResponseError = (e, username) => {
 
       case 'ProfileMustBeObject':
         throw new errors.ProfileMustBeObject
-
-      case 'ProfileKeyMustBeString':
-        throw new errors.ProfileKeyMustBeString(data.key)
 
       case 'ProfileKeyTooLong':
         throw new errors.ProfileKeyTooLong(data.maxLen, data.key)
@@ -226,8 +223,6 @@ const _validateProfile = (profile) => {
   for (const key in profile) {
     keyExists = true
 
-    if (typeof key !== 'string') throw new errors.ProfileKeyMustBeString(key)
-
     const value = profile[key]
     if (typeof value !== 'string') throw new errors.ProfileValueMustBeString(key, value)
     if (!value) throw new errors.ProfileValueCannotBeBlank(key)
@@ -284,7 +279,6 @@ const signUp = async (params) => {
       case 'ProfileMustBeObject':
       case 'ProfileCannotBeEmpty':
       case 'ProfileHasTooManyKeys':
-      case 'ProfileKeyMustBeString':
       case 'ProfileKeyTooLong':
       case 'ProfileValueMustBeString':
       case 'ProfileValueCannotBeBlank':
@@ -649,7 +643,6 @@ const updateUser = async (params) => {
       case 'ProfileMustBeObject':
       case 'ProfileCannotBeEmpty':
       case 'ProfileHasTooManyKeys':
-      case 'ProfileKeyMustBeString':
       case 'ProfileKeyTooLong':
       case 'ProfileValueMustBeString':
       case 'ProfileValueCannotBeBlank':

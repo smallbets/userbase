@@ -1,4 +1,5 @@
 import config from '../config'
+import errors from '../errors'
 
 const TEN_SECONDS_MS = 10 * 1000
 
@@ -39,6 +40,13 @@ const handleResponse = (xhr, resolve, reject) => {
   }
 }
 
+const processXhr = (xhr, resolve, reject) => {
+  xhr.timeout = TEN_SECONDS_MS
+  xhr.onload = () => handleResponse(xhr, resolve, reject)
+  xhr.onerror = () => reject(new errors.ServiceUnavailable)
+  xhr.ontimeout = () => reject(new TimeoutError(TEN_SECONDS_MS))
+}
+
 const signUp = (username, passwordToken, publicKey, passwordSalts, keySalts, email, profile, passwordBasedBackup) => {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
@@ -55,15 +63,12 @@ const signUp = (username, passwordToken, publicKey, passwordSalts, keySalts, ema
       profile,
       passwordBasedBackup
     })
-    const timeout = TEN_SECONDS_MS
 
     xhr.open(method, url)
     xhr.setRequestHeader('Content-Type', 'application/json')
-    xhr.timeout = timeout
     xhr.send(data)
 
-    xhr.onload = () => handleResponse(xhr, resolve, reject)
-    xhr.ontimeout = () => reject(new TimeoutError(timeout))
+    processXhr(xhr, resolve, reject)
   })
 }
 
@@ -73,14 +78,11 @@ const getPasswordSalts = (username) => {
 
     const method = 'GET'
     const url = `${config.getEndpoint()}/api/auth/get-password-salts?appId=${config.getAppId()}&username=${encodeURIComponent(username)}`
-    const timeout = TEN_SECONDS_MS
 
     xhr.open(method, url)
-    xhr.timeout = timeout
     xhr.send()
 
-    xhr.onload = () => handleResponse(xhr, resolve, reject)
-    xhr.ontimeout = () => reject(new TimeoutError(timeout))
+    processXhr(xhr, resolve, reject)
   })
 }
 
@@ -94,15 +96,12 @@ const signIn = async (username, passwordToken) => {
       username,
       passwordToken,
     })
-    const timeout = TEN_SECONDS_MS
 
     xhr.open(method, url)
     xhr.setRequestHeader('Content-Type', 'application/json')
-    xhr.timeout = timeout
     xhr.send(data)
 
-    xhr.onload = () => handleResponse(xhr, resolve, reject)
-    xhr.ontimeout = () => reject(new TimeoutError(timeout))
+    processXhr(xhr, resolve, reject)
   })
 }
 
@@ -112,14 +111,11 @@ const signInWithSession = (sessionId) => {
 
     const method = 'POST'
     const url = `${config.getEndpoint()}/api/auth/sign-in-with-session?appId=${config.getAppId()}&sessionId=${sessionId}`
-    const timeout = TEN_SECONDS_MS
 
     xhr.open(method, url)
-    xhr.timeout = timeout
     xhr.send()
 
-    xhr.onload = () => handleResponse(xhr, resolve, reject)
-    xhr.ontimeout = () => reject(new TimeoutError(timeout))
+    processXhr(xhr, resolve, reject)
   })
 }
 
@@ -129,16 +125,13 @@ const getServerPublicKey = async () => {
 
     const method = 'GET'
     const url = `${config.getEndpoint()}/api/auth/server-public-key`
-    const timeout = timeout
     const responseType = 'arraybuffer'
 
     xhr.open(method, url)
-    xhr.timeout = timeout
     xhr.responseType = responseType
     xhr.send()
 
-    xhr.onload = () => handleResponse(xhr, resolve, reject)
-    xhr.ontimeout = () => reject(new TimeoutError(timeout))
+    processXhr(xhr, resolve, reject)
   })
 }
 

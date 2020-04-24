@@ -221,17 +221,6 @@ class ProfileHasTooManyKeys extends Error {
   }
 }
 
-class ProfileKeyMustBeString extends Error {
-  constructor(key, ...params) {
-    super(key, ...params)
-
-    this.name = 'ProfileKeyMustBeString'
-    this.message = 'Profile key must be a string.'
-    this.status = statusCodes['Bad Request']
-    this.key = key
-  }
-}
-
 class ProfileKeyTooLong extends Error {
   constructor(maxLen, key, ...params) {
     super(maxLen, key, ...params)
@@ -361,7 +350,6 @@ export default {
   ProfileMustBeObject,
   ProfileCannotBeEmpty,
   ProfileHasTooManyKeys,
-  ProfileKeyMustBeString,
   ProfileKeyTooLong,
   ProfileValueMustBeString,
   ProfileValueCannotBeBlank,

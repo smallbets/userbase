@@ -30,6 +30,18 @@ Check out the [FAQ](https://userbase.com/docs/faq/) for more details.
 ## How do I start?
 The easiest way to start using Userbase is to create a [free Admin account](https://userbase.com) and follow the [Quickstart](https://userbase.com/docs/quickstart/) guide. If you have any questions, or if there's anything we can do to help you with your web app, please [get in touch](https://userbase.com/contact/). Thank you!
 
+## Browser Compatibility
+
+We have tested support for the following browsers:
+
+- Chrome >= 78
+- Safari >= 11
+- Firefox >= 71
+- Chrome Android >= 80
+- Safari iOS >= 13
+
+To support Internet Explorer, you will need to use a Promise polyfill such as [this one](https://github.com/taylorhakes/promise-polyfill).
+
 ## Credits
 The people who made this project a reality:
 - [Daniel Vassallo](https://twitter.com/dvassallo)

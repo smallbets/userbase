@@ -1,3 +1,28 @@
+## [1.3.0] - 2020-04-02
+## Added
+- signUp(), signIn(), and init() return the user’s authToken which can be passed to a 3rd party server to verify the user is signed in to Userbase via the Admin API.
+- browser compatibility list included in README along with a polyfill recommendation for Internet Explorer.
+
+## Fixed
+- init() throws WebCryptoUnavailable if the Web Crypto API is not available instead of ServiceUnavailable.
+
+## Changed
+- signIn() throws UserPendingDeletion if user tries to sign in while the user is pending deletion instead of UsernameOrPasswordMismatch.
+- Axios dependency replaced by native XMLHttpRequest.
+- Internal usage of .includes() replaced with .indexOf() !== -1 to support wider number of browsers without need for polyfill.
+
+## Removed
+- Babel runtime corejs3 dependency.
+- ProfileKeyMustBeString error from signUp() and updateUser() since javascript automatically converts keys object keys to strings anyway.
+
+## [1.2.0] - 2020-02-29
+## Added
+- signIn() and init() return the user’s protectedProfile which can be set via the Admin API server-side.
+
+## [1.1.2] - 2020-02-23
+## Fixed
+- window variable is no longer referenced in global scope so the client can be built server-side via Gatsby.
+
 ## [1.1.1] - 2020-02-18
 ### Changed
 - insertItem(), updateItem(), and putTransaction() now only throw ItemMissing if an `item` param is not explicitly provided.
