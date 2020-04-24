@@ -165,6 +165,20 @@ async function getAppByAppId(appId) {
 }
 exports.getAppByAppId = getAppByAppId
 
+async function getDeletedApp(appId) {
+  const params = {
+    TableName: setup.deletedAppsTableName,
+    Key: {
+      'app-id': appId
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+  const appResponse = await ddbClient.get(params).promise()
+  return appResponse.Item
+}
+exports.getDeletedApp = getDeletedApp
+
 exports.deleteApp = async function (req, res) {
   const appName = req.body.appName
 
