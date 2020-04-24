@@ -111,6 +111,17 @@ const _handleUpdateOrDeleteSubscription = async (logChildObject, subscription, s
   }
 }
 
+// The following circumstances can happen when the card saved on file expires or no longer works.
+//
+// past_due: subscription is unpaid by due date
+// unpaid: subscription is unpaid by additional deadline after that
+// incomplete: initial payment attempt fails
+//
+// source: https://stripe.com/docs/api/subscriptions/object
+const _shouldPayUnpaidSubscription = subscription => subscription && (
+  subscription.status === 'past_due' || subscription.status === 'unpaid' || subscription.status === 'incomplete'
+)
+
 const _updateStripePaymentMethod = async function (logChildObject, session, stripe_account = undefined) {
   const useTestClient = !session.livemode
   const setupIntent = await getClient(useTestClient).setupIntents.retrieve(session.setup_intent, { stripe_account })
@@ -137,13 +148,13 @@ const _updateStripePaymentMethod = async function (logChildObject, session, stri
   if (subscription_id) {
     // pay off the subscription passed in as metadata
     const subscription = customer.subscriptions.data.find(subscription => subscription.id === subscription_id)
-    if (subscription && (subscription.status === 'past_due' || subscription.status === 'unpaid')) {
+    if (_shouldPayUnpaidSubscription(subscription)) {
       await _payUnpaidSubscription(subscription, payment_method, stripe_account, useTestClient)
       logger.child(logChildObject).info(`Successfully charged ${type} with updated payment method`)
     }
   } else {
     // pay off all of a customer's unpaid subscriptions if no subscription provided in metadata
-    const unpaidSubscriptions = customer.subscriptions.data.filter(subscription => subscription.status === 'past_due' || subscription.status === 'unpaid')
+    const unpaidSubscriptions = customer.subscriptions.data.filter(subscription => _shouldPayUnpaidSubscription(subscription))
     await Promise.all(unpaidSubscriptions.map(subscription => _payUnpaidSubscription(subscription, payment_method)))
 
     if (unpaidSubscriptions.length) logger.child(logChildObject).info(`Successfully charged ${type} with updated payment method`)
