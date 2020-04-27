@@ -23,6 +23,14 @@ export interface UserResult {
 
 export type DatabaseChangeHandler = (items: Item[]) => void
 
+export type DatabasesResult = {
+  databases: Database[]
+}
+
+export interface Database {
+  databaseName: string
+}
+
 export type DatabaseOperation = InsertOperation | UpdateOperation | DeleteOperation
 
 export interface InsertOperation {
@@ -63,6 +71,8 @@ export interface Userbase {
   forgotPassword(params: { username: string }): Promise<void>
 
   openDatabase(params: { databaseName: string, changeHandler: DatabaseChangeHandler }): Promise<void>
+
+  getDatabases(): Promise<DatabasesResult[]>
 
   insertItem(params: { databaseName: string, item: any, itemId?: string }): Promise<void>
 

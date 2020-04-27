@@ -1,3 +1,5 @@
+import statusCodes from './statusCodes'
+
 // source: https://github.com/manishsaraan/email-validator
 const EMAIL_REGEX = /^[-!#$%&'*+\/0-9=?A-Z^_a-z`{|}~](\.?[-!#$%&'*+\/0-9=?A-Z^_a-z`{|}~])*@[a-zA-Z0-9](-*\.?[a-zA-Z0-9])*\.[a-zA-Z](-?[a-zA-Z0-9])+$/
 export const validateEmail = (email) => {
@@ -85,4 +87,29 @@ export const getMsUntil1AmPst = () => {
   time.setUTCHours(UTC_1_AM_HOUR, 0, 0, 0)
 
   return time.getTime() - Date.now()
+}
+
+// convert last evaluated key to a base64 string so it does not confuse developer
+export const lastEvaluatedKeyToNextPageToken = (lastEvaluatedKey) => {
+  const lastEvaluatedKeyString = JSON.stringify(lastEvaluatedKey)
+  const base64LastEvaluatedKey = Buffer.from(lastEvaluatedKeyString).toString('base64')
+  return base64LastEvaluatedKey
+}
+
+export const nextPageTokenToLastEvaluatedKey = (nextPageToken, validateLastEvaluatedKey) => {
+  try {
+    if (!nextPageToken) return null
+
+    const lastEvaluatedKeyString = Buffer.from(nextPageToken, 'base64').toString('ascii')
+    const lastEvaluatedKey = JSON.parse(lastEvaluatedKeyString)
+
+    validateLastEvaluatedKey(lastEvaluatedKey)
+
+    return lastEvaluatedKey
+  } catch {
+    throw {
+      status: statusCodes['Bad Request'],
+      error: { message: 'Next page token invalid.' }
+    }
+  }
 }
