@@ -7,6 +7,7 @@ import userController from './user'
 import appController from './app'
 import adminController from './admin'
 import { getMsUntil1AmPst } from './utils'
+import stripe from './stripe'
 
 const MS_IN_AN_HOUR = 60 * 60 * 1000
 const MS_IN_A_DAY = 24 * MS_IN_AN_HOUR
@@ -117,8 +118,7 @@ const removeDatabase = async (userDb) => {
     }]
   }
 
-  // await connection.ddbClient().transactWrite(params).promise()
-  logger.child(params).info('Log placeholder -- Delete database')
+  await connection.ddbClient().transactWrite(params).promise()
 }
 
 const removeS3DatabaseStates = async (databaseId) => {
@@ -137,8 +137,7 @@ const removeS3DatabaseStates = async (databaseId) => {
     }
   }
 
-  // await setup.s3().deleteObjects(deleteParams).promise()
-  logger.child(deleteParams).info('Log placeholder -- deleting S3 states')
+  await setup.s3().deleteObjects(deleteParams).promise()
 
   while (dbStatesResponse.IsTruncated) {
     params.ContinuationToken = dbStatesResponse.NextContinuationToken
@@ -147,8 +146,7 @@ const removeS3DatabaseStates = async (databaseId) => {
 
     deleteParams.Delete.Objects = dbStatesResponse.Contents.map(dbState => ({ Key: dbState.Key }))
 
-    // await setup.s3().deleteObjects(deleteParams).promise()
-    logger.child(deleteParams).info('Log placeholder -- deleting S3 states')
+    await setup.s3().deleteObjects(deleteParams).promise()
   }
 }
 
@@ -161,9 +159,8 @@ const removeTransaction = async (transaction) => {
     }
   }
 
-  // const ddbClient = connection.ddbClient()
-  // await ddbClient.delete(transactionParams).promise()
-  logger.child(transactionParams).info('Log placeholder -- Deleting transaction')
+  const ddbClient = connection.ddbClient()
+  await ddbClient.delete(transactionParams).promise()
 }
 
 const purgeTransactions = async (userDb) => {
@@ -197,7 +194,42 @@ const purgeTransactions = async (userDb) => {
   logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purging transactions')
 }
 
-const purgeUser = async (user) => {
+const _deleteConnectedStripeCustomer = async (customerId, stripe_account, useTestClient) => {
+  if (customerId && stripe_account) {
+    try {
+      await stripe.getClient(useTestClient).customers.del(customerId, { stripe_account })
+    } catch (e) {
+      // only ok to let fail if customer is already deleted
+      if (e.message !== 'No such customer: ' + customerId) throw e
+    }
+  }
+}
+
+const _getAdmin = async (appId, _adminId = undefined, _admin = undefined) => {
+  let admin
+  if (_admin) {
+    admin = _admin
+  } else if (_adminId) {
+    admin = await adminController.findAdminByAdminId(_adminId)
+  } else {
+    // the app will either be in regular app table, or permanent delete table if admin
+    // has called .permanentDeleteApp() after purge of users began
+    const [app, permanentDeletedApp] = await Promise.all([
+      appController.getAppByAppId(appId),
+      appController.getDeletedApp(appId),
+    ])
+
+    if (app) {
+      admin = await adminController.findAdminByAdminId(app['admin-id'])
+    } else if (permanentDeletedApp) {
+      admin = await adminController.findAdminByAdminId(permanentDeletedApp['admin-id'])
+    }
+  }
+
+  return admin
+}
+
+const purgeUser = async (user, _adminId = undefined, _admin = undefined) => {
   const start = Date.now()
   const logChildObject = { userId: user['user-id'], appId: user['app-id'], username: user['username'], deleted: user['deleted'] }
   logger.child(logChildObject).info('Purging user')
@@ -220,31 +252,44 @@ const purgeUser = async (user) => {
   const action = (userDbs) => Promise.all(userDbs.map(userDb => purgeTransactions(userDb)))
   await ddbWhileLoop(params, ddbQuery, action)
 
-  // // should only be present in this table if purging deleted app or admin
-  // const deleteFromTable = ddbClient.delete({
-  //   TableName: setup.usersTableName,
-  //   Key: {
-  //     'username': user['username'],
-  //     'app-id': user['app-id']
-  //   }
-  // }).promise()
+  // purge user's Stripe data if present
+  const admin = await _getAdmin(user['app-id'], _adminId, _admin)
+  if (admin) {
+    logChildObject.adminId = admin['admin-id']
+    logChildObject.prodCustomerId = user['prod-stripe-customer-id']
+    logChildObject.testCustomerId = user['test-stripe-customer-id']
+    logChildObject.stripeAccountId = admin['stripe-account-id']
+    const useTestClient = true
+    await Promise.all([
+      _deleteConnectedStripeCustomer(user['test-stripe-customer-id'], admin['stripe-account-id'], useTestClient),
+      _deleteConnectedStripeCustomer(user['prod-stripe-customer-id'], admin['stripe-account-id']),
+    ])
+  }
 
-  // // should only be present in this table if purging deleted user
-  // const deleteFromDeletedTable = ddbClient.delete({
-  //   TableName: setup.deletedUsersTableName,
-  //   Key: {
-  //     'user-id': user['user-id']
-  //   }
-  // }).promise()
+  // should only be present in this table if purging deleted app or admin
+  const deleteFromTable = ddbClient.delete({
+    TableName: setup.usersTableName,
+    Key: {
+      'username': user['username'],
+      'app-id': user['app-id']
+    }
+  }).promise()
 
-  // // safe to just try and delete from both
-  // await Promise.all([deleteFromDeletedTable, deleteFromTable])
-  logger.child(logChildObject).info('Log placeholder -- Deleting user')
+  // should only be present in this table if purging deleted user
+  const deleteFromDeletedTable = ddbClient.delete({
+    TableName: setup.deletedUsersTableName,
+    Key: {
+      'user-id': user['user-id']
+    }
+  }).promise()
+
+  // safe to just try and delete from both
+  await Promise.all([deleteFromDeletedTable, deleteFromTable])
 
   logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purging user')
 }
 
-const purgeApp = async (app) => {
+const purgeApp = async (app, _admin = undefined) => {
   const start = Date.now()
   const logChildObject = { userId: app['user-id'], appId: app['app-id'], adminId: app['admin-id'], appName: app['app-name'], deleted: app['deleted'] }
   logger.child(logChildObject).info('Purging app')
@@ -265,42 +310,40 @@ const purgeApp = async (app) => {
   const ddbClient = connection.ddbClient()
 
   const ddbQuery = (params) => ddbClient.query(params).promise()
-  const action = (users) => Promise.all(users.map(user => purgeUser(user)))
+  const action = (users) => Promise.all(users.map(user => purgeUser(user, app['admin-id'], _admin)))
   await ddbWhileLoop(params, ddbQuery, action)
 
-  // // should only be present in this table if purging deleted admin
-  // const deleteFromTable = ddbClient.delete({
-  //   TableName: setup.appsTableName,
-  //   Key: {
-  //     'admin-id': app['admin-id'],
-  //     'app-name': app['app-name']
-  //   }
-  // }).promise()
+  // should only be present in this table if purging deleted admin
+  const deleteFromTable = ddbClient.delete({
+    TableName: setup.appsTableName,
+    Key: {
+      'admin-id': app['admin-id'],
+      'app-name': app['app-name']
+    }
+  }).promise()
 
-  // // should only be present in this table if purging deleted app
-  // const deleteFromDeletedTable = ddbClient.delete({
-  //   TableName: setup.deletedAppsTableName,
-  //   Key: {
-  //     'app-id': app['app-id']
-  //   }
-  // }).promise()
+  // should only be present in this table if purging deleted app
+  const deleteFromDeletedTable = ddbClient.delete({
+    TableName: setup.deletedAppsTableName,
+    Key: {
+      'app-id': app['app-id']
+    }
+  }).promise()
 
-  // // safe to just try and delete from both
-  // await Promise.all([deleteFromDeletedTable, deleteFromTable])
-  logger.child(logChildObject).info('Log placeholder -- Deleting app')
+  // safe to just try and delete from both
+  await Promise.all([deleteFromDeletedTable, deleteFromTable])
 
   logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purging app')
 }
 
 const removeAccessToken = async (accessToken) => {
-  // await connection.ddbClient().delete({
-  //   TableName: setup.adminAccessTokensTableName,
-  //   Key: {
-  //     'admin-id': accessToken['admin-id'],
-  //     'access-token': accessToken['access-token']
-  //   }
-  // }).promise()
-  logger.child(accessToken).info('Log placeholder -- Deleting access token')
+  await connection.ddbClient().delete({
+    TableName: setup.adminAccessTokensTableName,
+    Key: {
+      'admin-id': accessToken['admin-id'],
+      'label': accessToken['label']
+    }
+  }).promise()
 }
 
 const purgeAccessTokens = async (admin) => {
@@ -335,10 +378,20 @@ const purgeApps = async (admin) => {
   }
 
   const ddbQuery = (params) => connection.ddbClient().query(params).promise()
-  const action = (apps) => Promise.all(apps.map(app => purgeApp(app)))
+  const action = (apps) => Promise.all(apps.map(app => purgeApp(app, admin)))
   await ddbWhileLoop(params, ddbQuery, action)
 }
 
+const _deleteStripeCustomer = async (customerId) => {
+  if (customerId) {
+    try {
+      await stripe.getClient().customers.del(customerId)
+    } catch (e) {
+      // only ok to let fail if customer is already deleted
+      if (e.message !== 'No such customer: ' + customerId) throw e
+    }
+  }
+}
 const purgeAdmin = async (admin) => {
   const start = Date.now()
   const logChildObject = { adminId: admin['admin-id'], email: admin['email'], deleted: admin['deleted'] }
@@ -346,16 +399,16 @@ const purgeAdmin = async (admin) => {
 
   await Promise.all([
     purgeAccessTokens(admin),
-    purgeApps(admin)
+    purgeApps(admin),
+    _deleteStripeCustomer(admin['stripe-customer-id']),
   ])
 
-  // await connection.ddbClient().delete({
-  //   TableName: setup.deletedAdminsTableName,
-  //   Key: {
-  //     'admin-id': admin['admin-id']
-  //   }
-  // }).promise()
-  logger.child(logChildObject).info('Log placeholder -- Deleting Admin')
+  await connection.ddbClient().delete({
+    TableName: setup.deletedAdminsTableName,
+    Key: {
+      'admin-id': admin['admin-id']
+    }
+  }).promise()
 
   logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purging admin')
 }
@@ -434,7 +487,7 @@ const commencePurge = async (purgeId) => {
 
     logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purge')
   } catch (e) {
-    logger.child({ timeToPurge: Date.now() - start, err: e, ...logChildObject }).error('Failed purge')
+    logger.child({ timeToPurge: Date.now() - start, err: e, ...logChildObject }).fatal('Failed purge')
   }
 
   schedulePurge()

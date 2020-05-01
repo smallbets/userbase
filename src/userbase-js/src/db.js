@@ -374,10 +374,10 @@ const _openDatabase = async (dbNameHash, changeHandler, newDatabaseParams) => {
     const database = ws.state.databases[dbNameHash]
 
     let receivedMessage
-
+    let timeout
     const firstMessageFromWebSocket = new Promise((resolve, reject) => {
       receivedMessage = resolve
-      setTimeout(() => reject(new Error('timeout')), 20000)
+      timeout = setTimeout(() => reject(new Error('timeout')), 20000)
     })
 
     if (!database) {
@@ -409,8 +409,26 @@ const _openDatabase = async (dbNameHash, changeHandler, newDatabaseParams) => {
       await ws.request(action, params)
       await firstMessageFromWebSocket
     } catch (e) {
-      if (e.response && e.response.data === 'Database already creating') {
-        throw new errors.DatabaseAlreadyOpening
+      clearTimeout(timeout)
+
+      if (e.response && e.response.data) {
+        const data = e.response.data
+
+        if (data === 'Database already creating') {
+          throw new errors.DatabaseAlreadyOpening
+        }
+
+        switch (data.name) {
+          case 'SubscriptionPlanNotSet':
+            throw new errors.SubscriptionPlanNotSet
+          case 'SubscriptionNotFound':
+            throw new errors.SubscriptionNotFound
+          case 'SubscribedToIncorrectPlan':
+            throw new errors.SubscribedToIncorrectPlan
+          case 'SubscriptionInactive':
+            throw new errors.SubscriptionInactive(data.subscriptionStatus)
+        }
+
       }
 
       throw e
@@ -483,6 +501,10 @@ const openDatabase = async (params) => {
       case 'ChangeHandlerMustBeFunction':
       case 'UserNotSignedIn':
       case 'UserNotFound':
+      case 'SubscriptionPlanNotSet':
+      case 'SubscriptionNotFound':
+      case 'SubscribedToIncorrectPlan':
+      case 'SubscriptionInactive':
       case 'TooManyRequests':
       case 'ServiceUnavailable':
         throw e

@@ -149,7 +149,7 @@ export default class Dashboard extends Component {
   }
 
   render() {
-    const { paymentStatus } = this.props
+    const { paymentStatus, cancelSaasSubscriptionAt } = this.props
     const { loading, activeApps, deletedApps, showDeletedApps, error, appName, loadingApp } = this.state
 
     return (
@@ -173,7 +173,7 @@ export default class Dashboard extends Component {
               </div>
 
               {
-                paymentStatus === 'active' ? <div />
+                (paymentStatus === 'active' && !cancelSaasSubscriptionAt) ? <div />
                   : <div className='text-left mb-4 text-red-600 font-normal'>
                     Your account is limited to 1 app and 3 users. <a href="#edit-account">Remove this limit</a> with a Userbase subscription.
                 </div>
@@ -205,7 +205,7 @@ export default class Dashboard extends Component {
                 </table>
               }
 
-              {paymentStatus === 'active' &&
+              {paymentStatus === 'active' && !cancelSaasSubscriptionAt &&
 
                 <form className={`flex text-left ${(activeApps && activeApps.length) ? 'mt-8' : ''}`}>
                   <div className='flex-1'>
@@ -304,5 +304,6 @@ export default class Dashboard extends Component {
 }
 
 Dashboard.propTypes = {
-  paymentStatus: string
+  paymentStatus: string,
+  cancelSaasSubscriptionAt: string,
 }

@@ -16,6 +16,7 @@ import connections from './ws'
 import statusCodes from './statusCodes'
 import responseBuilder from './responseBuilder'
 import { trimReq } from './utils'
+import stripe from './stripe'
 
 const adminPanelDir = '/admin-panel/dist'
 
@@ -85,6 +86,7 @@ async function start(express, app, userbaseConfig = {}) {
         const { validationMessage, encryptedValidationMessage } = userController.getValidationMessage(userPublicKey)
 
         logger.child({ userId, connectionId, adminId, appId, route: 'Connection' }).info('Sending Connection over WebSocket')
+
         ws.send(JSON.stringify({
           route: 'Connection',
           keySalts: {
@@ -92,7 +94,7 @@ async function start(express, app, userbaseConfig = {}) {
             dhKeySalt: res.locals.user['diffie-hellman-key-salt'],
             hmacKeySalt: res.locals.user['hmac-key-salt'],
           },
-          encryptedValidationMessage
+          encryptedValidationMessage,
         }))
 
         ws.on('close', () => connections.close(conn))
@@ -143,8 +145,10 @@ async function start(express, app, userbaseConfig = {}) {
                     response = await userController.validateKey(
                       validationMessage,
                       params.validationMessage,
+                      conn,
+                      res.locals.admin,
+                      res.locals.app,
                       res.locals.user,
-                      conn
                     )
                     break
                   }
@@ -177,13 +181,16 @@ async function start(express, app, userbaseConfig = {}) {
                     response = await userController.deleteUserController(
                       userId,
                       adminId,
-                      res.locals.app['app-name']
+                      res.locals.app['app-name'],
+                      res.locals.admin['stripe-account-id']
                     )
                     break
                   }
                   case 'OpenDatabase': {
                     response = await db.openDatabase(
-                      userId,
+                      res.locals.user,
+                      res.locals.app,
+                      res.locals.admin,
                       connectionId,
                       params.dbNameHash,
                       params.newDatabaseParams,
@@ -219,6 +226,46 @@ async function start(express, app, userbaseConfig = {}) {
                   }
                   case 'GetPasswordSalts': {
                     response = await userController.getPasswordSaltsByUserId(userId)
+                    break
+                  }
+                  case 'PurchaseSubscription': {
+                    response = await userController.createSubscriptionPaymentSession(
+                      logChildObject,
+                      res.locals.app,
+                      res.locals.admin,
+                      res.locals.user,
+                      params.successUrl,
+                      params.cancelUrl
+                    )
+                    break
+                  }
+                  case 'CancelSubscription': {
+                    response = await userController.cancelSubscription(
+                      logChildObject,
+                      res.locals.app,
+                      res.locals.admin,
+                      res.locals.user
+                    )
+                    break
+                  }
+                  case 'ResumeSubscription': {
+                    response = await userController.resumeSubscription(
+                      logChildObject,
+                      res.locals.app,
+                      res.locals.admin,
+                      res.locals.user
+                    )
+                    break
+                  }
+                  case 'UpdatePaymentMethod': {
+                    response = await userController.updatePaymentMethod(
+                      logChildObject,
+                      res.locals.app,
+                      res.locals.admin,
+                      res.locals.user,
+                      params.successUrl,
+                      params.cancelUrl
+                    )
                     break
                   }
                   default: {
@@ -400,7 +447,9 @@ async function start(express, app, userbaseConfig = {}) {
 
     v1Admin.use(cookieParser())
 
-    v1Admin.post('/stripe/webhook', bodyParser.raw({ type: 'application/json' }), admin.handleStripeWebhook)
+    v1Admin.post('/stripe/webhook', bodyParser.raw({ type: 'application/json' }), stripe.handleWebhook)
+    v1Admin.post('/stripe/test/connect/webhook', bodyParser.raw({ type: 'application/json' }), (req, res) => stripe.handleWebhook(req, res, stripe.WEBHOOK_OPTIONS['TEST_CONNECT']))
+    v1Admin.post('/stripe/prod/connect/webhook', bodyParser.raw({ type: 'application/json' }), (req, res) => stripe.handleWebhook(req, res, stripe.WEBHOOK_OPTIONS['PROD_CONNECT']))
 
     // must come after stripe/webhook to ensure parsing done correctly
     v1Admin.use(bodyParser.json())
@@ -408,38 +457,41 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.post('/create-admin', admin.createAdminController)
     v1Admin.post('/sign-in', admin.signInAdmin)
     v1Admin.post('/sign-out', admin.authenticateAdmin, admin.signOutAdmin)
-    v1Admin.post('/create-app', admin.authenticateAdmin, admin.getSaasSubscriptionController, appController.createAppController)
+    v1Admin.post('/create-app', admin.authenticateAdmin, appController.createAppController)
     v1Admin.post('/list-apps', admin.authenticateAdmin, appController.listApps)
     v1Admin.post('/list-app-users', admin.authenticateAdmin, appController.listAppUsers)
-    v1Admin.post('/delete-app', admin.authenticateAdmin, admin.getSaasSubscriptionController, appController.deleteApp)
-    v1Admin.post('/permanent-delete-app', admin.authenticateAdmin, admin.getSaasSubscriptionController, appController.permanentDeleteAppController)
+    v1Admin.post('/delete-app', admin.authenticateAdmin, appController.deleteApp)
+    v1Admin.post('/permanent-delete-app', admin.authenticateAdmin, appController.permanentDeleteAppController)
     v1Admin.post('/delete-user', admin.authenticateAdmin, admin.deleteUser)
     v1Admin.post('/permanent-delete-user', admin.authenticateAdmin, admin.permanentDeleteUser)
-    v1Admin.post('/delete-admin', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.deleteAdmin)
+    v1Admin.post('/delete-admin', admin.authenticateAdmin, admin.deleteAdmin)
     v1Admin.post('/update-admin', admin.authenticateAdmin, admin.updateAdmin)
     v1Admin.post('/change-password', admin.authenticateAdmin, admin.changePassword)
     v1Admin.post('/forgot-password', admin.forgotPassword)
     v1Admin.get('/access-tokens', admin.authenticateAdmin, admin.getAccessTokens)
     v1Admin.post('/access-token', admin.authenticateAdmin, admin.generateAccessToken)
     v1Admin.delete('/access-token', admin.authenticateAdmin, admin.deleteAccessToken)
-    v1Admin.get('/account', admin.authenticateAdmin, admin.getSaasSubscriptionController, (req, res) => {
-      const admin = res.locals.admin
-      const subscription = res.locals.subscription
+    v1Admin.get('/account', admin.authenticateAdmin, admin.getAdminAccount)
 
-      const result = {
-        email: admin['email'],
-        fullName: admin['full-name']
-      }
-
-      if (subscription) result.paymentStatus = subscription.cancel_at_period_end ? 'cancel_at_period_end' : subscription.status
-
-      return res.send(result)
-    })
-
+    // endpoints for admin to manage their own account's payments to Userbase
     v1Admin.post('/stripe/create-saas-payment-session', admin.authenticateAdmin, admin.createSaasPaymentSession)
-    v1Admin.post('/stripe/update-saas-payment-session', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.updateSaasSubscriptionPaymentSession)
-    v1Admin.post('/stripe/cancel-saas-subscription', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.cancelSaasSubscription)
-    v1Admin.post('/stripe/resume-saas-subscription', admin.authenticateAdmin, admin.getSaasSubscriptionController, admin.resumeSaasSubscription)
+    v1Admin.post('/stripe/update-saas-payment-session', admin.authenticateAdmin, admin.updateSubscriptionPaymentSession)
+    v1Admin.post('/stripe/cancel-saas-subscription', admin.authenticateAdmin, admin.cancelSaasSubscription)
+    v1Admin.post('/stripe/resume-saas-subscription', admin.authenticateAdmin, admin.resumeSaasSubscription)
+    v1Admin.post('/stripe/payments-add-on', admin.authenticateAdmin, admin.subscribeToPaymentsAddOn)
+    v1Admin.post('/stripe/cancel-payments-add-on', admin.authenticateAdmin, admin.cancelPaymentsAddOnSubscription)
+    v1Admin.post('/stripe/resume-payments-add-on', admin.authenticateAdmin, admin.resumePaymentsAddOnSubscription)
+
+    // endpoints for admin to use payment portal to accept payments from their users
+    v1Admin.post('/stripe/connection/:authorizationCode', admin.authenticateAdmin, admin.completeStripeConnection)
+    v1Admin.delete('/stripe/connection', admin.authenticateAdmin, admin.disconnectStripeAccount)
+    v1Admin.post('/stripe/connected/apps/:appId/test-subscription/:subscriptionPlanId', admin.authenticateAdmin, appController.setTestSubscriptionPlan)
+    v1Admin.delete('/stripe/connected/apps/:appId/test-subscription/:subscriptionPlanId', admin.authenticateAdmin, appController.deleteTestSubscriptionPlan)
+    v1Admin.post('/stripe/connected/apps/:appId/prod-subscription/:subscriptionPlanId', admin.authenticateAdmin, appController.setProdSubscriptionPlan)
+    v1Admin.delete('/stripe/connected/apps/:appId/prod-subscription/:subscriptionPlanId', admin.authenticateAdmin, appController.deleteProdSubscriptionPlan)
+    v1Admin.post('/stripe/connected/apps/:appId/enable-test-payments', admin.authenticateAdmin, appController.enableTestPayments)
+    v1Admin.post('/stripe/connected/apps/:appId/enable-prod-payments', admin.authenticateAdmin, appController.enableProdPayments)
+    v1Admin.delete('/stripe/connected/apps/:appId/payments-mode', admin.authenticateAdmin, appController.disablePayments)
 
     // Access token endpoints
     v1Admin.post('/users/:userId', admin.authenticateAccessToken, userController.updateProtectedProfile)

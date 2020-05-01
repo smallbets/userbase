@@ -12,10 +12,17 @@ export interface UserProfile {
 
 export type RememberMeOption = 'session' | 'local' | 'none'
 
+export type PaymentsMode = 'disabled' | 'test' | 'prod'
+
+export type SubscriptionStatus = 'active' | 'trialing' | 'incomplete' | 'incomplete_expired' | 'past_due' | 'canceled' | 'unpaid'
+
 export interface UserResult {
   username: string
   userId: string
   authToken: string
+  paymentsMode: PaymentsMode
+  subscriptionStatus?: SubscriptionStatus
+  cancelSubscriptionAt?: Date
   email?: string
   profile?: UserProfile
   protectedProfile?: UserProfile
@@ -55,6 +62,10 @@ export interface Item {
   item: any
 }
 
+export interface CancelSubscriptionResult {
+  cancelSubscriptionAt: Date
+}
+
 export interface Userbase {
   init(params: { appId: string }): Promise<Session>
 
@@ -81,6 +92,14 @@ export interface Userbase {
   deleteItem(params: { databaseName: string, itemId: string }): Promise<void>
 
   putTransaction(params: { databaseName: string, operations: DatabaseOperation[] }): Promise<void>
+
+  purchaseSubscription(params: { successUrl: string, cancelUrl: string }): Promise<void>
+
+  cancelSubscription(): Promise<CancelSubscriptionResult>
+
+  resumeSubscription(): Promise<void>
+
+  updatePaymentMethod(params: { successUrl: string, cancelUrl: string }): Promise<void>
 }
 
 declare let userbase: Userbase

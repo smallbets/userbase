@@ -54,7 +54,7 @@ export default class AdminForm extends Component {
   }
 
   async handleSubmit(event) {
-    const { formType, handleUpdatePaymentStatus } = this.props
+    const { formType, handleUpdateAccount } = this.props
     const { email, password, fullName, receiveEmailUpdates } = this.state
     event.preventDefault()
 
@@ -64,8 +64,8 @@ export default class AdminForm extends Component {
       if (formType === 'Create Admin') {
         await adminLogic.createAdmin(email, password, fullName, receiveEmailUpdates)
       } else if (formType === 'Sign In') {
-        const paymentStatus = await adminLogic.signIn(email, password)
-        handleUpdatePaymentStatus(paymentStatus)
+        const admin = await adminLogic.signIn(email, password)
+        handleUpdateAccount(admin)
       } else {
         return console.error('Unknown form type')
       }
@@ -252,5 +252,5 @@ export default class AdminForm extends Component {
 AdminForm.propTypes = {
   formType: string,
   placeholderEmail: string,
-  handleUpdatePaymentStatus: func
+  handleUpdateAccount: func
 }

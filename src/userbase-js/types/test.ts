@@ -11,7 +11,11 @@ const {
   openDatabase,
   insertItem,
   updateItem,
-  putTransaction
+  putTransaction,
+  purchaseSubscription,
+  cancelSubscription,
+  resumeSubscription,
+  updatePaymentMethod,
 } = userbase
 
 // TypeScript Version: 2.1
@@ -151,3 +155,21 @@ putTransaction({ databaseName: 'tdb', operations: [{ command: 'Update', item: { 
 
 // $ExpectError
 putTransaction({ databaseName: 'tdb', operations: [{ command: 'Delete' }] })
+
+// $ExpectType Promise<void>
+purchaseSubscription({ successUrl: 'turl', cancelUrl: 'turl' })
+
+// $ExpectError
+purchaseSubscription({ successUrl: 'turl' })
+
+// $ExpectType Promise<CancelSubscriptionResult>
+cancelSubscription()
+
+// $ExpectType Promise<void>
+resumeSubscription()
+
+// $ExpectType Promise<void>
+updatePaymentMethod({ successUrl: 'turl', cancelUrl: 'turl' })
+
+// $ExpectError
+updatePaymentMethod({ cancelUrl: 'turl' })

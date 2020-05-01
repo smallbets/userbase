@@ -68,6 +68,8 @@ class Connection {
       salts: {}
     }
 
+    this.stripeData = {}
+
     this.rememberMe = rememberMe
 
     this.requests = {}
@@ -128,7 +130,7 @@ class Connection {
 
               const {
                 keySalts,
-                encryptedValidationMessage
+                encryptedValidationMessage,
               } = message
 
               this.keys.salts = keySalts
@@ -216,7 +218,11 @@ class Connection {
             case 'BatchTransaction':
             case 'Bundle':
             case 'ValidateKey':
-            case 'GetPasswordSalts': {
+            case 'GetPasswordSalts':
+            case 'PurchaseSubscription':
+            case 'CancelSubscription':
+            case 'ResumeSubscription':
+            case 'UpdatePaymentMethod': {
               const requestId = message.requestId
 
               if (!requestId) return console.warn('Missing request id')
@@ -404,7 +410,8 @@ class Connection {
     this.keys.dhPrivateKey = await crypto.diffieHellman.importKeyFromMaster(masterKey, base64.decode(salts.dhKeySalt))
     this.keys.hmacKey = await crypto.hmac.importKeyFromMaster(masterKey, base64.decode(salts.hmacKeySalt))
 
-    await this.validateKey()
+    const stripeData = await this.validateKey()
+    this.stripeData = stripeData
 
     this.keys.init = true
 
@@ -420,7 +427,9 @@ class Connection {
     const action = 'ValidateKey'
     const params = { validationMessage }
 
-    await this.request(action, params)
+    const response = await this.request(action, params)
+    const { stripeData } = response.data
+    return stripeData
   }
 
   async request(action, params) {

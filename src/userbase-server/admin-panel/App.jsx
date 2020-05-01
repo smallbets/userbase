@@ -5,6 +5,7 @@ import Dashboard from './components/Dashboard/Dashboard'
 import AppUsersTable from './components/Dashboard/AppUsersTable'
 import EditAdmin from './components/Admin/EditAdmin'
 import UnknownError from './components/Admin/UnknownError'
+import { getStripeState } from './config'
 
 export default class App extends Component {
   constructor(props) {
@@ -13,41 +14,41 @@ export default class App extends Component {
     this.state = {
       mode: undefined,
       signedIn: undefined,
-      email: undefined,
-      fullName: undefined,
-      paymentStatus: undefined,
+      admin: {},
       mobileMenuOpen: false,
-      loadingPaymentStatus: true,
-      errorGettingPaymentStatus: false,
+      loadingAdmin: true,
+      errorGettingAdmin: false,
     }
 
     this.handleSignOut = this.handleSignOut.bind(this)
     this.handleUpdateAccount = this.handleUpdateAccount.bind(this)
     this.handleReadHash = this.handleReadHash.bind(this)
-    this.handleUpdatePaymentStatus = this.handleUpdatePaymentStatus.bind(this)
     this.handleToggleMobileMenu = this.handleToggleMobileMenu.bind(this)
+    this.handleStripeConnectRedirect = this.handleStripeConnectRedirect.bind(this)
   }
 
   async componentDidMount() {
     window.addEventListener('hashchange', this.handleReadHash, false)
-    const signedIn = this.handleReadHash()
+    const signedIn = await this.handleReadHash()
 
-    let paymentStatus = undefined
+    let admin
     if (signedIn) {
       try {
-        paymentStatus = await adminLogic.getPaymentStatus()
-        this.handleReadHash()
+        admin = await adminLogic.getAdminAccount()
 
-        if (this.state.signedIn && paymentStatus === 'past_due') {
+        if (
+          admin.paymentStatus === 'past_due' || admin.paymentStatus === 'incomplete' ||
+          admin.paymentsAddOnSubscriptionStatus === 'past_due' || admin.paymentsAddOnSubscriptionStatus === 'incomplete'
+        ) {
           window.alert('Please update your payment method!')
         }
 
       } catch (e) {
-        this.setState({ errorGettingPaymentStatus: true })
+        this.setState({ errorGettingAdmin: true })
       }
     }
 
-    this.setState({ paymentStatus, loadingPaymentStatus: false })
+    this.setState({ admin: { ...this.state.admin, ...admin }, loadingAdmin: false })
   }
 
   componentWillUnmount() {
@@ -58,33 +59,64 @@ export default class App extends Component {
     await adminLogic.signOut()
   }
 
-  handleUpdateAccount(email, fullName) {
-    this.setState({
-      email: email || this.state.email,
-      fullName: fullName || this.state.fullName
-    })
+  handleUpdateAccount(updatedAdminFields) {
+    const admin = this.state.admin
+    this.setState({ admin: { ...admin, ...updatedAdminFields } })
   }
 
-  handleReadHash() {
+  async handleStripeConnectRedirect(hashRoute, updatedState) {
+    const params = {}
+
+    // separate parameters
+    const paramsString = hashRoute.substring(15)
+    for (let param of paramsString.split('&').map(param => param.split('='))) {
+      const key = param[0]
+      const value = param[1]
+      params[key] = value
+    }
+
+    // the state value provided prevents CSRF attack
+    if (params.state !== getStripeState() || !params.code) {
+      console.warn(`Unknown params ${JSON.stringify(params)}.`)
+      window.location.hash = ''
+    } else {
+      const stripeOauthCode = params.code
+
+      try {
+        await adminLogic.completeStripeConnection(stripeOauthCode)
+        updatedState.admin.connectedToStripe = true
+        window.location.hash = ''
+        window.alert('Stripe account connected successfully!')
+      } catch {
+        window.location.hash = 'edit-account'
+        window.alert('Stripe account failed to connect! Please try again.')
+      }
+
+      this.setState({ ...updatedState })
+    }
+  }
+
+  async handleReadHash() {
     const sessionJson = localStorage.getItem('adminSession')
     const session = sessionJson && JSON.parse(sessionJson)
     const signedIn = session && session.signedIn
     const email = session && session.email
     const fullName = session && session.fullName
 
-    const updatedState = { signedIn, mobileMenuOpen: false }
+    const updatedState = { signedIn, mobileMenuOpen: false, admin: this.state.admin }
 
-    if (email !== this.state.email) {
-      updatedState.email = email
+    if (email !== this.state.admin.email) {
+      updatedState.admin.email = email
     }
 
-    if (fullName !== this.state.fullName) {
-      updatedState.fullName = fullName
+    if (fullName !== this.state.admin.fullName) {
+      updatedState.admin.fullName = fullName
     }
 
     if (!signedIn && this.state.signedIn) {
-      updatedState.paymentStatus = undefined
-      updatedState.errorGettingPaymentStatus = false
+      updatedState.admin = { email }
+      updatedState.errorGettingAdmin = false
+      updatedState.signedIn = false
     }
 
     const hashRoute = window.location.hash.substring(1)
@@ -114,8 +146,10 @@ export default class App extends Component {
         break
 
       default:
-        if (hashRoute && hashRoute.substring(0, 4) === 'app=' && signedIn) {
+        if (hashRoute && signedIn && hashRoute.substring(0, 4) === 'app=') {
           this.setState({ mode: 'app-users-table', ...updatedState })
+        } else if (hashRoute && signedIn && hashRoute.substring(0, 14) === 'stripe-connect') {
+          await this.handleStripeConnectRedirect(hashRoute, updatedState)
         } else {
           signedIn
             ? this.setState({ mode: 'dashboard', ...updatedState })
@@ -124,10 +158,6 @@ export default class App extends Component {
     }
 
     return signedIn
-  }
-
-  handleUpdatePaymentStatus(paymentStatus) {
-    this.setState({ paymentStatus })
   }
 
   handleToggleMobileMenu(e) {
@@ -139,12 +169,10 @@ export default class App extends Component {
     const {
       mode,
       signedIn,
-      email,
-      fullName,
-      paymentStatus,
+      admin,
       mobileMenuOpen,
-      loadingPaymentStatus,
-      errorGettingPaymentStatus
+      loadingAdmin,
+      errorGettingAdmin,
     } = this.state
 
     if (!mode) {
@@ -159,7 +187,7 @@ export default class App extends Component {
               <div className='flex-shrink-0'>
                 <div className='flex text-lg text-center menu'>
                   <a href='https://userbase.com'><img alt='Userbase' className='h-8' src={require('./img/logo.png')} /></a>
-                  <span className='hidden sm:block font-semibold py-2 px-3 tracking-tight leading-none'>{signedIn ? fullName : ''}</span>
+                  <span className='hidden sm:block font-semibold py-2 px-3 tracking-tight leading-none'>{signedIn ? admin.fullName : ''}</span>
                 </div>
               </div>
               <div className='sm:hidden'>
@@ -186,11 +214,11 @@ export default class App extends Component {
           </div>
         </header>
 
-        {errorGettingPaymentStatus
+        {errorGettingAdmin
           ? <div className='container content text-xs sm:text-base'>
             <UnknownError noMarginTop />
           </div>
-          : loadingPaymentStatus
+          : loadingAdmin
             ? <div className='text-center'>< div className='loader w-6 h-6 inline-block' /></div>
             : (() => {
               switch (mode) {
@@ -199,33 +227,34 @@ export default class App extends Component {
                     formType='Create Admin'
                     key='create-admin'
                     placeholderEmail=''
+                    handleUpdateAccount={this.handleUpdateAccount}
                   />
 
                 case 'sign-in':
                   return <AdminForm
                     formType='Sign In'
                     key='sign-in'
-                    placeholderEmail={email}
-                    handleUpdatePaymentStatus={this.handleUpdatePaymentStatus}
+                    placeholderEmail={admin.email}
+                    handleUpdateAccount={this.handleUpdateAccount}
                   />
 
                 case 'dashboard':
-                  return <Dashboard paymentStatus={paymentStatus} />
+                  return <Dashboard
+                    paymentStatus={admin.paymentStatus}
+                    cancelSaasSubscriptionAt={admin.cancelSaasSubscriptionAt}
+                  />
 
                 case 'app-users-table':
                   return <AppUsersTable
                     appName={decodeURIComponent(window.location.hash.substring(5))}
-                    paymentStatus={paymentStatus}
+                    admin={admin}
                     key={window.location.hash} // re-renders on hash change
                   />
 
                 case 'edit-account':
                   return <EditAdmin
-                    paymentStatus={paymentStatus}
                     handleUpdateAccount={this.handleUpdateAccount}
-                    handleUpdatePaymentStatus={this.handleUpdatePaymentStatus}
-                    fullName={fullName}
-                    email={email}
+                    admin={admin}
                   />
 
                 default:

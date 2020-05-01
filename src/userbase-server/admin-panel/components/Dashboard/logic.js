@@ -102,11 +102,105 @@ const permanentDeleteUser = async (userId, appName, username) => {
   }
 }
 
+const setTestSubscriptionPlanId = async (appName, appId, testSubscriptionPlanId) => {
+  try {
+    await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/stripe/connected/apps/${appId}/test-subscription/${testSubscriptionPlanId}?appName=${encodeURIComponent(appName)}`,
+      timeout: TEN_SECONDS_MS
+    })
+  } catch (e) {
+    adminLogic.errorHandler(e)
+  }
+}
+
+const deleteTestSubscriptionPlanId = async (appName, appId, testSubscriptionPlanId) => {
+  try {
+    await axios({
+      method: 'DELETE',
+      url: `/${VERSION}/admin/stripe/connected/apps/${appId}/test-subscription/${testSubscriptionPlanId}?appName=${encodeURIComponent(appName)}`,
+      timeout: TEN_SECONDS_MS
+    })
+  } catch (e) {
+    adminLogic.errorHandler(e)
+  }
+}
+
+const setProdSubscriptionPlanId = async (appName, appId, prodSubscriptionPlanId) => {
+  try {
+    await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/stripe/connected/apps/${appId}/prod-subscription/${prodSubscriptionPlanId}?appName=${encodeURIComponent(appName)}`,
+      timeout: TEN_SECONDS_MS
+    })
+  } catch (e) {
+    adminLogic.errorHandler(e)
+  }
+}
+
+const deleteProdSubscriptionPlanId = async (appName, appId, prodSubscriptionPlanId) => {
+  try {
+    await axios({
+      method: 'DELETE',
+      url: `/${VERSION}/admin/stripe/connected/apps/${appId}/prod-subscription/${prodSubscriptionPlanId}?appName=${encodeURIComponent(appName)}`,
+      timeout: TEN_SECONDS_MS
+    })
+  } catch (e) {
+    adminLogic.errorHandler(e)
+  }
+}
+
+const enableTestPayments = async (appName, appId) => {
+  try {
+    const paymentsModeResponse = await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/stripe/connected/apps/${appId}/enable-test-payments?appName=${encodeURIComponent(appName)}`,
+      timeout: TEN_SECONDS_MS
+    })
+    return paymentsModeResponse.data
+  } catch (e) {
+    adminLogic.errorHandler(e)
+  }
+}
+
+const enableProdPayments = async (appName, appId) => {
+  try {
+    const paymentsModeResponse = await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/stripe/connected/apps/${appId}/enable-prod-payments?appName=${encodeURIComponent(appName)}`,
+      timeout: TEN_SECONDS_MS
+    })
+    return paymentsModeResponse.data
+  } catch (e) {
+    adminLogic.errorHandler(e)
+  }
+}
+
+const disablePayments = async (appName, appId) => {
+  try {
+    const paymentsModeResponse = await axios({
+      method: 'DELETE',
+      url: `/${VERSION}/admin/stripe/connected/apps/${appId}/payments-mode?appName=${encodeURIComponent(appName)}`,
+      timeout: TEN_SECONDS_MS
+    })
+    return paymentsModeResponse.data
+  } catch (e) {
+    adminLogic.errorHandler(e)
+  }
+}
+
 export default {
   listApps,
   listAppUsers,
   deleteApp,
   permanentDeleteApp,
   deleteUser,
-  permanentDeleteUser
+  permanentDeleteUser,
+  setTestSubscriptionPlanId,
+  setProdSubscriptionPlanId,
+  deleteTestSubscriptionPlanId,
+  deleteProdSubscriptionPlanId,
+  enableTestPayments,
+  enableProdPayments,
+  disablePayments,
 }

@@ -59,16 +59,14 @@ async function createApp(appName, adminId, appId = uuidv4()) {
 exports.createApp = createApp
 
 exports.createAppController = async function (req, res) {
-  const subscription = res.locals.subscription
-
-  if (!subscription || subscription.cancel_at_period_end || subscription.status !== 'active') return res
-    .status(statusCodes['Payment Required'])
-    .send('Pay subscription fee to create an app.')
-
   const appName = req.body.appName
 
   const admin = res.locals.admin
   const adminId = admin['admin-id']
+
+  if (admin['stripe-saas-subscription-status'] !== 'active' || admin['stripe-cancel-saas-subscription-at']) return res
+    .status(statusCodes['Payment Required'])
+    .send('Pay subscription fee to create an app.')
 
   try {
     const app = await createApp(appName, adminId)
@@ -166,17 +164,29 @@ async function getAppByAppId(appId) {
 }
 exports.getAppByAppId = getAppByAppId
 
+async function getDeletedApp(appId) {
+  const params = {
+    TableName: setup.deletedAppsTableName,
+    Key: {
+      'app-id': appId
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+  const appResponse = await ddbClient.get(params).promise()
+  return appResponse.Item
+}
+exports.getDeletedApp = getDeletedApp
+
 exports.deleteApp = async function (req, res) {
-  const subscription = res.locals.subscription
-
-  if (!subscription || subscription.cancel_at_period_end || subscription.status !== 'active') return res
-    .status(statusCodes['Payment Required'])
-    .send('Pay subscription fee to delete an app.')
-
   const appName = req.body.appName
 
   const admin = res.locals.admin
   const adminId = admin['admin-id']
+
+  if (admin['stripe-saas-subscription-status'] !== 'active' || admin['stripe-cancel-saas-subscription-at']) return res
+    .status(statusCodes['Payment Required'])
+    .send('Pay subscription fee to delete an app.')
 
   if (!appName || !adminId) return res
     .status(statusCodes['Bad Request'])
@@ -260,17 +270,15 @@ const permanentDelete = async (adminId, appName, appId) => {
 exports.permanentDelete = permanentDelete
 
 exports.permanentDeleteAppController = async function (req, res) {
-  const subscription = res.locals.subscription
-
-  if (!subscription || subscription.cancel_at_period_end || subscription.status !== 'active') return res
-    .status(statusCodes['Payment Required'])
-    .send('Pay subscription fee to permanently delete an app.')
-
   const appName = req.body.appName
   const appId = req.body.appId
 
   const admin = res.locals.admin
   const adminId = admin['admin-id']
+
+  if (admin['stripe-saas-subscription-status'] !== 'active' || admin['stripe-cancel-saas-subscription-at']) return res
+    .status(statusCodes['Payment Required'])
+    .send('Pay subscription fee to permanently delete an app.')
 
   if (!appName || !appId || !adminId) return res
     .status(statusCodes['Bad Request'])
@@ -325,7 +333,7 @@ exports.listAppUsers = async function (req, res) {
 
     return res.status(statusCodes['Success']).send({
       users: users.map(user => userController.buildUserResult(user)),
-      appId: app['app-id']
+      ..._buildAppResult(app)
     })
   } catch (e) {
     logger.error(`Failed to list app users for app ${appName} and admin ${adminId} with ${e}`)
@@ -383,6 +391,9 @@ const _buildAppResult = (app) => {
     appId: app['app-id'],
     deleted: app['deleted'],
     creationDate: app['creation-date'],
+    paymentsMode: app['payments-mode'] || 'disabled',
+    testSubscriptionPlanId: app['test-subscription-plan-id'],
+    prodSubscriptionPlanId: app['prod-subscription-plan-id'],
   }
 }
 
@@ -583,4 +594,276 @@ exports.countNonDeletedAppUsers = async function (appId, limit) {
   }
 
   return count
+}
+
+const _setPlanInDdb = async function (paymentsMode, adminId, appName, appId, subscriptionPlanId) {
+  const params = {
+    TableName: setup.appsTableName,
+    Key: {
+      'admin-id': adminId,
+      'app-name': appName
+    },
+    UpdateExpression: `SET #subscriptionPlanId = :subscriptionPlanId`,
+    ConditionExpression: '#appId = :appId and attribute_not_exists(deleted)',
+    ExpressionAttributeValues: {
+      ':appId': appId,
+      ':subscriptionPlanId': subscriptionPlanId
+    },
+    ExpressionAttributeNames: {
+      '#appId': 'app-id',
+      '#subscriptionPlanId': paymentsMode + '-subscription-plan-id'
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+  await ddbClient.update(params).promise()
+}
+
+const _setSubscriptionPlan = async function (req, res, paymentsMode) {
+  let logChildObject
+  try {
+    const admin = res.locals.admin
+    const adminId = admin['admin-id']
+    const stripeAccountId = admin['stripe-account-id']
+    const appId = req.params.appId
+    const subscriptionPlanId = req.params.subscriptionPlanId
+    const appName = req.query.appName
+
+    logChildObject = { adminId, stripeAccountId, appId, subscriptionPlanId, paymentsMode, req: trimReq(req) }
+    logger.child(logChildObject).info('Setting subscription plan')
+
+    if (!stripeAccountId) throw {
+      status: statusCodes['Forbidden'],
+      error: { message: 'Stripe account not connected.' }
+    }
+
+    if (admin['deleted']) throw {
+      status: statusCodes['Not Found'],
+      error: { message: 'Admin not found.' }
+    }
+
+    try {
+      // make sure subscription plan exists in Stripe
+      const subscription = await stripe.getClient(paymentsMode === 'test').plans.retrieve(
+        subscriptionPlanId,
+        { stripe_account: stripeAccountId }
+      )
+
+      if (paymentsMode === 'prod' && !subscription.livemode) {
+        throw {
+          status: statusCodes['Forbidden'],
+          error: { message: 'Plan must be a production plan.' }
+        }
+      } else if (paymentsMode === 'test' && subscription.livemode) {
+        throw {
+          status: statusCodes['Forbidden'],
+          error: { message: 'Plan must be a test plan.' }
+        }
+      }
+
+      await _setPlanInDdb(paymentsMode, adminId, appName, appId, subscriptionPlanId)
+
+      logger
+        .child({ ...logChildObject, statusCode: statusCodes['Success'] })
+        .info('Successfully set subscription plan')
+
+      return res.send('success!')
+    } catch (e) {
+      if (e.message && e.message.includes('No such plan')) {
+        throw {
+          status: statusCodes['Not Found'],
+          error: { message: 'Plan not found.' }
+        }
+      }
+      throw e
+    }
+
+  } catch (e) {
+    const message = 'Failed to set subscription plan'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
+      return res.status(e.status).send(e.error.message)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return res.status(statusCode).send(message)
+    }
+  }
+}
+
+exports.setTestSubscriptionPlan = async function (req, res) {
+  const paymentsMode = 'test'
+  return _setSubscriptionPlan(req, res, paymentsMode)
+}
+
+exports.setProdSubscriptionPlan = async function (req, res) {
+  const paymentsMode = 'prod'
+  return _setSubscriptionPlan(req, res, paymentsMode)
+}
+
+const _deleteSubscriptionPlanInDdb = async function (paymentsMode, adminId, appName, appId) {
+  const params = {
+    TableName: setup.appsTableName,
+    Key: {
+      'admin-id': adminId,
+      'app-name': appName
+    },
+    UpdateExpression: 'REMOVE #subscriptionPlanId',
+    ConditionExpression: '#appId = :appId and attribute_not_exists(deleted)',
+    ExpressionAttributeValues: {
+      ':appId': appId,
+    },
+    ExpressionAttributeNames: {
+      '#appId': 'app-id',
+      '#subscriptionPlanId': paymentsMode + '-subscription-plan-id',
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+  await ddbClient.update(params).promise()
+}
+
+const _deleteSubscriptionPlan = async function (req, res, paymentsMode) {
+  let logChildObject
+  try {
+    const admin = res.locals.admin
+    const adminId = admin['admin-id']
+    const stripeAccountId = admin['stripe-account-id']
+    const appId = req.params.appId
+    const appName = req.query.appName
+    const subscriptionPlanId = req.params.subscriptionPlanId
+
+    logChildObject = { adminId, stripeAccountId, appId, subscriptionPlanId, paymentsMode, req: trimReq(req) }
+    logger.child(logChildObject).info('Deleting subscription plan')
+
+    if (!stripeAccountId) throw {
+      status: statusCodes['Forbidden'],
+      error: { message: 'Stripe account not connected.' }
+    }
+
+    if (admin['deleted']) throw {
+      status: statusCodes['Not Found'],
+      error: { message: 'Admin not found.' }
+    }
+
+    await _deleteSubscriptionPlanInDdb(paymentsMode, adminId, appName, appId)
+
+    logger
+      .child({ ...logChildObject, statusCode: statusCodes['Success'] })
+      .info('Successfully deleted subscription plan')
+
+    return res.send('success!')
+  } catch (e) {
+    const message = 'Failed to delete subscription plan'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
+      return res.status(e.status).send(e.error)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return res.status(statusCode).send({ message })
+    }
+  }
+}
+
+exports.deleteTestSubscriptionPlan = async function (req, res) {
+  const paymentsMode = 'test'
+  return _deleteSubscriptionPlan(req, res, paymentsMode)
+}
+
+exports.deleteProdSubscriptionPlan = async function (req, res) {
+  const paymentsMode = 'prod'
+  return _deleteSubscriptionPlan(req, res, paymentsMode)
+}
+
+const _setPaymentsModeInDdb = async function (adminId, appName, appId, paymentsMode) {
+  const params = {
+    TableName: setup.appsTableName,
+    Key: {
+      'admin-id': adminId,
+      'app-name': appName
+    },
+    UpdateExpression: 'SET #paymentsMode = :paymentsMode',
+    ConditionExpression: '#appId = :appId and attribute_not_exists(deleted)',
+    ExpressionAttributeValues: {
+      ':appId': appId,
+      ':paymentsMode': paymentsMode
+    },
+    ExpressionAttributeNames: {
+      '#appId': 'app-id',
+      '#paymentsMode': 'payments-mode'
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+  await ddbClient.update(params).promise()
+}
+
+const _setPaymentsMode = async function (req, res, paymentsMode, log1, log2, log3) {
+  let logChildObject
+  try {
+    const admin = res.locals.admin
+    const adminId = admin['admin-id']
+    const stripeAccountId = admin['stripe-account-id']
+    const appId = req.params.appId
+    const appName = req.query.appName
+
+    logChildObject = { adminId, stripeAccountId, appId, req: trimReq(req) }
+    logger.child(logChildObject).info(log1)
+
+    if (!stripeAccountId) throw {
+      status: statusCodes['Forbidden'],
+      error: { message: 'Stripe account not connected.' }
+    }
+
+    if (admin['deleted']) throw {
+      status: statusCodes['Not Found'],
+      error: { message: 'Admin not found.' }
+    }
+
+    await _setPaymentsModeInDdb(adminId, appName, appId, paymentsMode)
+
+    logger
+      .child({ ...logChildObject, statusCode: statusCodes['Success'] })
+      .info(log2)
+
+    return res.send(paymentsMode)
+  } catch (e) {
+    const message = log3
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
+      return res.status(e.status).send(e.error.message)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return res.status(statusCode).send(message)
+    }
+  }
+}
+
+exports.enableTestPayments = function (req, res) {
+  const paymentsMode = 'test'
+  const log1 = 'Enabling test payments'
+  const log2 = 'Successfully enabled test payments'
+  const log3 = 'Failed to enable test payments'
+  return _setPaymentsMode(req, res, paymentsMode, log1, log2, log3)
+}
+
+exports.enableProdPayments = function (req, res) {
+  const paymentsMode = 'prod'
+  const log1 = 'Enabling prod payments'
+  const log2 = 'Successfully enabled prod payments'
+  const log3 = 'Failed to enable prod payments'
+  return _setPaymentsMode(req, res, paymentsMode, log1, log2, log3)
+}
+
+exports.disablePayments = function (req, res) {
+  const paymentsMode = 'disabled'
+  const log1 = 'Disabling payments'
+  const log2 = 'Successfully disabled payments'
+  const log3 = 'Failed to disable payments'
+  return _setPaymentsMode(req, res, paymentsMode, log1, log2, log3)
 }

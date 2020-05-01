@@ -19,7 +19,7 @@ const removeProtocolFromEndpoint = (endpoint) => {
   }
 }
 
-const getProtocolFromEndpoint = (endpoint) => {
+export const getProtocolFromEndpoint = (endpoint) => {
   return endpoint.split(':')[0]
 }
 

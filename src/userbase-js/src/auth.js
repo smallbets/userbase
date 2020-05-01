@@ -197,13 +197,21 @@ const _generateKeysAndSignUp = async (username, password, seed, email, profile) 
   }
 }
 
-const _buildUserResult = (username, userId, authToken, email, profile, protectedProfile, usedTempPassword) => {
+const _buildUserResult = ({ username, userId, authToken, email, profile, protectedProfile, usedTempPassword, stripeData }) => {
   const result = { username, userId, authToken }
 
   if (email) result.email = email
   if (profile) result.profile = profile
   if (protectedProfile) result.protectedProfile = protectedProfile
   if (usedTempPassword) result.usedTempPassword = usedTempPassword
+
+  if (stripeData) {
+    const { paymentsMode, subscriptionStatus, cancelSubscriptionAt } = stripeData
+
+    if (paymentsMode) result.paymentsMode = paymentsMode
+    if (subscriptionStatus) result.subscriptionStatus = subscriptionStatus
+    if (cancelSubscriptionAt) result.cancelSubscriptionAt = cancelSubscriptionAt
+  }
 
   return result
 }
@@ -252,7 +260,7 @@ const signUp = async (params) => {
 
     await _connectWebSocket(session, seedString, rememberMe)
 
-    return _buildUserResult(username, userId, authToken, email, profile)
+    return _buildUserResult({ username, userId, authToken, email, profile, stripeData: ws.stripeData })
   } catch (e) {
 
     switch (e.name) {
@@ -416,7 +424,10 @@ const signIn = async (params) => {
 
     await _connectWebSocket(session, seedString, rememberMe)
 
-    return _buildUserResult(username, userId, session.authToken, email, profile, protectedProfile, usedTempPassword)
+    return _buildUserResult({
+      username, userId, authToken: session.authToken, email,
+      profile, protectedProfile, usedTempPassword, stripeData: ws.stripeData
+    })
   } catch (e) {
 
     switch (e.name) {
@@ -516,7 +527,7 @@ const signInWithSession = async (appId) => {
     // enable idempotent calls to init()
     if (ws.connectionResolved) {
       if (ws.session.sessionId === sessionId) {
-        return { user: _buildUserResult(username, userId, ws.session.authToken, email, profile, protectedProfile) }
+        return { user: _buildUserResult({ username, userId, authToken: ws.session.authToken, email, profile, protectedProfile, stripeData: ws.stripeData }) }
       } else {
         throw new errors.UserAlreadySignedIn(ws.session.username)
       }
@@ -525,7 +536,7 @@ const signInWithSession = async (appId) => {
     const session = { ...currentSession, authToken }
     await _connectWebSocket(session, savedSeedString, rememberMe)
 
-    return { user: _buildUserResult(username, userId, authToken, email, profile, protectedProfile) }
+    return { user: _buildUserResult({ username, userId, authToken, email, profile, protectedProfile, stripeData: ws.stripeData }) }
   } catch (e) {
     _parseGenericErrors(e)
     throw e
