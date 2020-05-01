@@ -6,6 +6,7 @@ import connections from './ws'
 import logger from './logger'
 import userController from './user'
 import peers from './peers'
+import { lastEvaluatedKeyToNextPageToken, nextPageTokenToLastEvaluatedKey } from './utils'
 
 const MAX_OPERATIONS_IN_TX = 10
 
@@ -157,6 +158,56 @@ exports.openDatabase = async function (user, app, admin, connectionId, dbNameHas
   } catch (e) {
     logger.error(`Failed to open database for user ${userId} with ${e}`)
     return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to open database')
+  }
+}
+
+const _queryUserDatabases = async (userId, nextPageToken) => {
+  const userDatabasesParams = {
+    TableName: setup.userDatabaseTableName,
+    KeyConditionExpression: '#userId = :userId',
+    ExpressionAttributeNames: {
+      '#userId': 'user-id',
+    },
+    ExpressionAttributeValues: {
+      ':userId': userId
+    }
+  }
+
+  if (nextPageToken) {
+    userDatabasesParams.ExclusiveStartKey = nextPageTokenToLastEvaluatedKey(nextPageToken, () => { })
+  }
+
+  const ddbClient = connection.ddbClient()
+  const userDbsResponse = await ddbClient.query(userDatabasesParams).promise()
+
+  return userDbsResponse
+}
+
+exports.getDatabases = async function (logChildObject, userId, nextPageToken) {
+  try {
+    const userDbsResponse = await _queryUserDatabases(userId, nextPageToken)
+
+    const userDbs = userDbsResponse.Items
+
+    const databases = await Promise.all(userDbs.map(userDb => findDatabaseByDatabaseId(userDb['database-id'])))
+
+    const finalResult = {
+      databases: databases.map((db, i) => {
+        return {
+          encryptedDbKey: userDbs[i]['encrypted-db-key'],
+          databaseName: db['database-name'],
+        }
+      }),
+      nextPageToken: userDbsResponse.LastEvaluatedKey && lastEvaluatedKeyToNextPageToken(userDbsResponse.LastEvaluatedKey)
+    }
+
+    return responseBuilder.successResponse(finalResult)
+  } catch (e) {
+    logChildObject.err = e
+    return responseBuilder.errorResponse(
+      statusCodes['Internal Server Error'],
+      'Failed to get databases'
+    )
   }
 }
 

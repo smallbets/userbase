@@ -1180,4 +1180,52 @@ describe('DB Tests', function () {
 
   })
 
+  describe('Get Databases', function () {
+    beforeEach(function () { beforeEachHook() })
+
+    it('Get 0 Databases', async function () {
+      const databasesResult = await this.test.userbase.getDatabases()
+      expect(databasesResult, 'result structure').to.have.key('databases')
+      expect(databasesResult.databases, 'databases result').to.be.an('array').that.has.lengthOf(0)
+    })
+
+    it('Get 1 Database', async function () {
+      await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+      const databasesResult = await this.test.userbase.getDatabases()
+
+      expect(databasesResult, 'result structure').to.have.key('databases')
+      expect(databasesResult.databases, 'databases result').to.be.an('array').that.has.lengthOf(1)
+
+      const database = databasesResult.databases[0]
+      expect(database, 'database name').to.deep.equal({ databaseName })
+    })
+
+    it('Get 10 Databases', async function () {
+      const numDatabases = 10
+      const createdDatabases = {}
+      const openDatabases = []
+      for (let i = 0; i < numDatabases; i++) {
+        openDatabases.push(this.test.userbase.openDatabase({ databaseName: databaseName + i, changeHandler: () => { } }))
+        createdDatabases[databaseName + i] = true
+      }
+      await Promise.all(openDatabases)
+
+      const databasesResult = await this.test.userbase.getDatabases()
+
+      expect(databasesResult, 'result structure').to.have.key('databases')
+      expect(databasesResult.databases, 'databases result').to.be.an('array').that.has.lengthOf(numDatabases)
+
+      for (let i = 0; i < numDatabases; i++) {
+        const database = databasesResult.databases[i]
+
+        expect(database, 'database name key').to.have.key('databaseName')
+        const databaseName = database.databaseName
+
+        expect(createdDatabases[databaseName], 'created database and was not already found').to.be.true
+        createdDatabases[databaseName] = false
+      }
+    })
+  })
+
 })

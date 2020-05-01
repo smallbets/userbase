@@ -117,7 +117,7 @@ async function start(express, app, userbaseConfig = {}) {
 
             const requestId = request.requestId
             const action = request.action
-            const params = request.params
+            const params = request.params || {}
 
             let response
 
@@ -196,6 +196,10 @@ async function start(express, app, userbaseConfig = {}) {
                       params.newDatabaseParams,
                       params.reopenAtSeqNo
                     )
+                    break
+                  }
+                  case 'GetDatabases': {
+                    response = await db.getDatabases(logChildObject, res.locals.user['user-id'], params.nextPageToken)
                     break
                   }
                   case 'Insert':

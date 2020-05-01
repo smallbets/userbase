@@ -818,8 +818,53 @@ const postTransaction = async (database, action, params) => {
   }
 }
 
+const _buildDatabaseResult = async (db) => {
+  const dbKeyString = await crypto.aesGcm.decryptString(ws.keys.encryptionKey, db.encryptedDbKey)
+  const dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
+  const databaseName = await crypto.aesGcm.decryptString(dbKey, db.databaseName)
+  return { databaseName }
+}
+
+const getDatabases = async () => {
+  try {
+    if (!ws.keys.init) throw new errors.UserNotSignedIn
+
+    try {
+      const databases = []
+      let action = 'GetDatabases'
+      let databasesResponse = await ws.request(action)
+      let databaseResults = await Promise.all(databasesResponse.data.databases.map(db => _buildDatabaseResult(db)))
+      databases.push(...databaseResults)
+
+      while (databasesResponse.data.nextPageToken) {
+        const params = { nextPageToken: databasesResponse.data.nextPageToken }
+        databasesResponse = await ws.request(action, params)
+        databaseResults = await Promise.all(databasesResponse.data.databases.map(db => _buildDatabaseResult(db)))
+        databases.push(...databaseResults)
+      }
+
+      return { databases }
+    } catch (e) {
+      _parseGenericErrors(e)
+      throw e
+    }
+
+  } catch (e) {
+
+    switch (e.name) {
+      case 'UserNotSignedIn':
+      case 'ServiceUnavailable':
+        throw e
+
+      default:
+        throw new errors.ServiceUnavailable
+    }
+  }
+}
+
 export default {
   openDatabase,
+  getDatabases,
 
   insertItem,
   updateItem,

@@ -4,8 +4,7 @@ import logger from './logger'
 import statusCodes from './statusCodes'
 import setup from './setup'
 import userController from './user'
-import stripe from './stripe'
-import { trimReq } from './utils'
+import { trimReq, lastEvaluatedKeyToNextPageToken, nextPageTokenToLastEvaluatedKey } from './utils'
 
 const UUID_STRING_LENGTH = 36
 
@@ -398,38 +397,13 @@ const _buildAppResult = (app) => {
   }
 }
 
-// convert last evaluated key to a base64 string so it does not confuse developer
-const _lastEvaluatedKeyToNextPageToken = (lastEvaluatedKey) => {
-  const lastEvaluatedKeyString = JSON.stringify(lastEvaluatedKey)
-  const base64LastEvaluatedKey = Buffer.from(lastEvaluatedKeyString).toString('base64')
-  return base64LastEvaluatedKey
-}
-
-const _nextPageTokenToLastEvaluatedKey = (nextPageToken, validateLastEvaluatedKey) => {
-  try {
-    if (!nextPageToken) return null
-
-    const lastEvaluatedKeyString = Buffer.from(nextPageToken, 'base64').toString('ascii')
-    const lastEvaluatedKey = JSON.parse(lastEvaluatedKeyString)
-
-    validateLastEvaluatedKey(lastEvaluatedKey)
-
-    return lastEvaluatedKey
-  } catch {
-    throw {
-      status: statusCodes['Bad Request'],
-      error: { message: 'Next page token invalid.' }
-    }
-  }
-}
-
 const _buildUsersList = (usersResponse) => {
   const result = {
     users: usersResponse.Items.map(user => userController.buildUserResult(user)),
   }
 
   if (usersResponse.LastEvaluatedKey) {
-    result.nextPageToken = _lastEvaluatedKeyToNextPageToken(usersResponse.LastEvaluatedKey)
+    result.nextPageToken = lastEvaluatedKeyToNextPageToken(usersResponse.LastEvaluatedKey)
   }
 
   return result
@@ -441,7 +415,7 @@ const _buildAppsList = (appsResponse) => {
   }
 
   if (appsResponse.LastEvaluatedKey) {
-    result.nextPageToken = _lastEvaluatedKeyToNextPageToken(appsResponse.LastEvaluatedKey)
+    result.nextPageToken = lastEvaluatedKeyToNextPageToken(appsResponse.LastEvaluatedKey)
   }
 
   return result
@@ -515,7 +489,7 @@ exports.listUsersWithPagination = async function (req, res) {
     logger.child(logChildObject).info('Listing users from Admin API')
 
     _validateAppId(appId)
-    const lastEvaluatedKey = _nextPageTokenToLastEvaluatedKey(
+    const lastEvaluatedKey = nextPageTokenToLastEvaluatedKey(
       nextPageToken,
       (lastEvaluatedKey) => _validateListUsersLastEvaluatedKey(lastEvaluatedKey, appId)
     )
@@ -559,7 +533,7 @@ exports.listAppsWithPagination = async function (req, res) {
     const admin = res.locals.admin
     const adminId = admin['admin-id']
 
-    const lastEvaluatedKey = _nextPageTokenToLastEvaluatedKey(
+    const lastEvaluatedKey = nextPageTokenToLastEvaluatedKey(
       nextPageToken,
       (lastEvaluatedKey) => _validateListAppsLastEvaluatedKey(lastEvaluatedKey, adminId)
     )

@@ -13,6 +13,7 @@ export default {
   forgotPassword: auth.forgotPassword,
 
   openDatabase: db.openDatabase,
+  getDatabases: db.getDatabases,
 
   insertItem: db.insertItem,
   updateItem: db.updateItem,
