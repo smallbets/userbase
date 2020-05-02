@@ -427,6 +427,8 @@ const _openDatabase = async (dbNameHash, changeHandler, newDatabaseParams) => {
             throw new errors.SubscribedToIncorrectPlan
           case 'SubscriptionInactive':
             throw new errors.SubscriptionInactive(data.subscriptionStatus)
+          case 'TrialExpired':
+            throw new errors.TrialExpired
         }
 
       }
@@ -505,6 +507,7 @@ const openDatabase = async (params) => {
       case 'SubscriptionNotFound':
       case 'SubscribedToIncorrectPlan':
       case 'SubscriptionInactive':
+      case 'TrialExpired':
       case 'TooManyRequests':
       case 'ServiceUnavailable':
         throw e

@@ -332,7 +332,7 @@ exports.listAppUsers = async function (req, res) {
     }
 
     return res.status(statusCodes['Success']).send({
-      users: users.map(user => userController.buildUserResult(user)),
+      users: users.map(user => userController.buildUserResult(user, app)),
       ..._buildAppResult(app)
     })
   } catch (e) {
@@ -393,13 +393,15 @@ const _buildAppResult = (app) => {
     creationDate: app['creation-date'],
     paymentsMode: app['payments-mode'] || 'disabled',
     testSubscriptionPlanId: app['test-subscription-plan-id'],
+    testTrialPeriodDays: app['test-trial-period-days'],
     prodSubscriptionPlanId: app['prod-subscription-plan-id'],
+    prodTrialPeriodDays: app['prod-trial-period-days'],
   }
 }
 
-const _buildUsersList = (usersResponse) => {
+const _buildUsersList = (usersResponse, app) => {
   const result = {
-    users: usersResponse.Items.map(user => userController.buildUserResult(user)),
+    users: usersResponse.Items.map(user => userController.buildUserResult(user, app)),
   }
 
   if (usersResponse.LastEvaluatedKey) {
@@ -502,7 +504,7 @@ exports.listUsersWithPagination = async function (req, res) {
 
     const usersResponse = await _getUsersQuery(app['app-id'], lastEvaluatedKey)
 
-    const result = _buildUsersList(usersResponse)
+    const result = _buildUsersList(usersResponse, app)
 
     logChildObject.statusCode = statusCodes['Success']
     logger.child(logChildObject).info('Successfully listed users from Admin API')
@@ -596,22 +598,102 @@ exports.countNonDeletedAppUsers = async function (appId, limit) {
   return count
 }
 
-const _setPlanInDdb = async function (paymentsMode, adminId, appName, appId, subscriptionPlanId) {
+exports.updateTrialPeriodDaysInDdb = async (logChildObject, subscriptionPlanId, trialPeriodDays, isProduction, stripeEventTimestamp) => {
+  // iterate over all apps with this subscription plan id set and update their trial periods
+  const paymentsMode = isProduction ? 'prod' : 'test'
+  const params = {
+    TableName: setup.appsTableName,
+    IndexName: paymentsMode + setup.subscriptionPlanIndex,
+    KeyConditionExpression: '#subscriptionPlanId = :subscriptionPlanId',
+    ExpressionAttributeValues: {
+      ':subscriptionPlanId': subscriptionPlanId,
+    },
+    ExpressionAttributeNames: {
+      '#subscriptionPlanId': paymentsMode + '-subscription-plan-id',
+    },
+    Select: 'ALL_ATTRIBUTES'
+  }
+
+  const ddbClient = connection.ddbClient()
+  let appsResponse = await ddbClient.query(params).promise()
+
+  if (!appsResponse || appsResponse.Items.length === 0) {
+    logger.child(logChildObject).warn('No apps found in DDB')
+    return
+  }
+
+  const updatePlanInDdb = async (app) => {
+    const adminId = app['admin-id']
+    const appId = app['app-id']
+    try {
+      logger.child({ ...logChildObject, adminId, appId }).info('Updating trial period')
+
+      await _updatePlanInDdb(paymentsMode, adminId, app['app-name'], appId, subscriptionPlanId, trialPeriodDays, stripeEventTimestamp)
+
+      logger.child({ ...logChildObject, adminId, appId }).info('Succesfully updated trial period')
+    } catch (e) {
+      logger.child({ ...logChildObject, adminId, appId, err: e }).warn('Issue updating trial period')
+    }
+  }
+
+  await Promise.all(appsResponse.Items.map(app => updatePlanInDdb(app)))
+
+  while (appsResponse.LastEvaluatedKey) {
+    params.ExclusiveStartKey = appsResponse.LastEvaluatedKey
+    appsResponse = await ddbClient.query(params).promise()
+    await Promise.all(appsResponse && appsResponse.Items.map(app => updatePlanInDdb(app)))
+  }
+}
+
+const _updatePlanInDdb = async function (paymentsMode, adminId, appName, appId, subscriptionPlanId, trialPeriodDays, stripeEventTimestamp) {
   const params = {
     TableName: setup.appsTableName,
     Key: {
       'admin-id': adminId,
       'app-name': appName
     },
-    UpdateExpression: `SET #subscriptionPlanId = :subscriptionPlanId`,
-    ConditionExpression: '#appId = :appId and attribute_not_exists(deleted)',
+    UpdateExpression: 'SET #trialPeriodDays = :trialPeriodDays',
+    ConditionExpression: `
+      #appId = :appId and
+      #subscriptionPlanId = :subscriptionPlanId and
+      (attribute_not_exists(#stripeEventTimestamp) or #stripeEventTimestamp < :stripeEventTimestamp)
+    `,
     ExpressionAttributeValues: {
       ':appId': appId,
-      ':subscriptionPlanId': subscriptionPlanId
+      ':subscriptionPlanId': subscriptionPlanId,
+      ':trialPeriodDays': trialPeriodDays === null ? 0 : trialPeriodDays,
+      ':stripeEventTimestamp': stripeEventTimestamp
     },
     ExpressionAttributeNames: {
       '#appId': 'app-id',
-      '#subscriptionPlanId': paymentsMode + '-subscription-plan-id'
+      '#subscriptionPlanId': paymentsMode + '-subscription-plan-id',
+      '#trialPeriodDays': paymentsMode + '-trial-period-days',
+      '#stripeEventTimestamp': paymentsMode + '-stripe-event-timestamp'
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+  await ddbClient.update(params).promise()
+}
+
+const _setPlanInDdb = async function (paymentsMode, adminId, appName, appId, subscriptionPlanId, trialPeriodDays) {
+  const params = {
+    TableName: setup.appsTableName,
+    Key: {
+      'admin-id': adminId,
+      'app-name': appName
+    },
+    UpdateExpression: 'SET #subscriptionPlanId = :subscriptionPlanId, #trialPeriodDays = :trialPeriodDays',
+    ConditionExpression: '#appId = :appId and attribute_not_exists(deleted)',
+    ExpressionAttributeValues: {
+      ':appId': appId,
+      ':subscriptionPlanId': subscriptionPlanId,
+      ':trialPeriodDays': trialPeriodDays === null ? 0 : trialPeriodDays
+    },
+    ExpressionAttributeNames: {
+      '#appId': 'app-id',
+      '#subscriptionPlanId': paymentsMode + '-subscription-plan-id',
+      '#trialPeriodDays': paymentsMode + '-trial-period-days'
     }
   }
 
@@ -661,7 +743,7 @@ const _setSubscriptionPlan = async function (req, res, paymentsMode) {
         }
       }
 
-      await _setPlanInDdb(paymentsMode, adminId, appName, appId, subscriptionPlanId)
+      await _setPlanInDdb(paymentsMode, adminId, appName, appId, subscriptionPlanId, subscription.trial_period_days)
 
       logger
         .child({ ...logChildObject, statusCode: statusCodes['Success'] })

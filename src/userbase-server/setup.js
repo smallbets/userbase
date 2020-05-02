@@ -61,12 +61,16 @@ const accessTokenIndex = 'AccessTokenIndex'
 const userIdIndex = 'UserIdIndex'
 const appIdIndex = 'AppIdIndex'
 const authTokenIndex = 'AuthTokenIndex'
+const subscriptionPlanIndex = 'SubscriptionPlanIndex'
+const testSubscriptionPlanIndex = 'test' + subscriptionPlanIndex
+const prodSubscriptionPlanIndex = 'prod' + subscriptionPlanIndex
 
 exports.adminIdIndex = adminIdIndex
 exports.accessTokenIndex = accessTokenIndex
 exports.userIdIndex = userIdIndex
 exports.appIdIndex = appIdIndex
 exports.authTokenIndex = authTokenIndex
+exports.subscriptionPlanIndex = subscriptionPlanIndex
 
 const getDbStatesBucketName = function () {
   if (!initialized || !awsAccountId) {
@@ -182,19 +186,37 @@ async function setupDdb() {
     AttributeDefinitions: [
       { AttributeName: 'admin-id', AttributeType: 'S' },
       { AttributeName: 'app-name', AttributeType: 'S' },
-      { AttributeName: 'app-id', AttributeType: 'S' }
+      { AttributeName: 'app-id', AttributeType: 'S' },
+      { AttributeName: 'test-subscription-plan-id', AttributeType: 'S' },
+      { AttributeName: 'prod-subscription-plan-id', AttributeType: 'S' },
     ],
     KeySchema: [
       { AttributeName: 'admin-id', KeyType: 'HASH' },
       { AttributeName: 'app-name', KeyType: 'RANGE' }
     ],
-    GlobalSecondaryIndexes: [{
-      IndexName: appIdIndex,
-      KeySchema: [
-        { AttributeName: 'app-id', KeyType: 'HASH' }
-      ],
-      Projection: { ProjectionType: 'ALL' }
-    }]
+    GlobalSecondaryIndexes: [
+      {
+        IndexName: appIdIndex,
+        KeySchema: [
+          { AttributeName: 'app-id', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' }
+      },
+      {
+        IndexName: testSubscriptionPlanIndex,
+        KeySchema: [
+          { AttributeName: 'test-subscription-plan-id', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' }
+      },
+      {
+        IndexName: prodSubscriptionPlanIndex,
+        KeySchema: [
+          { AttributeName: 'prod-subscription-plan-id', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' }
+      },
+    ]
   }
 
   // the users table holds a record for user per app

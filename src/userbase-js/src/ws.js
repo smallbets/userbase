@@ -68,7 +68,9 @@ class Connection {
       salts: {}
     }
 
-    this.stripeData = {}
+    this.userData = {
+      stripeData: {}
+    }
 
     this.rememberMe = rememberMe
 
@@ -410,8 +412,8 @@ class Connection {
     this.keys.dhPrivateKey = await crypto.diffieHellman.importKeyFromMaster(masterKey, base64.decode(salts.dhKeySalt))
     this.keys.hmacKey = await crypto.hmac.importKeyFromMaster(masterKey, base64.decode(salts.hmacKeySalt))
 
-    const stripeData = await this.validateKey()
-    this.stripeData = stripeData
+    const userData = await this.validateKey()
+    this.userData = userData
 
     this.keys.init = true
 
@@ -428,8 +430,8 @@ class Connection {
     const params = { validationMessage }
 
     const response = await this.request(action, params)
-    const { stripeData } = response.data
-    return stripeData
+    const userData = response.data
+    return userData
   }
 
   async request(action, params) {
