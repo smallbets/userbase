@@ -20,8 +20,9 @@ const _validatePurchaseOrUpdate = (params) => {
   if (ws.reconnecting) throw new errors.Reconnecting
   if (!ws.keys.init) throw new errors.UserNotSignedIn
 
-  if (!ws.stripeData.stripeAccountId) throw new errors.StripeAccountNotConnected
-  if (ws.stripeData.paymentsMode === 'disabled') throw new errors.PaymentsDisabled
+  const stripeData = ws.userData.stripeData
+  if (!stripeData.stripeAccountId) throw new errors.StripeAccountNotConnected
+  if (stripeData.paymentsMode === 'disabled') throw new errors.PaymentsDisabled
 
   if (!objectHasOwnProperty(window, 'Stripe')) throw new errors.StripeJsLibraryMissing
 
@@ -46,7 +47,8 @@ const _validatePurchaseOrUpdate = (params) => {
 
 const purchaseSubscription = async (params) => {
   try {
-    if (ws.stripeData.subscriptionStatus && ws.stripeData.subscriptionStatus !== 'canceled') {
+    const stripeData = ws.userData.stripeData
+    if (stripeData.subscriptionStatus && stripeData.subscriptionStatus !== 'canceled') {
       throw new errors.SubscriptionPlanAlreadyPurchased
     }
     _validatePurchaseOrUpdate(params)
@@ -56,10 +58,10 @@ const purchaseSubscription = async (params) => {
       const sessionIdResponse = await ws.request(action, params)
       const stripeSessionId = sessionIdResponse.data
 
-      const stripePk = config.getStripePublishableKey(ws.stripeData.paymentsMode === 'prod')
+      const stripePk = config.getStripePublishableKey(stripeData.paymentsMode === 'prod')
 
       const result = await window
-        .Stripe(stripePk, { stripeAccount: ws.stripeData.stripeAccountId })
+        .Stripe(stripePk, { stripeAccount: stripeData.stripeAccountId })
         .redirectToCheckout({ sessionId: stripeSessionId })
 
       if (result.error) throw result.error
@@ -115,10 +117,11 @@ const _validateModifySubscriptionConditions = () => {
   if (ws.reconnecting) throw new errors.Reconnecting
   if (!ws.keys.init) throw new errors.UserNotSignedIn
 
-  if (!ws.stripeData.stripeAccountId) throw new errors.StripeAccountNotConnected
-  if (ws.stripeData.paymentsMode === 'disabled') throw new errors.PaymentsDisabled
+  const stripeData = ws.userData.stripeData
+  if (!stripeData.stripeAccountId) throw new errors.StripeAccountNotConnected
+  if (stripeData.paymentsMode === 'disabled') throw new errors.PaymentsDisabled
 
-  if (ws.stripeData.subscriptionStatus === 'canceled') throw new errors.SubscriptionAlreadyCanceled
+  if (stripeData.subscriptionStatus === 'canceled') throw new errors.SubscriptionAlreadyCanceled
 }
 
 const cancelSubscription = async () => {
@@ -130,7 +133,7 @@ const cancelSubscription = async () => {
       const cancelResponse = await ws.request(action)
       const cancelSubscriptionAt = cancelResponse.data
 
-      ws.stripeData.cancelAt = cancelSubscriptionAt
+      ws.userData.stripeData.cancelAt = cancelSubscriptionAt
       return { cancelSubscriptionAt }
     } catch (e) {
       _parseGenericErrors(e)
@@ -168,7 +171,7 @@ const resumeSubscription = async () => {
       const action = 'ResumeSubscription'
       await ws.request(action)
 
-      delete ws.stripeData.cancelAt
+      delete ws.userData.stripeData.cancelAt
     } catch (e) {
       _parseGenericErrors(e)
 
@@ -199,18 +202,20 @@ const resumeSubscription = async () => {
 
 const updatePaymentMethod = async (params) => {
   try {
-    if (!ws.stripeData.subscriptionStatus) throw new errors.SubscriptionNotPurchased
     _validatePurchaseOrUpdate(params)
+
+    const stripeData = ws.userData.stripeData
+    if (!stripeData.subscriptionStatus) throw new errors.SubscriptionNotPurchased
 
     try {
       const action = 'UpdatePaymentMethod'
       const sessionIdResponse = await ws.request(action, params)
       const stripeSessionId = sessionIdResponse.data
 
-      const stripePk = config.getStripePublishableKey(ws.stripeData.paymentsMode === 'prod')
+      const stripePk = config.getStripePublishableKey(stripeData.paymentsMode === 'prod')
 
       const result = await window
-        .Stripe(stripePk, { stripeAccount: ws.stripeData.stripeAccountId })
+        .Stripe(stripePk, { stripeAccount: stripeData.stripeAccountId })
         .redirectToCheckout({ sessionId: stripeSessionId })
 
       if (result.error) throw result.error

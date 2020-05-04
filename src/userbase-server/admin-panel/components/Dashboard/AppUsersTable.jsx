@@ -707,7 +707,6 @@ export default class AppUsersTable extends Component {
                                     }
                                   </h6>
 
-
                                   <h6 className='mb-4'>Protected Profile:
                                     {user['protectedProfile']
                                       ? ProfileTable(user['protectedProfile'])
@@ -716,7 +715,6 @@ export default class AppUsersTable extends Component {
                                       </span>
                                     }
                                   </h6>
-
 
                                   <h6 className='mb-4'>Test Stripe Data:
                                     {user['testStripeData']

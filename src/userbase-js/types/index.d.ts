@@ -20,7 +20,9 @@ export interface UserResult {
   username: string
   userId: string
   authToken: string
+  creationDate: Date
   paymentsMode: PaymentsMode
+  trialExpirationDate?: Date
   subscriptionStatus?: SubscriptionStatus
   cancelSubscriptionAt?: Date
   email?: string

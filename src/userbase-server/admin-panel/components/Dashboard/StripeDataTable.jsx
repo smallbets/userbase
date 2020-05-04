@@ -2,18 +2,28 @@ import React from 'react'
 import { formatDate } from '../../utils'
 
 export const StripeDataTable = (stripeData, isProd) => {
-  const { customerId, subscriptionStatus, cancelSubscriptionAt, subscriptionId, subscriptionPlanId } = stripeData
+  const { customerId, subscriptionStatus, cancelSubscriptionAt, subscriptionId, subscriptionPlanId, trialExpirationDate } = stripeData
 
   return (
     <table className='mt-4 table-auto w-3/4 border border-black mx-auto text-xs'>
       <tbody>
+        {trialExpirationDate &&
+          <tr>
+            <td className='border border-black px-1 font-light text-left'>Trial Expires On</td>
+            <td className='border border-black px-1 font-light text-left'>{formatDate(trialExpirationDate, false)}</td>
+          </tr>
+        }
+
         <tr>
           <td className='border border-black px-1 font-light text-left'>Customer</td>
           <td className='border border-black px-1 font-light text-left'>
-            <a
-              href={'https://dashboard.stripe.com' + (isProd ? '' : '/test') + '/customers/' + customerId}>
-              {customerId}
-            </a>
+            {customerId
+              ? <a
+                href={'https://dashboard.stripe.com' + (isProd ? '' : '/test') + '/customers/' + customerId}>
+                {customerId}
+              </a>
+              : 'No customer saved.'
+            }
           </td>
         </tr>
 
@@ -24,7 +34,7 @@ export const StripeDataTable = (stripeData, isProd) => {
 
         {cancelSubscriptionAt &&
           <tr>
-            <td className='border border-black px-1 font-light text-left'>Cancel Subscription At</td>
+            <td className='border border-black px-1 font-light text-left'>Canceling Subscription On</td>
             <td className='border border-black px-1 font-light text-left'>{formatDate(cancelSubscriptionAt, false)}</td>
           </tr>
         }

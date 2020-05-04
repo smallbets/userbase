@@ -394,7 +394,7 @@ describe('UpdateUser', function () {
 
               cy.wrap(null).then(() => {
                 return signIn().then(function (user) {
-                  expect(user, 'keys').to.have.keys(['userId', 'username', 'authToken', 'protectedProfile', 'paymentsMode'])
+                  expect(user, 'keys').to.have.keys(['userId', 'username', 'authToken', 'protectedProfile', 'paymentsMode', 'creationDate'])
 
                   expect(user.userId, 'userId').to.eq(userId)
                   expect(user.username, 'username').to.eq(username)
@@ -648,7 +648,7 @@ describe('UpdateUser', function () {
 
                   cy.wrap(null).then(() => {
                     return signIn().then(function (user) {
-                      expect(user, 'keys').to.have.keys(['userId', 'username', 'authToken', 'paymentsMode'])
+                      expect(user, 'keys').to.have.keys(['userId', 'username', 'authToken', 'paymentsMode', 'creationDate'])
 
                       expect(user.userId, 'userId').to.eq(userId)
                       expect(user.username, 'username').to.eq(username)
@@ -726,7 +726,7 @@ describe('UpdateUser', function () {
 
                   cy.wrap(null).then(() => {
                     return signIn().then(function (user) {
-                      expect(user, 'keys').to.have.keys(['userId', 'username', 'authToken', 'paymentsMode'])
+                      expect(user, 'keys').to.have.keys(['userId', 'username', 'authToken', 'paymentsMode', 'creationDate'])
 
                       expect(user.userId, 'userId').to.eq(userId)
                       expect(user.username, 'username').to.eq(username)

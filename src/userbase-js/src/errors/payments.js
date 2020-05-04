@@ -156,6 +156,16 @@ class SubscriptionAlreadyCanceled extends Error {
   }
 }
 
+class TrialExpired extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'TrialExpired'
+    this.message = 'Trial expired. User must purchase a subscription.'
+    this.status = statusCodes['Payment Required']
+  }
+}
+
 class StripeError extends Error {
   constructor(error, ...params) {
     super(error, ...params)
@@ -186,5 +196,6 @@ export default {
   SubscriptionInactive,
   SubscriptionNotPurchased,
   SubscriptionAlreadyCanceled,
+  TrialExpired,
   StripeError,
 }
