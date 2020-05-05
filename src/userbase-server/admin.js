@@ -977,7 +977,7 @@ exports.subscribeToPaymentsAddOn = async function (req, res) {
       metadata: { adminId }
     },
       {
-        idempotency_key: stripeCustomerId + '-payments-add-on' // admin can only checkout a single subscription plan
+        idempotency_key: stripeCustomerId + '_payments-add-on' // admin can only checkout a single subscription plan
       })
 
     logger

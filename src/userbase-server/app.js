@@ -4,6 +4,7 @@ import logger from './logger'
 import statusCodes from './statusCodes'
 import setup from './setup'
 import userController from './user'
+import stripe from './stripe'
 import { trimReq, lastEvaluatedKeyToNextPageToken, nextPageTokenToLastEvaluatedKey } from './utils'
 
 const UUID_STRING_LENGTH = 36

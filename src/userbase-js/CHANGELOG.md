@@ -1,3 +1,16 @@
+## [1.4.0] - 2020-05-04
+## Added
+- purchaseSubscription(), cancelSubscription(), resumeSubscription(), and updatePaymentMethod() functions to enable developers to accept subscription payments from their users.
+- getDatabases() enables developers to get all of a user's databases.
+- signUp(), signIn(), and init() return `paymentsMode`, the app's payments mode set by the admin, `creationDate`, the date the user was created, and `trialExpirationDate`, the date the user's trial expires.
+- signIn() and init() return `subscriptionStatus`, the user's subscription status, and `cancelSubscriptionAt`, the date the user's subscription is set to be canceled.
+
+## Fixed
+- Network errors throw ServiceUnavailable instead of never returning.
+
+## Changed
+- openDatabase() now requires the user to pay for a subscription to an app that has payments enabled in the admin panel.
+
 ## [1.3.0] - 2020-04-02
 ## Added
 - signUp(), signIn(), and init() return the user’s authToken which can be passed to a 3rd party server to verify the user is signed in to Userbase via the Admin API.

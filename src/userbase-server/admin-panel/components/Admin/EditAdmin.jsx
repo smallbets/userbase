@@ -518,7 +518,7 @@ export default class EditAdmin extends Component {
                 <div>
                   <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Payments Portal Add-On</div>
                   <div className='font-normal text-left mb-4'>
-                    <p>Collect payments on your apps with Stripe for an additional $149 per year.</p>
+                    <p>Collect payments on your apps with Stripe for an additional $129 per year.</p>
                     {(paymentStatus !== 'active' || cancelSaasSubscriptionAt) && <p>You must have an active Userbase subscription.</p>}
                   </div>
 
