@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import { string, func } from 'prop-types'
+import { string, func, bool } from 'prop-types'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faCheck } from '@fortawesome/free-solid-svg-icons'
 import adminLogic from './logic'
@@ -54,7 +54,7 @@ export default class AdminForm extends Component {
   }
 
   async handleSubmit(event) {
-    const { formType, handleUpdateAccount } = this.props
+    const { formType, handleUpdateAccount, upgrade, enablePayments } = this.props
     const { email, password, fullName, receiveEmailUpdates } = this.state
     event.preventDefault()
 
@@ -70,7 +70,7 @@ export default class AdminForm extends Component {
         return console.error('Unknown form type')
       }
 
-      window.location.hash = ''
+      window.location.hash = (upgrade || enablePayments) ? 'edit-account' : ''
     } catch (e) {
       if (this._isMounted) this.setState({ error: e.message, loading: false })
     }
@@ -252,5 +252,7 @@ export default class AdminForm extends Component {
 AdminForm.propTypes = {
   formType: string,
   placeholderEmail: string,
-  handleUpdateAccount: func
+  handleUpdateAccount: func,
+  upgrade: bool,
+  enablePayments: bool,
 }

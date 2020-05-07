@@ -117,6 +117,8 @@ export default class App extends Component {
       updatedState.admin = { email }
       updatedState.errorGettingAdmin = false
       updatedState.signedIn = false
+      updatedState.upgrade = false
+      updatedState.enablePayments = false
     }
 
     const hashRoute = window.location.hash.substring(1)
@@ -143,6 +145,15 @@ export default class App extends Component {
       case 'update-success':
         window.alert('Payment method saved!')
         window.location.hash = ''
+        break
+
+      case 'upgrade':
+      case 'enable-payments':
+        // will redirect to edit-account when admin visits this link, then signs in or signs up. Will automatically
+        // simulate clicking the button to perform the action (upgrade or enable payments)
+        if (hashRoute === 'enable-payments') this.setState({ enablePayments: true })
+        else this.setState({ [hashRoute]: true })
+        window.location.hash = 'edit-account'
         break
 
       default:
@@ -173,6 +184,8 @@ export default class App extends Component {
       mobileMenuOpen,
       loadingAdmin,
       errorGettingAdmin,
+      upgrade,
+      enablePayments,
     } = this.state
 
     if (!mode) {
@@ -228,6 +241,8 @@ export default class App extends Component {
                     key='create-admin'
                     placeholderEmail=''
                     handleUpdateAccount={this.handleUpdateAccount}
+                    upgrade={upgrade}
+                    enablePayments={enablePayments}
                   />
 
                 case 'sign-in':
@@ -236,6 +251,8 @@ export default class App extends Component {
                     key='sign-in'
                     placeholderEmail={admin.email}
                     handleUpdateAccount={this.handleUpdateAccount}
+                    upgrade={upgrade}
+                    enablePayments={enablePayments}
                   />
 
                 case 'dashboard':
@@ -253,6 +270,8 @@ export default class App extends Component {
 
                 case 'edit-account':
                   return <EditAdmin
+                    upgrade={upgrade}
+                    enablePayments={enablePayments}
                     handleUpdateAccount={this.handleUpdateAccount}
                     admin={admin}
                   />

@@ -1,11 +1,11 @@
-import React, { Component } from 'react'
-import { func, object } from 'prop-types'
+import React, { Component, createRef } from 'react'
+import { func, object, bool } from 'prop-types'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faTrashAlt } from '@fortawesome/free-regular-svg-icons'
 import adminLogic from './logic'
 import UnknownError from './UnknownError'
 import { formatDate } from '../../utils'
-import { STRIPE_CLIENT_ID, getStripeState, getStripeCancelWarning } from '../../config'
+import { STRIPE_CLIENT_ID, PAYMENTS_ADD_ON_PRICE, getStripeState, getStripeCancelWarning } from '../../config'
 
 export default class EditAdmin extends Component {
   constructor(props) {
@@ -48,6 +48,8 @@ export default class EditAdmin extends Component {
       errorDisconnectingStripeAccount: false,
     }
 
+    this.handleUpgradeAtLoad = this.handleUpgradeAtLoad.bind(this)
+    this.handleEnablePaymentsAtLoad = this.handleEnablePaymentsAtLoad.bind(this)
     this.handleInputChange = this.handleInputChange.bind(this)
     this.handleUpdateAcount = this.handleUpdateAcount.bind(this)
     this.handleChangePassword = this.handleChangePassword.bind(this)
@@ -63,6 +65,8 @@ export default class EditAdmin extends Component {
     this.handleUpdatePaymentMethod = this.handleUpdatePaymentMethod.bind(this)
     this.handleDisconnectStripeAccount = this.handleDisconnectStripeAccount.bind(this)
     this.handleClearErrors = this.handleClearErrors.bind(this)
+
+    this.domNodeRef = createRef()
   }
 
   async componentDidMount() {
@@ -74,6 +78,56 @@ export default class EditAdmin extends Component {
       if (this._isMounted) this.setState({ accessTokens, loading: false })
     } catch (e) {
       if (this._isMounted) this.setState({ errorLoading: e.message, loading: false })
+    }
+  }
+
+  // attempt to ensure the DOM finishes rendering before simulating button clicks
+  // sources:
+  // https://stackoverflow.com/a/34999925/11601853
+  // https://medium.com/trabe/getting-rid-of-finddomnode-method-in-your-react-application-a0d7093b2660
+  onNextFrame() {
+    var _this = this
+    setTimeout(function () {
+      window.requestAnimationFrame(function () {
+        const domnode = _this.domNodeRef
+        if (domnode !== undefined && domnode.current) {
+          if (_this.props.upgrade && !_this._handledUpgrade) {
+            _this._handledUpgrade = true
+            _this.handleUpgradeAtLoad()
+          } else if (_this.props.enablePayments && !_this._handledEnablePayments) {
+            _this._handledEnablePayments = true
+            _this.handleEnablePaymentsAtLoad()
+          }
+        }
+      })
+    })
+  }
+
+  componentDidUpdate() {
+    this.onNextFrame()
+  }
+
+  handleUpgradeAtLoad() {
+    // only attempt upgrade if admin does not already have a subscription
+    if (!this.props.admin.paymentStatus) {
+      this.handleCheckout()
+    }
+  }
+
+  handleEnablePaymentsAtLoad() {
+    const { admin } = this.props
+    const { paymentStatus, cancelSaasSubscriptionAt, paymentsAddOnSubscriptionStatus, cancelPaymentsAddOnSubscriptionAt } = admin
+
+    if (!paymentsAddOnSubscriptionStatus || cancelPaymentsAddOnSubscriptionAt) {
+
+      // only attempt to enable payments if admin has active Userbase subscription
+      if (paymentStatus === 'active' && !cancelSaasSubscriptionAt) {
+        if (window.confirm(`Purchase the payments add-on for $${PAYMENTS_ADD_ON_PRICE} per year!`)) {
+          this.handleBuyAddOn()
+        }
+      } else {
+        window.alert(`You must ${paymentStatus === 'active' ? 'purchase the' : 'have an active'} Userbase subscription first before you can enable payments!`)
+      }
     }
   }
 
@@ -268,7 +322,7 @@ export default class EditAdmin extends Component {
   }
 
   async handleCheckout(event) {
-    event.preventDefault()
+    if (event) event.preventDefault()
 
     this.handleClearErrors({ loadingCheckout: true })
 
@@ -334,7 +388,7 @@ export default class EditAdmin extends Component {
   }
 
   async handleBuyAddOn(event) {
-    event.preventDefault()
+    if (event) event.preventDefault()
 
     this.handleClearErrors({ loadingBuyAddOn: true })
 
@@ -460,7 +514,7 @@ export default class EditAdmin extends Component {
           ? <div className='loader inline-block w-6 h-6' />
           : errorLoading
             ? <UnknownError noMarginTop />
-            : <div>
+            : <div ref={this.domNodeRef}>
               {(paymentStatus === 'active' || paymentStatus === 'past_due') && !cancelSaasSubscriptionAt
                 ?
                 <div>
@@ -518,7 +572,7 @@ export default class EditAdmin extends Component {
                 <div>
                   <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Payments Portal Add-On</div>
                   <div className='font-normal text-left mb-4'>
-                    <p>Collect payments on your apps with Stripe for an additional $129 per year.</p>
+                    <p>Collect payments on your apps with Stripe for an additional ${PAYMENTS_ADD_ON_PRICE} per year.</p>
                     {(paymentStatus !== 'active' || cancelSaasSubscriptionAt) && <p>You must have an active Userbase subscription.</p>}
                   </div>
 
@@ -887,4 +941,6 @@ export default class EditAdmin extends Component {
 EditAdmin.propTypes = {
   handleUpdateAccount: func,
   admin: object,
+  upgrade: bool,
+  enablePayments: bool,
 }
