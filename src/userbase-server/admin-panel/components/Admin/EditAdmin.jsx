@@ -872,7 +872,7 @@ export default class EditAdmin extends Component {
                 </div>
               }
 
-              {paymentsAddOnSubscriptionStatus !== 'canceled' && !cancelPaymentsAddOnSubscriptionAt &&
+              {paymentsAddOnSubscriptionStatus && paymentsAddOnSubscriptionStatus !== 'canceled' && !cancelPaymentsAddOnSubscriptionAt &&
                 <div>
                   <div className='flex-0 text-base sm:text-lg text-left mb-1'>Cancel Payments Add-On</div>
                   <p className='text-left font-normal'>By cancelling your payments add-on, you will no longer be able to accept new payments on your apps.</p>
