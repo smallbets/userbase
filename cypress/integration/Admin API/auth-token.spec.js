@@ -121,7 +121,8 @@ describe('VerifyAuthToken', function () {
         signUp(this.test, email, profile).then(function () {
           const {
             accessToken,
-            authToken
+            authToken,
+            userId,
           } = this.test
 
           cy
@@ -134,7 +135,7 @@ describe('VerifyAuthToken', function () {
             })
             .then(function (response) {
               expect(response.status, 'status').to.eq(200)
-              expect(response.body, 'result').to.eq('Auth token verified!')
+              expect(response.body, 'result').to.deep.eq({ userId })
 
               cy.request({ method: 'POST', url: DELETE_ADMIN_ENDPOINT })
             })
@@ -152,7 +153,8 @@ describe('VerifyAuthToken', function () {
             userbase,
             username,
             password,
-            accessToken
+            accessToken,
+            userId,
           } = this.test
 
           function signOutWrapper() {
@@ -187,7 +189,7 @@ describe('VerifyAuthToken', function () {
                     })
                     .then(function (response) {
                       expect(response.status, 'status').to.eq(200)
-                      expect(response.body, 'result').to.eq('Auth token verified!')
+                      expect(response.body, 'result').to.deep.eq({ userId })
 
                       cy.request({ method: 'POST', url: DELETE_ADMIN_ENDPOINT })
                     })
@@ -199,7 +201,7 @@ describe('VerifyAuthToken', function () {
       })
     })
 
-    it('After init', function () {
+    it.only('After init', function () {
       createAdmin(this.test).then(function () {
         const email = 'fake@email.com'
         const profile = { hello: 'world!' }
@@ -208,7 +210,8 @@ describe('VerifyAuthToken', function () {
         signUp(this.test, email, profile, rememberMe).then(function () {
           const {
             appId,
-            accessToken
+            accessToken,
+            userId,
           } = this.test
 
           cy.reload()
@@ -224,7 +227,7 @@ describe('VerifyAuthToken', function () {
               })
               .then(function (response) {
                 expect(response.status, 'status').to.eq(200)
-                expect(response.body, 'result').to.eq('Auth token verified!')
+                expect(response.body, 'result').to.deep.eq({ userId })
 
                 cy.request({ method: 'POST', url: DELETE_ADMIN_ENDPOINT })
               })
