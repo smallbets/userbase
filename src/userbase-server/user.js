@@ -673,7 +673,7 @@ exports.verifyAuthToken = async function (req, res) {
 
     logger.child(logChildObject).info('Auth token verified')
 
-    return res.send('Auth token verified!')
+    return res.send({ userId: user['user-id'] })
   } catch (e) {
     const message = 'Failed to verify auth token.'
 
