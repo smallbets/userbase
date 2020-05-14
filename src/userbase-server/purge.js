@@ -229,6 +229,29 @@ const _getAdmin = async (appId, _adminId = undefined, _admin = undefined) => {
   return admin
 }
 
+const deleteUserFromUsersTable = async (user) => {
+  try {
+    const ddbClient = connection.ddbClient()
+    await ddbClient.delete({
+      TableName: setup.usersTableName,
+      Key: {
+        'username': user['username'],
+        'app-id': user['app-id']
+      },
+      ConditionExpression: '#userId = :userId',
+      ExpressionAttributeNames: {
+        '#userId': 'user-id'
+      },
+      ExpressionAttributeValues: {
+        ':userId': user['user-id']
+      }
+    }).promise()
+  } catch (e) {
+    // if a new user with the same username was created, safe to continue without deleting it
+    if (e.name !== 'ConditionalCheckFailedException') throw e
+  }
+}
+
 const purgeUser = async (user, _adminId = undefined, _admin = undefined) => {
   const start = Date.now()
   const logChildObject = { userId: user['user-id'], appId: user['app-id'], username: user['username'], deleted: user['deleted'] }
@@ -266,14 +289,8 @@ const purgeUser = async (user, _adminId = undefined, _admin = undefined) => {
     ])
   }
 
-  // should only be present in this table if purging deleted app or admin
-  const deleteFromTable = ddbClient.delete({
-    TableName: setup.usersTableName,
-    Key: {
-      'username': user['username'],
-      'app-id': user['app-id']
-    }
-  }).promise()
+  // should only be present in this table if purging deleted app or admin.
+  const deleteFromTable = deleteUserFromUsersTable(user)
 
   // should only be present in this table if purging deleted user
   const deleteFromDeletedTable = ddbClient.delete({
@@ -283,10 +300,32 @@ const purgeUser = async (user, _adminId = undefined, _admin = undefined) => {
     }
   }).promise()
 
-  // safe to just try and delete from both
   await Promise.all([deleteFromDeletedTable, deleteFromTable])
 
   logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purging user')
+}
+
+const deleteAppFromAppsTable = async (app) => {
+  try {
+    const ddbClient = connection.ddbClient()
+    await ddbClient.delete({
+      TableName: setup.appsTableName,
+      Key: {
+        'admin-id': app['admin-id'],
+        'app-name': app['app-name']
+      },
+      ConditionExpression: '#appId = :appId',
+      ExpressionAttributeNames: {
+        '#appId': 'app-id'
+      },
+      ExpressionAttributeValues: {
+        ':appId': app['app-id']
+      }
+    }).promise()
+  } catch (e) {
+    // if a new app with the same app name was created, safe to continue without deleting it
+    if (e.name !== 'ConditionalCheckFailedException') throw e
+  }
 }
 
 const purgeApp = async (app, _admin = undefined) => {
@@ -314,13 +353,7 @@ const purgeApp = async (app, _admin = undefined) => {
   await ddbWhileLoop(params, ddbQuery, action)
 
   // should only be present in this table if purging deleted admin
-  const deleteFromTable = ddbClient.delete({
-    TableName: setup.appsTableName,
-    Key: {
-      'admin-id': app['admin-id'],
-      'app-name': app['app-name']
-    }
-  }).promise()
+  const deleteFromTable = deleteAppFromAppsTable(app)
 
   // should only be present in this table if purging deleted app
   const deleteFromDeletedTable = ddbClient.delete({
@@ -330,7 +363,6 @@ const purgeApp = async (app, _admin = undefined) => {
     }
   }).promise()
 
-  // safe to just try and delete from both
   await Promise.all([deleteFromDeletedTable, deleteFromTable])
 
   logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purging app')
