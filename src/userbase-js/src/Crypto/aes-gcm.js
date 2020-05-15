@@ -42,6 +42,22 @@ const getEncryptionKeyParams = () => ({
   length: BIT_SIZE
 })
 
+const getCiphertextParams = (iv) => ({
+  name: ENCRYPTION_ALGORITHM_NAME,
+  tagLength: RECOMMENDED_AUTHENTICATION_TAG_LENGTH,
+  iv
+})
+
+const generateIv = () => window.crypto.getRandomValues(new Uint8Array(RECOMMENDED_IV_BYTE_SIZE))
+
+const sliceEncryptedArrayBuffer = (encryptedArrayBuffer) => {
+  const ivStartIndex = encryptedArrayBuffer.byteLength - RECOMMENDED_IV_BYTE_SIZE
+  const ciphertextArrayBuffer = encryptedArrayBuffer.slice(0, ivStartIndex)
+  const iv = encryptedArrayBuffer.slice(ivStartIndex)
+
+  return { ciphertextArrayBuffer, iv }
+}
+
 const importKeyFromMaster = async (masterKey, salt) => {
   const encryptionKey = await window.crypto.subtle.deriveKey(
     hkdf.getParams(ENCRYPTION_KEY_NAME, salt),
@@ -109,15 +125,11 @@ const getRawKeyFromKey = async (key) => {
  *
  */
 const encrypt = async (key, plaintext) => {
-  const iv = windowOrSelfObject().crypto.getRandomValues(new Uint8Array(RECOMMENDED_IV_BYTE_SIZE))
+  const iv = generateIv()
 
   // this result is the concatenation of Array Buffers [ciphertext, auth tag]
   const ciphertextArrayBuffer = await windowOrSelfObject().crypto.subtle.encrypt(
-    {
-      name: ENCRYPTION_ALGORITHM_NAME,
-      iv,
-      tagLength: RECOMMENDED_AUTHENTICATION_TAG_LENGTH
-    },
+    getCiphertextParams(iv),
     key,
     plaintext
   )
@@ -144,16 +156,10 @@ const encryptString = async (key, plaintextString) => {
  * @returns {object} plaintext
  */
 const decrypt = async (key, encrypted) => {
-  const ivStartIndex = encrypted.byteLength - RECOMMENDED_IV_BYTE_SIZE
-  const ciphertextArrayBuffer = encrypted.slice(0, ivStartIndex)
-  const iv = encrypted.slice(ivStartIndex)
+  const { ciphertextArrayBuffer, iv } = sliceEncryptedArrayBuffer(encrypted)
 
   const plaintextArrayBuffer = await windowOrSelfObject().crypto.subtle.decrypt(
-    {
-      name: ENCRYPTION_ALGORITHM_NAME,
-      iv,
-      tagLength: RECOMMENDED_AUTHENTICATION_TAG_LENGTH
-    },
+    getCiphertextParams(iv),
     key,
     ciphertextArrayBuffer
   )
@@ -185,6 +191,9 @@ const getPasswordBasedEncryptionKey = async (hkdfKey, salt) => {
 
 export default {
   getEncryptionKeyParams,
+  getCiphertextParams,
+  generateIv,
+  sliceEncryptedArrayBuffer,
   importKeyFromMaster,
   generateKey,
   getKeyStringFromKey,

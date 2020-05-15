@@ -1,5 +1,7 @@
 import userbase from 'userbase-js'
 
+window.userbase = userbase
+
 const _errorHandler = (e, operation) => {
   console.log(`Failed to ${operation} with`, e)
 

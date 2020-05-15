@@ -47,7 +47,7 @@ const processXhr = (xhr, resolve, reject) => {
   xhr.ontimeout = () => reject(new TimeoutError(TEN_SECONDS_MS))
 }
 
-const signUp = (username, passwordToken, publicKey, passwordSalts, keySalts, email, profile, passwordBasedBackup) => {
+const signUp = (username, passwordToken, ecKeyData, passwordSalts, keySalts, email, profile, passwordBasedBackup) => {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
 
@@ -56,7 +56,7 @@ const signUp = (username, passwordToken, publicKey, passwordSalts, keySalts, ema
     const data = JSON.stringify({
       username,
       passwordToken,
-      publicKey,
+      ecKeyData,
       passwordSalts,
       keySalts,
       email,
