@@ -46,13 +46,15 @@ const createSession = async function (userId, appId) {
     .toString('hex')
 
   const creationDate = new Date().toISOString()
+  const expirationDate = new Date(Date.now() + MS_IN_A_DAY).toISOString()
+
   const session = {
     'session-id': sessionId,
     'auth-token': authToken,
     'user-id': userId,
     'app-id': appId,
     'creation-date': creationDate,
-    ttl: getTtl(SECONDS_IN_A_DAY),
+    ttl: getTtl(expirationDate),
   }
 
   const params = {
@@ -63,7 +65,7 @@ const createSession = async function (userId, appId) {
   const ddbClient = connection.ddbClient()
   await ddbClient.put(params).promise()
 
-  return { sessionId, authToken, creationDate }
+  return { sessionId, authToken, creationDate, expirationDate }
 }
 
 const _buildSignUpParams = (username, passwordToken, appId, userId,
@@ -1172,6 +1174,7 @@ exports.extendSession = async function (req, res) {
     logger.child(logChildObject).info('Extending session')
 
     const extendedDate = new Date().toISOString()
+    const expirationDate = new Date(Date.now() + MS_IN_A_DAY).toISOString()
 
     const params = {
       TableName: setup.sessionsTableName,
@@ -1185,14 +1188,14 @@ exports.extendSession = async function (req, res) {
       },
       ExpressionAttributeValues: {
         ':extendedDate': extendedDate,
-        ':ttl': getTtl(SECONDS_IN_A_DAY)
+        ':ttl': getTtl(expirationDate)
       }
     }
 
     const ddbClient = connection.ddbClient()
     await ddbClient.update(params).promise()
 
-    const result = { extendedDate, authToken, username: user['username'], userId: user['user-id'] }
+    const result = { extendedDate, expirationDate, authToken, username: user['username'], userId: user['user-id'] }
 
     if (user['email']) result.email = user['email']
     if (user['profile']) result.profile = user['profile']

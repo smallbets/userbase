@@ -25,11 +25,13 @@ const createSession = async function (adminId) {
     .randomBytes(ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID)
     .toString('hex')
 
+  const expirationDate = new Date(Date.now() + MS_IN_A_DAY).toISOString()
+
   const session = {
     'session-id': sessionId,
     'admin-id': adminId,
     'creation-date': new Date().toISOString(),
-    ttl: getTtl(SECONDS_IN_A_DAY),
+    ttl: getTtl(expirationDate),
   }
 
   const params = {
