@@ -132,11 +132,19 @@ class Connection {
 
               const {
                 keySalts,
+                validationMessage,
+                ecKeyData,
                 encryptedValidationMessage,
               } = message
 
               this.keys.salts = keySalts
-              this.encryptedValidationMessage = new Uint8Array(encryptedValidationMessage.data)
+
+              this.validationMessage = validationMessage
+              this.ecKeyData = ecKeyData
+
+              // provided by userbase-server for users who have not yet generated their ECDSA key and
+              // still only have a DH key
+              if (encryptedValidationMessage) this.encryptedValidationMessage = new Uint8Array(encryptedValidationMessage.data)
 
               await this.setKeys(this.seedString)
 
@@ -409,10 +417,24 @@ class Connection {
 
     const salts = this.keys.salts
     this.keys.encryptionKey = await crypto.aesGcm.importKeyFromMaster(masterKey, base64.decode(salts.encryptionKeySalt))
-    this.keys.dhPrivateKey = await crypto.diffieHellman.importKeyFromMaster(masterKey, base64.decode(salts.dhKeySalt))
     this.keys.hmacKey = await crypto.hmac.importKeyFromMaster(masterKey, base64.decode(salts.hmacKeySalt))
 
-    const userData = await this.validateKey()
+    if (salts.ecdsaKeyWrapperSalt) {
+      const ecdsaKeyWrapper = await crypto.ecdsa.importEcdsaKeyWrapperFromMaster(masterKey, base64.decode(salts.ecdsaKeyWrapperSalt))
+      const wrappedEcdsaPrivateKey = base64.decode(this.ecKeyData.wrappedEcdsaPrivateKey)
+      this.keys.ecdsaPrivateKey = await crypto.ecdsa.unwrapEcdsaPrivateKey(wrappedEcdsaPrivateKey, ecdsaKeyWrapper)
+
+      const ecdhKeyWrapper = await crypto.ecdh.importEcdhKeyWrapperFromMaster(masterKey, base64.decode(salts.ecdhKeyWrapperSalt))
+      const wrappedEcdhPrivateKey = base64.decode(this.ecKeyData.wrappedEcdhPrivateKey)
+      this.keys.ecdhPrivateKey = await crypto.ecdh.unwrapEcdhPrivateKey(wrappedEcdhPrivateKey, ecdhKeyWrapper)
+    } else if (salts.dhKeySalt) {
+
+      // must be an old user created with userbase-js < v2.0.0. Need to prove access to DH key to server, and
+      // upgrade to use EC keys for future logins and usage
+      this.keys.dhPrivateKey = await crypto.diffieHellman.importKeyFromMaster(masterKey, base64.decode(salts.dhKeySalt))
+    }
+
+    const userData = await this.validateKey(masterKey)
     this.userData = userData
 
     this.keys.init = true
@@ -421,13 +443,41 @@ class Connection {
     this.connectionResolved = true
   }
 
-  async validateKey() {
-    const sharedKey = await crypto.diffieHellman.getSharedKeyWithServer(this.keys.dhPrivateKey)
+  async validateKey(masterKey) {
+    let validationMessage, ecKeyData
+    if (this.keys.ecdsaPrivateKey) {
 
-    const validationMessage = base64.encode(await crypto.aesGcm.decrypt(sharedKey, this.encryptedValidationMessage))
+      // need to sign the validation message with ECDSA private key
+      validationMessage = await crypto.ecdsa.sign(this.keys.ecdsaPrivateKey, base64.decode(this.validationMessage))
+
+    } else if (this.keys.dhPrivateKey) {
+
+      // need to decrypt the encrypted validation emssage with DH shared key
+      const sharedKey = await crypto.diffieHellman.getSharedKeyWithServer(this.keys.dhPrivateKey)
+      validationMessage = await crypto.aesGcm.decrypt(sharedKey, this.encryptedValidationMessage)
+
+      // upgrade to use EC key data for future logins
+      const ecdsaKeyData = await crypto.ecdsa.generateEcdsaKeyData(masterKey)
+      const ecdhKeyData = await crypto.ecdh.generateEcdhKeyData(masterKey, ecdsaKeyData.ecdsaPrivateKey)
+
+      this.keys.ecdsaPrivateKey = ecdsaKeyData.ecdsaPrivateKey
+      this.keys.ecdhPrivateKey = ecdhKeyData.ecdhPrivateKey
+
+      delete this.keys.dhPrivateKey
+      delete ecdsaKeyData.ecdsaPrivateKey
+      delete ecdhKeyData.ecdhPrivateKey
+
+      ecKeyData = {
+        ecdsaKeyData,
+        ecdhKeyData,
+      }
+    }
 
     const action = 'ValidateKey'
-    const params = { validationMessage }
+    const params = {
+      validationMessage: base64.encode(validationMessage),
+      ecKeyData
+    }
 
     const response = await this.request(action, params)
     const userData = response.data

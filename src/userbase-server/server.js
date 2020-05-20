@@ -73,7 +73,6 @@ async function start(express, app, userbaseConfig = {}) {
     wss.on('connection', (ws, req, res) => {
       ws.isAlive = true
       const userId = res.locals.user['user-id']
-      const userPublicKey = res.locals.user['public-key']
       const adminId = res.locals.admin['admin-id']
       const appId = res.locals.app['app-id']
 
@@ -83,19 +82,8 @@ async function start(express, app, userbaseConfig = {}) {
       if (conn) {
         const connectionId = conn.id
 
-        const { validationMessage, encryptedValidationMessage } = userController.getValidationMessage(userPublicKey)
-
-        logger.child({ userId, connectionId, adminId, appId, route: 'Connection' }).info('Sending Connection over WebSocket')
-
-        ws.send(JSON.stringify({
-          route: 'Connection',
-          keySalts: {
-            encryptionKeySalt: res.locals.user['encryption-key-salt'],
-            dhKeySalt: res.locals.user['diffie-hellman-key-salt'],
-            hmacKeySalt: res.locals.user['hmac-key-salt'],
-          },
-          encryptedValidationMessage,
-        }))
+        const connectionLogObject = { userId, connectionId, adminId, appId, route: 'Connection' }
+        const validationMessage = userController.sendConnection(connectionLogObject, ws, res.locals.user)
 
         ws.on('close', () => connections.close(conn))
 
@@ -149,6 +137,7 @@ async function start(express, app, userbaseConfig = {}) {
                       res.locals.admin,
                       res.locals.app,
                       res.locals.user,
+                      params.ecKeyData,
                     )
                     break
                   }
@@ -314,9 +303,10 @@ async function start(express, app, userbaseConfig = {}) {
       const appId = req.query.appId
       const username = req.query.username
 
-      logger.child({ appId, username, req: trimReq(req) }).info('Opened forgot-password WebSocket')
+      const logChildObject = { appId, username, req: trimReq(req) }
+      logger.child(logChildObject).info('Opened forgot-password WebSocket')
 
-      const forgotPasswordTokenResult = await userController.generateForgotPasswordToken(req, appId, username)
+      const forgotPasswordTokenResult = await userController.generateForgotPasswordToken(logChildObject, appId, username)
 
       if (forgotPasswordTokenResult.status !== statusCodes['Success']) {
 
@@ -332,24 +322,29 @@ async function start(express, app, userbaseConfig = {}) {
         const {
           user,
           app,
-          admin,
           forgotPasswordToken,
           encryptedForgotPasswordToken
         } = forgotPasswordTokenResult.data
 
-        const userId = user['user-id']
-        const adminId = admin['admin-id']
-
-        ws.send(JSON.stringify({
-          route: 'ReceiveEncryptedToken',
-          dhKeySalt: user['diffie-hellman-key-salt'],
-          encryptedForgotPasswordToken
-        }))
+        if (user['ecdsa-public-key']) {
+          ws.send(JSON.stringify({
+            route: 'ReceiveToken',
+            ecdsaKeyWrapperSalt: user['ecdsa-key-wrapper-salt'],
+            wrappedEcdsaPrivateKey: user['wrapped-ecdsa-private-key'],
+            forgotPasswordToken,
+          }))
+        } else {
+          ws.send(JSON.stringify({
+            route: 'ReceiveEncryptedToken',
+            dhKeySalt: user['diffie-hellman-key-salt'],
+            encryptedForgotPasswordToken
+          }))
+        }
 
         ws.on('message', async (msg) => {
           try {
             if (msg.length > FIVE_KB || msg.byteLength > FIVE_KB) {
-              logger.child({ userId, appId, adminId, size: msg.length, req: trimReq(req) }).warn('Received large message over forgot-password')
+              logger.child({ ...logChildObject, size: msg.length }).warn('Received large message over forgot-password')
               return ws.send('Message is too large')
             }
 
@@ -357,7 +352,13 @@ async function start(express, app, userbaseConfig = {}) {
             const { action, params } = request
 
             if (action === 'ForgotPassword') {
-              const forgotPasswordResponse = await userController.forgotPassword(req, forgotPasswordToken, params.forgotPasswordToken, user, app)
+              const forgotPasswordResponse = await userController.forgotPassword(
+                logChildObject,
+                forgotPasswordToken,
+                params.signedForgotPasswordToken || params.forgotPasswordToken,
+                user,
+                app
+              )
 
               if (forgotPasswordResponse.status !== statusCodes['Success']) {
 
@@ -373,13 +374,10 @@ async function start(express, app, userbaseConfig = {}) {
 
                 logger
                   .child({
-                    userId,
-                    appId,
-                    adminId,
+                    ...logChildObject,
                     route: action,
                     statusCode: forgotPasswordResponse.status,
                     size: responseMsg.length,
-                    req: trimReq(req),
                     responseTime: Date.now() - start
                   })
                   .info('Forgot password finished')
@@ -392,7 +390,7 @@ async function start(express, app, userbaseConfig = {}) {
             }
 
           } catch (e) {
-            logger.child({ userId, appId, adminId, err: e, msg, req: trimReq(req) }).error('Error in forgot-password Websocket')
+            logger.child({ ...logChildObject, err: e, msg }).error('Error in forgot-password Websocket')
           }
         })
       }
