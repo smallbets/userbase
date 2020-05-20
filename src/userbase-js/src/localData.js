@@ -14,8 +14,8 @@ const tryCatchWrapper = (func) => (...args) => {
 
 const _getSeedName = (appId, username) => `userbaseSeed.${appId}.${username}`
 
-const setCurrentSession = tryCatchWrapper((rememberMe, username, signedIn, sessionId, creationDate) => {
-  const session = { username, signedIn, sessionId, creationDate }
+const setCurrentSession = tryCatchWrapper((rememberMe, username, signedIn, sessionId, creationDate, expirationDate) => {
+  const session = { username, signedIn, sessionId, creationDate, expirationDate }
   const sessionString = JSON.stringify(session)
 
   if (rememberMe === 'local') {
@@ -80,9 +80,9 @@ const getSeedString = tryCatchWrapper((appId, username) => {
   return sessionStorage.getItem(seedName) || localStorage.getItem(seedName)
 })
 
-const signInSession = (rememberMe, username, sessionId, creationDate) => {
+const signInSession = (rememberMe, username, sessionId, creationDate, expirationDate) => {
   const signedIn = true
-  setCurrentSession(rememberMe, username, signedIn, sessionId, creationDate)
+  setCurrentSession(rememberMe, username, signedIn, sessionId, creationDate, expirationDate)
 }
 
 const signOutSession = (rememberMe, username) => {
