@@ -1,4 +1,4 @@
-## [1.4.1] - 2020-05-15
+## [1.4.1] - 2020-05-20
 ## Changed
 - init() now returns immediately if the user's session has expired rather than make a request to the Userbase server to find out it has expired.
 
