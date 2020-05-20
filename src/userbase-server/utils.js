@@ -62,7 +62,7 @@ export const trimReq = (req) => ({ id: req.id, url: req.url })
 
 export const truncateSessionId = (sessionId) => typeof sessionId === 'string' && sessionId.substring(0, 8) // limit sensitive logging
 
-export const getTtl = (secondsToLive) => Math.floor(Date.now() / 1000) + secondsToLive
+export const getTtl = (expirationDate) => Math.floor(new Date(expirationDate).getTime() / 1000)
 
 // matches stringToArrayBuffer from userbase-js/Crypto/utils
 // https://developers.google.com/web/updates/2012/06/How-to-convert-ArrayBuffer-to-and-from-String
