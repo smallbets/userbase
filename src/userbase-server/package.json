@@ -13,7 +13,7 @@
     "pino": "^5.13.0",
     "request": "^2.88.0",
     "request-promise-native": "^1.0.8",
-    "stripe": "^7.14.0",
+    "stripe": "^8.54.0",
     "uuid": "^3.3.2",
     "ws": "^7.1.1"
   },
@@ -35,5 +35,5 @@
     "type": "git",
     "url": "git+https://github.com/encrypted-dev/userbase.git"
   },
-  "version": "0.0.44"
+  "version": "0.0.45"
 }

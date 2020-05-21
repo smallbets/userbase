@@ -1774,7 +1774,7 @@ const conditionCheckUserExists = (username, appId, userId) => {
 }
 
 const _createStripePaymentSession = async function (user, admin, subscriptionPlanId, customerId, success_url, cancel_url, useTestClient) {
-  const stripeAccountId = admin['stripe-account-id']
+  const stripeAccount = admin['stripe-account-id']
 
   try {
     const session = await stripe.getClient(useTestClient).checkout.sessions.create({
@@ -1796,7 +1796,7 @@ const _createStripePaymentSession = async function (user, admin, subscriptionPla
       success_url,
       cancel_url,
     },
-      { stripe_account: stripeAccountId }
+      { stripeAccount }
     )
 
     return session
@@ -2136,7 +2136,7 @@ exports.cancelSubscription = async function (logChildObject, app, admin, user) {
     const updatedSubscription = await stripe.getClient(useTestClient).subscriptions.update(
       subscriptionId,
       { cancel_at_period_end: true },
-      { stripe_account: stripeAccountId }
+      { stripeAccount }
     )
 
     const cancelAt = await _cancelStripeSubscriptionInDdb(user, isProduction, updatedSubscription.cancel_at)
@@ -2173,7 +2173,7 @@ exports.resumeSubscription = async function (logChildObject, app, admin, user) {
     await stripe.getClient(useTestClient).subscriptions.update(
       subscriptionId,
       { cancel_at_period_end: false },
-      { stripe_account: stripeAccountId }
+      { stripeAccount }
     )
 
     await _resumeStripeSubscriptionInDdb(user, isProduction)
@@ -2199,7 +2199,7 @@ exports.resumeSubscription = async function (logChildObject, app, admin, user) {
 }
 
 const _createStripeUpdatePaymentMethodSession = async function (user, admin, customer_id, subscription_id, success_url, cancel_url, useTestClient) {
-  const stripeAccountId = admin['stripe-account-id']
+  const stripeAccount = admin['stripe-account-id']
 
   try {
     const session = await stripe.getClient(useTestClient).checkout.sessions.create({
@@ -2216,7 +2216,7 @@ const _createStripeUpdatePaymentMethodSession = async function (user, admin, cus
       success_url,
       cancel_url,
     }, {
-      stripe_account: stripeAccountId
+      stripeAccount
     })
 
     return session

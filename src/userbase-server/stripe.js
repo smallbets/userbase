@@ -69,21 +69,21 @@ const _handleUpdatedSubscriptionPlan = async (logChildObject, subscriptionPlan, 
   logger.child(logChildObject).info('Finished updating trial periods')
 }
 
-const _setSubscriptionDefaultPaymentMethod = async function (subscription, payment_method, stripe_account, useTestClient) {
+const _setSubscriptionDefaultPaymentMethod = async function (subscription, payment_method, stripeAccount, useTestClient) {
   await getClient(useTestClient).subscriptions.update(
     subscription.id,
     { default_payment_method: payment_method },
-    { stripe_account }
+    { stripeAccount }
   )
 }
 
-const _payUnpaidSubscription = async function (subscription, payment_method, stripe_account, useTestClient) {
+const _payUnpaidSubscription = async function (subscription, payment_method, stripeAccount, useTestClient) {
   const latestInvoiceId = subscription.latest_invoice
 
   await getClient(useTestClient).invoices.pay(
     latestInvoiceId,
     { payment_method },
-    { stripe_account }
+    { stripeAccount }
   )
 }
 
@@ -137,24 +137,24 @@ const _shouldPayUnpaidSubscription = subscription => subscription && (
   subscription.status === 'past_due' || subscription.status === 'unpaid' || subscription.status === 'incomplete'
 )
 
-const _updateStripePaymentMethod = async function (logChildObject, session, stripe_account = undefined) {
+const _updateStripePaymentMethod = async function (logChildObject, session, stripeAccount = undefined) {
   const useTestClient = !session.livemode
-  const setupIntent = await getClient(useTestClient).setupIntents.retrieve(session.setup_intent, { stripe_account })
+  const setupIntent = await getClient(useTestClient).setupIntents.retrieve(session.setup_intent, { stripeAccount })
   const { payment_method, metadata: { customer_id, subscription_id } } = setupIntent
 
   logChildObject.customerId = customer_id
-  const type = stripe_account ? 'user' : 'admin'
+  const type = stripeAccount ? 'user' : 'admin'
   logger.child(logChildObject).info(`Updating ${type}'s payment method`)
 
   await getClient(useTestClient).paymentMethods.attach(
     payment_method,
     { customer: customer_id },
-    { stripe_account }
+    { stripeAccount }
   )
   const customer = await getClient(useTestClient).customers.update(
     customer_id,
     { invoice_settings: { default_payment_method: payment_method } },
-    { stripe_account }
+    { stripeAccount }
   )
 
   logger.child(logChildObject).info(`Successfully updated ${type}'s payment method`)
@@ -164,7 +164,7 @@ const _updateStripePaymentMethod = async function (logChildObject, session, stri
     // pay off the subscription passed in as metadata
     const subscription = customer.subscriptions.data.find(subscription => subscription.id === subscription_id)
     if (_shouldPayUnpaidSubscription(subscription)) {
-      await _payUnpaidSubscription(subscription, payment_method, stripe_account, useTestClient)
+      await _payUnpaidSubscription(subscription, payment_method, stripeAccount, useTestClient)
       logger.child(logChildObject).info(`Successfully charged ${type} with updated payment method`)
     }
   } else {
@@ -176,22 +176,22 @@ const _updateStripePaymentMethod = async function (logChildObject, session, stri
   }
 
   // set card as default on all of a customer's subscriptions
-  await Promise.all(customer.subscriptions.data.map(subscription => _setSubscriptionDefaultPaymentMethod(subscription, payment_method, stripe_account, useTestClient)))
+  await Promise.all(customer.subscriptions.data.map(subscription => _setSubscriptionDefaultPaymentMethod(subscription, payment_method, stripeAccount, useTestClient)))
   logger.child(logChildObject).info(`Successfully updated ${type}'s subscription payment methods`)
 }
 
 const convertStripeTimestamptToIsoString = timestamp => new Date(timestamp * 1000).toISOString()
 
-const _saveDefaultPaymentMethod = async (subscription, stripe_account, useTestClient) => {
+const _saveDefaultPaymentMethod = async (subscription, stripeAccount, useTestClient) => {
   const { customer, default_payment_method } = subscription
   await getClient(useTestClient).customers.update(
     customer,
     { invoice_settings: { default_payment_method } },
-    { stripe_account }
+    { stripeAccount }
   )
 }
 
-const _handleCheckoutSubscriptionCompleted = async (logChildObject, session, stripe_account) => {
+const _handleCheckoutSubscriptionCompleted = async (logChildObject, session, stripeAccount) => {
   const customerId = session.customer
   const subscriptionId = session.subscription
   const planId = session.display_items[0].plan.id
@@ -202,13 +202,13 @@ const _handleCheckoutSubscriptionCompleted = async (logChildObject, session, str
   logChildObject.subscriptionPlanId = planId
   logChildObject.isProduction = isProduction
 
-  const type = stripe_account ? 'user' : 'admin'
+  const type = stripeAccount ? 'user' : 'admin'
   logger.child(logChildObject).info(`Fulfilling ${type}'s subscription payment`)
 
   const useTestClient = !isProduction
-  const subscription = await getClient(useTestClient).subscriptions.retrieve(subscriptionId, { stripe_account })
+  const subscription = await getClient(useTestClient).subscriptions.retrieve(subscriptionId, { stripeAccount })
 
-  await _saveDefaultPaymentMethod(subscription, stripe_account, useTestClient)
+  await _saveDefaultPaymentMethod(subscription, stripeAccount, useTestClient)
 
   logger.child(logChildObject).info(`Successfully fulfilled ${type}'s subscription payment`)
 
@@ -327,10 +327,10 @@ const handleWebhook = async function (req, res, webhookOption) {
   }
 }
 
-const deleteSubscription = async (subscriptionId, subscriptionStatus, stripe_account, useTestClient) => {
+const deleteSubscription = async (subscriptionId, subscriptionStatus, stripeAccount, useTestClient) => {
   if (subscriptionId && subscriptionStatus !== 'canceled') {
     try {
-      await getClient(useTestClient).subscriptions.del(subscriptionId, { stripe_account })
+      await getClient(useTestClient).subscriptions.del(subscriptionId, { stripeAccount })
     } catch (e) {
       // if subscription not found, it's already deleted and don't need to worry about it
       if (e.message !== 'No such subscription: ' + subscriptionId) throw e

@@ -194,10 +194,10 @@ const purgeTransactions = async (userDb) => {
   logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purging transactions')
 }
 
-const _deleteConnectedStripeCustomer = async (customerId, stripe_account, useTestClient) => {
-  if (customerId && stripe_account) {
+const _deleteConnectedStripeCustomer = async (customerId, stripeAccount, useTestClient) => {
+  if (customerId && stripeAccount) {
     try {
-      await stripe.getClient(useTestClient).customers.del(customerId, { stripe_account })
+      await stripe.getClient(useTestClient).customers.del(customerId, { stripeAccount })
     } catch (e) {
       // only ok to let fail if customer is already deleted
       if (e.message !== 'No such customer: ' + customerId) throw e

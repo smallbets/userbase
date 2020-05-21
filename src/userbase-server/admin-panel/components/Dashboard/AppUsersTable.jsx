@@ -9,7 +9,7 @@ import { ProfileTable } from './ProfileTable'
 import { StripeDataTable } from './StripeDataTable'
 import { STRIPE_CLIENT_ID, getStripeState } from '../../config'
 
-const MAX_PLAN_ID_LEN = 19
+const MAX_PLAN_ID_LEN = 20 // price_ adds extra character
 
 // admin must have an active Userbase subscripion & active payments add-on subscription to enable prod payments
 const prodPaymentsAllowed = ({ paymentStatus, cancelSaasSubscriptionAt, paymentsAddOnSubscriptionStatus, cancelPaymentsAddOnSubscriptionAt }) => {
@@ -984,7 +984,7 @@ export default class AppUsersTable extends Component {
                           maxLength={MAX_PLAN_ID_LEN}
                           spellCheck={false}
                           onChange={this.handlePaymentsPlanInputChange}
-                          placeholder='plan_'
+                          placeholder='price_ or plan_'
                         />
                       </div>
 
@@ -1049,7 +1049,7 @@ export default class AppUsersTable extends Component {
                           maxLength={MAX_PLAN_ID_LEN}
                           spellCheck={false}
                           onChange={this.handlePaymentsPlanInputChange}
-                          placeholder='plan_'
+                          placeholder='price_ or plan_'
                           disabled={!prodPaymentsAllowed(admin)}
                         />
                       </div>

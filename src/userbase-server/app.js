@@ -707,15 +707,15 @@ const _setSubscriptionPlan = async function (req, res, paymentsMode) {
   try {
     const admin = res.locals.admin
     const adminId = admin['admin-id']
-    const stripeAccountId = admin['stripe-account-id']
+    const stripeAccount = admin['stripe-account-id']
     const appId = req.params.appId
     const subscriptionPlanId = req.params.subscriptionPlanId
     const appName = req.query.appName
 
-    logChildObject = { adminId, stripeAccountId, appId, subscriptionPlanId, paymentsMode, req: trimReq(req) }
+    logChildObject = { adminId, stripeAccountId: stripeAccount, appId, subscriptionPlanId, paymentsMode, req: trimReq(req) }
     logger.child(logChildObject).info('Setting subscription plan')
 
-    if (!stripeAccountId) throw {
+    if (!stripeAccount) throw {
       status: statusCodes['Forbidden'],
       error: { message: 'Stripe account not connected.' }
     }
@@ -729,7 +729,7 @@ const _setSubscriptionPlan = async function (req, res, paymentsMode) {
       // make sure subscription plan exists in Stripe
       const subscription = await stripe.getClient(paymentsMode === 'test').plans.retrieve(
         subscriptionPlanId,
-        { stripe_account: stripeAccountId }
+        { stripeAccount }
       )
 
       if (paymentsMode === 'prod' && !subscription.livemode) {
