@@ -2126,8 +2126,8 @@ const _validateModifySubscription = (logChildObject, app, user) => {
 
 exports.cancelSubscription = async function (logChildObject, app, admin, user) {
   try {
-    const stripeAccountId = admin['stripe-account-id']
-    logChildObject.stripeAccountId = stripeAccountId
+    const stripeAccount = admin['stripe-account-id']
+    logChildObject.stripeAccountId = stripeAccount
     logger.child(logChildObject).info('Cancelling user subscription')
 
     const { subscriptionId, isProduction } = _validateModifySubscription(logChildObject, app, user)
@@ -2163,8 +2163,8 @@ exports.cancelSubscription = async function (logChildObject, app, admin, user) {
 
 exports.resumeSubscription = async function (logChildObject, app, admin, user) {
   try {
-    const stripeAccountId = admin['stripe-account-id']
-    logChildObject.stripeAccountId = stripeAccountId
+    const stripeAccount = admin['stripe-account-id']
+    logChildObject.stripeAccountId = stripeAccount
     logger.child(logChildObject).info('Resuming user subscription')
 
     const { subscriptionId, isProduction } = _validateModifySubscription(logChildObject, app, user)
