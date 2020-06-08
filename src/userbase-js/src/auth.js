@@ -635,6 +635,10 @@ const updateUser = async (params) => {
       }
 
       await ws.request(action, finalParams)
+
+      if (finalParams.username && ws.seedString === startingSeedString) {
+        ws.session.username = finalParams.username
+      }
     } catch (e) {
       _parseUserResponseError(e, finalParams.username)
     }

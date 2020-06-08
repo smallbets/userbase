@@ -187,8 +187,46 @@ async function start(express, app, userbaseConfig = {}) {
                     )
                     break
                   }
+                  case 'OpenDatabaseByDatabaseId': {
+                    response = await db.openDatabaseByDatabaseId(
+                      res.locals.user,
+                      res.locals.app,
+                      res.locals.admin,
+                      connectionId,
+                      params.databaseId,
+                      params.reopenAtSeqNo
+                    )
+                    break
+                  }
                   case 'GetDatabases': {
                     response = await db.getDatabases(logChildObject, res.locals.user['user-id'], params.nextPageToken)
+                    break
+                  }
+                  case 'GetDatabaseUsers': {
+                    response = await db.getDatabaseUsers(
+                      logChildObject,
+                      res.locals.user['user-id'],
+                      params.databaseId,
+                      params.databaseNameHash,
+                      params.nextPageTokenLessThanUserId,
+                      params.nextPageTokenMoreThanUserId,
+                    )
+                    break
+                  }
+                  case 'GetUserDatabaseByDatabaseNameHash': {
+                    response = await db.getUserDatabaseByDbNameHash(
+                      logChildObject,
+                      res.locals.user['user-id'],
+                      params.dbNameHash,
+                    )
+                    break
+                  }
+                  case 'GetUserDatabaseByDatabaseId': {
+                    response = await db.getUserDatabaseByDatabaseId(
+                      logChildObject,
+                      res.locals.user['user-id'],
+                      params.databaseId,
+                    )
                     break
                   }
                   case 'Insert':
@@ -254,6 +292,56 @@ async function start(express, app, userbaseConfig = {}) {
                       res.locals.user,
                       params.successUrl,
                       params.cancelUrl
+                    )
+                    break
+                  }
+                  case 'ShareDatabase': {
+                    response = await db.shareDatabase(
+                      logChildObject,
+                      res.locals.user,
+                      params.databaseId,
+                      params.databaseNameHash,
+                      params.username,
+                      params.readOnly,
+                      params.resharingAllowed,
+                      params.wrappedDbKey,
+                      params.ephemeralPublicKey,
+                      params.signedEphemeralPublicKey,
+                      params.sentSignature,
+                      params.recipientEcdsaPublicKey,
+                    )
+                    break
+                  }
+                  case 'SaveDatabase': {
+                    response = await db.saveDatabase(
+                      logChildObject,
+                      res.locals.user,
+                      params.databaseNameHash,
+                      params.encryptedDbKey,
+                      params.receivedSignature,
+                    )
+                    break
+                  }
+                  case 'ModifyDatabasePermissions': {
+                    response = await db.modifyDatabasePermissions(
+                      logChildObject,
+                      res.locals.user,
+                      params.databaseId,
+                      params.databaseNameHash,
+                      params.username,
+                      params.readOnly,
+                      params.resharingAllowed,
+                      params.revoke,
+                    )
+                    break
+                  }
+                  case 'VerifyUser': {
+                    response = await db.verifyUser(
+                      logChildObject,
+                      res.locals.user['user-id'],
+                      params.verifiedUsername,
+                      params.ecdsaPublicKeyString,
+                      params.signedVerificationMessage,
                     )
                     break
                   }
@@ -437,6 +525,7 @@ async function start(express, app, userbaseConfig = {}) {
         ? res.ws(socket => wss.emit('forgot-password', socket, req, res))
         : res.send('Not a websocket!')
     )
+    v1Api.get('/public-key', userController.getPublicKey)
 
     // Userbase admin API
     app.use(express.static(path.join(__dirname + adminPanelDir)))

@@ -135,10 +135,25 @@ const getServerPublicKey = async () => {
   })
 }
 
+const getPublicKey = (username) => {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+
+    const method = 'GET'
+    const url = `${config.getEndpoint()}/api/public-key?appId=${config.getAppId()}&username=${encodeURIComponent(username)}`
+
+    xhr.open(method, url)
+    xhr.send()
+
+    processXhr(xhr, resolve, reject)
+  })
+}
+
 export default {
   signUp,
   getPasswordSalts,
   signIn,
   signInWithSession,
   getServerPublicKey,
+  getPublicKey,
 }

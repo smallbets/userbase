@@ -7,7 +7,8 @@ const HMAC_KEY_NAME = 'authentication'
 
 const ALGORITHM_NAME = 'HMAC'
 const KEY_IS_EXTRACTABLE = false
-const KEY_WILL_BE_USED_TO = ['sign']
+const KEY_WILL_BE_USED_TO_SIGN = ['sign']
+const KEY_WILL_BE_USED_TO_SIGN_AND_VERIFY = ['sign', 'verify']
 
 const importKeyFromMaster = async (masterKey, salt) => {
   const hmacKey = await window.crypto.subtle.deriveKey(
@@ -20,7 +21,23 @@ const importKeyFromMaster = async (masterKey, salt) => {
       }
     },
     KEY_IS_EXTRACTABLE,
-    KEY_WILL_BE_USED_TO
+    KEY_WILL_BE_USED_TO_SIGN
+  )
+  return hmacKey
+}
+
+const importKeyFromRawBits = async (rawBits) => {
+  const hmacKey = await window.crypto.subtle.importKey(
+    'raw',
+    rawBits,
+    {
+      name: ALGORITHM_NAME,
+      hash: {
+        name: sha256.HASH_ALGORITHM_NAME
+      }
+    },
+    KEY_IS_EXTRACTABLE,
+    KEY_WILL_BE_USED_TO_SIGN_AND_VERIFY
   )
   return hmacKey
 }
@@ -53,6 +70,7 @@ const signString = async (key, data) => {
 
 export default {
   importKeyFromMaster,
+  importKeyFromRawBits,
   sign,
   signString
 }

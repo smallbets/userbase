@@ -201,7 +201,7 @@ describe('VerifyAuthToken', function () {
       })
     })
 
-    it.only('After init', function () {
+    it('After init', function () {
       createAdmin(this.test).then(function () {
         const email = 'fake@email.com'
         const profile = { hello: 'world!' }

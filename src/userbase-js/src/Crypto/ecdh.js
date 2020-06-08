@@ -40,6 +40,18 @@ const getRawPublicKeyFromPublicKey = async (publicKey) => {
   return rawPublicKey
 }
 
+const getPublicKeyFromRawPublicKey = async (rawPublicKey) => {
+  const publicKey = await window.crypto.subtle.importKey(
+    PUBLIC_KEY_TYPE,
+    rawPublicKey,
+    ECDH_PARAMS,
+    KEY_IS_EXTRACTABLE,
+    [], // empty list ok
+  )
+
+  return publicKey
+}
+
 const importEcdhKeyWrapperFromMaster = async (masterKey, salt) => {
   const keyWrapper = await window.crypto.subtle.deriveKey(
     hkdf.getParams(ECDH_KEY_WRAPPER, salt),
@@ -50,17 +62,6 @@ const importEcdhKeyWrapperFromMaster = async (masterKey, salt) => {
   )
 
   return keyWrapper
-}
-
-const wrapEcdhPrivateKey = async (ecdhPrivateKey, ecdhKeyWrapper) => {
-  const ciphertextArrayBuffer = await window.crypto.subtle.wrapKey(
-    aesKw.KEY_TYPE,
-    ecdhPrivateKey,
-    ecdhKeyWrapper,
-    aesKw.AES_KW_PARAMS
-  )
-
-  return ciphertextArrayBuffer
 }
 
 const unwrapEcdhPrivateKey = async (wrappedEcdhPrivateKey, ecdhKeyWrapper) => {
@@ -84,7 +85,7 @@ const generateEcdhKeyData = async (masterKey, ecdsaPrivateKey) => {
   // derive a key wrapper using HKDF to wrap the ECDH private key and store it on server
   const ecdhKeyWrapperSalt = hkdf.generateSalt()
   const ecdhKeyWrapper = await importEcdhKeyWrapperFromMaster(masterKey, ecdhKeyWrapperSalt)
-  const wrappedEcdhPrivateKey = await wrapEcdhPrivateKey(ecdhKeyPair.privateKey, ecdhKeyWrapper)
+  const wrappedEcdhPrivateKey = await aesKw.wrapKey(ecdhKeyPair.privateKey, ecdhKeyWrapper)
 
   const ecdhPublicKey = await getRawPublicKeyFromPublicKey(ecdhKeyPair.publicKey)
   const signedEcdhPublicKey = await ecdsa.sign(ecdsaPrivateKey, ecdhPublicKey)
@@ -98,9 +99,28 @@ const generateEcdhKeyData = async (masterKey, ecdsaPrivateKey) => {
   }
 }
 
+const computeSharedKeyWrapper = async (otherEcdhPublicKey, ecdhPrivateKey) => {
+  const sharedKeyWrapper = await window.crypto.subtle.deriveKey(
+    {
+      name: ECDH_ALGORITHM_NAME,
+      namedCurve: NAMED_CURVE,
+      public: otherEcdhPublicKey
+    },
+    ecdhPrivateKey,
+    aesKw.AES_KW_PARAMS,
+    aesKw.KEY_IS_NOT_EXTRACTABLE,
+    aesKw.KEY_WILL_BE_USED_TO
+  )
+
+  return sharedKeyWrapper
+}
+
 export default {
+  generateKeyPair,
   generateEcdhKeyData,
   importEcdhKeyWrapperFromMaster,
   getRawPublicKeyFromPublicKey,
+  getPublicKeyFromRawPublicKey,
   unwrapEcdhPrivateKey,
+  computeSharedKeyWrapper,
 }

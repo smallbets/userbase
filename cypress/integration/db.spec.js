@@ -1198,7 +1198,13 @@ describe('DB Tests', function () {
       expect(databasesResult.databases, 'databases result').to.be.an('array').that.has.lengthOf(1)
 
       const database = databasesResult.databases[0]
-      expect(database, 'database name').to.deep.equal({ databaseName })
+      expect(database, 'database name').to.deep.equal({
+        databaseName,
+        isOwner: true,
+        readOnly: false,
+        resharingAllowed: true,
+        users: []
+      })
     })
 
     it('Get 10 Databases', async function () {
@@ -1219,7 +1225,13 @@ describe('DB Tests', function () {
       for (let i = 0; i < numDatabases; i++) {
         const database = databasesResult.databases[i]
 
-        expect(database, 'database name key').to.have.key('databaseName')
+        expect(database, 'database keys').to.have.keys(['databaseName', 'isOwner', 'readOnly', 'resharingAllowed', 'users'])
+        const { isOwner, readOnly, resharingAllowed, users } = database
+        expect(isOwner, 'isOwner').to.be.true
+        expect(readOnly, 'readOnly').to.be.false
+        expect(resharingAllowed, 'resharingAllowe').to.be.true
+        expect(users, 'users').to.deep.equal([])
+
         const databaseName = database.databaseName
 
         expect(createdDatabases[databaseName], 'created database and was not already found').to.be.true

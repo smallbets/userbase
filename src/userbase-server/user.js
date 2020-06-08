@@ -1342,6 +1342,45 @@ exports.getServerPublicKey = async function (req, res) {
   }
 }
 
+exports.getPublicKey = async function (req, res) {
+  let logChildObject
+  try {
+    const appId = req.query.appId
+    const username = req.query.username
+
+    logChildObject = { appId, username, req: trimReq(req) }
+    logger.child(logChildObject).info('Getting public key')
+
+    const user = await getUser(appId, username)
+
+    if (!user) throw {
+      status: statusCodes['Not Found'],
+      error: { message: 'UserNotFound' }
+    }
+
+    const result = {
+      ecdhPublicKey: user['ecdh-public-key'],
+      signedEcdhPublicKey: user['signed-ecdh-public-key'],
+      ecdsaPublicKey: user['ecdsa-public-key']
+    }
+
+    return res.send(result)
+  } catch (e) {
+    logChildObject.err = e
+    const message = 'Failed to get public key'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).info(message)
+      return res.status(e.status).send(e.error)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return res.status(statusCode).send(message)
+    }
+  }
+}
+
+
 const _updateUserExcludingUsernameUpdate = async (user, userId, passwordToken, passwordSalts,
   email, profile, passwordBasedBackup) => {
   const updateUserParams = conditionCheckUserExists(user['username'], user['app-id'], userId)
@@ -1675,6 +1714,7 @@ const getUser = async function (appId, username) {
 
   return userResponse && userResponse.Item
 }
+exports.getUser = getUser
 
 const _precheckGenerateForgotPasswordToken = async function (appId, username) {
   if (!appId || !username) {

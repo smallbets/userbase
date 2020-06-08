@@ -1,10 +1,12 @@
 import uuidv4 from 'uuid/v4'
 import SortedArray from 'sorted-array'
+import base64 from 'base64-arraybuffer'
 import crypto from './Crypto'
 import ws from './ws'
 import errors from './errors'
 import statusCodes from './statusCodes'
 import { byteSizeOfString, Queue, objectHasOwnProperty } from './utils'
+import api from './api'
 
 const success = 'Success'
 
@@ -14,6 +16,10 @@ const MAX_ITEM_ID_CHAR_LENGTH = 100
 const MAX_ITEM_KB = 10
 const TEN_KB = MAX_ITEM_KB * 1024
 const MAX_ITEM_BYTES = TEN_KB
+
+const DB_ID_CHAR_LENGTH = 36
+
+const VERIFIED_USERS_DATABASE_NAME = '__userbase_verified_users'
 
 const _parseGenericErrors = (e) => {
   if (e.response) {
@@ -369,10 +375,57 @@ class Database {
   }
 }
 
-const _openDatabase = async (dbNameHash, changeHandler, newDatabaseParams) => {
-  try {
-    const database = ws.state.databases[dbNameHash]
+const _idempotentOpenDatabase = (database, changeHandler, receivedMessage) => {
+  // safe to replace -- enables idempotent calls to openDatabase
+  database.onChange = changeHandler
 
+  // if 1 call succeeds, all idempotent calls succeed
+  const currentReceivedMessage = database.receivedMessage
+  database.receivedMessage = () => {
+    currentReceivedMessage()
+    receivedMessage()
+  }
+
+  // database is already open, can return successfully
+  if (database.init) {
+    changeHandler(database.getItems())
+    database.receivedMessage()
+    return true
+  }
+
+  return false
+}
+
+const _openDatabaseByDatabaseId = async (databaseId, changeHandler, receivedMessage) => {
+  const database = ws.state.databasesByDbId[databaseId]
+
+  if (!database) {
+    ws.state.databasesByDbId[databaseId] = new Database(changeHandler, receivedMessage)
+  } else {
+    if (_idempotentOpenDatabase(database, changeHandler, receivedMessage)) return
+  }
+
+  const action = 'OpenDatabaseByDatabaseId'
+  const params = { databaseId }
+  await ws.request(action, params)
+}
+
+const _openDatabaseByNameHash = async (dbNameHash, newDatabaseParams, changeHandler, receivedMessage) => {
+  const database = ws.state.databases[dbNameHash]
+
+  if (!database) {
+    ws.state.databases[dbNameHash] = new Database(changeHandler, receivedMessage)
+  } else {
+    if (_idempotentOpenDatabase(database, changeHandler, receivedMessage)) return
+  }
+
+  const action = 'OpenDatabase'
+  const params = { dbNameHash, newDatabaseParams }
+  await ws.request(action, params)
+}
+
+const _openDatabase = async (changeHandler, params) => {
+  try {
     let receivedMessage
     let timeout
     const firstMessageFromWebSocket = new Promise((resolve, reject) => {
@@ -380,33 +433,12 @@ const _openDatabase = async (dbNameHash, changeHandler, newDatabaseParams) => {
       timeout = setTimeout(() => reject(new Error('timeout')), 20000)
     })
 
-    if (!database) {
-      ws.state.databases[dbNameHash] = new Database(changeHandler, receivedMessage)
-    } else {
-
-      // safe to replace -- enables idempotent calls to openDatabase
-      database.onChange = changeHandler
-
-      // if 1 call succeeds, all idempotent calls succeed
-      const currentReceivedMessage = database.receivedMessage
-      database.receivedMessage = () => {
-        currentReceivedMessage()
-        receivedMessage()
-      }
-
-      // database is already open, can return successfully
-      if (database.init) {
-        changeHandler(database.getItems())
-        database.receivedMessage()
-        return
-      }
-    }
-
-    const action = 'OpenDatabase'
-    const params = { dbNameHash, newDatabaseParams }
-
     try {
-      await ws.request(action, params)
+      const { dbNameHash, newDatabaseParams, databaseId } = params
+
+      if (dbNameHash) await _openDatabaseByNameHash(dbNameHash, newDatabaseParams, changeHandler, receivedMessage)
+      else await _openDatabaseByDatabaseId(databaseId, changeHandler, receivedMessage)
+
       await firstMessageFromWebSocket
     } catch (e) {
       clearTimeout(timeout)
@@ -461,16 +493,37 @@ const _createDatabase = async (dbName) => {
   return newDatabaseParams
 }
 
-const _validateDbInput = (params) => {
-  if (typeof params !== 'object') throw new errors.ParamsMustBeObject
-
-  if (!objectHasOwnProperty(params, 'databaseName')) throw new errors.DatabaseNameMissing
-
-  const dbName = params.databaseName
-
+const _validateDbName = (dbName) => {
   if (typeof dbName !== 'string') throw new errors.DatabaseNameMustBeString
   if (dbName.length === 0) throw new errors.DatabaseNameCannotBeBlank
   if (dbName.length > MAX_DB_NAME_CHAR_LENGTH) throw new errors.DatabaseNameTooLong(MAX_DB_NAME_CHAR_LENGTH)
+}
+
+const _validateDbId = (dbId) => {
+  if (typeof dbId !== 'string') throw new errors.DatabaseIdMustBeString
+  if (dbId.length === 0) throw new errors.DatabaseIdCannotBeBlank
+  if (dbId.length !== DB_ID_CHAR_LENGTH) throw new errors.DatabaseIdInvalid
+}
+
+const _validateDbInput = (params) => {
+  if (typeof params !== 'object') throw new errors.ParamsMustBeObject
+
+  if (objectHasOwnProperty(params, 'databaseName')) {
+
+    _validateDbName(params.databaseName)
+    if (objectHasOwnProperty(params, 'databaseId')) throw new errors.DatabaseIdNotAllowed
+
+    // try to block usage of verified users database. If user works around this and modifies this database,
+    // they could mess up the database for themself.
+    if (!params.allowVerifiedUsersDatabase && params.databaseName === VERIFIED_USERS_DATABASE_NAME) {
+      throw new errors.DatabaseNameNotAllowed(VERIFIED_USERS_DATABASE_NAME)
+    }
+
+  } else if (objectHasOwnProperty(params, 'databaseId')) {
+    _validateDbId(params.databaseId)
+  } else {
+    throw new errors.DatabaseNameMissing
+  }
 
   if (ws.reconnecting) throw new errors.Reconnecting
   if (!ws.keys.init) throw new errors.UserNotSignedIn
@@ -481,15 +534,22 @@ const openDatabase = async (params) => {
     _validateDbInput(params)
     if (!objectHasOwnProperty(params, 'changeHandler')) throw new errors.ChangeHandlerMissing
 
-    const { databaseName, changeHandler } = params
+    const { databaseName, databaseId, changeHandler } = params
 
     if (typeof changeHandler !== 'function') throw new errors.ChangeHandlerMustBeFunction
 
-    const dbNameHash = ws.state.dbNameToHash[databaseName] || await crypto.hmac.signString(ws.keys.hmacKey, databaseName)
-    ws.state.dbNameToHash[databaseName] = dbNameHash // eslint-disable-line require-atomic-updates
+    if (databaseName) {
+      const dbNameHash = ws.state.dbNameToHash[databaseName] || await crypto.hmac.signString(ws.keys.hmacKey, databaseName)
+      ws.state.dbNameToHash[databaseName] = dbNameHash // eslint-disable-line require-atomic-updates
 
-    const newDatabaseParams = await _createDatabase(databaseName)
-    await _openDatabase(dbNameHash, changeHandler, newDatabaseParams)
+      const newDatabaseParams = await _createDatabase(databaseName)
+
+      const openByDbNameHashParams = { dbNameHash, newDatabaseParams }
+      await _openDatabase(changeHandler, openByDbNameHashParams)
+    } else {
+      const openByDbIdParams = { databaseId }
+      await _openDatabase(changeHandler, openByDbIdParams)
+    }
   } catch (e) {
 
     switch (e.name) {
@@ -499,6 +559,11 @@ const openDatabase = async (params) => {
       case 'DatabaseNameMissing':
       case 'DatabaseNameCannotBeBlank':
       case 'DatabaseNameTooLong':
+      case 'DatabaseNameNotAllowed':
+      case 'DatabaseIdMustBeString':
+      case 'DatabaseIdCannotBeBlank':
+      case 'DatabaseIdInvalid':
+      case 'DatabaseIdNotAllowed':
       case 'ChangeHandlerMissing':
       case 'ChangeHandlerMustBeFunction':
       case 'UserNotSignedIn':
@@ -518,10 +583,13 @@ const openDatabase = async (params) => {
   }
 }
 
-const getOpenDb = (dbName) => {
+const getOpenDb = (dbName, databaseId) => {
   const dbNameHash = ws.state.dbNameToHash[dbName]
-  const database = ws.state.databases[dbNameHash]
-  if (!dbNameHash || !database || !database.init) throw new errors.DatabaseNotOpen
+  const database = dbName
+    ? ws.state.databases[dbNameHash]
+    : ws.state.databasesByDbId[databaseId]
+
+  if (!database || !database.init) throw new errors.DatabaseNotOpen
   return database
 }
 
@@ -529,7 +597,7 @@ const insertItem = async (params) => {
   try {
     _validateDbInput(params)
 
-    const database = getOpenDb(params.databaseName)
+    const database = getOpenDb(params.databaseName, params.databaseId)
 
     const action = 'Insert'
     const insertParams = await _buildInsertParams(database, params)
@@ -545,6 +613,11 @@ const insertItem = async (params) => {
       case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
       case 'DatabaseNameTooLong':
+      case 'DatabaseNameNotAllowed':
+      case 'DatabaseIdMustBeString':
+      case 'DatabaseIdCannotBeBlank':
+      case 'DatabaseIdInvalid':
+      case 'DatabaseIdNotAllowed':
       case 'ItemIdMustBeString':
       case 'ItemIdCannotBeBlank':
       case 'ItemIdTooLong':
@@ -593,7 +666,7 @@ const updateItem = async (params) => {
   try {
     _validateDbInput(params)
 
-    const database = getOpenDb(params.databaseName)
+    const database = getOpenDb(params.databaseName, params.databaseId)
 
     const action = 'Update'
     const updateParams = await _buildUpdateParams(database, params)
@@ -608,6 +681,11 @@ const updateItem = async (params) => {
       case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
       case 'DatabaseNameTooLong':
+      case 'DatabaseNameNotAllowed':
+      case 'DatabaseIdMustBeString':
+      case 'DatabaseIdCannotBeBlank':
+      case 'DatabaseIdInvalid':
+      case 'DatabaseIdNotAllowed':
       case 'ItemIdMissing':
       case 'ItemIdMustBeString':
       case 'ItemIdCannotBeBlank':
@@ -658,7 +736,7 @@ const deleteItem = async (params) => {
   try {
     _validateDbInput(params)
 
-    const database = getOpenDb(params.databaseName)
+    const database = getOpenDb(params.databaseName, params.databaseId)
 
     const action = 'Delete'
     const deleteParams = await _buildDeleteParams(database, params)
@@ -673,6 +751,11 @@ const deleteItem = async (params) => {
       case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
       case 'DatabaseNameTooLong':
+      case 'DatabaseNameNotAllowed':
+      case 'DatabaseIdMustBeString':
+      case 'DatabaseIdCannotBeBlank':
+      case 'DatabaseIdInvalid':
+      case 'DatabaseIdNotAllowed':
       case 'ItemIdMissing':
       case 'ItemIdMustBeString':
       case 'ItemIdCannotBeBlank':
@@ -716,11 +799,11 @@ const putTransaction = async (params) => {
     _validateDbInput(params)
     if (!objectHasOwnProperty(params, 'operations')) throw new errors.OperationsMissing
 
-    const { databaseName, operations } = params
+    const { databaseName, databaseId, operations } = params
 
     if (!Array.isArray(operations)) throw new errors.OperationsMustBeArray
 
-    const database = getOpenDb(databaseName)
+    const database = getOpenDb(databaseName, databaseId)
 
     const action = 'BatchTransaction'
 
@@ -770,6 +853,11 @@ const putTransaction = async (params) => {
       case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
       case 'DatabaseNameTooLong':
+      case 'DatabaseNameNotAllowed':
+      case 'DatabaseIdMustBeString':
+      case 'DatabaseIdCannotBeBlank':
+      case 'DatabaseIdInvalid':
+      case 'DatabaseIdNotAllowed':
       case 'OperationsMissing':
       case 'OperationsMustBeArray':
       case 'OperationsConflict':
@@ -804,7 +892,7 @@ const postTransaction = async (database, action, params) => {
     const paramsWithDbData = {
       ...params,
       dbId: database.dbId,
-      dbNameHash: ws.state.dbIdToHash[database.dbId]
+      dbNameHash: database.dbNameHash
     }
 
     const response = await ws.request(action, paramsWithDbData)
@@ -821,32 +909,234 @@ const postTransaction = async (database, action, params) => {
   }
 }
 
-const _buildDatabaseResult = async (db) => {
-  const dbKeyString = await crypto.aesGcm.decryptString(ws.keys.encryptionKey, db.encryptedDbKey)
-  const dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
-  const databaseName = await crypto.aesGcm.decryptString(dbKey, db.databaseName)
-  return { databaseName }
+const _verifyUsersParent = async (dbKey, verifiedUsersByUsername, databaseUser) => {
+  const { username, senderUsername, verificationValues } = databaseUser
+  const { sentSignature, receivedSignature, senderEcdsaPublicKey } = verificationValues
+
+  const verifiedFingerprint = verifiedUsersByUsername[username]
+
+  const parentRawEcdsaPublicKey = base64.decode(senderEcdsaPublicKey)
+  const parentFingerprint = verifiedUsersByUsername[senderUsername] || await _getFingerprint(parentRawEcdsaPublicKey)
+  const parentEcdsaPublicKey = await crypto.ecdsa.getPublicKeyFromRawPublicKey(parentRawEcdsaPublicKey)
+
+  // verify parent's claim that sent the dbKey to user
+  const expectedSentSignature = await _signFingerprintWithDbKey(dbKey, verifiedFingerprint)
+  const verifiedParentSent = await crypto.ecdsa.verifyString(parentEcdsaPublicKey, sentSignature, expectedSentSignature)
+
+  // verify user's claim that received the dbKey from parent
+  const recipientEcdsaPublicKey = await crypto.ecdsa.getPublicKeyFromRawPublicKey(base64.decode(verificationValues.recipientEcdsaPublicKey))
+  const expectedReceivedSignature = await _signFingerprintWithDbKey(dbKey, parentFingerprint)
+  const verifiedReceivedFromParent = await crypto.ecdsa.verifyString(recipientEcdsaPublicKey, receivedSignature, expectedReceivedSignature)
+
+  return verifiedParentSent && verifiedReceivedFromParent
+}
+
+const _verifyReceivedDatabaseFromUser = async (dbKey, verifiedFingerprint, myFingerprint, myEcdsaPublicKey, verificationValues) => {
+  const { mySentSignature, myReceivedSignature } = verificationValues
+
+  // verify my claim that I received dbKey from this user
+  const expectedReceivedSignature = await _signFingerprintWithDbKey(dbKey, verifiedFingerprint)
+  const verifiedReceived = await crypto.ecdsa.verifyString(myEcdsaPublicKey, myReceivedSignature, expectedReceivedSignature)
+
+  if (!verifiedReceived) return verifiedReceived
+
+  // verify user's claim that sent dbKey to me
+  const expectedSentSignature = await _signFingerprintWithDbKey(dbKey, myFingerprint)
+  const senderEcdsaPublicKey = await crypto.ecdsa.getPublicKeyFromRawPublicKey(base64.decode(verificationValues.mySenderEcdsaPublicKey))
+  const verifiedSent = await crypto.ecdsa.verifyString(senderEcdsaPublicKey, mySentSignature, expectedSentSignature)
+
+  return verifiedSent && verifiedReceived
+}
+
+const _verifySentDatabaseToUser = async (dbKey, verifiedFingerprint, myFingerprint, myEcdsaPublicKey, verificationValues) => {
+  const { sentSignature, receivedSignature } = verificationValues
+
+  // verify my claim that I sent dbKey to this user
+  const expectedSentSignature = await _signFingerprintWithDbKey(dbKey, verifiedFingerprint)
+  const verifiedSent = await crypto.ecdsa.verifyString(myEcdsaPublicKey, sentSignature, expectedSentSignature)
+
+  if (!verifiedSent) return verifiedSent
+
+  // verify user's claim that received dbKey from me
+  const expectedReceivedSignature = await _signFingerprintWithDbKey(dbKey, myFingerprint)
+  const recipientEcdsaPublicKey = await crypto.ecdsa.getPublicKeyFromRawPublicKey(base64.decode(verificationValues.recipientEcdsaPublicKey))
+  const verifiedReceived = await crypto.ecdsa.verifyString(recipientEcdsaPublicKey, receivedSignature, expectedReceivedSignature)
+
+  return verifiedSent && verifiedReceived
+}
+
+const _buildDatabaseUserResult = async (dbKey, databaseUsers, verifiedUsersByUsername, myUsername, mySenderUsername) => {
+  const myEcdsaPublicKey = await crypto.ecdsa.getPublicKeyFromPrivateKey(ws.keys.ecdsaPrivateKey)
+  const myFingerprint = await _getMyFingerprint()
+
+  // iterate over all database users to verify each user individually
+  for (let i = 0; i < databaseUsers.length; i++) {
+    const databaseUser = databaseUsers[i]
+    const { username, isOwner, senderUsername, verificationValues } = databaseUser
+
+    try {
+      const verifiedFingerprint = verifiedUsersByUsername[username]
+
+      const sentDatabaseToUser = verificationValues.isChild
+      const receivedDatabaseFromUser = mySenderUsername === username
+
+      if (verifiedFingerprint) {
+        if (sentDatabaseToUser) {
+          databaseUsers[i].verified = await _verifySentDatabaseToUser(dbKey, verifiedFingerprint, myFingerprint, myEcdsaPublicKey, verificationValues)
+        } else if (receivedDatabaseFromUser) {
+          const verifiedReceivedDatabaseFromUser = await _verifyReceivedDatabaseFromUser(dbKey, verifiedFingerprint, myFingerprint, myEcdsaPublicKey, verificationValues)
+
+          // verify user's relationship to parent if has a parent
+          if (verifiedReceivedDatabaseFromUser && senderUsername) {
+            const verifiedGrandparent = await _verifyUsersParent(dbKey, verifiedUsersByUsername, databaseUser)
+            databaseUsers[i].verified = verifiedGrandparent
+          } else {
+            databaseUsers[i].verified = verifiedReceivedDatabaseFromUser
+          }
+
+        } else if (senderUsername) {
+          // verify unrelated user's parent sent dbKey to user and user received dbKey from their parent
+          const verifiedUsersParent = await _verifyUsersParent(dbKey, verifiedUsersByUsername, databaseUser)
+          databaseUsers[i].verified = verifiedUsersParent
+        } else {
+          // must be an owner that is not my child or parent, and owner is automatically verified
+          databaseUsers[i].verified = isOwner
+        }
+      }
+    } catch {
+      // continue without setting verified boolean
+    }
+
+    // "receivedFromUsername" is easier to understand to end developer
+    delete databaseUsers[i].senderUsername
+    if (!isOwner) {
+      if (verificationValues && verificationValues.isChild) databaseUsers[i].receivedFromUsername = myUsername
+      else if (senderUsername) databaseUsers[i].receivedFromUsername = senderUsername
+    }
+
+    // these values are not useful to user
+    delete databaseUsers[i].verificationValues
+  }
+
+  return databaseUsers
+}
+
+const _getDatabaseUsers = async (databaseId, databaseNameHash, dbKey, verifiedUsers, username, senderUsername) => {
+  const users = []
+  const action = 'GetDatabaseUsers'
+  const params = { databaseId, databaseNameHash }
+  let databaseUsersResponse = await ws.request(action, params)
+
+  // transform from array into object with usernames as keys
+  const verifiedUsersByUsername = {}
+  for (let i = 0; i < verifiedUsers.length; i++) {
+    const verifiedUser = verifiedUsers[i]
+    const username = verifiedUser.itemId
+    const fingerprint = verifiedUser.item.fingerprint
+    verifiedUsersByUsername[username] = fingerprint
+  }
+
+  users.push(...await _buildDatabaseUserResult(dbKey, databaseUsersResponse.data.users, verifiedUsersByUsername, username, senderUsername))
+
+  while (databaseUsersResponse.data.nextPageTokenLessThanUserId || databaseUsersResponse.data.nextPageTokenMoreThanUserId) {
+    params.nextPageTokenLessThanUserId = databaseUsersResponse.data.nextPageTokenLessThanUserId
+    params.nextPageTokenMoreThanUserId = databaseUsersResponse.data.nextPageTokenMoreThanUserId
+    databaseUsersResponse = await ws.request(action, params)
+    users.push(...await _buildDatabaseUserResult(dbKey, databaseUsersResponse.data.users, verifiedUsersByUsername, username, senderUsername))
+  }
+
+  return users
+}
+
+const _buildDatabaseResult = async (db, encryptionKey, ecdhPrivateKey, verifiedUsers, username) => {
+  const { databaseId, databaseNameHash, isOwner, readOnly, resharingAllowed, senderUsername } = db
+
+  let dbKey, databaseName
+  if (db.encryptedDbKey) {
+    // user must already have access to database
+    const dbKeyString = await crypto.aesGcm.decryptString(encryptionKey, db.encryptedDbKey)
+    dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
+    databaseName = await crypto.aesGcm.decryptString(dbKey, db.databaseName)
+
+    // don't expose the user's own verified users database to user -- it's used internally
+    if (isOwner && databaseName === VERIFIED_USERS_DATABASE_NAME) return null
+  } else {
+    // user is seeing the database for the first time
+    let senderRawEcdsaPublicKey
+    try {
+      const { ephemeralPublicKey, signedEphemeralPublicKey, wrappedDbKey } = db
+
+      // verify sender signed the ephemeral public key
+      senderRawEcdsaPublicKey = base64.decode(db.senderEcdsaPublicKey)
+      const senderEcdsaPublicKey = await crypto.ecdsa.getPublicKeyFromRawPublicKey(senderRawEcdsaPublicKey)
+      const senderSignedEphemeralPublicKey = await crypto.ecdsa.verify(senderEcdsaPublicKey, base64.decode(signedEphemeralPublicKey), base64.decode(ephemeralPublicKey))
+      if (!senderSignedEphemeralPublicKey) throw new errors.ServiceUnavailable
+
+      // compute shared key wrapper with other user and unwrap database encryption key
+      const senderEphemeralEcdhPublicKey = await crypto.ecdh.getPublicKeyFromRawPublicKey(base64.decode(ephemeralPublicKey))
+      const sharedKeyWrapper = await crypto.ecdh.computeSharedKeyWrapper(senderEphemeralEcdhPublicKey, ecdhPrivateKey)
+      dbKey = await crypto.aesGcm.unwrapKey(base64.decode(wrappedDbKey), sharedKeyWrapper)
+
+      // make sure dbKey the sender sent works
+      databaseName = await crypto.aesGcm.decryptString(dbKey, db.databaseName)
+    } catch (e) {
+      // if for whatever reason the above process fails (e.g. malicious sender or version upgrade breaks the above implementation),
+      // simply return a null spot for database
+      return null
+    }
+
+    // compute receivedSignature to maintain record of who received dbKey from
+    const senderFingerprint = await _getFingerprint(senderRawEcdsaPublicKey)
+    const receivedSignature = await _signDbKeyAndFingerprint(dbKey, senderFingerprint)
+
+    // tell server to store encrypted db key & delete ephemeral key data
+    const dbKeyString = await crypto.aesGcm.getKeyStringFromKey(dbKey)
+    const encryptedDbKey = await crypto.aesGcm.encryptString(encryptionKey, dbKeyString)
+
+    const action = 'SaveDatabase'
+    const params = { databaseNameHash, encryptedDbKey, receivedSignature }
+    ws.request(action, params)
+  }
+
+  const result = {
+    databaseName,
+    databaseId,
+    isOwner,
+    readOnly,
+    resharingAllowed,
+    users: await _getDatabaseUsers(databaseId, databaseNameHash, dbKey, verifiedUsers, username, senderUsername)
+  }
+
+  // if user owns the database, developer has no use for the databaseId. Not allowing developers to use
+  // databaseId's to interact with databases owned by the user keeps the current concurrency model safe.
+  if (isOwner) delete result.databaseId
+  else result.receivedFromUsername = senderUsername
+
+  return result
 }
 
 const getDatabases = async () => {
   try {
     if (!ws.keys.init) throw new errors.UserNotSignedIn
 
+    const { encryptionKey, ecdhPrivateKey } = ws.keys
+    const username = ws.session.username
+
     try {
       const databases = []
-      let action = 'GetDatabases'
-      let databasesResponse = await ws.request(action)
-      let databaseResults = await Promise.all(databasesResponse.data.databases.map(db => _buildDatabaseResult(db)))
+      const action = 'GetDatabases'
+      let [databasesResponse, verifiedUsers] = await Promise.all([ws.request(action), _openVerifiedUsersDatabase()])
+      let databaseResults = await Promise.all(databasesResponse.data.databases.map(db => _buildDatabaseResult(db, encryptionKey, ecdhPrivateKey, verifiedUsers, username)))
       databases.push(...databaseResults)
 
       while (databasesResponse.data.nextPageToken) {
         const params = { nextPageToken: databasesResponse.data.nextPageToken }
         databasesResponse = await ws.request(action, params)
-        databaseResults = await Promise.all(databasesResponse.data.databases.map(db => _buildDatabaseResult(db)))
+        databaseResults = await Promise.all(databasesResponse.data.databases.map(db => _buildDatabaseResult(db, encryptionKey, ecdhPrivateKey, verifiedUsers, username)))
         databases.push(...databaseResults)
       }
 
-      return { databases }
+      return { databases: databases.filter(database => database !== null) }
     } catch (e) {
       _parseGenericErrors(e)
       throw e
@@ -860,7 +1150,406 @@ const getDatabases = async () => {
         throw e
 
       default:
-        throw new errors.ServiceUnavailable
+        throw new errors.UnknownServiceUnavailable(e)
+    }
+  }
+}
+
+const _getDatabase = async (databaseName, databaseId) => {
+  let database
+  try {
+    // check if database is already open in memory
+    database = getOpenDb(databaseName, databaseId)
+  } catch {
+    // if not already open in memory, it's ok. Just get the values we need from backend
+    const databaseResponse = await (databaseName
+      ? ws.request('GetUserDatabaseByDatabaseNameHash', { dbNameHash: await crypto.hmac.signString(ws.keys.hmacKey, databaseName) })
+      : ws.request('GetUserDatabaseByDatabaseId', { databaseId })
+    )
+    database = databaseResponse.data
+  }
+  return database
+}
+
+const _signFingerprintWithDbKey = async (dbKey, fingerprint) => {
+  // convert dbKey into hmacKey
+  const rawDbKey = await crypto.aesGcm.getRawKeyFromKey(dbKey)
+  const dbKeyHash = await crypto.sha256.hash(rawDbKey)
+  const hmacKey = await crypto.hmac.importKeyFromRawBits(dbKeyHash)
+
+  // sign fingerprint with hmacKey
+  const signedFingerprint = await crypto.hmac.signString(hmacKey, fingerprint)
+  return signedFingerprint
+}
+
+const _signDbKeyAndFingerprint = async (dbKey, fingerprint) => {
+  const signedFingerprint = await _signFingerprintWithDbKey(dbKey, fingerprint)
+
+  // digitally sign the signedFingerprint to enable a user to verify that
+  // this user has sent/received dbKey to/from intended recipient/sender
+  const signedDbKeyAndFingerprint = await crypto.ecdsa.signString(ws.keys.ecdsaPrivateKey, signedFingerprint)
+  return signedDbKeyAndFingerprint
+}
+
+const _verifyDatabaseRecipientFingerprint = async (username, recipientFingerprint, verifiedUsers) => {
+  // find recipient's fingerprint in verified users database
+  let verifiedRecipientFingerprint, foundOldFingerprint
+  for (let i = 0; i < verifiedUsers.length; i++) {
+    const verifiedUser = verifiedUsers[i]
+    const { itemId, item } = verifiedUser
+    if (itemId === username && item.fingerprint === recipientFingerprint) {
+      verifiedRecipientFingerprint = item.fingerprint
+      break
+    } else if (item.fingerprint === recipientFingerprint) {
+      foundOldFingerprint = true
+    }
+  }
+
+  // must have an outdated username stored in verified users database and therefore must reverify recipient
+  if (!verifiedRecipientFingerprint && foundOldFingerprint) throw new errors.UserMustBeReVerified
+  if (!verifiedRecipientFingerprint) throw new errors.UserNotVerified
+}
+
+const _validateUsername = (username) => {
+  if (typeof username !== 'string') throw new errors.UsernameMustBeString
+  if (username.length === 0) throw new errors.UsernameCannotBeBlank
+}
+
+const _validateDbSharingInput = (params) => {
+  if (!objectHasOwnProperty(params, 'username')) throw new errors.UsernameMissing
+  _validateUsername(params.username)
+
+  if (objectHasOwnProperty(params, 'readOnly') && typeof params.readOnly !== 'boolean') {
+    throw new errors.ReadOnlyMustBeBoolean
+  }
+
+  if (objectHasOwnProperty(params, 'resharingAllowed') && typeof params.resharingAllowed !== 'boolean') {
+    throw new errors.ResharingAllowedMustBeBoolean
+  }
+
+  if (objectHasOwnProperty(params, 'requireVerified') && typeof params.requireVerified !== 'boolean') {
+    throw new errors.RequireVerifiedMustBeBoolean
+  }
+}
+
+const shareDatabase = async (params) => {
+  try {
+    _validateDbInput(params)
+    _validateDbSharingInput(params)
+
+    const { databaseName, databaseId } = params
+    const username = params.username.toLowerCase()
+    const readOnly = objectHasOwnProperty(params, 'readOnly') ? params.readOnly : true
+    const resharingAllowed = objectHasOwnProperty(params, 'resharingAllowed') ? params.resharingAllowed : false
+    const requireVerified = objectHasOwnProperty(params, 'requireVerified') ? params.requireVerified : true
+
+    try {
+      // get recipient's public key to use to generate a shared key, and retrieve verified users list if requireVerified set to true
+      const [recipientPublicKey, verifiedUsers] = await Promise.all([
+        api.auth.getPublicKey(username),
+        requireVerified && _openVerifiedUsersDatabase()
+      ])
+
+      // recipient must have required keys so client can share database key
+      if (!recipientPublicKey.ecdhPublicKey || !recipientPublicKey.ecdsaPublicKey) throw new errors.UserUnableToReceiveDatabase
+
+      // compute recipient's fingerprint of ECDSA public key stored on server
+      const recipientRawEcdsaPublicKey = base64.decode(recipientPublicKey.ecdsaPublicKey)
+      const recipientFingerprint = await _getFingerprint(recipientRawEcdsaPublicKey)
+
+      // verify that the recipient is in the user's list of verified users
+      if (requireVerified) await _verifyDatabaseRecipientFingerprint(username, recipientFingerprint, verifiedUsers)
+
+      // verify recipient signed the ECDH public key that sender will be using to share database
+      const recipientEcdsaPublicKey = await crypto.ecdsa.getPublicKeyFromRawPublicKey(recipientRawEcdsaPublicKey)
+      const { signedEcdhPublicKey, ecdhPublicKey } = recipientPublicKey
+      const isVerified = await crypto.ecdsa.verify(recipientEcdsaPublicKey, base64.decode(signedEcdhPublicKey), base64.decode(ecdhPublicKey))
+
+      // this should never happen. If this happens, the server is serving conflicting keys and client should not sign anything
+      if (!isVerified) throw new errors.ServiceUnavailable
+
+      const recipientEcdhPublicKey = await crypto.ecdh.getPublicKeyFromRawPublicKey(base64.decode(recipientPublicKey.ecdhPublicKey))
+
+      // generate ephemeral ECDH key pair to ensure forward secrecy for future shares between users if shared key is leaked
+      const ephemeralEcdhKeyPair = await crypto.ecdh.generateKeyPair()
+      const rawEphemeralEcdhPublicKey = await crypto.ecdh.getRawPublicKeyFromPublicKey(ephemeralEcdhKeyPair.publicKey)
+      const signedEphemeralEcdhPublicKey = await crypto.ecdsa.sign(ws.keys.ecdsaPrivateKey, rawEphemeralEcdhPublicKey)
+
+      // compute shared key wrapper with recipient so can use it to wrap database encryption key
+      const sharedKeyWrapper = await crypto.ecdh.computeSharedKeyWrapper(recipientEcdhPublicKey, ephemeralEcdhKeyPair.privateKey)
+
+      // get the database encryption key
+      const database = await _getDatabase(databaseName, databaseId)
+      if (!database.dbKey) {
+        const dbKeyString = await crypto.aesGcm.decryptString(ws.keys.encryptionKey, database.encryptedDbKey)
+        database.dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
+      }
+
+      // wrap the database encryption key using shared ephemeral ECDH key
+      const wrappedDbKey = await crypto.aesKw.wrapKey(database.dbKey, sharedKeyWrapper, crypto.aesGcm.RAW_KEY_TYPE)
+
+      const action = 'ShareDatabase'
+      const requestParams = {
+        databaseId: database.dbId,
+        databaseNameHash: database.dbNameHash,
+        username,
+        readOnly,
+        resharingAllowed,
+        wrappedDbKey: base64.encode(wrappedDbKey),
+        ephemeralPublicKey: base64.encode(rawEphemeralEcdhPublicKey),
+        signedEphemeralPublicKey: base64.encode(signedEphemeralEcdhPublicKey),
+        sentSignature: await _signDbKeyAndFingerprint(database.dbKey, recipientFingerprint),
+        recipientEcdsaPublicKey: recipientPublicKey.ecdsaPublicKey
+      }
+      await ws.request(action, requestParams)
+    } catch (e) {
+      _parseGenericErrors(e)
+
+      if (e.response && e.response.data) {
+        switch (e.response.data.message) {
+          case 'DatabaseNotFound':
+            throw new errors.DatabaseNotFound
+          case 'ResharingNotAllowed':
+            throw new errors.ResharingNotAllowed
+          case 'ResharingWithWriteAccessNotAllowed':
+            throw new errors.ResharingWithWriteAccessNotAllowed
+          case 'UserNotFound':
+            throw new errors.UserNotFound
+          case 'DatabaseAlreadyShared':
+            // safe to return
+            return
+        }
+      }
+
+      throw e
+    }
+
+  } catch (e) {
+
+    switch (e.name) {
+      case 'ParamsMustBeObject':
+      case 'DatabaseNameMissing':
+      case 'DatabaseNameMustBeString':
+      case 'DatabaseNameCannotBeBlank':
+      case 'DatabaseNameTooLong':
+      case 'DatabaseNameNotAllowed':
+      case 'DatabaseIdMustBeString':
+      case 'DatabaseIdCannotBeBlank':
+      case 'DatabaseIdInvalid':
+      case 'DatabaseIdNotAllowed':
+      case 'DatabaseNotFound':
+      case 'UsernameMissing':
+      case 'UsernameCannotBeBlank':
+      case 'UsernameMustBeString':
+      case 'UsernameTooLong':
+      case 'ReadOnlyMustBeBoolean':
+      case 'ResharingAllowedMustBeBoolean':
+      case 'ResharingNotAllowed':
+      case 'ResharingWithWriteAccessNotAllowed':
+      case 'UserNotSignedIn':
+      case 'UserUnableToReceiveDatabase':
+      case 'UserNotFound':
+      case 'UserNotVerified':
+      case 'ServiceUnavailable':
+        throw e
+
+      default:
+        throw new errors.UnknownServiceUnavailable(e)
+    }
+  }
+}
+
+const modifyDatabasePermissions = async (params) => {
+  try {
+    _validateDbInput(params)
+    _validateDbSharingInput(params)
+
+    if (objectHasOwnProperty(params, 'revoke')) {
+      if (params.revoke !== true) throw new errors.RevokeMustBeBoolean
+
+      // readOnly and resharingAllowed booleans have no use if revoking database from user
+      if (objectHasOwnProperty(params, 'readOnly')) throw new errors.ReadOnlyParamNotAllowed
+      if (objectHasOwnProperty(params, 'resharingAllowed')) throw new errors.ResharingAllowedParamNotAllowed
+    }
+
+    const { databaseName, databaseId, readOnly, resharingAllowed, revoke } = params
+    const username = params.username.toLowerCase()
+
+    try {
+      const database = await _getDatabase(databaseName, databaseId)
+
+      const action = 'ModifyDatabasePermissions'
+      const requestParams = {
+        databaseId: database.dbId,
+        databaseNameHash: database.dbNameHash,
+        username,
+        readOnly,
+        resharingAllowed,
+        revoke,
+      }
+      await ws.request(action, requestParams)
+    } catch (e) {
+      _parseGenericErrors(e)
+
+      if (e.response && e.response.data) {
+        switch (e.response.data.message) {
+          case 'DatabaseNotFound':
+            throw new errors.DatabaseNotFound
+          case 'ResharingNotAllowed':
+            throw new errors.ResharingNotAllowed
+          case 'ResharingWithWriteAccessNotAllowed':
+            throw new errors.ResharingWithWriteAccessNotAllowed
+          case 'UserNotFound':
+            throw new errors.UserNotFound
+          case 'DatabaseAlreadyShared':
+            // safe to return
+            return
+        }
+      }
+
+      throw e
+    }
+
+  } catch (e) {
+
+    switch (e.name) {
+      case 'ParamsMustBeObject':
+      case 'DatabaseNameMissing':
+      case 'DatabaseNameMustBeString':
+      case 'DatabaseNameCannotBeBlank':
+      case 'DatabaseNameTooLong':
+      case 'DatabaseNameNotAllowed':
+      case 'DatabaseIdMustBeString':
+      case 'DatabaseIdCannotBeBlank':
+      case 'DatabaseIdInvalid':
+      case 'DatabaseIdNotAllowed':
+      case 'DatabaseNotFound':
+      case 'UsernameMissing':
+      case 'UsernameCannotBeBlank':
+      case 'UsernameMustBeString':
+      case 'UsernameTooLong':
+      case 'ReadOnlyMustBeBoolean':
+      case 'ReadOnlyParamNotAllowed':
+      case 'ResharingAllowedMustBeBoolean':
+      case 'ResharingAllowedParamNotAllowed':
+      case 'RevokeMustBeBoolean':
+      case 'UserNotSignedIn':
+      case 'UserNotFound':
+      case 'ServiceUnavailable':
+        throw e
+
+      default:
+        throw new errors.UnknownServiceUnavailable(e)
+    }
+  }
+}
+
+const _packVerificationMessage = (username, fingerprint) => {
+  return btoa(JSON.stringify({ username, fingerprint }))
+}
+
+const _unpackVerificationMessage = (verificationMessage) => {
+  try {
+    const { username, fingerprint } = JSON.parse(atob(verificationMessage))
+
+    _validateUsername(username)
+    if (!fingerprint) throw new errors.VerificationMessageInvalid
+
+    return { username, fingerprint }
+  } catch {
+    throw new errors.VerificationMessageInvalid
+  }
+}
+
+const _getFingerprint = async (ecdsaRawPublicKey) => {
+  const ecdsaPublicKeyHash = await crypto.sha256.hash(ecdsaRawPublicKey)
+  const fingerprint = base64.encode(ecdsaPublicKeyHash)
+  return fingerprint
+}
+
+const _getMyFingerprint = async () => {
+  const ecdsaPublicKey = await crypto.ecdsa.getPublicKeyFromPrivateKey(ws.keys.ecdsaPrivateKey)
+  const ecdsaRawPublicKey = await crypto.ecdsa.getRawPublicKeyFromPublicKey(ecdsaPublicKey)
+  const fingerprint = await _getFingerprint(ecdsaRawPublicKey)
+  return fingerprint
+}
+
+const generateVerificationMessage = async () => {
+  try {
+    if (ws.reconnecting) throw new errors.Reconnecting
+    if (!ws.keys.init) throw new errors.UserNotSignedIn
+
+    const username = ws.session.username
+    const fingerprint = await _getMyFingerprint()
+
+    const verificationMessage = _packVerificationMessage(username, fingerprint)
+    return verificationMessage
+  } catch (e) {
+
+    switch (e.name) {
+      case 'UserNotSignedIn':
+      case 'ServiceUnavailable':
+        throw e
+
+      default:
+        throw new errors.UnknownServiceUnavailable(e)
+    }
+  }
+}
+
+const _openVerifiedUsersDatabase = async () => {
+  let verifiedUsers
+  const databaseName = VERIFIED_USERS_DATABASE_NAME
+  const changeHandler = (items) => { verifiedUsers = items }
+  const allowVerifiedUsersDatabase = true
+  await openDatabase({ databaseName, changeHandler, allowVerifiedUsersDatabase })
+  return verifiedUsers
+}
+
+const verifyUser = async (params) => {
+  try {
+    if (typeof params !== 'object') throw new errors.ParamsMustBeObject
+
+    if (ws.reconnecting) throw new errors.Reconnecting
+    if (!ws.keys.init) throw new errors.UserNotSignedIn
+
+    if (!objectHasOwnProperty(params, 'verificationMessage')) throw new errors.VerificationMessageMissing
+    const { verificationMessage } = params
+    if (typeof verificationMessage !== 'string') throw new errors.VerificationMessageMustBeString
+    if (verificationMessage.length === 0) throw new errors.VerificationMessageCannotBeBlank
+
+    const { username, fingerprint } = _unpackVerificationMessage(verificationMessage)
+
+    if (fingerprint === await _getMyFingerprint()) throw new errors.CannotVerifySelf
+
+    // upsert the verification message into the user's encrypted database that stores verified users
+    await _openVerifiedUsersDatabase()
+
+    const databaseName = VERIFIED_USERS_DATABASE_NAME
+    const allowVerifiedUsersDatabase = true
+    const itemId = username
+    const item = { fingerprint }
+    try {
+      await insertItem({ databaseName, itemId, item, allowVerifiedUsersDatabase })
+    } catch (e) {
+      if (e.name === 'ItemAlreadyExists') await updateItem({ databaseName, itemId, item, allowVerifiedUsersDatabase })
+      else throw e
+    }
+  } catch (e) {
+
+    switch (e.name) {
+      case 'ParamsMustBeObject':
+      case 'VerificationMessageMissing':
+      case 'VerificationMessageMustBeString':
+      case 'VerificationMessageCannotBeBlank':
+      case 'VerificationMessageInvalid':
+      case 'CannotVerifySelf':
+      case 'UserNotSignedIn':
+      case 'ServiceUnavailable':
+        throw e
+
+      default:
+        throw new errors.UnknownServiceUnavailable(e)
     }
   }
 }
@@ -873,4 +1562,10 @@ export default {
   updateItem,
   deleteItem,
   putTransaction,
+
+  shareDatabase,
+  modifyDatabasePermissions,
+
+  generateVerificationMessage,
+  verifyUser,
 }
