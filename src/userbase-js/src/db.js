@@ -448,6 +448,8 @@ const _openDatabase = async (changeHandler, params) => {
 
         if (data === 'Database already creating') {
           throw new errors.DatabaseAlreadyOpening
+        } else if (data === 'Database key not found') {
+          throw new errors.DatabaseNotFound
         }
 
         switch (data.name) {
@@ -502,7 +504,7 @@ const _validateDbName = (dbName) => {
 const _validateDbId = (dbId) => {
   if (typeof dbId !== 'string') throw new errors.DatabaseIdMustBeString
   if (dbId.length === 0) throw new errors.DatabaseIdCannotBeBlank
-  if (dbId.length !== DB_ID_CHAR_LENGTH) throw new errors.DatabaseIdInvalid
+  if (dbId.length !== DB_ID_CHAR_LENGTH) throw new errors.DatabaseIdInvalidLength(DB_ID_CHAR_LENGTH)
 }
 
 const _validateDbInput = (params) => {
@@ -516,7 +518,7 @@ const _validateDbInput = (params) => {
     // try to block usage of verified users database. If user works around this and modifies this database,
     // they could mess up the database for themself.
     if (!params.allowVerifiedUsersDatabase && params.databaseName === VERIFIED_USERS_DATABASE_NAME) {
-      throw new errors.DatabaseNameNotAllowed(VERIFIED_USERS_DATABASE_NAME)
+      throw new errors.DatabaseNameRestricted(VERIFIED_USERS_DATABASE_NAME)
     }
 
   } else if (objectHasOwnProperty(params, 'databaseId')) {
@@ -559,11 +561,12 @@ const openDatabase = async (params) => {
       case 'DatabaseNameMissing':
       case 'DatabaseNameCannotBeBlank':
       case 'DatabaseNameTooLong':
-      case 'DatabaseNameNotAllowed':
+      case 'DatabaseNameRestricted':
       case 'DatabaseIdMustBeString':
       case 'DatabaseIdCannotBeBlank':
-      case 'DatabaseIdInvalid':
+      case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
+      case 'DatabaseNotFound':
       case 'ChangeHandlerMissing':
       case 'ChangeHandlerMustBeFunction':
       case 'UserNotSignedIn':
@@ -613,11 +616,12 @@ const insertItem = async (params) => {
       case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
       case 'DatabaseNameTooLong':
-      case 'DatabaseNameNotAllowed':
+      case 'DatabaseNameRestricted':
       case 'DatabaseIdMustBeString':
       case 'DatabaseIdCannotBeBlank':
-      case 'DatabaseIdInvalid':
+      case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
+      case 'DatabaseIsReadOnly':
       case 'ItemIdMustBeString':
       case 'ItemIdCannotBeBlank':
       case 'ItemIdTooLong':
@@ -681,11 +685,12 @@ const updateItem = async (params) => {
       case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
       case 'DatabaseNameTooLong':
-      case 'DatabaseNameNotAllowed':
+      case 'DatabaseNameRestricted':
       case 'DatabaseIdMustBeString':
       case 'DatabaseIdCannotBeBlank':
-      case 'DatabaseIdInvalid':
+      case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
+      case 'DatabaseIsReadOnly':
       case 'ItemIdMissing':
       case 'ItemIdMustBeString':
       case 'ItemIdCannotBeBlank':
@@ -751,11 +756,12 @@ const deleteItem = async (params) => {
       case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
       case 'DatabaseNameTooLong':
-      case 'DatabaseNameNotAllowed':
+      case 'DatabaseNameRestricted':
       case 'DatabaseIdMustBeString':
       case 'DatabaseIdCannotBeBlank':
-      case 'DatabaseIdInvalid':
+      case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
+      case 'DatabaseIsReadOnly':
       case 'ItemIdMissing':
       case 'ItemIdMustBeString':
       case 'ItemIdCannotBeBlank':
@@ -853,11 +859,12 @@ const putTransaction = async (params) => {
       case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
       case 'DatabaseNameTooLong':
-      case 'DatabaseNameNotAllowed':
+      case 'DatabaseNameRestricted':
       case 'DatabaseIdMustBeString':
       case 'DatabaseIdCannotBeBlank':
-      case 'DatabaseIdInvalid':
+      case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
+      case 'DatabaseIsReadOnly':
       case 'OperationsMissing':
       case 'OperationsMustBeArray':
       case 'OperationsConflict':
@@ -905,6 +912,11 @@ const postTransaction = async (database, action, params) => {
     return seqNo
   } catch (e) {
     _parseGenericErrors(e)
+
+    if (e.response && e.response.data.name === 'DatabaseIsReadOnly') {
+      throw new errors.DatabaseIsReadOnly
+    }
+
     throw e
   }
 }
@@ -1206,7 +1218,7 @@ const _verifyDatabaseRecipientFingerprint = async (username, recipientFingerprin
   }
 
   // must have an outdated username stored in verified users database and therefore must reverify recipient
-  if (!verifiedRecipientFingerprint && foundOldFingerprint) throw new errors.UserMustBeReVerified
+  if (!verifiedRecipientFingerprint && foundOldFingerprint) throw new errors.UserMustBeReverified
   if (!verifiedRecipientFingerprint) throw new errors.UserNotVerified
 }
 
@@ -1332,24 +1344,25 @@ const shareDatabase = async (params) => {
       case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
       case 'DatabaseNameTooLong':
-      case 'DatabaseNameNotAllowed':
+      case 'DatabaseNameRestricted':
       case 'DatabaseIdMustBeString':
       case 'DatabaseIdCannotBeBlank':
-      case 'DatabaseIdInvalid':
+      case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
       case 'DatabaseNotFound':
       case 'UsernameMissing':
       case 'UsernameCannotBeBlank':
       case 'UsernameMustBeString':
-      case 'UsernameTooLong':
       case 'ReadOnlyMustBeBoolean':
       case 'ResharingAllowedMustBeBoolean':
       case 'ResharingNotAllowed':
       case 'ResharingWithWriteAccessNotAllowed':
+      case 'RequireVerifiedMustBeBoolean':
       case 'UserNotSignedIn':
       case 'UserUnableToReceiveDatabase':
       case 'UserNotFound':
       case 'UserNotVerified':
+      case 'UserMustBeReverified':
       case 'ServiceUnavailable':
         throw e
 
@@ -1365,11 +1378,15 @@ const modifyDatabasePermissions = async (params) => {
     _validateDbSharingInput(params)
 
     if (objectHasOwnProperty(params, 'revoke')) {
-      if (params.revoke !== true) throw new errors.RevokeMustBeBoolean
+      if (typeof params.revoke !== 'boolean') throw new errors.RevokeMustBeBoolean
 
       // readOnly and resharingAllowed booleans have no use if revoking database from user
-      if (objectHasOwnProperty(params, 'readOnly')) throw new errors.ReadOnlyParamNotAllowed
-      if (objectHasOwnProperty(params, 'resharingAllowed')) throw new errors.ResharingAllowedParamNotAllowed
+      if (params.revoke) {
+        if (objectHasOwnProperty(params, 'readOnly')) throw new errors.ReadOnlyParamNotAllowed
+        if (objectHasOwnProperty(params, 'resharingAllowed')) throw new errors.ResharingAllowedParamNotAllowed
+      }
+    } else if (!objectHasOwnProperty(params, 'readOnly') && !objectHasOwnProperty(params, 'resharingAllowed')) {
+      throw new errors.ParamsMissing
     }
 
     const { databaseName, databaseId, readOnly, resharingAllowed, revoke } = params
@@ -1393,17 +1410,16 @@ const modifyDatabasePermissions = async (params) => {
 
       if (e.response && e.response.data) {
         switch (e.response.data.message) {
+          case 'CannotModifyOwnerPermissions':
+            throw new errors.CannotModifyOwnerPermissions
+          case 'ResharingNotAllowed':
+            throw new errors.CannotModifyPermissions
+          case 'ResharingWithWriteAccessNotAllowed':
+            throw new errors.GrantingWriteAccessNotAllowed
           case 'DatabaseNotFound':
             throw new errors.DatabaseNotFound
-          case 'ResharingNotAllowed':
-            throw new errors.ResharingNotAllowed
-          case 'ResharingWithWriteAccessNotAllowed':
-            throw new errors.ResharingWithWriteAccessNotAllowed
           case 'UserNotFound':
             throw new errors.UserNotFound
-          case 'DatabaseAlreadyShared':
-            // safe to return
-            return
         }
       }
 
@@ -1414,25 +1430,28 @@ const modifyDatabasePermissions = async (params) => {
 
     switch (e.name) {
       case 'ParamsMustBeObject':
+      case 'ParamsMissing':
       case 'DatabaseNameMissing':
       case 'DatabaseNameMustBeString':
       case 'DatabaseNameCannotBeBlank':
       case 'DatabaseNameTooLong':
-      case 'DatabaseNameNotAllowed':
+      case 'DatabaseNameRestricted':
       case 'DatabaseIdMustBeString':
       case 'DatabaseIdCannotBeBlank':
-      case 'DatabaseIdInvalid':
+      case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
       case 'DatabaseNotFound':
       case 'UsernameMissing':
       case 'UsernameCannotBeBlank':
       case 'UsernameMustBeString':
-      case 'UsernameTooLong':
       case 'ReadOnlyMustBeBoolean':
       case 'ReadOnlyParamNotAllowed':
       case 'ResharingAllowedMustBeBoolean':
       case 'ResharingAllowedParamNotAllowed':
       case 'RevokeMustBeBoolean':
+      case 'CannotModifyOwnerPermissions':
+      case 'CannotModifyPermissions':
+      case 'GrantingWriteAccessNotAllowed':
       case 'UserNotSignedIn':
       case 'UserNotFound':
       case 'ServiceUnavailable':
@@ -1474,7 +1493,7 @@ const _getMyFingerprint = async () => {
   return fingerprint
 }
 
-const generateVerificationMessage = async () => {
+const getVerificationMessage = async () => {
   try {
     if (ws.reconnecting) throw new errors.Reconnecting
     if (!ws.keys.init) throw new errors.UserNotSignedIn
@@ -1483,7 +1502,7 @@ const generateVerificationMessage = async () => {
     const fingerprint = await _getMyFingerprint()
 
     const verificationMessage = _packVerificationMessage(username, fingerprint)
-    return verificationMessage
+    return { verificationMessage }
   } catch (e) {
 
     switch (e.name) {
@@ -1566,6 +1585,6 @@ export default {
   shareDatabase,
   modifyDatabasePermissions,
 
-  generateVerificationMessage,
+  getVerificationMessage,
   verifyUser,
 }

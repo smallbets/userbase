@@ -22,7 +22,7 @@ export default {
   getDatabases: db.getDatabases,
   shareDatabase: db.shareDatabase,
   modifyDatabasePermissions: db.modifyDatabasePermissions,
-  generateVerificationMessage: db.generateVerificationMessage,
+  getVerificationMessage: db.getVerificationMessage,
   verifyUser: db.verifyUser,
 
   purchaseSubscription: payments.purchaseSubscription,

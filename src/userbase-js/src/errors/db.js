@@ -40,6 +40,16 @@ class DatabaseNameTooLong extends Error {
   }
 }
 
+class DatabaseNameRestricted extends Error {
+  constructor(databaseName, ...params) {
+    super(databaseName, ...params)
+
+    this.name = 'DatabaseNameRestricted'
+    this.message = `Database name '${databaseName}' is restricted. It is used internally by userbase-js.`
+    this.status = statusCodes['Forbidden']
+  }
+}
+
 class DatabaseAlreadyOpening extends Error {
   constructor(...params) {
     super(...params)
@@ -76,6 +86,176 @@ class DatabaseNotOpen extends Error {
 
     this.name = 'DatabaseNotOpen'
     this.message = 'Database is not open.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class DatabaseNotFound extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'DatabaseNotFound'
+    this.message = 'Database not found. Find available databases using getDatabases().'
+    this.status = statusCodes['Not Found']
+  }
+}
+
+class DatabaseIsReadOnly extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'DatabaseIsReadOnly'
+    this.message = 'Database is read only. Must have permission to write to database.'
+    this.status = statusCodes['Forbidden']
+  }
+}
+
+class DatabaseIdMustBeString extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'DatabaseIdMustBeString'
+    this.message = 'Database id must be a string.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class DatabaseIdCannotBeBlank extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'DatabaseIdCannotBeBlank'
+    this.message = 'Database id cannot be blank.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class DatabaseIdNotAllowed extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'DatabaseIdNotAllowed'
+    this.message = 'Database id not allowed. Cannot provide both databaseName and databaseId, can only provide one.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class DatabaseIdInvalidLength extends Error {
+  constructor(length, ...params) {
+    super(length, ...params)
+
+    this.name = 'DatabaseIdInvalidLength'
+    this.message = `Database id invalid length. Must be ${length} characters.`
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class ReadOnlyMustBeBoolean extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'ReadOnlyMustBeBoolean'
+    this.message = 'Read only value must be a boolean.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class ReadOnlyParamNotAllowed extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'ReadOnlyParamNotAllowed'
+    this.message = 'Read only parameter not allowed when revoking access to a database.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class ResharingAllowedParamNotAllowed extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'ResharingAllowedParamNotAllowed'
+    this.message = 'Resharing allowed parameter not allowed when revoking access to a database.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class ResharingAllowedMustBeBoolean extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'ResharingAllowedMustBeBoolean'
+    this.message = 'Resharing allowed value must be a boolean.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class ResharingNotAllowed extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'ResharingNotAllowed'
+    this.message = 'Resharing not allowed. Must have permission to reshare the database with another user.'
+    this.status = statusCodes['Forbidden']
+  }
+}
+
+class ResharingWithWriteAccessNotAllowed extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'ResharingWithWriteAccessNotAllowed'
+    this.message = 'Resharing with write access not allowed. Must have permission to write to the database to reshare the database with write access another user.'
+    this.status = statusCodes['Forbidden']
+  }
+}
+
+class CannotModifyOwnerPermissions extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'CannotModifyOwnerPermissions'
+    this.message = "Cannot modify the owner of a database's permissions."
+    this.status = statusCodes['Forbidden']
+  }
+}
+
+class CannotModifyPermissions extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'CannotModifyPermissions'
+    this.message = "Cannot modify another user's permissions. Must have permission to reshare the database with another user."
+    this.status = statusCodes['Forbidden']
+  }
+}
+
+class GrantingWriteAccessNotAllowed extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'GrantingWriteAccessNotAllowed'
+    this.message = 'Granting write access not allowed. Must have permission to write to the database to grant write access to another user.'
+    this.status = statusCodes['Forbidden']
+  }
+}
+
+class RequireVerifiedMustBeBoolean extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'RequireVerifiedMustBeBoolean'
+    this.message = 'Require verified value must be a boolean.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class RevokeMustBeBoolean extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'RevokeMustBeBoolean'
+    this.message = 'Revoke value must be a boolean.'
     this.status = statusCodes['Bad Request']
   }
 }
@@ -230,12 +410,110 @@ class OperationsExceedLimit extends Error {
   }
 }
 
+class UserNotVerified extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'UserNotVerified'
+    this.message = 'User not verified. Either verify user before sharing database, or set requireVerified to true.'
+    this.status = statusCodes['Forbidden']
+  }
+}
+
+class UserMustBeReverified extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'UserMustBeReverified'
+    this.message = 'User must be reverified.'
+    this.status = statusCodes['Forbidden']
+  }
+}
+
+class UserUnableToReceiveDatabase extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'UserUnableToReceiveDatabase'
+    this.message = 'User unable to receive database. User must sign in with an updated userbase-js client to be able to receive database.'
+    this.status = statusCodes['Forbidden']
+  }
+}
+
+class VerificationMessageMissing extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'VerificationMessageMissing'
+    this.message = 'Verification message missing.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class VerificationMessageCannotBeBlank extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'VerificationMessageCannotBeBlank'
+    this.message = 'Verification message cannot be blank.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class VerificationMessageMustBeString extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'VerificationMessageMustBeString'
+    this.message = 'Verification message must be a string.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class VerificationMessageInvalid extends Error {
+  constructor(maxLength, ...params) {
+    super(maxLength, ...params)
+
+    this.name = 'VerificationMessageInvalid'
+    this.message = 'Verification message invalid.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class CannotVerifySelf extends Error {
+  constructor(maxLength, ...params) {
+    super(maxLength, ...params)
+
+    this.name = 'CannotVerifySelf'
+    this.message = 'Cannot verify self. Can only verify other users.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
 export default {
   DatabaseNameMissing,
   DatabaseNameCannotBeBlank,
   DatabaseNameMustBeString,
   DatabaseNameTooLong,
+  DatabaseNameRestricted,
+  DatabaseNotFound,
+  DatabaseIsReadOnly,
   DatabaseAlreadyOpening,
+  DatabaseIdMustBeString,
+  DatabaseIdCannotBeBlank,
+  DatabaseIdNotAllowed,
+  DatabaseIdInvalidLength,
+  ReadOnlyMustBeBoolean,
+  ReadOnlyParamNotAllowed,
+  ResharingAllowedMustBeBoolean,
+  ResharingNotAllowed,
+  ResharingWithWriteAccessNotAllowed,
+  ResharingAllowedParamNotAllowed,
+  CannotModifyOwnerPermissions,
+  CannotModifyPermissions,
+  GrantingWriteAccessNotAllowed,
+  RequireVerifiedMustBeBoolean,
+  RevokeMustBeBoolean,
   ChangeHandlerMissing,
   ChangeHandlerMustBeFunction,
   DatabaseNotOpen,
@@ -253,5 +531,13 @@ export default {
   OperationsMustBeArray,
   OperationsConflict,
   OperationsExceedLimit,
-  CommandNotRecognized
+  CommandNotRecognized,
+  UserNotVerified,
+  UserMustBeReverified,
+  UserUnableToReceiveDatabase,
+  VerificationMessageMissing,
+  VerificationMessageMustBeString,
+  VerificationMessageCannotBeBlank,
+  VerificationMessageInvalid,
+  CannotVerifySelf,
 }

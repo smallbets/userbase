@@ -242,6 +242,9 @@ exports.openDatabaseByDatabaseId = async function (user, app, admin, connectionI
     const bundleSeqNo = database['bundle-seq-no']
     const dbKey = database['encrypted-db-key']
 
+    // user must call getDatabases() first to set the db key
+    if (!dbKey) return responseBuilder.errorResponse(statusCodes['Not Found'], 'Database key not found')
+
     if (connections.openDatabase(userId, connectionId, databaseId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner)) {
       return responseBuilder.successResponse('Success!')
     } else {
@@ -923,7 +926,12 @@ exports.saveDatabase = async function (logChildObject, user, dbNameHash, encrypt
 
 exports.modifyDatabasePermissions = async function (logChildObject, sender, dbId, dbNameHash, recipientUsername, readOnly, resharingAllowed, revoke) {
   try {
-    const { recipientUserDb } = await _validateShareDatabase(sender, dbId, dbNameHash, recipientUsername, readOnly)
+    const { recipientUserDb, database } = await _validateShareDatabase(sender, dbId, dbNameHash, recipientUsername, readOnly)
+
+    if (recipientUserDb && recipientUserDb['user-id'] === database['owner-id']) throw {
+      status: statusCodes['Forbidden'],
+      error: { message: 'CannotModifyOwnerPermissions' }
+    }
 
     const params = {
       TableName: setup.userDatabaseTableName,
@@ -947,8 +955,8 @@ exports.modifyDatabasePermissions = async function (logChildObject, sender, dbId
       }
 
       if (!recipientUserDb) throw {
-        status: statusCodes['Bad Request'],
-        error: { message: 'UserDoesNotHaveAccess' }
+        status: statusCodes['Not Found'],
+        error: { message: 'DatabaseNotFound' }
       }
 
       params.UpdateExpression = ''
