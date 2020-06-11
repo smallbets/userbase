@@ -931,7 +931,7 @@ exports.modifyDatabasePermissions = async function (logChildObject, sender, dbId
 
     if (recipientUserDb && recipientUserDb['user-id'] === database['owner-id']) throw {
       status: statusCodes['Forbidden'],
-      error: { message: 'CannotModifyOwnerPermissions' }
+      error: { message: 'ModifyingOwnerPermissionsNotAllowed' }
     }
 
     const params = {

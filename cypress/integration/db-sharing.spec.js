@@ -163,7 +163,7 @@ describe('DB Sharing Tests', function () {
         await this.test.userbase.deleteUser()
       })
 
-      it('Cannot verify self', async function () {
+      it('Verifying self not allowed', async function () {
         await signUp(this.test.userbase)
         const { verificationMessage } = await this.test.userbase.getVerificationMessage()
 
@@ -171,8 +171,8 @@ describe('DB Sharing Tests', function () {
           await this.test.userbase.verifyUser({ verificationMessage })
           throw new Error('Should have failed')
         } catch (e) {
-          expect(e.name, 'error name').to.be.equal('CannotVerifySelf')
-          expect(e.message, 'error message').to.be.equal('Cannot verify self. Can only verify other users.')
+          expect(e.name, 'error name').to.be.equal('VerifyingSelfNotAllowed')
+          expect(e.message, 'error message').to.be.equal('Verifying self not allowed. Can only verify other users.')
           expect(e.status, 'error status').to.be.equal(400)
         }
 
@@ -723,6 +723,24 @@ describe('DB Sharing Tests', function () {
         await this.test.userbase.signIn({ username: sender.username, password: sender.password, rememberMe: 'none' })
         await this.test.userbase.deleteUser()
         await this.test.userbase.signIn({ username: secondRecipient.username, password: secondRecipient.password, rememberMe: 'none' })
+        await this.test.userbase.deleteUser()
+      })
+
+      it('Sharing with self not allowed', async function () {
+        const sender = await signUp(this.test.userbase)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        // sender tries to share database with self
+        try {
+          await this.test.userbase.shareDatabase({ databaseName, username: sender.username, requireVerified: false })
+          throw new Error('Should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.be.equal('SharingWithSelfNotAllowed')
+          expect(e.message, 'error message').to.be.equal('Sharing database with self is not allowed. Must share database with another user.')
+          expect(e.status, 'error status').to.be.equal(400)
+        }
+
+        // clean up
         await this.test.userbase.deleteUser()
       })
 
@@ -1371,7 +1389,24 @@ describe('DB Sharing Tests', function () {
     describe('Failure Tests', function () {
       beforeEach(function () { beforeEachHook() })
 
-      it('Cannot modify owner permissions', async function () {
+      it('Modifying own permissions not allowed', async function () {
+        const sender = await signUp(this.test.userbase)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        try {
+          await this.test.userbase.modifyDatabasePermissions({ databaseName, username: sender.username, readOnly: false })
+          throw new Error('Should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.be.equal('ModifyingOwnPermissionsNotAllowed')
+          expect(e.message, 'error message').to.be.equal("Modifying own database permissions not allowed. Must modify another user's permissions.")
+          expect(e.status, 'error status').to.be.equal(400)
+        }
+
+        // clean up
+        await this.test.userbase.deleteUser()
+      })
+
+      it('Modifying owner permissions not allowed', async function () {
         const recipient = await signUp(this.test.userbase)
         await this.test.userbase.signOut()
 
@@ -1395,8 +1430,8 @@ describe('DB Sharing Tests', function () {
           await this.test.userbase.modifyDatabasePermissions({ databaseId, username: sender.username, readOnly: false })
           throw new Error('Should have failed')
         } catch (e) {
-          expect(e.name, 'error name').to.be.equal('CannotModifyOwnerPermissions')
-          expect(e.message, 'error message').to.be.equal("Cannot modify the owner of a database's permissions.")
+          expect(e.name, 'error name').to.be.equal('ModifyingOwnerPermissionsNotAllowed')
+          expect(e.message, 'error message').to.be.equal("Modifying the owner of a database's permissions is not allowed.")
           expect(e.status, 'error status').to.be.equal(403)
         }
 
@@ -1406,7 +1441,7 @@ describe('DB Sharing Tests', function () {
         await this.test.userbase.deleteUser()
       })
 
-      it('Cannot modify other users permissions', async function () {
+      it('Modifying other users permissions not allowed', async function () {
         const firstRecipient = await signUp(this.test.userbase)
         await this.test.userbase.signOut()
 
@@ -1447,8 +1482,8 @@ describe('DB Sharing Tests', function () {
           await this.test.userbase.modifyDatabasePermissions({ databaseId, username: firstRecipient.username, readOnly: false })
           throw new Error('Should have failed')
         } catch (e) {
-          expect(e.name, 'error name').to.be.equal('CannotModifyPermissions')
-          expect(e.message, 'error message').to.be.equal("Cannot modify another user's permissions. Must have permission to reshare the database with another user.")
+          expect(e.name, 'error name').to.be.equal('ModifyingPermissionsNotAllowed')
+          expect(e.message, 'error message').to.be.equal("Modifying another user's permissions is not allowed. Must have permission to reshare the database with another user.")
           expect(e.status, 'error status').to.be.equal(403)
         }
 

@@ -1319,6 +1319,8 @@ const shareDatabase = async (params) => {
 
       if (e.response && e.response.data) {
         switch (e.response.data.message) {
+          case 'SharingWithSelfNotAllowed':
+            throw new errors.SharingWithSelfNotAllowed
           case 'DatabaseNotFound':
             throw new errors.DatabaseNotFound
           case 'ResharingNotAllowed':
@@ -1358,6 +1360,7 @@ const shareDatabase = async (params) => {
       case 'ResharingNotAllowed':
       case 'ResharingWithWriteAccessNotAllowed':
       case 'RequireVerifiedMustBeBoolean':
+      case 'SharingWithSelfNotAllowed':
       case 'UserNotSignedIn':
       case 'UserUnableToReceiveDatabase':
       case 'UserNotFound':
@@ -1410,10 +1413,12 @@ const modifyDatabasePermissions = async (params) => {
 
       if (e.response && e.response.data) {
         switch (e.response.data.message) {
-          case 'CannotModifyOwnerPermissions':
-            throw new errors.CannotModifyOwnerPermissions
+          case 'SharingWithSelfNotAllowed':
+            throw new errors.ModifyingOwnPermissionsNotAllowed
+          case 'ModifyingOwnerPermissionsNotAllowed':
+            throw new errors.ModifyingOwnerPermissionsNotAllowed
           case 'ResharingNotAllowed':
-            throw new errors.CannotModifyPermissions
+            throw new errors.ModifyingPermissionsNotAllowed
           case 'ResharingWithWriteAccessNotAllowed':
             throw new errors.GrantingWriteAccessNotAllowed
           case 'DatabaseNotFound':
@@ -1449,8 +1454,9 @@ const modifyDatabasePermissions = async (params) => {
       case 'ResharingAllowedMustBeBoolean':
       case 'ResharingAllowedParamNotAllowed':
       case 'RevokeMustBeBoolean':
-      case 'CannotModifyOwnerPermissions':
-      case 'CannotModifyPermissions':
+      case 'ModifyingOwnPermissionsNotAllowed':
+      case 'ModifyingOwnerPermissionsNotAllowed':
+      case 'ModifyingPermissionsNotAllowed':
       case 'GrantingWriteAccessNotAllowed':
       case 'UserNotSignedIn':
       case 'UserNotFound':
@@ -1539,7 +1545,7 @@ const verifyUser = async (params) => {
 
     const { username, fingerprint } = _unpackVerificationMessage(verificationMessage)
 
-    if (fingerprint === await _getMyFingerprint()) throw new errors.CannotVerifySelf
+    if (username === ws.session.username || fingerprint === await _getMyFingerprint()) throw new errors.VerifyingSelfNotAllowed
 
     // upsert the verification message into the user's encrypted database that stores verified users
     await _openVerifiedUsersDatabase()
@@ -1562,7 +1568,7 @@ const verifyUser = async (params) => {
       case 'VerificationMessageMustBeString':
       case 'VerificationMessageCannotBeBlank':
       case 'VerificationMessageInvalid':
-      case 'CannotVerifySelf':
+      case 'VerifyingSelfNotAllowed':
       case 'UserNotSignedIn':
       case 'ServiceUnavailable':
         throw e

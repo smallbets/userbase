@@ -210,22 +210,42 @@ class ResharingWithWriteAccessNotAllowed extends Error {
   }
 }
 
-class CannotModifyOwnerPermissions extends Error {
+class SharingWithSelfNotAllowed extends Error {
   constructor(...params) {
     super(...params)
 
-    this.name = 'CannotModifyOwnerPermissions'
-    this.message = "Cannot modify the owner of a database's permissions."
+    this.name = 'SharingWithSelfNotAllowed'
+    this.message = 'Sharing database with self is not allowed. Must share database with another user.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class ModifyingOwnPermissionsNotAllowed extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'ModifyingOwnPermissionsNotAllowed'
+    this.message = "Modifying own database permissions not allowed. Must modify another user's permissions."
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class ModifyingOwnerPermissionsNotAllowed extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'ModifyingOwnerPermissionsNotAllowed'
+    this.message = "Modifying the owner of a database's permissions is not allowed."
     this.status = statusCodes['Forbidden']
   }
 }
 
-class CannotModifyPermissions extends Error {
+class ModifyingPermissionsNotAllowed extends Error {
   constructor(...params) {
     super(...params)
 
-    this.name = 'CannotModifyPermissions'
-    this.message = "Cannot modify another user's permissions. Must have permission to reshare the database with another user."
+    this.name = 'ModifyingPermissionsNotAllowed'
+    this.message = "Modifying another user's permissions is not allowed. Must have permission to reshare the database with another user."
     this.status = statusCodes['Forbidden']
   }
 }
@@ -480,12 +500,12 @@ class VerificationMessageInvalid extends Error {
   }
 }
 
-class CannotVerifySelf extends Error {
+class VerifyingSelfNotAllowed extends Error {
   constructor(maxLength, ...params) {
     super(maxLength, ...params)
 
-    this.name = 'CannotVerifySelf'
-    this.message = 'Cannot verify self. Can only verify other users.'
+    this.name = 'VerifyingSelfNotAllowed'
+    this.message = 'Verifying self not allowed. Can only verify other users.'
     this.status = statusCodes['Bad Request']
   }
 }
@@ -509,8 +529,10 @@ export default {
   ResharingNotAllowed,
   ResharingWithWriteAccessNotAllowed,
   ResharingAllowedParamNotAllowed,
-  CannotModifyOwnerPermissions,
-  CannotModifyPermissions,
+  SharingWithSelfNotAllowed,
+  ModifyingOwnPermissionsNotAllowed,
+  ModifyingOwnerPermissionsNotAllowed,
+  ModifyingPermissionsNotAllowed,
   GrantingWriteAccessNotAllowed,
   RequireVerifiedMustBeBoolean,
   RevokeMustBeBoolean,
@@ -539,5 +561,5 @@ export default {
   VerificationMessageMustBeString,
   VerificationMessageCannotBeBlank,
   VerificationMessageInvalid,
-  CannotVerifySelf,
+  VerifyingSelfNotAllowed,
 }
