@@ -102,6 +102,7 @@ const findDatabaseByDatabaseId = async function (dbId) {
   if (!dbResponse || !dbResponse.Item) return null
   return dbResponse.Item
 }
+exports.findDatabaseByDatabaseId = findDatabaseByDatabaseId
 
 const _getUserDatabase = async function (userId, dbNameHash) {
   const userDatabaseParams = {

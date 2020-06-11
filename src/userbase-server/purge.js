@@ -3,6 +3,7 @@ import logger from './logger'
 import setup from './setup'
 import connection from './connection'
 import connections from './ws'
+import dbController from './db'
 import userController from './user'
 import appController from './app'
 import adminController from './admin'
@@ -97,28 +98,44 @@ const scanForDeletedUsers = async (purgeId) => {
   logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished scanning for deleted users')
 }
 
-const removeDatabase = async (userDb) => {
-  // delete inside transaction to maintain reference in case of failure
+const removeUserDb = async (userDb) => {
   const params = {
-    TransactItems: [{
-      Delete: {
-        TableName: setup.databaseTableName,
-        Key: {
-          'database-id': userDb['database-id']
-        }
-      }
-    }, {
-      Delete: {
-        TableName: setup.userDatabaseTableName,
-        Key: {
-          'user-id': userDb['user-id'],
-          'database-name-hash': userDb['database-name-hash']
-        }
-      }
-    }]
+    TableName: setup.userDatabaseTableName,
+    Key: {
+      'user-id': userDb['user-id'],
+      'database-name-hash': userDb['database-name-hash']
+    }
+  }
+  await connection.ddbClient().delete(params).promise()
+}
+
+const purgeDatabase = async (userDb) => {
+  // delete all userDatabases associated with this database
+  const allUserDatabasesParams = {
+    TableName: setup.userDatabaseTableName,
+    IndexName: setup.userDatabaseIdIndex,
+    KeyConditionExpression: '#databaseId = :databaseId',
+    ExpressionAttributeNames: {
+      '#databaseId': 'database-id',
+    },
+    ExpressionAttributeValues: {
+      ':databaseId': userDb['database-id'],
+    },
+    Select: 'ALL_ATTRIBUTES'
   }
 
-  await connection.ddbClient().transactWrite(params).promise()
+  const ddbQuery = (allUserDatabasesParams) => connection.ddbClient().query(allUserDatabasesParams).promise()
+  const action = (userDbs) => Promise.all(userDbs.map(userDb => removeUserDb(userDb)))
+  await ddbWhileLoop(allUserDatabasesParams, ddbQuery, action)
+
+  // delete database
+  const deleteDatabaseParams = {
+    TableName: setup.databaseTableName,
+    Key: {
+      'database-id': userDb['database-id'],
+    }
+  }
+  await connection.ddbClient().delete(deleteDatabaseParams).promise()
 }
 
 const removeS3DatabaseStates = async (databaseId) => {
@@ -166,7 +183,17 @@ const removeTransaction = async (transaction) => {
 const purgeTransactions = async (userDb) => {
   const start = Date.now()
   const logChildObject = { userId: userDb['user-id'], databaseId: userDb['database-id'] }
-  logger.child(logChildObject).info('Purging transactions')
+
+  // if user is not owner of db, just delete userDb and move on
+  const database = await dbController.findDatabaseByDatabaseId(userDb['database-id'])
+  if (database && userDb['user-id'] !== database['owner-id']) {
+    logger.child(logChildObject).info('Purging user database')
+    await removeUserDb(userDb)
+    logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purging user database')
+    return
+  } else {
+    logger.child(logChildObject).info('Purging transactions')
+  }
 
   const params = {
     TableName: setup.transactionsTableName,
@@ -189,7 +216,7 @@ const purgeTransactions = async (userDb) => {
     removeS3DatabaseStates(userDb['database-id'])
   ])
 
-  await removeDatabase(userDb)
+  await purgeDatabase(userDb)
 
   logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purging transactions')
 }
@@ -257,7 +284,7 @@ const purgeUser = async (user, _adminId = undefined, _admin = undefined) => {
   const logChildObject = { userId: user['user-id'], appId: user['app-id'], username: user['username'], deleted: user['deleted'] }
   logger.child(logChildObject).info('Purging user')
 
-  // purge all user's databases
+  // purge user's databases that user is an owner of
   const params = {
     TableName: setup.userDatabaseTableName,
     KeyConditionExpression: '#userId = :userId',
