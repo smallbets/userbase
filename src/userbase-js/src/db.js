@@ -1006,7 +1006,7 @@ const _buildDatabaseUserResult = async (dbKey, databaseUsers, verifiedUsersByUse
             databaseUsers[i].verified = verifiedReceivedDatabaseFromUser
           }
 
-        } else if (senderUsername) {
+        } else if (!isOwner) {
           // verify unrelated user's parent sent dbKey to user and user received dbKey from their parent
           const verifiedUsersParent = await _verifyUsersParent(dbKey, verifiedUsersByUsername, databaseUser)
           databaseUsers[i].verified = verifiedUsersParent
@@ -1033,7 +1033,16 @@ const _buildDatabaseUserResult = async (dbKey, databaseUsers, verifiedUsersByUse
   return databaseUsers
 }
 
-const _getDatabaseUsers = async (databaseId, databaseNameHash, dbKey, verifiedUsers, username, senderUsername) => {
+const _databaseHasOwner = (databaseUsers) => {
+  for (let i = 0; i < databaseUsers.length; i++) {
+    const user = databaseUsers[i]
+    if (user.isOwner) return true
+  }
+
+  return false
+}
+
+const _getDatabaseUsers = async (databaseId, databaseNameHash, dbKey, verifiedUsers, username, senderUsername, isOwner) => {
   const users = []
   const action = 'GetDatabaseUsers'
   const params = { databaseId, databaseNameHash }
@@ -1116,13 +1125,18 @@ const _buildDatabaseResult = async (db, encryptionKey, ecdhPrivateKey, verifiedU
     isOwner,
     readOnly,
     resharingAllowed,
-    users: await _getDatabaseUsers(databaseId, databaseNameHash, dbKey, verifiedUsers, username, senderUsername)
   }
+
+  const users = await _getDatabaseUsers(databaseId, databaseNameHash, dbKey, verifiedUsers, username, senderUsername, isOwner)
+
+  // if database has no owner, owner must have been deleted and database should not be accessible to user
+  if (isOwner || _databaseHasOwner(users)) result.users = users
+  else return null
 
   // if user owns the database, developer has no use for the databaseId. Not allowing developers to use
   // databaseId's to interact with databases owned by the user keeps the current concurrency model safe.
   if (isOwner) delete result.databaseId
-  else result.receivedFromUsername = senderUsername
+  else if (senderUsername) result.receivedFromUsername = senderUsername
 
   return result
 }

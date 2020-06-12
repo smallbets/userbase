@@ -302,7 +302,7 @@ exports.getDatabases = async function (logChildObject, userId, nextPageToken) {
           readOnly: isOwner ? false : userDb['read-only'],
           resharingAllowed: isOwner ? true : userDb['resharing-allowed'],
           databaseNameHash: userDb['database-name-hash'],
-          senderUsername: senders[i] && senders[i].username,
+          senderUsername: (senders[i] && !senders[i].deleted) ? senders[i].username : undefined,
           senderEcdsaPublicKey: userDb['sender-ecdsa-public-key'],
 
           // if already has access to database
@@ -413,20 +413,23 @@ exports.getDatabaseUsers = async function (logChildObject, userId, databaseId, d
     const otherDatabaseUsersResult = await _getOtherDatabaseUsers(databaseId, userId, nextPageTokenLessThanUserId, nextPageTokenMoreThanUserId)
     const { otherDatabaseUsers, otherUserDatabases } = otherDatabaseUsersResult
 
-    const usernamesByUserId = {}
-    otherDatabaseUsers.forEach(user => usernamesByUserId[user['user-id']] = user['username'])
+    const usersByUserId = {}
+    otherDatabaseUsers.forEach(user => usersByUserId[user['user-id']] = user)
 
     const finalResult = {
       users: otherDatabaseUsers.map((user, i) => {
+        if (!user || user.deleted) return null
+
         const isOwner = database['owner-id'] === user['user-id']
         const otherUserDb = otherUserDatabases[i]
         const isChild = userId === otherUserDb['sender-id'] // user sent database to this user
         const isParent = userDatabase['sender-id'] === otherUserDb['user-id'] // user received database from this user
+        const senderId = otherUserDb['sender-id']
 
         return {
           username: user['username'],
           isOwner,
-          senderUsername: usernamesByUserId[otherUserDb['sender-id']],
+          senderUsername: (usersByUserId[senderId] && !usersByUserId[senderId].deleted) ? usersByUserId[senderId].username : undefined,
           readOnly: isOwner ? false : otherUserDb['read-only'],
           resharingAllowed: isOwner ? true : otherUserDb['resharing-allowed'],
 
@@ -446,7 +449,7 @@ exports.getDatabaseUsers = async function (logChildObject, userId, databaseId, d
             mySenderEcdsaPublicKey: isParent && userDatabase['sender-ecdsa-public-key'],
           }
         }
-      }),
+      }).filter(user => user !== null),
       nextPageTokenLessThanUserId: otherDatabaseUsersResult.nextPageTokenLessThanUserId,
       nextPageTokenMoreThanUserId: otherDatabaseUsersResult.nextPageTokenMoreThanUserId,
     }

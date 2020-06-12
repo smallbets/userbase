@@ -376,7 +376,7 @@ describe('DB Sharing Tests', function () {
         await this.test.userbase.shareDatabase({ databaseName, username: firstRecipient.username, requireVerified: false, resharingAllowed: true })
         await this.test.userbase.signOut()
 
-        // recipient signs in and shares database with secondRecipient
+        // firstRecipient signs in and shares database with secondRecipient
         await this.test.userbase.signIn({ username: firstRecipient.username, password: firstRecipient.password, rememberMe: 'none' })
 
         // firstRecipient must find the database's databaseId using getDatabases() result
@@ -516,6 +516,199 @@ describe('DB Sharing Tests', function () {
         // clean up
         await this.test.userbase.deleteUser()
         await this.test.userbase.signIn({ username: sender.username, password: sender.password, rememberMe: 'none' })
+        await this.test.userbase.deleteUser()
+      })
+
+      it('Both users can see that the other has access', async function () {
+        const recipient = await signUp(this.test.userbase)
+        await this.test.userbase.signOut()
+
+        const sender = await signUp(this.test.userbase)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        // sender shares database with recipient
+        await this.test.userbase.shareDatabase({ databaseName, username: recipient.username, requireVerified: false })
+        await this.test.userbase.signOut()
+
+        // recipient signs in and checks to make sure can see the database was sent by sender
+        await this.test.userbase.signIn({ username: recipient.username, password: recipient.password, rememberMe: 'none' })
+        const { databases } = await this.test.userbase.getDatabases()
+        const recipientDatabase = databases[0]
+        const { databaseId } = recipientDatabase
+
+        expect(recipientDatabase, 'recipient databases').to.deep.equal({
+          databaseName,
+          databaseId,
+          isOwner: false,
+          receivedFromUsername: sender.username,
+          readOnly: true,
+          resharingAllowed: false,
+          users: [{
+            username: sender.username,
+            isOwner: true,
+            readOnly: false,
+            resharingAllowed: true,
+          }]
+        })
+
+        await this.test.userbase.signOut()
+
+        // sender signs back in to make sure recipient has access
+        await this.test.userbase.signIn({ username: sender.username, password: sender.password, rememberMe: 'none' })
+        const senderDatabases = await this.test.userbase.getDatabases()
+        const senderDatabase = senderDatabases.databases[0]
+
+        expect(senderDatabase, 'sender databases').to.deep.equal({
+          databaseName,
+          isOwner: true,
+          readOnly: false,
+          resharingAllowed: true,
+          users: [{
+            username: recipient.username,
+            receivedFromUsername: sender.username,
+            isOwner: false,
+            readOnly: true,
+            resharingAllowed: false,
+          }]
+        })
+
+        // clean up
+        await this.test.userbase.deleteUser()
+        await this.test.userbase.signIn({ username: recipient.username, password: recipient.password, rememberMe: 'none' })
+        await this.test.userbase.deleteUser()
+      })
+
+      it('Sender deletes self', async function () {
+        const recipient = await signUp(this.test.userbase)
+        await this.test.userbase.signOut()
+
+        await signUp(this.test.userbase)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        // sender shares database with recipient then deletes self
+        await this.test.userbase.shareDatabase({ databaseName, username: recipient.username, requireVerified: false })
+        await this.test.userbase.deleteUser()
+
+        // recipient signs in and should not be able to see the database
+        await this.test.userbase.signIn({ username: recipient.username, password: recipient.password, rememberMe: 'none' })
+        const { databases } = await this.test.userbase.getDatabases()
+
+        expect(databases, 'databases array ').to.have.lengthOf(0)
+
+        // clean up
+        await this.test.userbase.deleteUser()
+      })
+
+      it('First recipient deletes self after sharing with a second recipient', async function () {
+        const firstRecipient = await signUp(this.test.userbase)
+        await this.test.userbase.signOut()
+
+        const secondRecipient = await signUp(this.test.userbase)
+        await this.test.userbase.signOut()
+
+        const sender = await signUp(this.test.userbase)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        // sender shares database with firstRecipient
+        await this.test.userbase.shareDatabase({ databaseName, username: firstRecipient.username, requireVerified: false, resharingAllowed: true })
+        await this.test.userbase.signOut()
+
+        // firstRecipient signs in and shares database with secondRecipient
+        await this.test.userbase.signIn({ username: firstRecipient.username, password: firstRecipient.password, rememberMe: 'none' })
+
+        // firstRecipient must find the database's databaseId using getDatabases() result
+        const { databases } = await this.test.userbase.getDatabases()
+        const db = databases[0]
+        const { databaseId } = db
+
+        // firstRecipient shares database with secondRecipient and deletes self
+        await this.test.userbase.shareDatabase({ databaseId, username: secondRecipient.username, requireVerified: false })
+        await this.test.userbase.deleteUser()
+
+        // secondRecipient should be able to see the database
+        await this.test.userbase.signIn({ username: secondRecipient.username, password: secondRecipient.password, rememberMe: 'none' })
+
+        // call getDatabases() to make sure firstRecipient does not show up in result
+        const secondDatabasesResult = await this.test.userbase.getDatabases()
+
+        expect(secondDatabasesResult, 'second recipient databases').to.deep.equal({
+          databases: [{
+            databaseName,
+            databaseId,
+            isOwner: false,
+            readOnly: true,
+            resharingAllowed: false,
+            users: [{
+              username: sender.username,
+              isOwner: true,
+              readOnly: false,
+              resharingAllowed: true,
+            }]
+          }]
+        })
+
+        // clean up
+        await this.test.userbase.deleteUser()
+        await this.test.userbase.signIn({ username: sender.username, password: sender.password, rememberMe: 'none' })
+        await this.test.userbase.deleteUser()
+      })
+
+      it('First recipient deletes self after sharing with a second recipient (testing verification process)', async function () {
+        const firstRecipient = await signUp(this.test.userbase)
+        await this.test.userbase.signOut()
+
+        const secondRecipient = await signUp(this.test.userbase)
+        const { verificationMessage } = await this.test.userbase.getVerificationMessage()
+        await this.test.userbase.signOut()
+
+        const sender = await signUp(this.test.userbase)
+        await this.test.userbase.verifyUser({ verificationMessage })
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        // sender shares database with firstRecipient
+        await this.test.userbase.shareDatabase({ databaseName, username: firstRecipient.username, requireVerified: false, resharingAllowed: true })
+        await this.test.userbase.signOut()
+
+        // firstRecipient signs in and shares database with secondRecipient
+        await this.test.userbase.signIn({ username: firstRecipient.username, password: firstRecipient.password, rememberMe: 'none' })
+
+        // firstRecipient must find the database's databaseId using getDatabases() result
+        const { databases } = await this.test.userbase.getDatabases()
+        const db = databases[0]
+        const { databaseId } = db
+
+        // firstRecipient shares database with secondRecipient and deletes self
+        await this.test.userbase.shareDatabase({ databaseId, username: secondRecipient.username, requireVerified: false })
+        await this.test.userbase.deleteUser()
+
+        // secondRecipient accepts access to database
+        await this.test.userbase.signIn({ username: secondRecipient.username, password: secondRecipient.password, rememberMe: 'none' })
+        await this.test.userbase.getDatabases()
+        await this.test.userbase.signOut()
+
+        // secondRecipient should be verified by sender
+        await this.test.userbase.signIn({ username: sender.username, password: sender.password, rememberMe: 'none' })
+        const senderDatabasesResult = await this.test.userbase.getDatabases()
+
+        expect(senderDatabasesResult, 'sender databases').to.deep.equal({
+          databases: [{
+            databaseName,
+            isOwner: true,
+            readOnly: false,
+            resharingAllowed: true,
+            users: [{
+              username: secondRecipient.username,
+              verified: true,
+              isOwner: false,
+              readOnly: true,
+              resharingAllowed: false,
+            }]
+          }]
+        })
+
+        // clean up
+        await this.test.userbase.deleteUser()
+        await this.test.userbase.signIn({ username: secondRecipient.username, password: secondRecipient.password, rememberMe: 'none' })
         await this.test.userbase.deleteUser()
       })
 
@@ -2104,7 +2297,7 @@ describe('DB Sharing Tests', function () {
       expect(databaseUsers, 'starting database').to.deep.have.same.members(expectedDatabaseUsers)
     })
 
-    it.only('Charlie verifies Alice', async function () {
+    it('Charlie verifies Alice', async function () {
       // Charlie verifies Dan, Bob, Frank, and Alice
       await Promise.all([
         this.test.userbase.verifyUser({ verificationMessage: this.test.dan.verificationMessage }),
