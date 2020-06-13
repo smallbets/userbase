@@ -83,6 +83,27 @@ describe('DB Sharing Tests', function () {
         await this.test.userbase.signIn({ username: userA.username, password: userA.password })
         await this.test.userbase.deleteUser()
       })
+
+      it('Concurrent with getDatabases()', async function () {
+        // sign up User A to be verified
+        const userA = await signUp(this.test.userbase)
+        const { verificationMessage } = await this.test.userbase.getVerificationMessage()
+        await this.test.userbase.signOut()
+
+        // sign up User B to verify User A
+        await signUp(this.test.userbase)
+
+        // User B verifies User A while concurrently calling getDatabases()
+        await Promise.all([
+          this.test.userbase.verifyUser({ verificationMessage }),
+          this.test.userbase.getDatabases(),
+        ])
+
+        // clean up
+        await this.test.userbase.deleteUser()
+        await this.test.userbase.signIn({ username: userA.username, password: userA.password })
+        await this.test.userbase.deleteUser()
+      })
     })
 
     describe('Failure Tests', function () {

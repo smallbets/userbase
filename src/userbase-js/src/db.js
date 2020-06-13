@@ -921,14 +921,15 @@ const postTransaction = async (database, action, params) => {
   }
 }
 
-const _verifyUsersParent = async (dbKey, verifiedUsersByUsername, databaseUser) => {
+const _verifyUsersParent = async (dbKey, verifiedUsers, databaseUser) => {
   const { username, senderUsername, verificationValues } = databaseUser
   const { sentSignature, receivedSignature, senderEcdsaPublicKey } = verificationValues
 
-  const verifiedFingerprint = verifiedUsersByUsername[username]
+  const verifiedFingerprint = verifiedUsers[username] && verifiedUsers[username].record.fingerprint
 
   const parentRawEcdsaPublicKey = base64.decode(senderEcdsaPublicKey)
-  const parentFingerprint = verifiedUsersByUsername[senderUsername] || await _getFingerprint(parentRawEcdsaPublicKey)
+  const parentFingerprint = (verifiedUsers[senderUsername] && verifiedUsers[senderUsername].record.fingerprint)
+    || await _getFingerprint(parentRawEcdsaPublicKey)
   const parentEcdsaPublicKey = await crypto.ecdsa.getPublicKeyFromRawPublicKey(parentRawEcdsaPublicKey)
 
   // verify parent's claim that sent the dbKey to user
@@ -977,7 +978,7 @@ const _verifySentDatabaseToUser = async (dbKey, verifiedFingerprint, myFingerpri
   return verifiedSent && verifiedReceived
 }
 
-const _buildDatabaseUserResult = async (dbKey, databaseUsers, verifiedUsersByUsername, myUsername, mySenderUsername) => {
+const _buildDatabaseUserResult = async (dbKey, databaseUsers, verifiedUsers, myUsername, mySenderUsername) => {
   const myEcdsaPublicKey = await crypto.ecdsa.getPublicKeyFromPrivateKey(ws.keys.ecdsaPrivateKey)
   const myFingerprint = await _getMyFingerprint()
 
@@ -987,7 +988,7 @@ const _buildDatabaseUserResult = async (dbKey, databaseUsers, verifiedUsersByUse
     const { username, isOwner, senderUsername, verificationValues } = databaseUser
 
     try {
-      const verifiedFingerprint = verifiedUsersByUsername[username]
+      const verifiedFingerprint = verifiedUsers[username] && verifiedUsers[username].record.fingerprint
 
       const sentDatabaseToUser = verificationValues.isChild
       const receivedDatabaseFromUser = mySenderUsername === username
@@ -1000,7 +1001,7 @@ const _buildDatabaseUserResult = async (dbKey, databaseUsers, verifiedUsersByUse
 
           // verify user's relationship to parent if has a parent
           if (verifiedReceivedDatabaseFromUser && senderUsername) {
-            const verifiedGrandparent = await _verifyUsersParent(dbKey, verifiedUsersByUsername, databaseUser)
+            const verifiedGrandparent = await _verifyUsersParent(dbKey, verifiedUsers, databaseUser)
             databaseUsers[i].verified = verifiedGrandparent
           } else {
             databaseUsers[i].verified = verifiedReceivedDatabaseFromUser
@@ -1008,7 +1009,7 @@ const _buildDatabaseUserResult = async (dbKey, databaseUsers, verifiedUsersByUse
 
         } else if (!isOwner) {
           // verify unrelated user's parent sent dbKey to user and user received dbKey from their parent
-          const verifiedUsersParent = await _verifyUsersParent(dbKey, verifiedUsersByUsername, databaseUser)
+          const verifiedUsersParent = await _verifyUsersParent(dbKey, verifiedUsers, databaseUser)
           databaseUsers[i].verified = verifiedUsersParent
         } else {
           // must be an owner that is not my child or parent, and owner is automatically verified
@@ -1042,28 +1043,19 @@ const _databaseHasOwner = (databaseUsers) => {
   return false
 }
 
-const _getDatabaseUsers = async (databaseId, databaseNameHash, dbKey, verifiedUsers, username, senderUsername, isOwner) => {
+const _getDatabaseUsers = async (databaseId, databaseNameHash, dbKey, verifiedUsers, username, senderUsername) => {
   const users = []
   const action = 'GetDatabaseUsers'
   const params = { databaseId, databaseNameHash }
   let databaseUsersResponse = await ws.request(action, params)
 
-  // transform from array into object with usernames as keys
-  const verifiedUsersByUsername = {}
-  for (let i = 0; i < verifiedUsers.length; i++) {
-    const verifiedUser = verifiedUsers[i]
-    const username = verifiedUser.itemId
-    const fingerprint = verifiedUser.item.fingerprint
-    verifiedUsersByUsername[username] = fingerprint
-  }
-
-  users.push(...await _buildDatabaseUserResult(dbKey, databaseUsersResponse.data.users, verifiedUsersByUsername, username, senderUsername))
+  users.push(...await _buildDatabaseUserResult(dbKey, databaseUsersResponse.data.users, verifiedUsers, username, senderUsername))
 
   while (databaseUsersResponse.data.nextPageTokenLessThanUserId || databaseUsersResponse.data.nextPageTokenMoreThanUserId) {
     params.nextPageTokenLessThanUserId = databaseUsersResponse.data.nextPageTokenLessThanUserId
     params.nextPageTokenMoreThanUserId = databaseUsersResponse.data.nextPageTokenMoreThanUserId
     databaseUsersResponse = await ws.request(action, params)
-    users.push(...await _buildDatabaseUserResult(dbKey, databaseUsersResponse.data.users, verifiedUsersByUsername, username, senderUsername))
+    users.push(...await _buildDatabaseUserResult(dbKey, databaseUsersResponse.data.users, verifiedUsers, username, senderUsername))
   }
 
   return users
@@ -1220,13 +1212,14 @@ const _signDbKeyAndFingerprint = async (dbKey, fingerprint) => {
 const _verifyDatabaseRecipientFingerprint = async (username, recipientFingerprint, verifiedUsers) => {
   // find recipient's fingerprint in verified users database
   let verifiedRecipientFingerprint, foundOldFingerprint
-  for (let i = 0; i < verifiedUsers.length; i++) {
-    const verifiedUser = verifiedUsers[i]
-    const { itemId, item } = verifiedUser
-    if (itemId === username && item.fingerprint === recipientFingerprint) {
-      verifiedRecipientFingerprint = item.fingerprint
+  const verifiedUsersArray = Object.keys(verifiedUsers)
+  for (let i = 0; i < verifiedUsersArray.length; i++) {
+    const verifiedUsername = verifiedUsersArray[i]
+    const verifiedFingerprint = verifiedUsers[verifiedUsername].record.fingerprint
+    if (username === verifiedUsername && recipientFingerprint === verifiedFingerprint) {
+      verifiedRecipientFingerprint = verifiedFingerprint
       break
-    } else if (item.fingerprint === recipientFingerprint) {
+    } else if (verifiedFingerprint === recipientFingerprint) {
       foundOldFingerprint = true
     }
   }
@@ -1537,11 +1530,12 @@ const getVerificationMessage = async () => {
 }
 
 const _openVerifiedUsersDatabase = async () => {
-  let verifiedUsers
   const databaseName = VERIFIED_USERS_DATABASE_NAME
-  const changeHandler = (items) => { verifiedUsers = items }
+  const changeHandler = () => { } // not used
   const allowVerifiedUsersDatabase = true
   await openDatabase({ databaseName, changeHandler, allowVerifiedUsersDatabase })
+  const dbNameHash = ws.state.dbNameToHash[databaseName]
+  const verifiedUsers = ws.state.databases[dbNameHash].items
   return verifiedUsers
 }
 
