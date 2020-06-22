@@ -10,9 +10,21 @@ const AES_KW_PARAMS = {
   length: BIT_SIZE
 }
 
+const wrapKey = async (key, keyWrapper, keyType = KEY_TYPE) => {
+  const ciphertextArrayBuffer = await window.crypto.subtle.wrapKey(
+    keyType,
+    key,
+    keyWrapper,
+    AES_KW_PARAMS
+  )
+
+  return ciphertextArrayBuffer
+}
+
 export default {
   KEY_TYPE,
   KEY_IS_NOT_EXTRACTABLE,
   KEY_WILL_BE_USED_TO,
   AES_KW_PARAMS,
+  wrapKey,
 }

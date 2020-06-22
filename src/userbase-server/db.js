@@ -1,3 +1,4 @@
+import uuidv4 from 'uuid/v4'
 import connection from './connection'
 import setup from './setup'
 import statusCodes from './statusCodes'
@@ -6,11 +7,37 @@ import connections from './ws'
 import logger from './logger'
 import userController from './user'
 import peers from './peers'
-import { lastEvaluatedKeyToNextPageToken, nextPageTokenToLastEvaluatedKey } from './utils'
+import {
+  lastEvaluatedKeyToNextPageToken,
+  nextPageTokenToLastEvaluatedKey,
+  getTtl,
+} from './utils'
 
 const MAX_OPERATIONS_IN_TX = 10
 
+const HOURS_IN_A_DAY = 24
+const SECONDS_IN_A_DAY = 60 * 60 * HOURS_IN_A_DAY
+const MS_IN_A_DAY = SECONDS_IN_A_DAY * 1000
+
 const getS3DbStateKey = (databaseId, bundleSeqNo) => `${databaseId}/${bundleSeqNo}`
+
+const _buildUserDatabaseParams = (userId, dbNameHash, dbId, encryptedDbKey, readOnly, resharingAllowed) => {
+  return {
+    TableName: setup.userDatabaseTableName,
+    Item: {
+      'user-id': userId,
+      'database-name-hash': dbNameHash,
+      'database-id': dbId,
+      'encrypted-db-key': encryptedDbKey,
+      'read-only': readOnly,
+      'resharing-allowed': resharingAllowed
+    },
+    ConditionExpression: 'attribute_not_exists(#userId)',
+    ExpressionAttributeNames: {
+      '#userId': 'user-id',
+    }
+  }
+}
 
 const createDatabase = async function (userId, dbNameHash, dbId, encryptedDbName, encryptedDbKey) {
   try {
@@ -23,12 +50,7 @@ const createDatabase = async function (userId, dbNameHash, dbId, encryptedDbName
       'database-name': encryptedDbName
     }
 
-    const userDatabase = {
-      'user-id': userId,
-      'database-name-hash': dbNameHash,
-      'database-id': dbId,
-      'encrypted-db-key': encryptedDbKey,
-    }
+    const userDatabaseParams = _buildUserDatabaseParams(userId, dbNameHash, dbId, encryptedDbKey)
 
     const params = {
       TransactItems: [{
@@ -41,21 +63,14 @@ const createDatabase = async function (userId, dbNameHash, dbId, encryptedDbName
           }
         }
       }, {
-        Put: {
-          TableName: setup.userDatabaseTableName,
-          Item: userDatabase,
-          ConditionExpression: 'attribute_not_exists(#userId)',
-          ExpressionAttributeNames: {
-            '#userId': 'user-id',
-          }
-        }
+        Put: userDatabaseParams
       }]
     }
 
     const ddbClient = connection.ddbClient()
     await ddbClient.transactWrite(params).promise()
 
-    return { ...database, ...userDatabase }
+    return { ...database, ...userDatabaseParams.Item }
   } catch (e) {
 
     if (e.message) {
@@ -87,8 +102,9 @@ const findDatabaseByDatabaseId = async function (dbId) {
   if (!dbResponse || !dbResponse.Item) return null
   return dbResponse.Item
 }
+exports.findDatabaseByDatabaseId = findDatabaseByDatabaseId
 
-const getDatabase = async function (userId, dbNameHash) {
+const _getUserDatabase = async function (userId, dbNameHash) {
   const userDatabaseParams = {
     TableName: setup.userDatabaseTableName,
     Key: {
@@ -99,9 +115,45 @@ const getDatabase = async function (userId, dbNameHash) {
 
   const ddbClient = connection.ddbClient()
   const userDbResponse = await ddbClient.get(userDatabaseParams).promise()
-  if (!userDbResponse || !userDbResponse.Item) return null
 
-  const userDb = userDbResponse.Item
+  return userDbResponse && userDbResponse.Item
+}
+
+const _getUserDatabaseByUserIdAndDatabaseId = async function (userId, databaseId) {
+  const params = {
+    TableName: setup.userDatabaseTableName,
+    IndexName: setup.userDatabaseIdIndex,
+    KeyConditionExpression: '#databaseId = :databaseId and #userId = :userId',
+    ExpressionAttributeNames: {
+      '#databaseId': 'database-id',
+      '#userId': 'user-id'
+    },
+    ExpressionAttributeValues: {
+      ':databaseId': databaseId,
+      ':userId': userId
+    },
+    Select: 'ALL_ATTRIBUTES'
+  }
+
+  const ddbClient = connection.ddbClient()
+  const userDbResponse = await ddbClient.query(params).promise()
+
+  if (!userDbResponse || userDbResponse.Items.length === 0) return null
+
+  if (userDbResponse.Items.length > 1) {
+    // this should never happen
+    const errorMsg = `Too many user dbs found with database id ${databaseId} and userId ${userId}`
+    logger.fatal(errorMsg)
+    throw new Error(errorMsg)
+  }
+
+  return userDbResponse.Items[0]
+}
+
+const getDatabase = async function (userId, dbNameHash) {
+  const userDb = await _getUserDatabase(userId, dbNameHash)
+  if (!userDb) return null
+
   const dbId = userDb['database-id']
 
   const database = await findDatabaseByDatabaseId(dbId)
@@ -125,6 +177,8 @@ exports.openDatabase = async function (user, app, admin, connectionId, dbNameHas
     let database
     try {
       database = await getDatabase(userId, dbNameHash)
+
+      if (database && database['owner-id'] !== userId) return responseBuilder.errorResponse(statusCodes['Forbidden'], 'Database not owned by user')
 
       if (!database && !newDatabaseParams) return responseBuilder.errorResponse(statusCodes['Not Found'], 'Database not found')
       else if (!database) {
@@ -150,7 +204,8 @@ exports.openDatabase = async function (user, app, admin, connectionId, dbNameHas
     const bundleSeqNo = database['bundle-seq-no']
     const dbKey = database['encrypted-db-key']
 
-    if (connections.openDatabase(userId, connectionId, dbId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo)) {
+    const isOwner = true
+    if (connections.openDatabase(userId, connectionId, dbId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner)) {
       return responseBuilder.successResponse('Success!')
     } else {
       throw new Error('Unable to open database')
@@ -158,6 +213,47 @@ exports.openDatabase = async function (user, app, admin, connectionId, dbNameHas
   } catch (e) {
     logger.error(`Failed to open database for user ${userId} with ${e}`)
     return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to open database')
+  }
+}
+
+exports.openDatabaseByDatabaseId = async function (user, app, admin, connectionId, databaseId, reopenAtSeqNo) {
+  if (!databaseId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database ID')
+  if (reopenAtSeqNo && typeof reopenAtSeqNo !== 'number') return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Reopen at seq no must be number')
+  const userId = user['user-id']
+
+  try {
+    try {
+      userController.validatePayment(user, app, admin)
+    } catch (e) {
+      return responseBuilder.errorResponse(e.status, e.error)
+    }
+
+    const [db, userDb] = await Promise.all([
+      findDatabaseByDatabaseId(databaseId),
+      _getUserDatabaseByUserIdAndDatabaseId(userId, databaseId)
+    ])
+
+    if (!db || !userDb) return responseBuilder.errorResponse(statusCodes['Not Found'], 'Database not found')
+
+    const isOwner = db['owner-id'] === userId
+    if (isOwner) return responseBuilder.errorResponse(statusCodes['Forbidden'], 'Database is owned by user')
+
+    const database = { ...db, ...userDb }
+    const dbNameHash = database['database-name-hash']
+    const bundleSeqNo = database['bundle-seq-no']
+    const dbKey = database['encrypted-db-key']
+
+    // user must call getDatabases() first to set the db key
+    if (!dbKey) return responseBuilder.errorResponse(statusCodes['Not Found'], 'Database key not found')
+
+    if (connections.openDatabase(userId, connectionId, databaseId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner)) {
+      return responseBuilder.successResponse('Success!')
+    } else {
+      throw new Error('Unable to open database')
+    }
+  } catch (e) {
+    logger.error(`Failed to open database by database ID for user ${userId} with ${e}`)
+    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to open database by database ID')
   }
 }
 
@@ -174,7 +270,7 @@ const _queryUserDatabases = async (userId, nextPageToken) => {
   }
 
   if (nextPageToken) {
-    userDatabasesParams.ExclusiveStartKey = nextPageTokenToLastEvaluatedKey(nextPageToken, () => { })
+    userDatabasesParams.ExclusiveStartKey = nextPageTokenToLastEvaluatedKey(nextPageToken)
   }
 
   const ddbClient = connection.ddbClient()
@@ -186,16 +282,36 @@ const _queryUserDatabases = async (userId, nextPageToken) => {
 exports.getDatabases = async function (logChildObject, userId, nextPageToken) {
   try {
     const userDbsResponse = await _queryUserDatabases(userId, nextPageToken)
-
     const userDbs = userDbsResponse.Items
 
-    const databases = await Promise.all(userDbs.map(userDb => findDatabaseByDatabaseId(userDb['database-id'])))
+    const [databases, senders] = await Promise.all([
+      Promise.all(userDbs.map(userDb => findDatabaseByDatabaseId(userDb['database-id']))),
+      Promise.all(userDbs.map(userDb => userDb['sender-id'] && userController.getUserByUserId(userDb['sender-id'])))
+    ])
 
     const finalResult = {
       databases: databases.map((db, i) => {
+        const isOwner = db['owner-id'] === userId
+        const userDb = userDbs[i]
+
         return {
-          encryptedDbKey: userDbs[i]['encrypted-db-key'],
           databaseName: db['database-name'],
+          databaseId: db['database-id'],
+
+          isOwner,
+          readOnly: isOwner ? false : userDb['read-only'],
+          resharingAllowed: isOwner ? true : userDb['resharing-allowed'],
+          databaseNameHash: userDb['database-name-hash'],
+          senderUsername: (senders[i] && !senders[i].deleted) ? senders[i].username : undefined,
+          senderEcdsaPublicKey: userDb['sender-ecdsa-public-key'],
+
+          // if already has access to database
+          encryptedDbKey: userDb['encrypted-db-key'],
+
+          // if still does not have access to database
+          wrappedDbKey: userDb['wrapped-db-key'],
+          ephemeralPublicKey: userDb['ephemeral-public-key'],
+          signedEphemeralPublicKey: userDb['signed-ephemeral-public-key'],
         }
       }),
       nextPageToken: userDbsResponse.LastEvaluatedKey && lastEvaluatedKeyToNextPageToken(userDbsResponse.LastEvaluatedKey)
@@ -211,9 +327,182 @@ exports.getDatabases = async function (logChildObject, userId, nextPageToken) {
   }
 }
 
-const putTransaction = async function (transaction, userId, databaseId) {
-  const ddbClient = connection.ddbClient()
+const _queryOtherUserDatabases = async function (dbId, userId, nextPageTokenLessThanUserId, nextPageTokenMoreThanUserId) {
+  const otherUserDatabasesLessThanUserIdParams = {
+    TableName: setup.userDatabaseTableName,
+    IndexName: setup.userDatabaseIdIndex,
+    // Condition operator != is not supported, must make separate queries using < and >
+    KeyConditionExpression: '#dbId = :dbId and #userId < :userId',
+    ExpressionAttributeNames: {
+      '#dbId': 'database-id',
+      '#userId': 'user-id'
+    },
+    ExpressionAttributeValues: {
+      ':dbId': dbId,
+      ':userId': userId
+    },
+  }
 
+  const otherUserDatabasesMoreThanUserIdParams = {
+    ...otherUserDatabasesLessThanUserIdParams,
+    KeyConditionExpression: '#dbId = :dbId and #userId > :userId',
+  }
+
+  if (nextPageTokenLessThanUserId) {
+    otherUserDatabasesLessThanUserIdParams.ExclusiveStartKey = nextPageTokenToLastEvaluatedKey(nextPageTokenLessThanUserId)
+  }
+
+  if (nextPageTokenMoreThanUserId) {
+    otherUserDatabasesMoreThanUserIdParams.ExclusiveStartKey = nextPageTokenToLastEvaluatedKey(nextPageTokenMoreThanUserId)
+  }
+
+  const ddbClient = connection.ddbClient()
+  const [otherUserDbsLessThanResponse, otherUserDbsMoreThanResponse] = await Promise.all([
+    ddbClient.query(otherUserDatabasesLessThanUserIdParams).promise(),
+    ddbClient.query(otherUserDatabasesMoreThanUserIdParams).promise(),
+  ])
+
+  const otherUserDbsLessThan = (otherUserDbsLessThanResponse && otherUserDbsLessThanResponse.Items) || []
+  const otherUserDbsMoreThan = (otherUserDbsMoreThanResponse && otherUserDbsMoreThanResponse.Items) || []
+
+  return {
+    otherUserDatabases: otherUserDbsLessThan.concat(otherUserDbsMoreThan),
+    nextPageTokenLessThanUserId: otherUserDbsLessThanResponse && otherUserDbsLessThanResponse.LastEvaluatedKey
+      && lastEvaluatedKeyToNextPageToken(otherUserDbsLessThanResponse.LastEvaluatedKey),
+    nextPageTokenMoreThanUserId: otherUserDbsMoreThanResponse && otherUserDbsMoreThanResponse.LastEvaluatedKey
+      && lastEvaluatedKeyToNextPageToken(otherUserDbsMoreThanResponse.LastEvaluatedKey),
+  }
+}
+
+const _getOtherDatabaseUsers = async function (dbId, userId) {
+  const otherDatabaseUsersQueryResult = await _queryOtherUserDatabases(dbId, userId)
+  const { otherUserDatabases } = otherDatabaseUsersQueryResult
+
+  const userQueries = []
+  for (const otherUserDb of otherUserDatabases) {
+    const otherUserId = otherUserDb['user-id']
+    userQueries.push(userController.getUserByUserId(otherUserId))
+  }
+  const otherDatabaseUsers = await Promise.all(userQueries)
+
+  return {
+    otherDatabaseUsers,
+    otherUserDatabases,
+    nextPageTokenLessThanUserId: otherDatabaseUsersQueryResult.nextPageTokenLessThanUserId,
+    nextPageTokenMoreThanUserId: otherDatabaseUsersQueryResult.nextPageTokenMoreThanUserId,
+  }
+}
+
+exports.getDatabaseUsers = async function (logChildObject, userId, databaseId, databaseNameHash,
+  nextPageTokenLessThanUserId, nextPageTokenMoreThanUserId
+) {
+  try {
+    logChildObject.databaseId = databaseId
+    logChildObject.databaseNameHash = databaseNameHash
+
+    const [userDatabase, database] = await Promise.all([
+      _getUserDatabase(userId, databaseNameHash),
+      findDatabaseByDatabaseId(databaseId)
+    ])
+
+    if (!userDatabase || !database || userDatabase['database-id'] !== databaseId) throw {
+      status: statusCodes['Not Found'],
+      error: { message: 'Database not found' }
+    }
+
+    const otherDatabaseUsersResult = await _getOtherDatabaseUsers(databaseId, userId, nextPageTokenLessThanUserId, nextPageTokenMoreThanUserId)
+    const { otherDatabaseUsers, otherUserDatabases } = otherDatabaseUsersResult
+
+    const usersByUserId = {}
+    otherDatabaseUsers.forEach(user => usersByUserId[user['user-id']] = user)
+
+    const finalResult = {
+      users: otherDatabaseUsers.map((user, i) => {
+        if (!user || user.deleted) return null
+
+        const isOwner = database['owner-id'] === user['user-id']
+        const otherUserDb = otherUserDatabases[i]
+        const isChild = userId === otherUserDb['sender-id'] // user sent database to this user
+        const isParent = userDatabase['sender-id'] === otherUserDb['user-id'] // user received database from this user
+        const senderId = otherUserDb['sender-id']
+
+        return {
+          username: user['username'],
+          isOwner,
+          senderUsername: (usersByUserId[senderId] && !usersByUserId[senderId].deleted) ? usersByUserId[senderId].username : undefined,
+          readOnly: isOwner ? false : otherUserDb['read-only'],
+          resharingAllowed: isOwner ? true : otherUserDb['resharing-allowed'],
+
+          // used to verify other user with access to the database
+          verificationValues: {
+            sentSignature: otherUserDb['sent-signature'],
+            receivedSignature: otherUserDb['received-signature'],
+            senderEcdsaPublicKey: otherUserDb['sender-ecdsa-public-key'],
+            recipientEcdsaPublicKey: otherUserDb['recipient-ecdsa-public-key'],
+
+            // used to verify the requesting user sent the database to this user
+            isChild,
+
+            // the folowing additional values are used to verify the requesting user received the database from this user
+            mySentSignature: isParent && userDatabase['sent-signature'],
+            myReceivedSignature: isParent && userDatabase['received-signature'],
+            mySenderEcdsaPublicKey: isParent && userDatabase['sender-ecdsa-public-key'],
+          }
+        }
+      }).filter(user => user !== null),
+      nextPageTokenLessThanUserId: otherDatabaseUsersResult.nextPageTokenLessThanUserId,
+      nextPageTokenMoreThanUserId: otherDatabaseUsersResult.nextPageTokenMoreThanUserId,
+    }
+
+    return responseBuilder.successResponse(finalResult)
+  } catch (e) {
+    logChildObject.err = e
+
+    if (e.status && e.error) {
+      return responseBuilder.errorResponse(e.status, e.error.message)
+    } else {
+      return responseBuilder.errorResponse(
+        statusCodes['Internal Server Error'],
+        'Failed to get database users'
+      )
+    }
+  }
+}
+
+const _getUserDatabaseOverWebSocket = async function (logChildObject, userDbDdbQuery, internalServerErrorLog) {
+  try {
+    const userDb = await userDbDdbQuery()
+    if (!userDb) return responseBuilder.errorResponse(statusCodes['Not Found'], { message: 'DatabaseNotFound' })
+
+    return responseBuilder.successResponse({
+      encryptedDbKey: userDb['encrypted-db-key'],
+      dbId: userDb['database-id'],
+      dbNameHash: userDb['database-name-hash']
+    })
+  } catch (e) {
+    logChildObject.err = e
+    return responseBuilder.errorResponse(
+      statusCodes['Internal Server Error'],
+      internalServerErrorLog
+    )
+  }
+}
+
+exports.getUserDatabaseByDbNameHash = async function (logChildObject, userId, dbNameHash) {
+  const userDbDdbQuery = () => _getUserDatabase(userId, dbNameHash)
+  const internalServerErrorLog = 'Failed to get user database by db name hash'
+  const response = await _getUserDatabaseOverWebSocket(logChildObject, userDbDdbQuery, internalServerErrorLog)
+  return response
+}
+
+exports.getUserDatabaseByDatabaseId = async function (logChildObject, userId, databaseId) {
+  const userDbDdbQuery = () => _getUserDatabaseByUserIdAndDatabaseId(userId, databaseId)
+  const internalServerErrorLog = 'Failed to get user database by db id'
+  const response = await _getUserDatabaseOverWebSocket(logChildObject, userDbDdbQuery, internalServerErrorLog)
+  return response
+}
+
+const _incrementSeqNo = async function (transaction, databaseId) {
   const incrementSeqNoParams = {
     TableName: setup.databaseTableName,
     Key: {
@@ -231,29 +520,55 @@ const putTransaction = async function (transaction, userId, databaseId) {
 
   // atomically increments and gets the next sequence number for the database
   try {
+    const ddbClient = connection.ddbClient()
     const db = await ddbClient.update(incrementSeqNoParams).promise()
     transaction['sequence-no'] = db.Attributes['next-seq-number']
     transaction['creation-date'] = new Date().toISOString()
   } catch (e) {
     throw new Error(`Failed to increment sequence number with ${e}.`)
   }
+}
 
-  // write the transaction using the next sequence number
-  const params = {
-    TableName: setup.transactionsTableName,
-    Item: transaction,
-    ConditionExpression: 'attribute_not_exists(#databaseId)',
-    ExpressionAttributeNames: {
-      '#databaseId': 'database-id'
-    }
-  }
+const putTransaction = async function (transaction, userId, databaseId) {
+  // make both requests async to keep the time for successful putTransaction low
+  const [userDb] = await Promise.all([
+    _getUserDatabaseByUserIdAndDatabaseId(userId, databaseId),
+    _incrementSeqNo(transaction, databaseId)
+  ])
+
+  const ddbClient = connection.ddbClient()
 
   try {
-    await ddbClient.put(params).promise()
+    if (!userDb) {
+      throw {
+        status: statusCodes['Not Found'],
+        error: { name: 'DatabaseNotFound' }
+      }
+    } else if (userDb['read-only']) {
+      throw {
+        status: statusCodes['Forbidden'],
+        error: { name: 'DatabaseIsReadOnly' }
+      }
+    } else {
+
+      // write the transaction using the next sequence number
+      const params = {
+        TableName: setup.transactionsTableName,
+        Item: transaction,
+        ConditionExpression: 'attribute_not_exists(#databaseId)',
+        ExpressionAttributeNames: {
+          '#databaseId': 'database-id'
+        }
+      }
+
+      await ddbClient.put(params).promise()
+    }
   } catch (e) {
     // best effort rollback - if the rollback fails here, it will get attempted again when the transactions are read
     await rollbackAttempt(transaction, ddbClient)
-    throw new Error(`Failed to put transaction with ${e}.`)
+
+    if (e.status && e.error) throw e
+    else throw new Error(`Failed to put transaction with ${e}.`)
   }
 
   // notify all websocket connections that there's a database change
@@ -308,8 +623,17 @@ exports.doCommand = async function (command, userId, connectionId, dbNameHash, d
     const sequenceNo = await putTransaction(transaction, userId, databaseId)
     return responseBuilder.successResponse({ sequenceNo })
   } catch (e) {
-    logger.warn(`Failed command ${command} for user ${userId} with ${e}`)
-    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to ${command}`)
+    const message = `Failed to ${command}`
+    const logChildObject = { userId, databaseId, command, connectionId }
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).info(message)
+      return responseBuilder.errorResponse(e.status, e.error)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).warn(message)
+      return responseBuilder.errorResponse(statusCode, message)
+    }
   }
 }
 
@@ -357,8 +681,17 @@ exports.batchTransaction = async function (userId, connectionId, dbNameHash, dat
     const sequenceNo = await putTransaction(transaction, userId, databaseId)
     return responseBuilder.successResponse({ sequenceNo })
   } catch (e) {
-    logger.warn(`Failed batch transaction for user ${userId} with ${e}`)
-    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to batch transaction')
+    const message = 'Failed to batch transaction'
+    const logChildObject = { userId, databaseId, connectionId }
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).info(message)
+      return responseBuilder.errorResponse(e.status, e.error)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).warn(message)
+      return responseBuilder.errorResponse(statusCode, message)
+    }
   }
 }
 
@@ -445,5 +778,238 @@ exports.getBundle = async function (databaseId, bundleSeqNo) {
 
   } catch (e) {
     return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to query db state with ${e}`)
+  }
+}
+
+const _validateShareDatabase = async function (sender, dbId, dbNameHash, recipientUsername, readOnly) {
+  const [database, senderUserDb, recipient] = await Promise.all([
+    findDatabaseByDatabaseId(dbId),
+    _getUserDatabase(sender['user-id'], dbNameHash),
+    userController.getUser(sender['app-id'], recipientUsername)
+  ])
+
+  if (!database || !senderUserDb || senderUserDb['database-id'] !== dbId) throw {
+    status: statusCodes['Not Found'],
+    error: { message: 'DatabaseNotFound' }
+  }
+
+  if (!recipient || recipient['deleted']) throw {
+    status: statusCodes['Not Found'],
+    error: { message: 'UserNotFound' }
+  }
+
+  if (sender['user-id'] === recipient['user-id']) throw {
+    status: statusCodes['Conflict'],
+    error: { message: 'SharingWithSelfNotAllowed' }
+  }
+
+  if (database['owner-id'] !== sender['user-id'] && !senderUserDb['resharing-allowed']) throw {
+    status: statusCodes['Forbidden'],
+    error: { message: 'ResharingNotAllowed' }
+  }
+
+  if (readOnly !== undefined && database['owner-id'] !== sender['user-id'] && senderUserDb['read-only'] && !readOnly) throw {
+    status: statusCodes['Forbidden'],
+    error: { message: 'ResharingWithWriteAccessNotAllowed' }
+  }
+
+  const recipientUserDb = await _getUserDatabaseByUserIdAndDatabaseId(recipient['user-id'], senderUserDb['database-id'])
+
+  return { recipient, database, recipientUserDb }
+}
+
+const _buildSharedUserDatabaseParams = (userId, dbId, readOnly, resharingAllowed, senderId, wrappedDbKey, ephemeralPublicKey, signedEphemeralPublicKey,
+  ecdsaPublicKey, sentSignature, recipientEcdsaPublicKey) => {
+  // user will only be able to open the database using database ID. Only requirement is that this value is unique
+  const placeholderDbNameHash = '__userbase_shared_database_' + uuidv4()
+
+  // user must get the database within 24 hours or it will be deleted
+  const expirationDate = Date.now() + MS_IN_A_DAY
+
+  return {
+    TableName: setup.userDatabaseTableName,
+    Item: {
+      'user-id': userId,
+      'database-name-hash': placeholderDbNameHash,
+      'database-id': dbId,
+      'read-only': readOnly,
+      'resharing-allowed': resharingAllowed,
+      'wrapped-db-key': wrappedDbKey,
+      'ephemeral-public-key': ephemeralPublicKey,
+      'signed-ephemeral-public-key': signedEphemeralPublicKey,
+      'sender-ecdsa-public-key': ecdsaPublicKey,
+      'sent-signature': sentSignature,
+      'sender-id': senderId,
+      'recipient-ecdsa-public-key': recipientEcdsaPublicKey,
+      ttl: getTtl(expirationDate),
+    },
+    ConditionExpression: 'attribute_not_exists(#userId)',
+    ExpressionAttributeNames: {
+      '#userId': 'user-id',
+    }
+  }
+}
+
+exports.shareDatabase = async function (logChildObject, sender, dbId, dbNameHash, recipientUsername, readOnly, resharingAllowed,
+  wrappedDbKey, ephemeralPublicKey, signedEphemeralPublicKey, sentSignature, recipientEcdsaPublicKey
+) {
+  try {
+    if (typeof readOnly !== 'boolean') throw {
+      status: statusCodes['Bad Request'],
+      error: { message: 'ReadOnlyMustBeBoolean' }
+    }
+
+    if (typeof resharingAllowed !== 'boolean') throw {
+      status: statusCodes['Bad Request'],
+      error: { message: 'ResharingAllowedMustBeBoolean' }
+    }
+
+    const { recipient, database, recipientUserDb } = await _validateShareDatabase(sender, dbId, dbNameHash, recipientUsername, readOnly, resharingAllowed)
+
+    if (recipientUserDb) throw {
+      status: statusCodes['Conflict'],
+      error: { message: 'DatabaseAlreadyShared' }
+    }
+
+    const recipientUserDbParams = _buildSharedUserDatabaseParams(recipient['user-id'], database['database-id'], readOnly, resharingAllowed, sender['user-id'], wrappedDbKey,
+      ephemeralPublicKey, signedEphemeralPublicKey, sender['ecdsa-public-key'], sentSignature, recipientEcdsaPublicKey)
+
+    const ddbClient = connection.ddbClient()
+    await ddbClient.put(recipientUserDbParams).promise()
+
+    return responseBuilder.successResponse('Success!')
+  } catch (e) {
+    logChildObject.err = e
+
+    if (e.status && e.error) {
+      return responseBuilder.errorResponse(e.status, e.error)
+    } else {
+      return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to share database')
+    }
+  }
+}
+
+exports.saveDatabase = async function (logChildObject, user, dbNameHash, encryptedDbKey, receivedSignature) {
+  try {
+    const params = {
+      TableName: setup.userDatabaseTableName,
+      Key: {
+        'user-id': user['user-id'],
+        'database-name-hash': dbNameHash,
+      },
+      UpdateExpression: 'SET #encryptedDbKey = :encryptedDbKey, #receivedSignature = :receivedSignature'
+        + ' REMOVE #ttl, #wrappedDbKey, #ephemeralPublicKey, #signedEphemeralPublicKey',
+      ExpressionAttributeNames: {
+        '#encryptedDbKey': 'encrypted-db-key',
+        '#receivedSignature': 'received-signature',
+        '#ttl': 'ttl',
+        '#wrappedDbKey': 'wrapped-db-key',
+        '#ephemeralPublicKey': 'ephemeral-public-key',
+        '#signedEphemeralPublicKey': 'signed-ephemeral-public-key',
+      },
+      ExpressionAttributeValues: {
+        ':encryptedDbKey': encryptedDbKey,
+        ':receivedSignature': receivedSignature,
+      }
+    }
+
+    const ddbClient = connection.ddbClient()
+    await ddbClient.update(params).promise()
+
+    return responseBuilder.successResponse('Success!')
+  } catch (e) {
+    logChildObject.err = e
+
+    if (e.status && e.error) {
+      return responseBuilder.errorResponse(e.status, e.error)
+    } else {
+      return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to save database')
+    }
+  }
+}
+
+exports.modifyDatabasePermissions = async function (logChildObject, sender, dbId, dbNameHash, recipientUsername, readOnly, resharingAllowed, revoke) {
+  try {
+    const { recipientUserDb, database } = await _validateShareDatabase(sender, dbId, dbNameHash, recipientUsername, readOnly)
+
+    if (recipientUserDb && recipientUserDb['user-id'] === database['owner-id']) throw {
+      status: statusCodes['Forbidden'],
+      error: { message: 'ModifyingOwnerPermissionsNotAllowed' }
+    }
+
+    const params = {
+      TableName: setup.userDatabaseTableName,
+      Key: {
+        'user-id': recipientUserDb['user-id'],
+        'database-name-hash': recipientUserDb['database-name-hash'],
+      },
+    }
+
+    if (revoke) {
+      // only need to delete if recipient has access to database
+      if (recipientUserDb) {
+        const ddbClient = connection.ddbClient()
+        await ddbClient.delete(params).promise()
+      }
+
+    } else {
+      if (readOnly === undefined && resharingAllowed === undefined) throw {
+        status: statusCodes['Bad Request'],
+        error: { message: 'ParamsMissing' }
+      }
+
+      if (!recipientUserDb) throw {
+        status: statusCodes['Not Found'],
+        error: { message: 'DatabaseNotFound' }
+      }
+
+      params.UpdateExpression = ''
+      params.ExpressionAttributeNames = {}
+      params.ExpressionAttributeValues = {}
+
+      if (readOnly !== undefined) {
+        if (typeof readOnly !== 'boolean') throw {
+          status: statusCodes['Bad Request'],
+          error: { message: 'ReadOnlyMustBeBoolean' }
+        }
+
+        // only update if necessary
+        if (readOnly !== recipientUserDb['read-only']) {
+          params.UpdateExpression += 'SET #readOnly = :readOnly'
+          params.ExpressionAttributeNames['#readOnly'] = 'read-only'
+          params.ExpressionAttributeValues[':readOnly'] = readOnly
+        }
+      }
+
+      if (resharingAllowed !== undefined) {
+        if (typeof resharingAllowed !== 'boolean') throw {
+          status: statusCodes['Bad Request'],
+          error: { message: 'ResharingAllowedMustBeBoolean' }
+        }
+
+        // only update if necessary
+        if (resharingAllowed !== recipientUserDb['resharing-allowed']) {
+          params.UpdateExpression += (params.UpdateExpression ? ', ' : 'SET ') + '#resharingAllowed = :resharingAllowed'
+          params.ExpressionAttributeNames['#resharingAllowed'] = 'resharing-allowed'
+          params.ExpressionAttributeValues[':resharingAllowed'] = resharingAllowed
+        }
+      }
+
+      // only need to update if necessary
+      if (params.UpdateExpression) {
+        const ddbClient = connection.ddbClient()
+        await ddbClient.update(params).promise()
+      }
+    }
+
+    return responseBuilder.successResponse('Success!')
+  } catch (e) {
+    logChildObject.err = e
+
+    if (e.status && e.error) {
+      return responseBuilder.errorResponse(e.status, e.error)
+    } else {
+      return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to modify database permissions')
+    }
   }
 }

@@ -261,13 +261,13 @@ const signUp = async (params) => {
     const appId = config.getAppId()
     const seed = await crypto.generateSeed()
 
-    const { sessionId, creationDate, userId, authToken } = await _generateKeysAndSignUp(username, password, seed, email, profile)
-    const session = { username, sessionId, creationDate, authToken }
+    const { sessionId, creationDate, expirationDate, userId, authToken } = await _generateKeysAndSignUp(username, password, seed, email, profile)
+    const session = { username, sessionId, creationDate, expirationDate, authToken }
 
     const seedString = base64.encode(seed)
 
     localData.saveSeedString(rememberMe, appId, username, seedString)
-    localData.signInSession(rememberMe, username, sessionId, creationDate)
+    localData.signInSession(rememberMe, username, sessionId, creationDate, expirationDate)
 
     await _connectWebSocket(session, seedString, rememberMe)
 
@@ -431,7 +431,7 @@ const signIn = async (params) => {
 
     const seedString = savedSeedString || seedStringFromBackup
 
-    localData.signInSession(rememberMe, username, session.sessionId, session.creationDate)
+    localData.signInSession(rememberMe, username, session.sessionId, session.creationDate, session.expirationDate)
 
     await _connectWebSocket(session, seedString, rememberMe)
 
@@ -509,10 +509,12 @@ const signInWithSession = async (appId) => {
     const currentSession = localData.getCurrentSession()
     if (!currentSession) return {}
 
-    const { signedIn, sessionId, creationDate, rememberMe } = currentSession
+    const { signedIn, sessionId, creationDate, expirationDate, rememberMe } = currentSession
     const savedSeedString = localData.getSeedString(appId, currentSession.username)
 
-    if (!signedIn || !savedSeedString) return { lastUsedUsername: currentSession.username }
+    if (!signedIn || !savedSeedString || new Date() > new Date(expirationDate)) {
+      return { lastUsedUsername: currentSession.username }
+    }
 
     let apiSignInWithSessionResult
     try {
@@ -532,8 +534,10 @@ const signInWithSession = async (appId) => {
     if (username !== currentSession.username) {
       localData.saveSeedString(rememberMe, appId, username, savedSeedString)
       localData.removeSeedString(appId, currentSession.username)
-      localData.signInSession(rememberMe, username, sessionId, creationDate)
     }
+
+    // expirationDate should have been extended
+    localData.signInSession(rememberMe, username, sessionId, creationDate, apiSignInWithSessionResult.expirationDate)
 
     // enable idempotent calls to init()
     if (ws.connectionResolved) {
@@ -631,6 +635,10 @@ const updateUser = async (params) => {
       }
 
       await ws.request(action, finalParams)
+
+      if (finalParams.username && ws.seedString === startingSeedString) {
+        ws.session.username = finalParams.username
+      }
     } catch (e) {
       _parseUserResponseError(e, finalParams.username)
     }

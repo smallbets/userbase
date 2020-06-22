@@ -9,9 +9,14 @@ const {
   deleteUser,
   forgotPassword,
   openDatabase,
+  getDatabases,
   insertItem,
   updateItem,
   putTransaction,
+  getVerificationMessage,
+  verifyUser,
+  shareDatabase,
+  modifyDatabasePermissions,
   purchaseSubscription,
   cancelSubscription,
   resumeSubscription,
@@ -120,6 +125,9 @@ openDatabase({ databaseName: 'tdb', changeHandler: (items) => { } })
 openDatabase({ databaseName: 'tdb' })
 
 // $ExpectType Promise<void>
+getDatabases()
+
+// $ExpectType Promise<void>
 insertItem({ databaseName: 'tdb', item: { name: 'tname' } })
 
 // $ExpectType Promise<void>
@@ -155,6 +163,39 @@ putTransaction({ databaseName: 'tdb', operations: [{ command: 'Update', item: { 
 
 // $ExpectError
 putTransaction({ databaseName: 'tdb', operations: [{ command: 'Delete' }] })
+
+// $ExpectType Promise<void>
+getVerificationMessage()
+
+// $ExpectType Promise<void>
+verifyUser({ verificationMessage: 'tvf' })
+
+// $ExpectError
+verifyUser()
+
+// $ExpectType Promise<void>
+shareDatabase({ databaseName: 'tdb', username: 'tuser' })
+
+// $ExpectType Promise<void>
+shareDatabase({ databaseId: 'tid', username: 'tuser' })
+
+// $ExpectType Promise<void>
+shareDatabase({ databaseId: 'tid', username: 'tuser', requireVerified: true, readOnly: true, resharingAllowed: true })
+
+// $ExpectError
+shareDatabase({ databaseId: 'tid' })
+
+// $ExpectType Promise<void>
+modifyDatabasePermissions({ databaseName: 'tdb', username: 'tuser' })
+
+// $ExpectType Promise<void>
+modifyDatabasePermissions({ databaseId: 'tid', username: 'tuser' })
+
+// $ExpectType Promise<void>
+modifyDatabasePermissions({ databaseId: 'tid', username: 'tuser', revoke: true })
+
+// $ExpectError
+modifyDatabasePermissions({ databaseId: 'tid' })
 
 // $ExpectType Promise<void>
 purchaseSubscription({ successUrl: 'turl', cancelUrl: 'turl' })

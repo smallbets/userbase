@@ -38,6 +38,21 @@ export type DatabasesResult = {
 
 export interface Database {
   databaseName: string
+  databaseId?: string
+  isOwner: boolean
+  receivedFromUsername?: string
+  readOnly: boolean
+  resharingAllowed: boolean
+  users: DatabaseUsers[]
+}
+
+export interface DatabaseUsers {
+  username: string
+  isOwner: boolean
+  receivedFromUsername?: string
+  readOnly: boolean
+  resharingAllowed: boolean
+  verified?: boolean
 }
 
 export type DatabaseOperation = InsertOperation | UpdateOperation | DeleteOperation
@@ -83,17 +98,25 @@ export interface Userbase {
 
   forgotPassword(params: { username: string }): Promise<void>
 
-  openDatabase(params: { databaseName: string, changeHandler: DatabaseChangeHandler }): Promise<void>
+  openDatabase(params: { databaseName?: string, databaseId?: string, changeHandler: DatabaseChangeHandler }): Promise<void>
 
   getDatabases(): Promise<DatabasesResult[]>
 
-  insertItem(params: { databaseName: string, item: any, itemId?: string }): Promise<void>
+  insertItem(params: { databaseName?: string, databaseId?: string, item: any, itemId?: string }): Promise<void>
 
-  updateItem(params: { databaseName: string, item: any, itemId: string }): Promise<void>
+  updateItem(params: { databaseName?: string, databaseId?: string, item: any, itemId: string }): Promise<void>
 
-  deleteItem(params: { databaseName: string, itemId: string }): Promise<void>
+  deleteItem(params: { databaseName?: string, databaseId?: string, itemId: string }): Promise<void>
 
-  putTransaction(params: { databaseName: string, operations: DatabaseOperation[] }): Promise<void>
+  putTransaction(params: { databaseName?: string, databaseId?: string, operations: DatabaseOperation[] }): Promise<void>
+
+  getVerificationMessage(): Promise<{ verificationMessage: string }>
+
+  verifyUser(params: { verificationMessage: string }): Promise<void>
+
+  shareDatabase(params: { databaseName?: string, databaseId?: string, username: string, requireVerified?: boolean, readOnly?: boolean, resharingAllowed?: boolean }): Promise<void>
+
+  modifyDatabasePermissions(params: { databaseName?: string, databaseId?: string, username: string, readOnly?: boolean, resharingAllowed?: boolean, revoke?: boolean }): Promise<void>
 
   purchaseSubscription(params: { successUrl: string, cancelUrl: string }): Promise<void>
 

@@ -77,9 +77,9 @@ class Connection {
     this.requests = {}
 
     this.state = state || {
-      databases: {},
-      dbIdToHash: {},
-      dbNameToHash: {}
+      dbNameToHash: {},
+      databases: {}, // used when openDatabase is called with databaseName
+      databasesByDbId: {} // used when openDatabase is called with databaseId
     }
   }
 
@@ -153,8 +153,12 @@ class Connection {
 
             case 'ApplyTransactions': {
               const dbId = message.dbId
-              const dbNameHash = message.dbNameHash || this.state.dbIdToHash[dbId]
-              const database = this.state.databases[dbNameHash]
+              const dbNameHash = message.dbNameHash
+
+              // if owner, must have opened the database via dbNameHash
+              const database = message.isOwner
+                ? this.state.databases[dbNameHash]
+                : this.state.databasesByDbId[dbId]
 
               if (!database) throw new Error('Missing database')
 
@@ -195,8 +199,8 @@ class Connection {
               await database.applyTransactions(newTransactions)
 
               if (!database.init) {
-                this.state.dbIdToHash[dbId] = dbNameHash
                 database.dbId = dbId
+                database.dbNameHash = dbNameHash
                 database.init = true
                 database.receivedMessage()
               }
@@ -219,9 +223,12 @@ class Connection {
             case 'UpdateUser':
             case 'DeleteUser':
             case 'CreateDatabase':
-            case 'GetDatabase':
             case 'OpenDatabase':
+            case 'OpenDatabaseByDatabaseId':
+            case 'GetUserDatabaseByDatabaseNameHash':
+            case 'GetUserDatabaseByDatabaseId':
             case 'GetDatabases':
+            case 'GetDatabaseUsers':
             case 'Insert':
             case 'Update':
             case 'Delete':
@@ -232,22 +239,27 @@ class Connection {
             case 'PurchaseSubscription':
             case 'CancelSubscription':
             case 'ResumeSubscription':
-            case 'UpdatePaymentMethod': {
-              const requestId = message.requestId
+            case 'UpdatePaymentMethod':
+            case 'ShareDatabase':
+            case 'SaveDatabase':
+            case 'ModifyDatabasePermissions':
+            case 'VerifyUser':
+              {
+                const requestId = message.requestId
 
-              if (!requestId) return console.warn('Missing request id')
+                if (!requestId) return console.warn('Missing request id')
 
-              const request = this.requests[requestId]
-              if (!request) return console.warn(`Request ${requestId} no longer exists!`)
-              else if (!request.promiseResolve || !request.promiseReject) return
+                const request = this.requests[requestId]
+                if (!request) return console.warn(`Request ${requestId} no longer exists!`)
+                else if (!request.promiseResolve || !request.promiseReject) return
 
-              const response = message.response
+                const response = message.response
 
-              const successfulResponse = response && response.status === statusCodes['Success']
+                const successfulResponse = response && response.status === statusCodes['Success']
 
-              if (!successfulResponse) return request.promiseReject(response)
-              else return request.promiseResolve(response)
-            }
+                if (!successfulResponse) return request.promiseReject(response)
+                else return request.promiseResolve(response)
+              }
 
             default: {
               console.log('Received unknown message from backend:' + JSON.stringify(message))
@@ -293,20 +305,28 @@ class Connection {
       console.log(`Connection to server lost. Attempting to reconnect in ${retryDelay / 1000} second${retryDelay !== 1000 ? 's' : ''}...`)
 
       const dbsToReopen = []
+      const dbsToReopenById = []
 
       // as soon as one reconnect succeeds, resolves all the way up the stack and all reconnects succeed
       resolveConnection(await new Promise((resolve, reject) => setTimeout(
         async () => {
           try {
+            // get copy of currently opened databases' memory references to reopen WebSocket with same databases
             const state = currentState || {
+              dbNameToHash: { ...this.state.dbNameToHash },
               databases: { ...this.state.databases },
-              dbIdToHash: { ...this.state.dbIdToHash },
-              dbNameToHash: { ...this.state.dbNameToHash }
+              databasesByDbId: { ...this.state.databasesByDbId }
             }
 
+            // mark databases as uninitialized to prevent client from using them until they are reopened
             for (const dbNameHash in state.databases) {
               state.databases[dbNameHash].init = false
               dbsToReopen.push(dbNameHash)
+            }
+
+            for (const dbId in state.databasesByDbId) {
+              state.databasesByDbId[dbId].init = false
+              dbsToReopenById.push(dbId)
             }
 
             this.init()
@@ -317,7 +337,7 @@ class Connection {
             this.reconnected = true
 
             // only reopen databases on the first call to reconnect()
-            if (!currentState) await this.reopenDatabases(dbsToReopen, 1000)
+            if (!currentState) await this.reopenDatabases(dbsToReopen, dbsToReopenById, 1000)
 
             resolve(result)
           } catch (e) {
@@ -331,10 +351,11 @@ class Connection {
     }
   }
 
-  async reopenDatabases(dbsToReopen, retryDelay) {
+  async reopenDatabases(dbsToReopen, dbsToReopenById, retryDelay) {
     try {
       const openDatabasePromises = []
 
+      // open databases by database name hash
       for (const dbNameHash of dbsToReopen) {
         const database = this.state.databases[dbNameHash]
 
@@ -345,13 +366,24 @@ class Connection {
         }
       }
 
+      // open databases by database ID
+      for (const databaseId of dbsToReopenById) {
+        const database = this.state.databasesByDbId[databaseId]
+
+        if (!database.init) {
+          const action = 'OpenDatabaseByDatabaseId'
+          const params = { databaseId, reopenAtSeqNo: database.lastSeqNo }
+          openDatabasePromises.push(this.request(action, params))
+        }
+      }
+
       await Promise.all(openDatabasePromises)
     } catch (e) {
 
       // keep attempting to reopen on failure
       await new Promise(resolve => setTimeout(
         async () => {
-          await this.reopenDatabases(dbsToReopen, retryDelay + BACKOFF_RETRY_DELAY)
+          await this.reopenDatabases(dbsToReopen, dbsToReopenById, retryDelay + BACKOFF_RETRY_DELAY)
           resolve()
         },
         Math.min(retryDelay, MAX_RETRY_DELAY)

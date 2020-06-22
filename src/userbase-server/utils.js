@@ -62,7 +62,9 @@ export const trimReq = (req) => ({ id: req.id, url: req.url })
 
 export const truncateSessionId = (sessionId) => typeof sessionId === 'string' && sessionId.substring(0, 8) // limit sensitive logging
 
-export const getTtl = (secondsToLive) => Math.floor(Date.now() / 1000) + secondsToLive
+export const getTtl = (expirationDate) => Math.floor(new Date(expirationDate).getTime() / 1000)
+
+export const ttlToDate = (ttl) => new Date(ttl * 1000)
 
 // matches stringToArrayBuffer from userbase-js/Crypto/utils
 // https://developers.google.com/web/updates/2012/06/How-to-convert-ArrayBuffer-to-and-from-String
@@ -103,7 +105,7 @@ export const nextPageTokenToLastEvaluatedKey = (nextPageToken, validateLastEvalu
     const lastEvaluatedKeyString = Buffer.from(nextPageToken, 'base64').toString('ascii')
     const lastEvaluatedKey = JSON.parse(lastEvaluatedKeyString)
 
-    validateLastEvaluatedKey(lastEvaluatedKey)
+    if (validateLastEvaluatedKey) validateLastEvaluatedKey(lastEvaluatedKey)
 
     return lastEvaluatedKey
   } catch {

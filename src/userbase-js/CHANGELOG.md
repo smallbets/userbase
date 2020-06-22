@@ -1,3 +1,7 @@
+## [1.4.1] - 2020-05-20
+## Changed
+- init() now returns immediately if the user's session has expired rather than make a request to the Userbase server to find out it has expired.
+
 ## [1.4.0] - 2020-05-04
 ## Added
 - purchaseSubscription(), cancelSubscription(), resumeSubscription(), and updatePaymentMethod() functions to enable developers to accept subscription payments from their users.
