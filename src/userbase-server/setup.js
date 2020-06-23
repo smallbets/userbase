@@ -64,6 +64,7 @@ const authTokenIndex = 'AuthTokenIndex'
 const subscriptionPlanIndex = 'SubscriptionPlanIndex'
 const testSubscriptionPlanIndex = 'test' + subscriptionPlanIndex
 const prodSubscriptionPlanIndex = 'prod' + subscriptionPlanIndex
+const userDatabaseIdIndex = 'UserDatabaseIdIndex'
 
 exports.adminIdIndex = adminIdIndex
 exports.accessTokenIndex = accessTokenIndex
@@ -71,6 +72,7 @@ exports.userIdIndex = userIdIndex
 exports.appIdIndex = appIdIndex
 exports.authTokenIndex = authTokenIndex
 exports.subscriptionPlanIndex = subscriptionPlanIndex
+exports.userDatabaseIdIndex = userDatabaseIdIndex
 
 const getDbStatesBucketName = function () {
   if (!initialized || !awsAccountId) {
@@ -295,14 +297,32 @@ async function setupDdb() {
   const userDatabaseTableParams = {
     AttributeDefinitions: [
       { AttributeName: 'user-id', AttributeType: 'S' },
-      { AttributeName: 'database-name-hash', AttributeType: 'S' }
+      { AttributeName: 'database-name-hash', AttributeType: 'S' },
+      { AttributeName: 'database-id', AttributeType: 'S' },
     ],
     KeySchema: [
       { AttributeName: 'user-id', KeyType: 'HASH' },
       { AttributeName: 'database-name-hash', KeyType: 'RANGE' }
     ],
+    GlobalSecondaryIndexes: [
+      {
+        IndexName: userDatabaseIdIndex,
+        KeySchema: [
+          { AttributeName: 'database-id', KeyType: 'HASH' },
+          { AttributeName: 'user-id', KeyType: 'RANGE' },
+        ],
+        Projection: { ProjectionType: 'ALL' }
+      },
+    ],
     BillingMode: 'PAY_PER_REQUEST',
     TableName: userDatabaseTableName
+  }
+  const userDatabasesTimeToLive = {
+    TableName: userDatabaseTableName,
+    TimeToLiveSpecification: {
+      AttributeName: 'ttl',
+      Enabled: true
+    }
   }
 
   // the transactions table holds a record per database transaction
@@ -373,6 +393,7 @@ async function setupDdb() {
   logger.info('Setting time to live on tables if necessary')
   await Promise.all([
     setTimeToLive(ddb, sessionsTimeToLive),
+    setTimeToLive(ddb, userDatabasesTimeToLive),
   ])
 }
 

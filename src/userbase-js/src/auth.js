@@ -168,23 +168,28 @@ const _generateKeysAndSignUp = async (username, password, seed, email, profile) 
   const masterKey = await crypto.hkdf.importHkdfKey(seed)
 
   const encryptionKeySalt = crypto.hkdf.generateSalt()
-  const dhKeySalt = crypto.hkdf.generateSalt()
   const hmacKeySalt = crypto.hkdf.generateSalt()
-
-  const dhPrivateKey = await crypto.diffieHellman.importKeyFromMaster(masterKey, dhKeySalt)
-  const publicKey = crypto.diffieHellman.getPublicKey(dhPrivateKey)
-
   const keySalts = {
     encryptionKeySalt: base64.encode(encryptionKeySalt),
-    dhKeySalt: base64.encode(dhKeySalt),
     hmacKeySalt: base64.encode(hmacKeySalt),
+  }
+
+  const ecdsaKeyData = await crypto.ecdsa.generateEcdsaKeyData(masterKey)
+  const ecdhKeyData = await crypto.ecdh.generateEcdhKeyData(masterKey, ecdsaKeyData.ecdsaPrivateKey)
+
+  delete ecdsaKeyData.ecdsaPrivateKey
+  delete ecdhKeyData.ecdhPrivateKey
+
+  const ecKeyData = {
+    ecdsaKeyData,
+    ecdhKeyData,
   }
 
   try {
     const session = await api.auth.signUp(
       username,
       passwordToken,
-      publicKey,
+      ecKeyData,
       passwordSalts,
       keySalts,
       email,
@@ -630,6 +635,10 @@ const updateUser = async (params) => {
       }
 
       await ws.request(action, finalParams)
+
+      if (finalParams.username && ws.seedString === startingSeedString) {
+        ws.session.username = finalParams.username
+      }
     } catch (e) {
       _parseUserResponseError(e, finalParams.username)
     }
@@ -736,6 +745,8 @@ const forgotPassword = async (params) => {
           const message = JSON.parse(e.data)
 
           switch (message.route) {
+
+            // users created with userbase-js < v2.0.0 that have not signed in yet will need to prove access to DH key by decrypting token
             case 'ReceiveEncryptedToken': {
               // if client decrypts encrypted token successfully, proves to server it has the user's key
               const encryptedForgotPasswordToken = new Uint8Array(message.encryptedForgotPasswordToken.data)
@@ -754,6 +765,34 @@ const forgotPassword = async (params) => {
               forgotPasswordWs.send(JSON.stringify({
                 action: 'ForgotPassword',
                 params: { forgotPasswordToken }
+              }))
+
+              break
+            }
+
+            // users signed in with userbase-js >= v2.0.0 will need to prove access to ECDSA key by signing token
+            case 'ReceiveToken': {
+              const {
+                ecdsaKeyWrapperSalt,
+                wrappedEcdsaPrivateKey,
+                forgotPasswordToken,
+              } = message
+
+              const ecdsaKeyWrapper = await crypto.ecdsa.importEcdsaKeyWrapperFromMaster(masterKey, base64.decode(ecdsaKeyWrapperSalt))
+
+              let ecdsaPrivateKey
+              try {
+                // if it fails to unwrap, it's almost certainly because key is incorrect
+                ecdsaPrivateKey = await crypto.ecdsa.unwrapEcdsaPrivateKey(base64.decode(wrappedEcdsaPrivateKey), ecdsaKeyWrapper)
+              } catch {
+                throw new errors.KeyNotFound(keyNotFoundMessage)
+              }
+
+              const signedForgotPasswordToken = base64.encode(await crypto.ecdsa.sign(ecdsaPrivateKey, base64.decode(forgotPasswordToken)))
+
+              forgotPasswordWs.send(JSON.stringify({
+                action: 'ForgotPassword',
+                params: { signedForgotPasswordToken }
               }))
 
               break

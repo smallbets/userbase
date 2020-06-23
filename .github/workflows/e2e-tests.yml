@@ -15,8 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # run 2 copies of the current job in parallel
-        containers: [1, 2]
+        # run 6 copies of the current job in parallel
+        containers: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/setup-node@v1
         with:
@@ -51,6 +51,7 @@ jobs:
         env:
           CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
         with:
+          browser: chrome
           start: npm run ci:start
           wait-on: "http://localhost:8080/ping"
           wait-on-timeout: 120

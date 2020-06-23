@@ -77,9 +77,9 @@ class Connection {
     this.requests = {}
 
     this.state = state || {
-      databases: {},
-      dbIdToHash: {},
-      dbNameToHash: {}
+      dbNameToHash: {},
+      databases: {}, // used when openDatabase is called with databaseName
+      databasesByDbId: {} // used when openDatabase is called with databaseId
     }
   }
 
@@ -132,11 +132,19 @@ class Connection {
 
               const {
                 keySalts,
+                validationMessage,
+                ecKeyData,
                 encryptedValidationMessage,
               } = message
 
               this.keys.salts = keySalts
-              this.encryptedValidationMessage = new Uint8Array(encryptedValidationMessage.data)
+
+              this.validationMessage = validationMessage
+              this.ecKeyData = ecKeyData
+
+              // provided by userbase-server for users who have not yet generated their ECDSA key and
+              // still only have a DH key
+              if (encryptedValidationMessage) this.encryptedValidationMessage = new Uint8Array(encryptedValidationMessage.data)
 
               await this.setKeys(this.seedString)
 
@@ -145,8 +153,12 @@ class Connection {
 
             case 'ApplyTransactions': {
               const dbId = message.dbId
-              const dbNameHash = message.dbNameHash || this.state.dbIdToHash[dbId]
-              const database = this.state.databases[dbNameHash]
+              const dbNameHash = message.dbNameHash
+
+              // if owner, must have opened the database via dbNameHash
+              const database = message.isOwner
+                ? this.state.databases[dbNameHash]
+                : this.state.databasesByDbId[dbId]
 
               if (!database) throw new Error('Missing database')
 
@@ -187,8 +199,8 @@ class Connection {
               await database.applyTransactions(newTransactions)
 
               if (!database.init) {
-                this.state.dbIdToHash[dbId] = dbNameHash
                 database.dbId = dbId
+                database.dbNameHash = dbNameHash
                 database.init = true
                 database.receivedMessage()
               }
@@ -211,9 +223,12 @@ class Connection {
             case 'UpdateUser':
             case 'DeleteUser':
             case 'CreateDatabase':
-            case 'GetDatabase':
             case 'OpenDatabase':
+            case 'OpenDatabaseByDatabaseId':
+            case 'GetUserDatabaseByDatabaseNameHash':
+            case 'GetUserDatabaseByDatabaseId':
             case 'GetDatabases':
+            case 'GetDatabaseUsers':
             case 'Insert':
             case 'Update':
             case 'Delete':
@@ -224,22 +239,27 @@ class Connection {
             case 'PurchaseSubscription':
             case 'CancelSubscription':
             case 'ResumeSubscription':
-            case 'UpdatePaymentMethod': {
-              const requestId = message.requestId
+            case 'UpdatePaymentMethod':
+            case 'ShareDatabase':
+            case 'SaveDatabase':
+            case 'ModifyDatabasePermissions':
+            case 'VerifyUser':
+              {
+                const requestId = message.requestId
 
-              if (!requestId) return console.warn('Missing request id')
+                if (!requestId) return console.warn('Missing request id')
 
-              const request = this.requests[requestId]
-              if (!request) return console.warn(`Request ${requestId} no longer exists!`)
-              else if (!request.promiseResolve || !request.promiseReject) return
+                const request = this.requests[requestId]
+                if (!request) return console.warn(`Request ${requestId} no longer exists!`)
+                else if (!request.promiseResolve || !request.promiseReject) return
 
-              const response = message.response
+                const response = message.response
 
-              const successfulResponse = response && response.status === statusCodes['Success']
+                const successfulResponse = response && response.status === statusCodes['Success']
 
-              if (!successfulResponse) return request.promiseReject(response)
-              else return request.promiseResolve(response)
-            }
+                if (!successfulResponse) return request.promiseReject(response)
+                else return request.promiseResolve(response)
+              }
 
             default: {
               console.log('Received unknown message from backend:' + JSON.stringify(message))
@@ -285,20 +305,28 @@ class Connection {
       console.log(`Connection to server lost. Attempting to reconnect in ${retryDelay / 1000} second${retryDelay !== 1000 ? 's' : ''}...`)
 
       const dbsToReopen = []
+      const dbsToReopenById = []
 
       // as soon as one reconnect succeeds, resolves all the way up the stack and all reconnects succeed
       resolveConnection(await new Promise((resolve, reject) => setTimeout(
         async () => {
           try {
+            // get copy of currently opened databases' memory references to reopen WebSocket with same databases
             const state = currentState || {
+              dbNameToHash: { ...this.state.dbNameToHash },
               databases: { ...this.state.databases },
-              dbIdToHash: { ...this.state.dbIdToHash },
-              dbNameToHash: { ...this.state.dbNameToHash }
+              databasesByDbId: { ...this.state.databasesByDbId }
             }
 
+            // mark databases as uninitialized to prevent client from using them until they are reopened
             for (const dbNameHash in state.databases) {
               state.databases[dbNameHash].init = false
               dbsToReopen.push(dbNameHash)
+            }
+
+            for (const dbId in state.databasesByDbId) {
+              state.databasesByDbId[dbId].init = false
+              dbsToReopenById.push(dbId)
             }
 
             this.init()
@@ -309,7 +337,7 @@ class Connection {
             this.reconnected = true
 
             // only reopen databases on the first call to reconnect()
-            if (!currentState) await this.reopenDatabases(dbsToReopen, 1000)
+            if (!currentState) await this.reopenDatabases(dbsToReopen, dbsToReopenById, 1000)
 
             resolve(result)
           } catch (e) {
@@ -323,10 +351,11 @@ class Connection {
     }
   }
 
-  async reopenDatabases(dbsToReopen, retryDelay) {
+  async reopenDatabases(dbsToReopen, dbsToReopenById, retryDelay) {
     try {
       const openDatabasePromises = []
 
+      // open databases by database name hash
       for (const dbNameHash of dbsToReopen) {
         const database = this.state.databases[dbNameHash]
 
@@ -337,13 +366,24 @@ class Connection {
         }
       }
 
+      // open databases by database ID
+      for (const databaseId of dbsToReopenById) {
+        const database = this.state.databasesByDbId[databaseId]
+
+        if (!database.init) {
+          const action = 'OpenDatabaseByDatabaseId'
+          const params = { databaseId, reopenAtSeqNo: database.lastSeqNo }
+          openDatabasePromises.push(this.request(action, params))
+        }
+      }
+
       await Promise.all(openDatabasePromises)
     } catch (e) {
 
       // keep attempting to reopen on failure
       await new Promise(resolve => setTimeout(
         async () => {
-          await this.reopenDatabases(dbsToReopen, retryDelay + BACKOFF_RETRY_DELAY)
+          await this.reopenDatabases(dbsToReopen, dbsToReopenById, retryDelay + BACKOFF_RETRY_DELAY)
           resolve()
         },
         Math.min(retryDelay, MAX_RETRY_DELAY)
@@ -409,10 +449,24 @@ class Connection {
 
     const salts = this.keys.salts
     this.keys.encryptionKey = await crypto.aesGcm.importKeyFromMaster(masterKey, base64.decode(salts.encryptionKeySalt))
-    this.keys.dhPrivateKey = await crypto.diffieHellman.importKeyFromMaster(masterKey, base64.decode(salts.dhKeySalt))
     this.keys.hmacKey = await crypto.hmac.importKeyFromMaster(masterKey, base64.decode(salts.hmacKeySalt))
 
-    const userData = await this.validateKey()
+    if (salts.ecdsaKeyWrapperSalt) {
+      const ecdsaKeyWrapper = await crypto.ecdsa.importEcdsaKeyWrapperFromMaster(masterKey, base64.decode(salts.ecdsaKeyWrapperSalt))
+      const wrappedEcdsaPrivateKey = base64.decode(this.ecKeyData.wrappedEcdsaPrivateKey)
+      this.keys.ecdsaPrivateKey = await crypto.ecdsa.unwrapEcdsaPrivateKey(wrappedEcdsaPrivateKey, ecdsaKeyWrapper)
+
+      const ecdhKeyWrapper = await crypto.ecdh.importEcdhKeyWrapperFromMaster(masterKey, base64.decode(salts.ecdhKeyWrapperSalt))
+      const wrappedEcdhPrivateKey = base64.decode(this.ecKeyData.wrappedEcdhPrivateKey)
+      this.keys.ecdhPrivateKey = await crypto.ecdh.unwrapEcdhPrivateKey(wrappedEcdhPrivateKey, ecdhKeyWrapper)
+    } else if (salts.dhKeySalt) {
+
+      // must be an old user created with userbase-js < v2.0.0. Need to prove access to DH key to server, and
+      // upgrade to use EC keys for future logins and usage
+      this.keys.dhPrivateKey = await crypto.diffieHellman.importKeyFromMaster(masterKey, base64.decode(salts.dhKeySalt))
+    }
+
+    const userData = await this.validateKey(masterKey)
     this.userData = userData
 
     this.keys.init = true
@@ -421,13 +475,41 @@ class Connection {
     this.connectionResolved = true
   }
 
-  async validateKey() {
-    const sharedKey = await crypto.diffieHellman.getSharedKeyWithServer(this.keys.dhPrivateKey)
+  async validateKey(masterKey) {
+    let validationMessage, ecKeyData
+    if (this.keys.ecdsaPrivateKey) {
 
-    const validationMessage = base64.encode(await crypto.aesGcm.decrypt(sharedKey, this.encryptedValidationMessage))
+      // need to sign the validation message with ECDSA private key
+      validationMessage = await crypto.ecdsa.sign(this.keys.ecdsaPrivateKey, base64.decode(this.validationMessage))
+
+    } else if (this.keys.dhPrivateKey) {
+
+      // need to decrypt the encrypted validation emssage with DH shared key
+      const sharedKey = await crypto.diffieHellman.getSharedKeyWithServer(this.keys.dhPrivateKey)
+      validationMessage = await crypto.aesGcm.decrypt(sharedKey, this.encryptedValidationMessage)
+
+      // upgrade to use EC key data for future logins
+      const ecdsaKeyData = await crypto.ecdsa.generateEcdsaKeyData(masterKey)
+      const ecdhKeyData = await crypto.ecdh.generateEcdhKeyData(masterKey, ecdsaKeyData.ecdsaPrivateKey)
+
+      this.keys.ecdsaPrivateKey = ecdsaKeyData.ecdsaPrivateKey
+      this.keys.ecdhPrivateKey = ecdhKeyData.ecdhPrivateKey
+
+      delete this.keys.dhPrivateKey
+      delete ecdsaKeyData.ecdsaPrivateKey
+      delete ecdhKeyData.ecdhPrivateKey
+
+      ecKeyData = {
+        ecdsaKeyData,
+        ecdhKeyData,
+      }
+    }
 
     const action = 'ValidateKey'
-    const params = { validationMessage }
+    const params = {
+      validationMessage: base64.encode(validationMessage),
+      ecKeyData
+    }
 
     const response = await this.request(action, params)
     const userData = response.data

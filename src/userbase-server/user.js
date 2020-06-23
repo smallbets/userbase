@@ -69,7 +69,7 @@ const createSession = async function (userId, appId) {
 }
 
 const _buildSignUpParams = (username, passwordToken, appId, userId,
-  publicKey, passwordSalts, keySalts, email, profile, passwordBasedBackup) => {
+  publicKeyData, passwordSalts, keySalts, email, profile, passwordBasedBackup) => {
 
   const {
     passwordSalt,
@@ -78,8 +78,7 @@ const _buildSignUpParams = (username, passwordToken, appId, userId,
 
   const {
     encryptionKeySalt,
-    dhKeySalt,
-    hmacKeySalt
+    hmacKeySalt,
   } = keySalts
 
   const { passwordBasedEncryptionKeySalt, passwordEncryptedSeed } = passwordBasedBackup
@@ -91,14 +90,37 @@ const _buildSignUpParams = (username, passwordToken, appId, userId,
     'password-token-salt': passwordTokenSalt,
     'app-id': appId,
     'user-id': userId,
-    'public-key': publicKey,
     'encryption-key-salt': encryptionKeySalt,
-    'diffie-hellman-key-salt': dhKeySalt,
     'hmac-key-salt': hmacKeySalt,
     'seed-not-saved-yet': true,
     'creation-date': new Date().toISOString(),
     'password-based-encryption-key-salt': passwordBasedEncryptionKeySalt,
-    'password-encrypted-seed': passwordEncryptedSeed
+    'password-encrypted-seed': passwordEncryptedSeed,
+  }
+
+  const {
+    ecKeyData,    // userbase-js >= v2.0.0
+    dhPublicKey,  // userbase-js <  v2.0.0
+  } = publicKeyData
+
+  if (ecKeyData) {
+    const { ecdsaKeyData, ecdhKeyData } = ecKeyData
+    const { ecdsaPublicKey, wrappedEcdsaPrivateKey, ecdsaKeyWrapperSalt } = ecdsaKeyData
+    const { ecdhPublicKey, wrappedEcdhPrivateKey, ecdhKeyWrapperSalt, signedEcdhPublicKey } = ecdhKeyData
+
+    user['ecdsa-public-key'] = ecdsaPublicKey
+    user['ecdh-public-key'] = ecdhPublicKey
+
+    user['wrapped-ecdsa-private-key'] = wrappedEcdsaPrivateKey
+    user['wrapped-ecdh-private-key'] = wrappedEcdhPrivateKey
+
+    user['ecdsa-key-wrapper-salt'] = ecdsaKeyWrapperSalt
+    user['ecdh-key-wrapper-salt'] = ecdhKeyWrapperSalt
+
+    user['signed-ecdh-public-key'] = signedEcdhPublicKey
+  } else if (dhPublicKey) {
+    user['public-key'] = dhPublicKey
+    user['diffie-hellman-key-salt'] = keySalts.dhKeySalt
   }
 
   if (email) user.email = email.toLowerCase()
@@ -276,10 +298,39 @@ const _validateUsernameInput = (username) => {
 }
 exports._validateUsernameInput = _validateUsernameInput
 
-const _validateSignUpInput = (appId, username, passwordToken, publicKey, passwordSalts, keySalts, passwordBasedBackup, email, profile) => {
+const _verifyEcdhPublicKey = (ecdhPublicKey, ecdsaPublicKey, signedEcdhPublicKey) => {
+  if (!crypto.ecdsa.verify(Buffer.from(ecdhPublicKey, 'base64'), ecdsaPublicKey, signedEcdhPublicKey)) {
+    throw 'Failed to verify signed ECDH public key'
+  }
+}
+
+const _validateSignUpInput = (appId, username, passwordToken, publicKeyData, passwordSalts, keySalts, passwordBasedBackup, email, profile) => {
   try {
-    if (!appId || !username || !passwordToken || !publicKey || !passwordSalts || !keySalts || !passwordBasedBackup) {
+    const {
+      ecKeyData,    // userbase-js >= v2.0.0
+      dhPublicKey,  // userbase-js <  v2.0.0
+    } = publicKeyData
+
+    if (!appId || !username || !passwordToken || !passwordSalts || !keySalts || !passwordBasedBackup ||
+      (!ecKeyData && !dhPublicKey)) {
       throw 'Missing required items'
+    }
+
+    if (ecKeyData) {
+      const { ecdsaKeyData, ecdhKeyData } = ecKeyData
+      if (!ecdsaKeyData || !ecdhKeyData) throw 'Missing required items'
+
+      const { ecdsaPublicKey, wrappedEcdsaPrivateKey } = ecdsaKeyData
+      if (!ecdsaPublicKey || !wrappedEcdsaPrivateKey) throw 'Missing required items'
+
+      const { ecdhPublicKey, wrappedEcdhPrivateKey, signedEcdhPublicKey } = ecdhKeyData
+      if (!ecdhPublicKey || !wrappedEcdhPrivateKey || !signedEcdhPublicKey) throw 'Missing required items'
+
+      const { ecdsaKeyWrapperSalt } = ecdsaKeyData
+      const { ecdhKeyWrapperSalt } = ecdhKeyData
+      if (!ecdsaKeyWrapperSalt || !ecdhKeyWrapperSalt) throw 'Missing required salts'
+
+      _verifyEcdhPublicKey(ecdhPublicKey, ecdsaPublicKey, signedEcdhPublicKey)
     }
 
     const {
@@ -293,7 +344,8 @@ const _validateSignUpInput = (appId, username, passwordToken, publicKey, passwor
       hmacKeySalt
     } = keySalts
 
-    if (!passwordSalt || !passwordTokenSalt || !encryptionKeySalt || !dhKeySalt || !hmacKeySalt) {
+    if (!passwordSalt || !passwordTokenSalt || !encryptionKeySalt || !hmacKeySalt ||
+      (dhPublicKey && !dhKeySalt)) {
       throw 'Missing required salts'
     }
 
@@ -344,7 +396,8 @@ exports.signUp = async function (req, res) {
   const username = req.body.username
   const passwordToken = req.body.passwordToken
 
-  const publicKey = req.body.publicKey
+  const dhPublicKey = req.body.publicKey  // userbase-js <  v2.0.0
+  const ecKeyData = req.body.ecKeyData    // userbase-js >= v2.0.0
 
   const passwordSalts = req.body.passwordSalts
   const keySalts = req.body.keySalts
@@ -358,7 +411,8 @@ exports.signUp = async function (req, res) {
     logChildObject = { appId, username, req: trimReq(req) }
     logger.child(logChildObject).info('Signing up user')
 
-    _validateSignUpInput(appId, username, passwordToken, publicKey, passwordSalts, keySalts, passwordBasedBackup, email, profile)
+    const publicKeyData = { dhPublicKey, ecKeyData }
+    _validateSignUpInput(appId, username, passwordToken, publicKeyData, passwordSalts, keySalts, passwordBasedBackup, email, profile)
 
     const userId = uuidv4()
 
@@ -390,7 +444,7 @@ exports.signUp = async function (req, res) {
     await _validateSubscription(admin['stripe-saas-subscription-status'], admin['stripe-cancel-saas-subscription-at'], appId)
 
     const params = _buildSignUpParams(username, passwordToken, appId, userId,
-      publicKey, passwordSalts, keySalts, email, profile, passwordBasedBackup)
+      publicKeyData, passwordSalts, keySalts, email, profile, passwordBasedBackup)
 
     try {
       const ddbClient = connection.ddbClient()
@@ -690,20 +744,14 @@ exports.verifyAuthToken = async function (req, res) {
   }
 }
 
-const _getValidationMessage = (publicKey) => {
-  const validationMessage = crypto.randomBytes(VALIDATION_MESSAGE_LENGTH)
-
+const _getEncryptedValidationMessage = (validationMessage, publicKey) => {
   const publicKeyArrayBuffer = Buffer.from(publicKey, 'base64')
   const sharedSecret = crypto.diffieHellman.computeSecret(publicKeyArrayBuffer)
   const sharedKey = crypto.sha256.hash(sharedSecret)
   const encryptedValidationMessage = crypto.aesGcm.encrypt(sharedKey, validationMessage)
 
-  return {
-    validationMessage,
-    encryptedValidationMessage
-  }
+  return encryptedValidationMessage
 }
-exports.getValidationMessage = _getValidationMessage
 
 const _buildStripeData = (user, app, admin) => {
   const stripeData = {}
@@ -725,7 +773,58 @@ const _buildStripeData = (user, app, admin) => {
   return stripeData
 }
 
-const userSavedSeed = async function (userId, appId, username, publicKey) {
+const _saveEcKeyData = async function (userId, appId, username, ecKeyData) {
+  const { ecdsaKeyData, ecdhKeyData } = ecKeyData
+  const { ecdsaPublicKey, wrappedEcdsaPrivateKey, ecdsaKeyWrapperSalt } = ecdsaKeyData
+  const { ecdhPublicKey, wrappedEcdhPrivateKey, ecdhKeyWrapperSalt, signedEcdhPublicKey } = ecdhKeyData
+
+  _verifyEcdhPublicKey(ecdhPublicKey, ecdsaPublicKey, signedEcdhPublicKey)
+
+  const updateUserParams = {
+    TableName: setup.usersTableName,
+    Key: {
+      'username': username,
+      'app-id': appId
+    },
+    UpdateExpression: 'REMOVE #dhPublicKey, #dhKeySalt SET ' +
+      '#ecdsaPublicKey = :ecdsaPublicKey, ' +
+      '#ecdhPublicKey = :ecdhPublicKey, ' +
+      '#wrappedEcdsaPrivateKey = :wrappedEcdsaPrivateKey, ' +
+      '#wrappedEcdhPrivateKey = :wrappedEcdhPrivateKey, ' +
+      '#ecdsaKeyWrapperSalt = :ecdsaKeyWrapperSalt, ' +
+      '#ecdhKeyWrapperSalt = :ecdhKeyWrapperSalt, ' +
+      '#signedEcdhPublicKey = :signedEcdhPublicKey'
+    ,
+    ConditionExpression: '#userId = :userId and attribute_exists(#dhPublicKey) and attribute_not_exists(#ecdsaPublicKey)',
+    ExpressionAttributeNames: {
+      '#userId': 'user-id',
+      '#dhPublicKey': 'public-key',
+      '#dhKeySalt': 'diffie-hellman-key-salt',
+      '#ecdsaPublicKey': 'ecdsa-public-key',
+      '#ecdhPublicKey': 'ecdh-public-key',
+      '#wrappedEcdsaPrivateKey': 'wrapped-ecdsa-private-key',
+      '#wrappedEcdhPrivateKey': 'wrapped-ecdh-private-key',
+      '#ecdsaKeyWrapperSalt': 'ecdsa-key-wrapper-salt',
+      '#ecdhKeyWrapperSalt': 'ecdh-key-wrapper-salt',
+      '#signedEcdhPublicKey': 'signed-ecdh-public-key'
+    },
+    ExpressionAttributeValues: {
+      ':userId': userId,
+      ':ecdsaPublicKey': ecdsaPublicKey,
+      ':ecdhPublicKey': ecdhPublicKey,
+      ':wrappedEcdsaPrivateKey': wrappedEcdsaPrivateKey,
+      ':wrappedEcdhPrivateKey': wrappedEcdhPrivateKey,
+      ':ecdsaKeyWrapperSalt': ecdsaKeyWrapperSalt,
+      ':ecdhKeyWrapperSalt': ecdhKeyWrapperSalt,
+      ':signedEcdhPublicKey': signedEcdhPublicKey
+    },
+  }
+
+  const ddbClient = connection.ddbClient()
+  await ddbClient.update(updateUserParams).promise()
+}
+
+const userSavedSeed = async function (userId, appId, username, ecdsaPublicKey, dhPublicKey) {
   const updateUserParams = {
     TableName: setup.usersTableName,
     Key: {
@@ -737,11 +836,11 @@ const userSavedSeed = async function (userId, appId, username, publicKey) {
     ExpressionAttributeNames: {
       '#seedNotSavedYet': 'seed-not-saved-yet',
       '#userId': 'user-id',
-      '#publicKey': 'public-key'
+      '#publicKey': ecdsaPublicKey ? 'ecdsa-public-key' : 'public-key'
     },
     ExpressionAttributeValues: {
       ':userId': userId,
-      ':publicKey': publicKey
+      ':publicKey': ecdsaPublicKey || dhPublicKey
     },
   }
 
@@ -749,18 +848,29 @@ const userSavedSeed = async function (userId, appId, username, publicKey) {
   await ddbClient.update(updateUserParams).promise()
 }
 
-exports.validateKey = async function (validationMessage, userProvidedValidationMessage, conn, admin, app, user) {
+const _validateKey = (user, validationMessage, userProvidedValidationMessage) => {
+  const ecdsaPublicKey = user['ecdsa-public-key']
+
+  if (ecdsaPublicKey) {
+    // user needed to digitally sign the validation message with ECDSA private key
+    return crypto.ecdsa.verify(validationMessage, ecdsaPublicKey, userProvidedValidationMessage)
+  } else {
+    // user needed to decrypt validation message with shared key
+    return validationMessage.toString('base64') === userProvidedValidationMessage
+  }
+}
+
+exports.validateKey = async function (validationMessage, userProvidedValidationMessage, conn, admin, app, user, ecKeyData) {
   const seedNotSavedYet = user['seed-not-saved-yet']
   const userId = user['user-id']
   const appId = user['app-id']
   const username = user['username']
-  const userPublicKey = user['public-key']
 
-  if (validationMessage.toString('base64') === userProvidedValidationMessage) {
+  if (_validateKey(user, validationMessage, userProvidedValidationMessage)) {
     try {
       if (seedNotSavedYet) {
         try {
-          await userSavedSeed(userId, appId, username, userPublicKey)
+          await userSavedSeed(userId, appId, username, user['ecdsa-public-key'], user['public-key'])
         } catch (e) {
           if (e.name === 'ConditionalCheckFailedException') {
             return responseBuilder.errorResponse(statusCodes['Unauthorized'], 'Invalid seed')
@@ -769,6 +879,9 @@ exports.validateKey = async function (validationMessage, userProvidedValidationM
           throw e
         }
       }
+
+      // old user created <= userbase-js v2.0.0 must be signing in to updated client for first time
+      if (ecKeyData) await _saveEcKeyData(userId, appId, username, ecKeyData)
 
       conn.validateKey()
 
@@ -1229,6 +1342,45 @@ exports.getServerPublicKey = async function (req, res) {
   }
 }
 
+exports.getPublicKey = async function (req, res) {
+  let logChildObject
+  try {
+    const appId = req.query.appId
+    const username = req.query.username
+
+    logChildObject = { appId, username, req: trimReq(req) }
+    logger.child(logChildObject).info('Getting public key')
+
+    const user = await getUser(appId, username)
+
+    if (!user) throw {
+      status: statusCodes['Not Found'],
+      error: { message: 'UserNotFound' }
+    }
+
+    const result = {
+      ecdhPublicKey: user['ecdh-public-key'],
+      signedEcdhPublicKey: user['signed-ecdh-public-key'],
+      ecdsaPublicKey: user['ecdsa-public-key']
+    }
+
+    return res.send(result)
+  } catch (e) {
+    logChildObject.err = e
+    const message = 'Failed to get public key'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).info(message)
+      return res.status(e.status).send(e.error)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return res.status(statusCode).send(message)
+    }
+  }
+}
+
+
 const _updateUserExcludingUsernameUpdate = async (user, userId, passwordToken, passwordSalts,
   email, profile, passwordBasedBackup) => {
   const updateUserParams = conditionCheckUserExists(user['username'], user['app-id'], userId)
@@ -1562,6 +1714,7 @@ const getUser = async function (appId, username) {
 
   return userResponse && userResponse.Item
 }
+exports.getUser = getUser
 
 const _precheckGenerateForgotPasswordToken = async function (appId, username) {
   if (!appId || !username) {
@@ -1597,16 +1750,31 @@ const _precheckGenerateForgotPasswordToken = async function (appId, username) {
   return { user, app, admin }
 }
 
-exports.generateForgotPasswordToken = async function (req, appId, username) {
+exports.generateForgotPasswordToken = async function (logChildObject, appId, username) {
   try {
-    logger.child({ appId, username, req: trimReq(req) }).info('Generating forgot password token')
+    logger.child(logChildObject).info('Generating forgot password token')
 
     const { user, app, admin } = await _precheckGenerateForgotPasswordToken(appId, username)
+    logChildObject.userId = user['user-id']
+    logChildObject.adminId = admin['admin-id']
 
-    const { validationMessage, encryptedValidationMessage } = _getValidationMessage(user['public-key'])
+    let validationMessage = crypto.randomBytes(VALIDATION_MESSAGE_LENGTH)
+    let encryptedValidationMessage
+    if (user['ecdsa-public-key']) {
+      logChildObject.usingDhKey = false
+
+      // user is expected to sign this message with ECDSA private key
+      validationMessage = validationMessage.toString('base64')
+    } else {
+      const dhPublicKey = user['public-key']
+      logChildObject.usingDhKey = true
+
+      // user is expected to decrypt this message with DH private key
+      encryptedValidationMessage = _getEncryptedValidationMessage(validationMessage, dhPublicKey)
+    }
 
     logger
-      .child({ appId, username, userId: user['user-id'], statusCode: statusCodes['Success'], req: trimReq(req) })
+      .child({ ...logChildObject, statusCode: statusCodes['Success'] })
       .info('Successfully generated forgot password token')
 
     const forgotPasswordToken = validationMessage
@@ -1617,11 +1785,11 @@ exports.generateForgotPasswordToken = async function (req, appId, username) {
     const message = 'Failed to generate forgot password token.'
 
     if (e.status && e.error) {
-      logger.child({ appId, username, statusCode: e.status, err: e.error, req: trimReq(req) }).warn(message)
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
       return responseBuilder.errorResponse(e.status, e.error)
     } else {
       const statusCode = statusCodes['Internal Server Error']
-      logger.child({ appId, username, statusCode, err: e, req: trimReq(req) }).error(message)
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
       return responseBuilder.errorResponse(statusCode, message)
     }
   }
@@ -1655,18 +1823,23 @@ const _generateTempPasswordToken = async (tempPassword, passwordSalt, passwordTo
   return tempPasswordToken
 }
 
-exports.forgotPassword = async function (req, forgotPasswordToken, userProvidedForgotPasswordToken, user, app) {
+exports.forgotPassword = async function (logChildObject, forgotPasswordToken, userProvidedForgotPasswordToken, user, app) {
   const userId = user['user-id']
   const appId = app['app-id']
 
-  let logChildObject
   try {
-    logChildObject = { userId, appId, req: trimReq(req) }
     logger.child(logChildObject).info('User forgot password')
 
-    // check if client decrypted forgot password token successfully
-    if (forgotPasswordToken.toString('base64') !== userProvidedForgotPasswordToken) {
-      throw { status: statusCodes['Unauthorized'], error: { name: 'KeyNotValid' } }
+    if (user['ecdsa-public-key']) {
+      // check if client signed forgot password token successfully
+      if (!crypto.ecdsa.verify(Buffer.from(forgotPasswordToken, 'base64'), user['ecdsa-public-key'], userProvidedForgotPasswordToken)) {
+        throw { status: statusCodes['Unauthorized'], error: { name: 'KeyNotValid' } }
+      }
+    } else {
+      // check if client decrypted forgot password token successfully
+      if (forgotPasswordToken.toString('base64') !== userProvidedForgotPasswordToken) {
+        throw { status: statusCodes['Unauthorized'], error: { name: 'KeyNotValid' } }
+      }
     }
 
     const tempPassword = crypto
@@ -2284,4 +2457,47 @@ exports.updatePaymentMethod = async function (logChildObject, app, admin, user, 
       return responseBuilder.errorResponse(statusCode, message)
     }
   }
+}
+
+exports.sendConnection = function (connectionLogObject, ws, user) {
+  const validationMessage = crypto.randomBytes(VALIDATION_MESSAGE_LENGTH)
+
+  const keySalts = {
+    encryptionKeySalt: user['encryption-key-salt'],
+    hmacKeySalt: user['hmac-key-salt'],
+  }
+
+  const webSocketMessage = {
+    route: 'Connection',
+    keySalts,
+  }
+
+  if (user['ecdsa-public-key']) {
+    connectionLogObject.usingDhKey = false
+
+    // user is expected to sign this message with ECDSA private key
+    webSocketMessage.validationMessage = validationMessage.toString('base64')
+
+    keySalts.ecdsaKeyWrapperSalt = user['ecdsa-key-wrapper-salt']
+    keySalts.ecdhKeyWrapperSalt = user['ecdh-key-wrapper-salt']
+
+    webSocketMessage.ecKeyData = {
+      wrappedEcdsaPrivateKey: user['wrapped-ecdsa-private-key'],
+      wrappedEcdhPrivateKey: user['wrapped-ecdh-private-key']
+    }
+  } else {
+    const dhPublicKey = user['public-key']
+    connectionLogObject.usingDhKey = true
+
+    // user is expected to decrypt this message with DH private key
+    const encryptedValidationMessage = _getEncryptedValidationMessage(validationMessage, dhPublicKey)
+    webSocketMessage.encryptedValidationMessage = encryptedValidationMessage
+
+    keySalts.dhKeySalt = user['diffie-hellman-key-salt']
+  }
+
+  logger.child(connectionLogObject).info('Sending Connection over WebSocket')
+  ws.send(JSON.stringify(webSocketMessage))
+
+  return validationMessage
 }

@@ -55,12 +55,14 @@ class Connection {
     this.rateLimiter = new TokenBucket()
   }
 
-  openDatabase(databaseId, bundleSeqNo, reopenAtSeqNo) {
+  openDatabase(databaseId, dbNameHash, bundleSeqNo, reopenAtSeqNo, isOwner) {
     this.databases[databaseId] = {
       bundleSeqNo: bundleSeqNo > 0 ? bundleSeqNo : -1,
       lastSeqNo: reopenAtSeqNo || 0,
       transactionLogSize: 0,
-      init: reopenAtSeqNo !== undefined // ensures server sends the dbNameHash & key on first ever push, not reopen
+      init: reopenAtSeqNo !== undefined, // ensures server sends the dbNameHash & key on first ever push, not reopen
+      dbNameHash,
+      isOwner,
     }
   }
 
@@ -75,7 +77,9 @@ class Connection {
     const payload = {
       route: 'ApplyTransactions',
       transactionLog: [],
-      dbId: databaseId
+      dbId: databaseId,
+      dbNameHash: database.dbNameHash,
+      isOwner: database.isOwner,
     }
 
     const reopeningDatabase = reopenAtSeqNo !== undefined
@@ -317,9 +321,9 @@ class Connection {
 export default class Connections {
   static register(userId, socket, clientId, adminId, appId) {
     if (!Connections.sockets) Connections.sockets = {}
-    if (!Connections.sockets[userId]) Connections.sockets[userId] = {}
-    if (!Connections.sockets[adminId]) Connections.sockets[adminId] = {}
-    if (!Connections.sockets[appId]) Connections.sockets[appId] = {}
+    if (!Connections.sockets[userId]) Connections.sockets[userId] = { numConnections: 0 }
+    if (!Connections.sockets[adminId]) Connections.sockets[adminId] = { numConnections: 0 }
+    if (!Connections.sockets[appId]) Connections.sockets[appId] = { numConnections: 0 }
 
     if (!Connections.uniqueClients) Connections.uniqueClients = {}
     if (!Connections.uniqueClients[clientId]) {
@@ -333,25 +337,34 @@ export default class Connections {
     const connection = new Connection(userId, socket, clientId, adminId, appId)
 
     Connections.sockets[userId][connection.id] = connection
+    Connections.sockets[userId].numConnections += 1
+
     Connections.sockets[adminId][connection.id] = userId
+    Connections.sockets[adminId].numConnections += 1
+
     Connections.sockets[appId][connection.id] = userId
+    Connections.sockets[appId].numConnections += 1
 
     logger.child({ connectionId: connection.id, userId, clientId, adminId, appId }).info('WebSocket connected')
 
     return connection
   }
 
-  static openDatabase(userId, connectionId, databaseId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo) {
+  static openDatabase(userId, connectionId, databaseId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner) {
     if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId][connectionId]) return
 
     const conn = Connections.sockets[userId][connectionId]
 
     if (!conn.databases[databaseId]) {
-      conn.openDatabase(databaseId, bundleSeqNo, reopenAtSeqNo)
+      conn.openDatabase(databaseId, dbNameHash, bundleSeqNo, reopenAtSeqNo, isOwner)
       logger.child({ connectionId, databaseId, adminId: conn.adminId }).info('Database opened')
     }
 
     conn.push(databaseId, dbNameHash, dbKey, reopenAtSeqNo)
+
+    if (!Connections.sockets[databaseId]) Connections.sockets[databaseId] = { numConnections: 0 }
+    Connections.sockets[databaseId][connectionId] = userId
+    Connections.sockets[databaseId].numConnections += 1
 
     return true
   }
@@ -364,22 +377,30 @@ export default class Connections {
     return conn.databases[databaseId] ? true : false
   }
 
-  static push(transaction, userId) {
-    if (!Connections.sockets || !Connections.sockets[userId]) return
+  static push(transaction) {
+    const dbId = transaction['database-id']
+    if (!Connections.sockets || !Connections.sockets[dbId]) return
 
-    for (const conn of Object.values(Connections.sockets[userId])) {
-      const database = conn.databases[transaction['database-id']]
+    for (const connectionId in Connections.sockets[dbId]) {
+      const userId = Connections.sockets[dbId][connectionId]
 
-      // don't need to requery DDB if sending transaction with the next sequence no
-      if (database && transaction['sequence-no'] === database.lastSeqNo + 1) {
-        const payload = {
-          route: 'ApplyTransactions',
-          dbId: transaction['database-id']
+      if (Connections.sockets[userId] && Connections.sockets[userId][connectionId]) {
+        const conn = Connections.sockets[userId][connectionId]
+        const database = conn.databases[dbId]
+
+        // don't need to requery DDB if sending transaction with the next sequence no
+        if (database && transaction['sequence-no'] === database.lastSeqNo + 1) {
+          const payload = {
+            route: 'ApplyTransactions',
+            dbId,
+            dbNameHash: database.dbNameHash,
+            isOwner: database.isOwner,
+          }
+
+          conn.sendPayload(payload, [transaction], database)
+        } else {
+          conn.push(transaction['database-id'])
         }
-
-        conn.sendPayload(payload, [transaction], database)
-      } else {
-        conn.push(transaction['database-id'])
       }
     }
   }
@@ -390,9 +411,23 @@ export default class Connections {
 
     logger.child({ userId, connectionId, clientId, adminId, appId }).info('WebSocket closing')
 
+    for (const dbId in Connections.sockets[userId][connectionId].databases) {
+      delete Connections.sockets[dbId][connectionId]
+      Connections.sockets[dbId].numConnections -= 1
+      if (Connections.sockets[dbId].numConnections === 0) delete Connections.sockets[dbId]
+    }
+
     delete Connections.sockets[userId][connectionId]
+    Connections.sockets[userId].numConnections -= 1
+    if (Connections.sockets[userId].numConnections === 0) delete Connections.sockets[userId]
+
     delete Connections.sockets[adminId][connectionId]
+    Connections.sockets[adminId].numConnections -= 1
+    if (Connections.sockets[adminId].numConnections === 0) delete Connections.sockets[adminId]
+
     delete Connections.sockets[appId][connectionId]
+    Connections.sockets[appId].numConnections -= 1
+    if (Connections.sockets[appId].numConnections === 0) delete Connections.sockets[appId]
 
     delete Connections.uniqueClients[clientId]
   }

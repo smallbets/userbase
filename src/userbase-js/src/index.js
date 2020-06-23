@@ -13,12 +13,17 @@ export default {
   forgotPassword: auth.forgotPassword,
 
   openDatabase: db.openDatabase,
-  getDatabases: db.getDatabases,
 
   insertItem: db.insertItem,
   updateItem: db.updateItem,
   deleteItem: db.deleteItem,
   putTransaction: db.putTransaction,
+
+  getDatabases: db.getDatabases,
+  shareDatabase: db.shareDatabase,
+  modifyDatabasePermissions: db.modifyDatabasePermissions,
+  getVerificationMessage: db.getVerificationMessage,
+  verifyUser: db.verifyUser,
 
   purchaseSubscription: payments.purchaseSubscription,
   cancelSubscription: payments.cancelSubscription,
