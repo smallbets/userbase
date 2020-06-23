@@ -41,7 +41,7 @@ describe('Login - Signup Testing', function () {
       userbase.init({ appId: info.appId })
       return userbase.signUp(randomInfo).then((user) => {
         cy.log(user)
-        expect(user.username, 'user.username').to.exists
+        expect(user.username, 'user.username').to.exist
         expect(user.username, 'user.username to be the one signed up').to.equal(randomInfo.username)
         const currentSession = JSON.parse(localStorage.getItem('userbaseCurrentSession'))
         cy.log('session current user', localStorage.getItem('userbaseCurrentSession'))
@@ -87,7 +87,7 @@ describe('Login - Signup Testing', function () {
       userbase.init({ appId: info.appId })
       return userbase.signUp(randomInfo).then((user) => {
         cy.log(user)
-        expect(user.username, 'user.username').to.exists
+        expect(user.username, 'user.username').to.exist
         expect(user.username, 'user.username to be the one signed up').to.equal(randomInfo.username)
         expect(sessionStorage.length, 'sessionStorage size').to.equal(2)
         return userbase.signOut().then(() => {
@@ -118,12 +118,12 @@ describe('Login - Signup Testing', function () {
         randomInfo.username += '+'
 
         return userbase.signUp(randomInfo).then((user) => {
-          expect(user.username, 'user.username').to.exists
+          expect(user.username, 'user.username').to.exist
           expect(user.username, 'user.username to be the one signed up').to.equal(randomInfo.username)
 
           return userbase.signOut().then(() => {
             return userbase.signIn(randomInfo).then((loggedInUser) => {
-              expect(loggedInUser.username, 'loggedInUser.username').to.exists
+              expect(loggedInUser.username, 'loggedInUser.username').to.exist
               expect(loggedInUser.username, 'loggedInUser.username to be the one signed in').to.equal(randomInfo.username)
 
               return userbase.deleteUser()

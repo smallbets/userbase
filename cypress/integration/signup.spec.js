@@ -26,7 +26,7 @@ describe('Signup Testing', function () {
       return userbase.signUp(randomInfo).then((user) => {
         cy.log(user)
         console.log(user)
-        expect(user.username, 'user.username').to.exists
+        expect(user.username, 'user.username').to.exist
         expect(user.username, 'user.username to be the one signed up').to.equal(randomInfo.username)
         expect(localStorage.length, 'localstorage size').to.equal(0)
         expect(sessionStorage.length, 'sessionStorage size').to.equal(0)
@@ -48,7 +48,7 @@ describe('Signup Testing', function () {
       userbase.init({ appId: info.appId })
 
       return userbase.signUp(randomInfo).then((user) => {
-        expect(user.username, 'user.username').to.exists
+        expect(user.username, 'user.username').to.exist
         expect(user.username, 'user.username to be the one signed up').to.equal(randomInfo.username)
         expect(localStorage.length, 'localstorage size').to.be.above(0)
         expect(localStorage.getItem('userbaseCurrentSession'), 'localstorage userbaseCurrentSession').to.be.a('string')
@@ -74,7 +74,7 @@ describe('Signup Testing', function () {
 
 
       return userbase.signUp(randomInfo).then((user) => {
-        expect(user.username, 'user.username').to.exists
+        expect(user.username, 'user.username').to.exist
         expect(user.username, 'user.username to be the one signed up').to.equal(randomInfo.username)
         expect(sessionStorage.length, 'sessionstorage size').to.be.above(0)
         expect(sessionStorage.getItem('userbaseCurrentSession'), 'sessionstorage userbaseCurrentSession').to.be.a('string')
@@ -437,7 +437,7 @@ describe('Signup Testing', function () {
 
 
       return userbase.signUp(randomInfo).then((user) => {
-        expect(user.username, 'user.username').to.exists
+        expect(user.username, 'user.username').to.exist
         expect(user.username, 'user.username to be the one signed up').to.equal(randomInfo.username)
         expect(localStorage.length, 'localstorage size').to.equal(0)
 
@@ -481,7 +481,7 @@ describe('Signup Testing', function () {
 
 
       return userbase.signUp(randomInfo).then((user) => {
-        expect(user.username, 'user.username').to.exists
+        expect(user.username, 'user.username').to.exist
         expect(user.username, 'user.username to be the one signed up').to.equal(randomInfo.username)
         expect(localStorage.length, 'localstorage size').to.equal(0)
 
@@ -745,7 +745,7 @@ describe('Signup Testing', function () {
 
 
       return userbase.signUp(randomInfo).then((user) => {
-        expect(user.username, 'user.username').to.exists
+        expect(user.username, 'user.username').to.exist
 
         return userbase.signUp(randomInfo)
           .then(() => {
@@ -776,7 +776,7 @@ describe('Signup Testing', function () {
       userbase.init({ appId: info.appId })
 
       return userbase.signUp(randomInfo).then((user) => {
-        expect(user.username, 'user.username').to.exists
+        expect(user.username, 'user.username').to.exist
 
         return userbase.signUp(randomInfo2)
           .then(() => {
