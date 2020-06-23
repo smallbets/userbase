@@ -1210,7 +1210,7 @@ describe('DB Correctness Tests', function () {
 
             const { item, itemId } = insertedItem
             expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(testItemId)
-            expect(item, 'item in items array passed to changeHandler').to.be.within(0, numConcurrentOperations - 1)
+            expect(Number(item), 'item in items array passed to changeHandler').to.be.within(0, numConcurrentOperations - 1)
 
             successful = true
             correctState = items
