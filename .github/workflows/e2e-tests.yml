@@ -51,6 +51,7 @@ jobs:
         env:
           CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
         with:
+          browser: chrome
           start: npm run ci:start
           wait-on: "http://localhost:8080/ping"
           wait-on-timeout: 120
