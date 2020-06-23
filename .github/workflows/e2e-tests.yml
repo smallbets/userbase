@@ -15,8 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # run 2 copies of the current job in parallel
-        containers: [1, 2]
+        # run 6 copies of the current job in parallel
+        containers: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/setup-node@v1
         with:
