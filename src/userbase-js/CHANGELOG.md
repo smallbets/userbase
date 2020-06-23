@@ -1,3 +1,11 @@
+## [2.0.0] - 2020-06-23
+## Added
+- shareDatabase() to enable database sharing between users.
+- modifyDatabasePermissions() for access control to databases shared between users.
+- getVerificationMessage() and verifyUser() to enable users to prevent man-in-the-middle (MITM) attacks when sharing databases.
+- getDatabases() now returns the `databaseId` of databases shared with the user, database metadata, as well as the users who have access to the database.
+- openDatabase(), insertItem(), updateItem(), deleteItem(), and putTransaction() accept a `databaseId` as a parameter in place of a `databaseName` for databases the user has received access to from other users.
+
 ## [1.4.1] - 2020-05-20
 ## Changed
 - init() now returns immediately if the user's session has expired rather than make a request to the Userbase server to find out it has expired.
