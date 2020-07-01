@@ -105,19 +105,48 @@ const _buildSignUpParams = (username, passwordToken, appId, userId,
 
   if (ecKeyData) {
     const { ecdsaKeyData, ecdhKeyData } = ecKeyData
-    const { ecdsaPublicKey, wrappedEcdsaPrivateKey, ecdsaKeyWrapperSalt } = ecdsaKeyData
-    const { ecdhPublicKey, wrappedEcdhPrivateKey, ecdhKeyWrapperSalt, signedEcdhPublicKey } = ecdhKeyData
+    const {
+      ecdsaPublicKey,
+
+      // userbase-js >= v2.0.1
+      encryptedEcdsaPrivateKey,
+      ecdsaKeyEncryptionKeySalt,
+
+      // userbase-js =  v2.0.0
+      wrappedEcdsaPrivateKey,
+      ecdsaKeyWrapperSalt,
+    } = ecdsaKeyData
+
+    const {
+      ecdhPublicKey,
+      signedEcdhPublicKey,
+
+      // userbase-js >= v2.0.1
+      encryptedEcdhPrivateKey,
+      ecdhKeyEncryptionKeySalt,
+
+      // userbase-js =  v2.0.0
+      wrappedEcdhPrivateKey,
+      ecdhKeyWrapperSalt,
+    } = ecdhKeyData
 
     user['ecdsa-public-key'] = ecdsaPublicKey
     user['ecdh-public-key'] = ecdhPublicKey
-
-    user['wrapped-ecdsa-private-key'] = wrappedEcdsaPrivateKey
-    user['wrapped-ecdh-private-key'] = wrappedEcdhPrivateKey
-
-    user['ecdsa-key-wrapper-salt'] = ecdsaKeyWrapperSalt
-    user['ecdh-key-wrapper-salt'] = ecdhKeyWrapperSalt
-
     user['signed-ecdh-public-key'] = signedEcdhPublicKey
+
+    if (encryptedEcdsaPrivateKey) {
+      user['encrypted-ecdsa-private-key'] = encryptedEcdsaPrivateKey
+      user['encrypted-ecdh-private-key'] = encryptedEcdhPrivateKey
+
+      user['ecdsa-key-encryption-key-salt'] = ecdsaKeyEncryptionKeySalt
+      user['ecdh-key-encryption-key-salt'] = ecdhKeyEncryptionKeySalt
+    } else if (wrappedEcdsaPrivateKey) {
+      user['wrapped-ecdsa-private-key'] = wrappedEcdsaPrivateKey
+      user['wrapped-ecdh-private-key'] = wrappedEcdhPrivateKey
+
+      user['ecdsa-key-wrapper-salt'] = ecdsaKeyWrapperSalt
+      user['ecdh-key-wrapper-salt'] = ecdhKeyWrapperSalt
+    }
   } else if (dhPublicKey) {
     user['public-key'] = dhPublicKey
     user['diffie-hellman-key-salt'] = keySalts.dhKeySalt
@@ -320,15 +349,31 @@ const _validateSignUpInput = (appId, username, passwordToken, publicKeyData, pas
       const { ecdsaKeyData, ecdhKeyData } = ecKeyData
       if (!ecdsaKeyData || !ecdhKeyData) throw 'Missing required items'
 
-      const { ecdsaPublicKey, wrappedEcdsaPrivateKey } = ecdsaKeyData
-      if (!ecdsaPublicKey || !wrappedEcdsaPrivateKey) throw 'Missing required items'
+      const { ecdsaPublicKey } = ecdsaKeyData
+      const { ecdhPublicKey, signedEcdhPublicKey } = ecdhKeyData
+      if (!ecdsaPublicKey || !ecdhPublicKey || !signedEcdhPublicKey) throw 'Missing required items'
 
-      const { ecdhPublicKey, wrappedEcdhPrivateKey, signedEcdhPublicKey } = ecdhKeyData
-      if (!ecdhPublicKey || !wrappedEcdhPrivateKey || !signedEcdhPublicKey) throw 'Missing required items'
+      if (ecdsaKeyData.encryptedEcdsaPrivateKey) {
 
-      const { ecdsaKeyWrapperSalt } = ecdsaKeyData
-      const { ecdhKeyWrapperSalt } = ecdhKeyData
-      if (!ecdsaKeyWrapperSalt || !ecdhKeyWrapperSalt) throw 'Missing required salts'
+        // userbase-js >= v2.0.1
+        const { ecdsaKeyEncryptionKeySalt } = ecdsaKeyData
+        const { encryptedEcdhPrivateKey, ecdhKeyEncryptionKeySalt } = ecdhKeyData
+
+        if (!encryptedEcdhPrivateKey) throw 'Missing required items'
+        if (!ecdsaKeyEncryptionKeySalt || !ecdhKeyEncryptionKeySalt) throw 'Missing required salts'
+
+      } else if (ecdsaKeyData.wrappedEcdsaPrivateKey) {
+
+        // userbase-js =  v2.0.0
+        const { ecdsaKeyWrapperSalt } = ecdsaKeyData
+        const { wrappedEcdhPrivateKey, ecdhKeyWrapperSalt } = ecdhKeyData
+
+        if (!wrappedEcdhPrivateKey) throw 'Missing required items'
+        if (!ecdsaKeyWrapperSalt || !ecdhKeyWrapperSalt) throw 'Missing required salts'
+
+      } else {
+        throw 'Missing required items'
+      }
 
       _verifyEcdhPublicKey(ecdhPublicKey, ecdsaPublicKey, signedEcdhPublicKey)
     }
@@ -773,14 +818,12 @@ const _buildStripeData = (user, app, admin) => {
   return stripeData
 }
 
-const _saveEcKeyData = async function (userId, appId, username, ecKeyData) {
+const updateToWrappedEcKeyDataParams = (userId, appId, username, ecKeyData) => {
   const { ecdsaKeyData, ecdhKeyData } = ecKeyData
   const { ecdsaPublicKey, wrappedEcdsaPrivateKey, ecdsaKeyWrapperSalt } = ecdsaKeyData
   const { ecdhPublicKey, wrappedEcdhPrivateKey, ecdhKeyWrapperSalt, signedEcdhPublicKey } = ecdhKeyData
 
-  _verifyEcdhPublicKey(ecdhPublicKey, ecdsaPublicKey, signedEcdhPublicKey)
-
-  const updateUserParams = {
+  return {
     TableName: setup.usersTableName,
     Key: {
       'username': username,
@@ -819,6 +862,74 @@ const _saveEcKeyData = async function (userId, appId, username, ecKeyData) {
       ':signedEcdhPublicKey': signedEcdhPublicKey
     },
   }
+}
+
+const updateToEncryptedEcKeyDataParams = (userId, appId, username, ecKeyData) => {
+  const { ecdsaKeyData, ecdhKeyData } = ecKeyData
+  const { ecdsaPublicKey, encryptedEcdsaPrivateKey, ecdsaKeyEncryptionKeySalt } = ecdsaKeyData
+  const { ecdhPublicKey, encryptedEcdhPrivateKey, ecdhKeyEncryptionKeySalt, signedEcdhPublicKey } = ecdhKeyData
+
+  return {
+    TableName: setup.usersTableName,
+    Key: {
+      'username': username,
+      'app-id': appId
+    },
+    UpdateExpression: 'REMOVE #dhPublicKey, #dhKeySalt, ' +
+      '#wrappedEcdsaPrivateKey, #wrappedEcdhPrivateKey, #ecdsaKeyWrapperSalt, #ecdhKeyWrapperSalt ' +
+      'SET ' +
+      '#ecdsaPublicKey = :ecdsaPublicKey, ' +
+      '#ecdhPublicKey = :ecdhPublicKey, ' +
+      '#encryptedEcdsaPrivateKey = :encryptedEcdsaPrivateKey, ' +
+      '#encryptedEcdhPrivateKey = :encryptedEcdhPrivateKey, ' +
+      '#ecdsaKeyEncryptionKeySalt = :ecdsaKeyEncryptionKeySalt, ' +
+      '#ecdhKeyEncryptionKeySalt = :ecdhKeyEncryptionKeySalt, ' +
+      '#signedEcdhPublicKey = :signedEcdhPublicKey'
+    ,
+    ConditionExpression: '#userId = :userId and (' +
+      '(attribute_exists(#dhPublicKey) and attribute_not_exists(#ecdsaPublicKey)) or ' +                                                 // updating from <v2.0.0
+      '(attribute_exists(#ecdsaPublicKey) and attribute_not_exists(#dhPublicKey) and attribute_not_exists(#encryptedEcdsaPrivateKey))' + // updating from  v2.0.0
+      ')'
+    ,
+    ExpressionAttributeNames: {
+      '#userId': 'user-id',
+      '#dhPublicKey': 'public-key',
+      '#dhKeySalt': 'diffie-hellman-key-salt',
+      '#ecdsaPublicKey': 'ecdsa-public-key',
+      '#ecdhPublicKey': 'ecdh-public-key',
+      '#encryptedEcdsaPrivateKey': 'encrypted-ecdsa-private-key',
+      '#encryptedEcdhPrivateKey': 'encrypted-ecdh-private-key',
+      '#ecdsaKeyEncryptionKeySalt': 'ecdsa-key-encryption-key-salt',
+      '#ecdhKeyEncryptionKeySalt': 'ecdh-key-encryption-key-salt',
+      '#signedEcdhPublicKey': 'signed-ecdh-public-key',
+      '#wrappedEcdsaPrivateKey': 'wrapped-ecdsa-private-key',
+      '#wrappedEcdhPrivateKey': 'wrapped-ecdh-private-key',
+      '#ecdsaKeyWrapperSalt': 'ecdsa-key-wrapper-salt',
+      '#ecdhKeyWrapperSalt': 'ecdh-key-wrapper-salt',
+    },
+    ExpressionAttributeValues: {
+      ':userId': userId,
+      ':ecdsaPublicKey': ecdsaPublicKey,
+      ':ecdhPublicKey': ecdhPublicKey,
+      ':encryptedEcdsaPrivateKey': encryptedEcdsaPrivateKey,
+      ':encryptedEcdhPrivateKey': encryptedEcdhPrivateKey,
+      ':ecdsaKeyEncryptionKeySalt': ecdsaKeyEncryptionKeySalt,
+      ':ecdhKeyEncryptionKeySalt': ecdhKeyEncryptionKeySalt,
+      ':signedEcdhPublicKey': signedEcdhPublicKey
+    },
+  }
+}
+
+const _saveEcKeyData = async function (userId, appId, username, ecKeyData) {
+  const { ecdsaKeyData, ecdhKeyData } = ecKeyData
+  const { ecdsaPublicKey } = ecdsaKeyData
+  const { ecdhPublicKey, signedEcdhPublicKey } = ecdhKeyData
+
+  _verifyEcdhPublicKey(ecdhPublicKey, ecdsaPublicKey, signedEcdhPublicKey)
+
+  const updateUserParams = ecdsaKeyData.encryptedEcdsaPrivateKey
+    ? updateToEncryptedEcKeyDataParams(userId, appId, username, ecKeyData) // updating from <= v2.0.0 to >= v2.0.1
+    : updateToWrappedEcKeyDataParams(userId, appId, username, ecKeyData)   // updating from <  v2.0.0 to    v2.0.0
 
   const ddbClient = connection.ddbClient()
   await ddbClient.update(updateUserParams).promise()
@@ -848,15 +959,35 @@ const userSavedSeed = async function (userId, appId, username, ecdsaPublicKey, d
   await ddbClient.update(updateUserParams).promise()
 }
 
-const _validateKey = (user, validationMessage, userProvidedValidationMessage) => {
-  const ecdsaPublicKey = user['ecdsa-public-key']
+const _validateKey = (user, validationMessage, userProvidedValidationMessage, ecKeyData) => {
+  // ecKeyData only provided when upgrading to userbase-js >= v2.0.0
+  if (ecKeyData) {
 
-  if (ecdsaPublicKey) {
-    // user needed to digitally sign the validation message with ECDSA private key
-    return crypto.ecdsa.verify(validationMessage, ecdsaPublicKey, userProvidedValidationMessage)
+    const upgradingFromV1 = user['public-key']       // from v1.x.x
+    const upgradingFromV2 = user['ecdsa-public-key'] // from v2.0.0
+
+    if (!upgradingFromV1 && !upgradingFromV2) {
+      return false
+    } else if (upgradingFromV1) {
+      // user needed to decrypt validation message with shared key
+      return validationMessage.toString('base64') === userProvidedValidationMessage
+    } else if (upgradingFromV2) {
+
+      // user digitally signed validation message with provided public key
+      const ecdsaPublicKey = ecKeyData.ecdsaKeyData.ecdsaPublicKey
+      return crypto.ecdsa.verify(validationMessage, ecdsaPublicKey, userProvidedValidationMessage)
+    }
+
   } else {
-    // user needed to decrypt validation message with shared key
-    return validationMessage.toString('base64') === userProvidedValidationMessage
+    const ecdsaPublicKey = user['ecdsa-public-key']
+
+    if (ecdsaPublicKey) {
+      // user needed to digitally sign the validation message with ECDSA private key
+      return crypto.ecdsa.verify(validationMessage, ecdsaPublicKey, userProvidedValidationMessage)
+    } else {
+      // user needed to decrypt validation message with shared key
+      return validationMessage.toString('base64') === userProvidedValidationMessage
+    }
   }
 }
 
@@ -866,7 +997,7 @@ exports.validateKey = async function (validationMessage, userProvidedValidationM
   const appId = user['app-id']
   const username = user['username']
 
-  if (_validateKey(user, validationMessage, userProvidedValidationMessage)) {
+  if (_validateKey(user, validationMessage, userProvidedValidationMessage, ecKeyData)) {
     try {
       if (seedNotSavedYet) {
         try {
@@ -880,7 +1011,7 @@ exports.validateKey = async function (validationMessage, userProvidedValidationM
         }
       }
 
-      // old user created <= userbase-js v2.0.0 must be signing in to updated client for first time
+      // old user created < userbase-js v2.0.0 must be signing in to updated client for first time
       if (ecKeyData) await _saveEcKeyData(userId, appId, username, ecKeyData)
 
       conn.validateKey()
@@ -1762,6 +1893,7 @@ exports.generateForgotPasswordToken = async function (logChildObject, appId, use
     let encryptedValidationMessage
     if (user['ecdsa-public-key']) {
       logChildObject.usingDhKey = false
+      logChildObject.usingEncryptedEcKeys = !!user['encrypted-ecdsa-private-key']
 
       // user is expected to sign this message with ECDSA private key
       validationMessage = validationMessage.toString('base64')
@@ -2478,16 +2610,31 @@ exports.sendConnection = function (connectionLogObject, ws, user) {
     // user is expected to sign this message with ECDSA private key
     webSocketMessage.validationMessage = validationMessage.toString('base64')
 
-    keySalts.ecdsaKeyWrapperSalt = user['ecdsa-key-wrapper-salt']
-    keySalts.ecdhKeyWrapperSalt = user['ecdh-key-wrapper-salt']
+    if (user['encrypted-ecdsa-private-key']) {
+      connectionLogObject.usingEncryptedEcKeys = true
 
-    webSocketMessage.ecKeyData = {
-      wrappedEcdsaPrivateKey: user['wrapped-ecdsa-private-key'],
-      wrappedEcdhPrivateKey: user['wrapped-ecdh-private-key']
+      keySalts.ecdsaKeyEncryptionKeySalt = user['ecdsa-key-encryption-key-salt']
+      keySalts.ecdhKeyEncryptionKeySalt = user['ecdh-key-encryption-key-salt']
+
+      webSocketMessage.ecKeyData = {
+        encryptedEcdsaPrivateKey: user['encrypted-ecdsa-private-key'],
+        encryptedEcdhPrivateKey: user['encrypted-ecdh-private-key']
+      }
+    } else {
+      connectionLogObject.usingEncryptedEcKeys = false
+
+      keySalts.ecdsaKeyWrapperSalt = user['ecdsa-key-wrapper-salt']
+      keySalts.ecdhKeyWrapperSalt = user['ecdh-key-wrapper-salt']
+
+      webSocketMessage.ecKeyData = {
+        wrappedEcdsaPrivateKey: user['wrapped-ecdsa-private-key'],
+        wrappedEcdhPrivateKey: user['wrapped-ecdh-private-key']
+      }
     }
   } else {
     const dhPublicKey = user['public-key']
     connectionLogObject.usingDhKey = true
+    connectionLogObject.usingEncryptedEcKeys = false
 
     // user is expected to decrypt this message with DH private key
     const encryptedValidationMessage = _getEncryptedValidationMessage(validationMessage, dhPublicKey)

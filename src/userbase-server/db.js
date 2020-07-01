@@ -309,6 +309,7 @@ exports.getDatabases = async function (logChildObject, userId, nextPageToken) {
           encryptedDbKey: userDb['encrypted-db-key'],
 
           // if still does not have access to database
+          sharedEncryptedDbKey: userDb['shared-encrypted-db-key'],
           wrappedDbKey: userDb['wrapped-db-key'],
           ephemeralPublicKey: userDb['ephemeral-public-key'],
           signedEphemeralPublicKey: userDb['signed-ephemeral-public-key'],
@@ -818,8 +819,8 @@ const _validateShareDatabase = async function (sender, dbId, dbNameHash, recipie
   return { recipient, database, recipientUserDb }
 }
 
-const _buildSharedUserDatabaseParams = (userId, dbId, readOnly, resharingAllowed, senderId, wrappedDbKey, ephemeralPublicKey, signedEphemeralPublicKey,
-  ecdsaPublicKey, sentSignature, recipientEcdsaPublicKey) => {
+const _buildSharedUserDatabaseParams = (userId, dbId, readOnly, resharingAllowed, senderId, sharedEncryptedDbKey, wrappedDbKey,
+  ephemeralPublicKey, signedEphemeralPublicKey, ecdsaPublicKey, sentSignature, recipientEcdsaPublicKey) => {
   // user will only be able to open the database using database ID. Only requirement is that this value is unique
   const placeholderDbNameHash = '__userbase_shared_database_' + uuidv4()
 
@@ -834,6 +835,7 @@ const _buildSharedUserDatabaseParams = (userId, dbId, readOnly, resharingAllowed
       'database-id': dbId,
       'read-only': readOnly,
       'resharing-allowed': resharingAllowed,
+      'shared-encrypted-db-key': sharedEncryptedDbKey,
       'wrapped-db-key': wrappedDbKey,
       'ephemeral-public-key': ephemeralPublicKey,
       'signed-ephemeral-public-key': signedEphemeralPublicKey,
@@ -851,9 +853,14 @@ const _buildSharedUserDatabaseParams = (userId, dbId, readOnly, resharingAllowed
 }
 
 exports.shareDatabase = async function (logChildObject, sender, dbId, dbNameHash, recipientUsername, readOnly, resharingAllowed,
-  wrappedDbKey, ephemeralPublicKey, signedEphemeralPublicKey, sentSignature, recipientEcdsaPublicKey
+  sharedEncryptedDbKey, wrappedDbKey, ephemeralPublicKey, signedEphemeralPublicKey, sentSignature, recipientEcdsaPublicKey
 ) {
   try {
+    if (sharedEncryptedDbKey && wrappedDbKey) throw {
+      status: statusCodes['Bad Request'],
+      error: { message: 'CannotProvideBothDbKeyTypes' }
+    }
+
     if (typeof readOnly !== 'boolean') throw {
       status: statusCodes['Bad Request'],
       error: { message: 'ReadOnlyMustBeBoolean' }
@@ -871,8 +878,8 @@ exports.shareDatabase = async function (logChildObject, sender, dbId, dbNameHash
       error: { message: 'DatabaseAlreadyShared' }
     }
 
-    const recipientUserDbParams = _buildSharedUserDatabaseParams(recipient['user-id'], database['database-id'], readOnly, resharingAllowed, sender['user-id'], wrappedDbKey,
-      ephemeralPublicKey, signedEphemeralPublicKey, sender['ecdsa-public-key'], sentSignature, recipientEcdsaPublicKey)
+    const recipientUserDbParams = _buildSharedUserDatabaseParams(recipient['user-id'], database['database-id'], readOnly, resharingAllowed, sender['user-id'],
+      sharedEncryptedDbKey, wrappedDbKey, ephemeralPublicKey, signedEphemeralPublicKey, sender['ecdsa-public-key'], sentSignature, recipientEcdsaPublicKey)
 
     const ddbClient = connection.ddbClient()
     await ddbClient.put(recipientUserDbParams).promise()

@@ -1073,11 +1073,15 @@ const _buildDatabaseResult = async (db, encryptionKey, ecdhPrivateKey, verifiedU
 
     // don't expose the user's own verified users database to user -- it's used internally
     if (isOwner && databaseName === VERIFIED_USERS_DATABASE_NAME) return null
+  } else if (db.wrappedDbKey) {
+    // user using userbase-js v2.0.0 shared with user using userbase-js >= v2.0.1. Updated client
+    // cannot receive access to databases shared via userbase-js v2.0.0
+    return null
   } else {
     // user is seeing the database for the first time
     let senderRawEcdsaPublicKey
     try {
-      const { ephemeralPublicKey, signedEphemeralPublicKey, wrappedDbKey } = db
+      const { ephemeralPublicKey, signedEphemeralPublicKey, sharedEncryptedDbKey } = db
 
       // verify sender signed the ephemeral public key
       senderRawEcdsaPublicKey = base64.decode(db.senderEcdsaPublicKey)
@@ -1085,10 +1089,11 @@ const _buildDatabaseResult = async (db, encryptionKey, ecdhPrivateKey, verifiedU
       const senderSignedEphemeralPublicKey = await crypto.ecdsa.verify(senderEcdsaPublicKey, base64.decode(signedEphemeralPublicKey), base64.decode(ephemeralPublicKey))
       if (!senderSignedEphemeralPublicKey) throw new errors.ServiceUnavailable
 
-      // compute shared key wrapper with other user and unwrap database encryption key
+      // compute shared key encryption key with other user and decrypt database encryption key
       const senderEphemeralEcdhPublicKey = await crypto.ecdh.getPublicKeyFromRawPublicKey(base64.decode(ephemeralPublicKey))
-      const sharedKeyWrapper = await crypto.ecdh.computeSharedKeyWrapper(senderEphemeralEcdhPublicKey, ecdhPrivateKey)
-      dbKey = await crypto.aesGcm.unwrapKey(base64.decode(wrappedDbKey), sharedKeyWrapper)
+      const sharedKeyEncryptionKey = await crypto.ecdh.computeSharedKeyEncryptionKey(senderEphemeralEcdhPublicKey, ecdhPrivateKey)
+      const dbKeyString = await crypto.aesGcm.decryptString(sharedKeyEncryptionKey, sharedEncryptedDbKey)
+      dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
 
       // make sure dbKey the sender sent works
       databaseName = await crypto.aesGcm.decryptString(dbKey, db.databaseName)
@@ -1294,18 +1299,21 @@ const shareDatabase = async (params) => {
       const rawEphemeralEcdhPublicKey = await crypto.ecdh.getRawPublicKeyFromPublicKey(ephemeralEcdhKeyPair.publicKey)
       const signedEphemeralEcdhPublicKey = await crypto.ecdsa.sign(ws.keys.ecdsaPrivateKey, rawEphemeralEcdhPublicKey)
 
-      // compute shared key wrapper with recipient so can use it to wrap database encryption key
-      const sharedKeyWrapper = await crypto.ecdh.computeSharedKeyWrapper(recipientEcdhPublicKey, ephemeralEcdhKeyPair.privateKey)
+      // compute shared key encryption key with recipient so can use it to encrypt database encryption key
+      const sharedKeyEncryptionKey = await crypto.ecdh.computeSharedKeyEncryptionKey(recipientEcdhPublicKey, ephemeralEcdhKeyPair.privateKey)
 
       // get the database encryption key
       const database = await _getDatabase(databaseName, databaseId)
+      let dbKeyString
       if (!database.dbKey) {
-        const dbKeyString = await crypto.aesGcm.decryptString(ws.keys.encryptionKey, database.encryptedDbKey)
+        dbKeyString = await crypto.aesGcm.decryptString(ws.keys.encryptionKey, database.encryptedDbKey)
         database.dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
+      } else {
+        dbKeyString = await crypto.aesGcm.getKeyStringFromKey(database.dbKey)
       }
 
-      // wrap the database encryption key using shared ephemeral ECDH key
-      const wrappedDbKey = await crypto.aesKw.wrapKey(database.dbKey, sharedKeyWrapper, crypto.aesGcm.RAW_KEY_TYPE)
+      // encrypt the database encryption key using shared ephemeral ECDH key
+      const sharedEncryptedDbKeyString = await crypto.aesGcm.encryptString(sharedKeyEncryptionKey, dbKeyString)
 
       const action = 'ShareDatabase'
       const requestParams = {
@@ -1314,7 +1322,7 @@ const shareDatabase = async (params) => {
         username,
         readOnly,
         resharingAllowed,
-        wrappedDbKey: base64.encode(wrappedDbKey),
+        sharedEncryptedDbKey: sharedEncryptedDbKeyString,
         ephemeralPublicKey: base64.encode(rawEphemeralEcdhPublicKey),
         signedEphemeralPublicKey: base64.encode(signedEphemeralEcdhPublicKey),
         sentSignature: await _signDbKeyAndFingerprint(database.dbKey, recipientFingerprint),
