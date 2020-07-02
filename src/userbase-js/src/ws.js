@@ -451,22 +451,42 @@ class Connection {
     this.keys.encryptionKey = await crypto.aesGcm.importKeyFromMaster(masterKey, base64.decode(salts.encryptionKeySalt))
     this.keys.hmacKey = await crypto.hmac.importKeyFromMaster(masterKey, base64.decode(salts.hmacKeySalt))
 
-    if (salts.ecdsaKeyWrapperSalt) {
-      const ecdsaKeyWrapper = await crypto.ecdsa.importEcdsaKeyWrapperFromMaster(masterKey, base64.decode(salts.ecdsaKeyWrapperSalt))
-      const wrappedEcdsaPrivateKey = base64.decode(this.ecKeyData.wrappedEcdsaPrivateKey)
-      this.keys.ecdsaPrivateKey = await crypto.ecdsa.unwrapEcdsaPrivateKey(wrappedEcdsaPrivateKey, ecdsaKeyWrapper)
+    if (salts.ecdsaKeyEncryptionKeySalt) {
+      const ecdsaKeyEncryptionKey = await crypto.ecdsa.importEcdsaKeyEncryptionKeyFromMaster(masterKey, base64.decode(salts.ecdsaKeyEncryptionKeySalt))
+      const encryptedEcdsaPrivateKey = base64.decode(this.ecKeyData.encryptedEcdsaPrivateKey)
+      const rawEcdsaPrivateKey = await crypto.aesGcm.decrypt(ecdsaKeyEncryptionKey, encryptedEcdsaPrivateKey)
+      this.keys.ecdsaPrivateKey = await crypto.ecdsa.getPrivateKeyFromRawPrivateKey(rawEcdsaPrivateKey)
 
-      const ecdhKeyWrapper = await crypto.ecdh.importEcdhKeyWrapperFromMaster(masterKey, base64.decode(salts.ecdhKeyWrapperSalt))
-      const wrappedEcdhPrivateKey = base64.decode(this.ecKeyData.wrappedEcdhPrivateKey)
-      this.keys.ecdhPrivateKey = await crypto.ecdh.unwrapEcdhPrivateKey(wrappedEcdhPrivateKey, ecdhKeyWrapper)
+      const ecdhKeyEncryptionKey = await crypto.ecdh.importEcdhKeyEncryptionKeyFromMaster(masterKey, base64.decode(salts.ecdhKeyEncryptionKeySalt))
+      const encryptedEcdhPrivateKey = base64.decode(this.ecKeyData.encryptedEcdhPrivateKey)
+      const rawEcdhPrivateKey = await crypto.aesGcm.decrypt(ecdhKeyEncryptionKey, encryptedEcdhPrivateKey)
+      this.keys.ecdhPrivateKey = await crypto.ecdh.getPrivateKeyFromRawPrivateKey(rawEcdhPrivateKey)
     } else if (salts.dhKeySalt) {
 
-      // must be an old user created with userbase-js < v2.0.0. Need to prove access to DH key to server, and
-      // upgrade to use EC keys for future logins and usage
+      // must be an old user created with userbase-js < v2.0.0. Need to prove access to DH key to server
       this.keys.dhPrivateKey = await crypto.diffieHellman.importKeyFromMaster(masterKey, base64.decode(salts.dhKeySalt))
     }
 
-    const userData = await this.validateKey(masterKey)
+    let ecKeyData
+    if (salts.dhKeySalt || salts.ecdsaKeyWrapperSalt) {
+
+      // must be an old user created with userbase-js <= v2.0.0. Update EC key data for future logins
+      const ecdsaKeyData = await crypto.ecdsa.generateEcdsaKeyData(masterKey)
+      const ecdhKeyData = await crypto.ecdh.generateEcdhKeyData(masterKey, ecdsaKeyData.ecdsaPrivateKey)
+
+      this.keys.ecdsaPrivateKey = ecdsaKeyData.ecdsaPrivateKey
+      this.keys.ecdhPrivateKey = ecdhKeyData.ecdhPrivateKey
+
+      delete ecdsaKeyData.ecdsaPrivateKey
+      delete ecdhKeyData.ecdhPrivateKey
+
+      ecKeyData = {
+        ecdsaKeyData,
+        ecdhKeyData,
+      }
+    }
+
+    const userData = await this.validateKey(ecKeyData)
     this.userData = userData
 
     this.keys.init = true
@@ -475,9 +495,9 @@ class Connection {
     this.connectionResolved = true
   }
 
-  async validateKey(masterKey) {
-    let validationMessage, ecKeyData
-    if (this.keys.ecdsaPrivateKey) {
+  async validateKey(ecKeyData) {
+    let validationMessage
+    if (this.keys.ecdsaPrivateKey && !this.keys.dhPrivateKey) {
 
       // need to sign the validation message with ECDSA private key
       validationMessage = await crypto.ecdsa.sign(this.keys.ecdsaPrivateKey, base64.decode(this.validationMessage))
@@ -488,21 +508,7 @@ class Connection {
       const sharedKey = await crypto.diffieHellman.getSharedKeyWithServer(this.keys.dhPrivateKey)
       validationMessage = await crypto.aesGcm.decrypt(sharedKey, this.encryptedValidationMessage)
 
-      // upgrade to use EC key data for future logins
-      const ecdsaKeyData = await crypto.ecdsa.generateEcdsaKeyData(masterKey)
-      const ecdhKeyData = await crypto.ecdh.generateEcdhKeyData(masterKey, ecdsaKeyData.ecdsaPrivateKey)
-
-      this.keys.ecdsaPrivateKey = ecdsaKeyData.ecdsaPrivateKey
-      this.keys.ecdhPrivateKey = ecdhKeyData.ecdhPrivateKey
-
       delete this.keys.dhPrivateKey
-      delete ecdsaKeyData.ecdsaPrivateKey
-      delete ecdhKeyData.ecdhPrivateKey
-
-      ecKeyData = {
-        ecdsaKeyData,
-        ecdhKeyData,
-      }
     }
 
     const action = 'ValidateKey'

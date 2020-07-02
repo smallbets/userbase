@@ -304,7 +304,8 @@ async function start(express, app, userbaseConfig = {}) {
                       params.username,
                       params.readOnly,
                       params.resharingAllowed,
-                      params.wrappedDbKey,
+                      params.sharedEncryptedDbKey, // userbase-js >= v2.0.1
+                      params.wrappedDbKey,         // userbase-js  = v2.0.0
                       params.ephemeralPublicKey,
                       params.signedEphemeralPublicKey,
                       params.sentSignature,
@@ -417,6 +418,8 @@ async function start(express, app, userbaseConfig = {}) {
         if (user['ecdsa-public-key']) {
           ws.send(JSON.stringify({
             route: 'ReceiveToken',
+            ecdsaKeyEncryptionKeySalt: user['ecdsa-key-encryption-key-salt'],
+            encryptedEcdsaPrivateKey: user['encrypted-ecdsa-private-key'],
             ecdsaKeyWrapperSalt: user['ecdsa-key-wrapper-salt'],
             wrappedEcdsaPrivateKey: user['wrapped-ecdsa-private-key'],
             forgotPasswordToken,

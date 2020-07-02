@@ -1,6 +1,5 @@
 import base64 from 'base64-arraybuffer'
 import hkdf from './hkdf'
-import aesKw from './aes-kw'
 import { arrayBufferToString, stringToArrayBuffer, appendBuffer } from './utils'
 
 const ENCRYPTION_ALGORITHM_NAME = 'AES-GCM'
@@ -59,9 +58,9 @@ const sliceEncryptedArrayBuffer = (encryptedArrayBuffer) => {
   return { ciphertextArrayBuffer, iv }
 }
 
-const importKeyFromMaster = async (masterKey, salt) => {
+const importKeyFromMaster = async (masterKey, salt, encryptionKeyName = ENCRYPTION_KEY_NAME) => {
   const encryptionKey = await window.crypto.subtle.deriveKey(
-    hkdf.getParams(ENCRYPTION_KEY_NAME, salt),
+    hkdf.getParams(encryptionKeyName, salt),
     masterKey,
     getEncryptionKeyParams(),
     KEY_IS_EXTRACTABLE,
@@ -190,19 +189,6 @@ const getPasswordBasedEncryptionKey = async (hkdfKey, salt) => {
   return encryptionKey
 }
 
-const unwrapKey = async (wrappedAesKey, keyWrapper) => {
-  const ecdhPrivateKey = await window.crypto.subtle.unwrapKey(
-    RAW_KEY_TYPE,
-    wrappedAesKey,
-    keyWrapper,
-    aesKw.AES_KW_PARAMS,
-    getEncryptionKeyParams(),
-    KEY_IS_EXTRACTABLE,
-    KEY_WILL_BE_USED_TO
-  )
-  return ecdhPrivateKey
-}
-
 export default {
   getEncryptionKeyParams,
   getCiphertextParams,
@@ -221,6 +207,6 @@ export default {
   decryptJson,
   decryptString,
   getPasswordBasedEncryptionKey,
-  unwrapKey,
   RAW_KEY_TYPE,
+  KEY_WILL_BE_USED_TO,
 }

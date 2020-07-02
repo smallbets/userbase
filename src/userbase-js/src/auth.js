@@ -770,20 +770,21 @@ const forgotPassword = async (params) => {
               break
             }
 
-            // users signed in with userbase-js >= v2.0.0 will need to prove access to ECDSA key by signing token
+            // users signed in with userbase-js >= v2.0.1 will need to prove access to ECDSA key by signing token
             case 'ReceiveToken': {
               const {
-                ecdsaKeyWrapperSalt,
-                wrappedEcdsaPrivateKey,
+                ecdsaKeyEncryptionKeySalt,
+                encryptedEcdsaPrivateKey,
                 forgotPasswordToken,
               } = message
 
-              const ecdsaKeyWrapper = await crypto.ecdsa.importEcdsaKeyWrapperFromMaster(masterKey, base64.decode(ecdsaKeyWrapperSalt))
+              const ecdsaKeyEncryptionKey = await crypto.ecdsa.importEcdsaKeyEncryptionKeyFromMaster(masterKey, base64.decode(ecdsaKeyEncryptionKeySalt))
 
               let ecdsaPrivateKey
               try {
-                // if it fails to unwrap, it's almost certainly because key is incorrect
-                ecdsaPrivateKey = await crypto.ecdsa.unwrapEcdsaPrivateKey(base64.decode(wrappedEcdsaPrivateKey), ecdsaKeyWrapper)
+                // if it fails to decrypt, it's almost certainly because key is incorrect
+                const rawEcdsaPrivateKey = await crypto.aesGcm.decrypt(ecdsaKeyEncryptionKey, base64.decode(encryptedEcdsaPrivateKey))
+                ecdsaPrivateKey = await crypto.ecdsa.getPrivateKeyFromRawPrivateKey(rawEcdsaPrivateKey)
               } catch {
                 throw new errors.KeyNotFound(keyNotFoundMessage)
               }
