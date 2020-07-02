@@ -15,8 +15,9 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # run 10 copies of the current job in parallel
-        containers: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        browser: ['chrome', 'firefox']
+        # run 6 copies of the current job in parallel
+        containers: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/setup-node@v1
         with:
@@ -46,31 +47,15 @@ jobs:
         run: |
           npm run ci:install
           npm run build:userbase-js:script
-      - name: Run Chrome Tests
+      - name: Run Browser Tests
         uses: cypress-io/github-action@v1
         env:
           CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
         with:
-          browser: chrome
-          group: chrome
+          group: ${{ matrix.browser }}
           start: npm run ci:start
           wait-on: "http://localhost:8080/ping"
           wait-on-timeout: 120
           record: true
           parallel: true
-          parallelism: 5
-          env: configFile=ci
-      - name: Run Firefox Tests
-        uses: cypress-io/github-action@v1
-        env:
-          CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
-        with:
-          browser: firefox
-          group: firefox
-          start: npm run ci:start
-          wait-on: "http://localhost:8080/ping"
-          wait-on-timeout: 120
-          record: true
-          parallel: true
-          parallelism: 5
           env: configFile=ci
