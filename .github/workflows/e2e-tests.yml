@@ -52,6 +52,7 @@ jobs:
         env:
           CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
         with:
+          browser: ${{ matrix.browser }}
           group: ${{ matrix.browser }}
           start: npm run ci:start
           wait-on: "http://localhost:8080/ping"
