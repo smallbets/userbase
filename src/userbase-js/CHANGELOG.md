@@ -1,4 +1,11 @@
+## [2.0.1] - 2020-07-02
+## Fixed
+- signUp(), signIn(), and init() working in Firefox.
+
 ## [2.0.0] - 2020-06-23
+
+Note: Deprecated. Please use <a href="#201---2020-07-02">v2.0.1</a>.
+
 ## Added
 - shareDatabase() to enable database sharing between users.
 - modifyDatabasePermissions() for access control to databases shared between users.
