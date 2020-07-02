@@ -46,12 +46,24 @@ jobs:
         run: |
           npm run ci:install
           npm run build:userbase-js:script
-      - name: Run Cypress Tests
+      - name: Run Chrome Tests
         uses: cypress-io/github-action@v1
         env:
           CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
         with:
           browser: chrome
+          start: npm run ci:start
+          wait-on: "http://localhost:8080/ping"
+          wait-on-timeout: 120
+          record: true
+          parallel: true
+          env: configFile=ci
+      - name: Run Firefox Tests
+        uses: cypress-io/github-action@v1
+        env:
+          CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
+        with:
+          browser: firefox
           start: npm run ci:start
           wait-on: "http://localhost:8080/ping"
           wait-on-timeout: 120
