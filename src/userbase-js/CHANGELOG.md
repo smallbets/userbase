@@ -1,5 +1,11 @@
+## [2.0.1] - 2020-07-02
+### Fixed
+- signUp(), signIn(), and init() working in Firefox.
+
 ## [2.0.0] - 2020-06-23
-## Added
+Note: Deprecated. Please use the latest version.
+
+### Added
 - shareDatabase() to enable database sharing between users.
 - modifyDatabasePermissions() for access control to databases shared between users.
 - getVerificationMessage() and verifyUser() to enable users to prevent man-in-the-middle (MITM) attacks when sharing databases.
@@ -7,45 +13,45 @@
 - openDatabase(), insertItem(), updateItem(), deleteItem(), and putTransaction() accept a `databaseId` as a parameter in place of a `databaseName` for databases the user has received access to from other users.
 
 ## [1.4.1] - 2020-05-20
-## Changed
+### Changed
 - init() now returns immediately if the user's session has expired rather than make a request to the Userbase server to find out it has expired.
 
 ## [1.4.0] - 2020-05-04
-## Added
+### Added
 - purchaseSubscription(), cancelSubscription(), resumeSubscription(), and updatePaymentMethod() functions to enable developers to accept subscription payments from their users.
 - getDatabases() enables developers to get all of a user's databases.
 - signUp(), signIn(), and init() return `paymentsMode`, the app's payments mode set by the admin, `creationDate`, the date the user was created, and `trialExpirationDate`, the date the user's trial expires.
 - signIn() and init() return `subscriptionStatus`, the user's subscription status, and `cancelSubscriptionAt`, the date the user's subscription is set to be canceled.
 
-## Fixed
+### Fixed
 - Network errors throw ServiceUnavailable instead of never returning.
 
-## Changed
+### Changed
 - openDatabase() now requires the user to pay for a subscription to an app that has payments enabled in the admin panel.
 
 ## [1.3.0] - 2020-04-02
-## Added
+### Added
 - signUp(), signIn(), and init() return the user’s authToken which can be passed to a 3rd party server to verify the user is signed in to Userbase via the Admin API.
 - browser compatibility list included in README along with a polyfill recommendation for Internet Explorer.
 
-## Fixed
+### Fixed
 - init() throws WebCryptoUnavailable if the Web Crypto API is not available instead of ServiceUnavailable.
 
-## Changed
+### Changed
 - signIn() throws UserPendingDeletion if user tries to sign in while the user is pending deletion instead of UsernameOrPasswordMismatch.
 - Axios dependency replaced by native XMLHttpRequest.
 - Internal usage of .includes() replaced with .indexOf() !== -1 to support wider number of browsers without need for polyfill.
 
-## Removed
+### Removed
 - Babel runtime corejs3 dependency.
 - ProfileKeyMustBeString error from signUp() and updateUser() since javascript automatically converts keys object keys to strings anyway.
 
 ## [1.2.0] - 2020-02-29
-## Added
+### Added
 - signIn() and init() return the user’s protectedProfile which can be set via the Admin API server-side.
 
 ## [1.1.2] - 2020-02-23
-## Fixed
+### Fixed
 - window variable is no longer referenced in global scope so the client can be built server-side via Gatsby.
 
 ## [1.1.1] - 2020-02-18

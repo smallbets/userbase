@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
+        browser: ['chrome', 'firefox']
         # run 6 copies of the current job in parallel
         containers: [1, 2, 3, 4, 5, 6]
     steps:
@@ -46,12 +47,13 @@ jobs:
         run: |
           npm run ci:install
           npm run build:userbase-js:script
-      - name: Run Cypress Tests
+      - name: Run Browser Tests
         uses: cypress-io/github-action@v1
         env:
           CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
         with:
-          browser: chrome
+          browser: ${{ matrix.browser }}
+          group: ${{ matrix.browser }}
           start: npm run ci:start
           wait-on: "http://localhost:8080/ping"
           wait-on-timeout: 120
