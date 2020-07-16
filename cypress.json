@@ -4,5 +4,6 @@
   "requestTimeout": 6000,
   "chromeWebSecurity": false,
   "projectId": "uokg4h",
-  "watchForFileChanges": false
+  "watchForFileChanges": false,
+  "numTestsKeptInMemory": 0
 }
