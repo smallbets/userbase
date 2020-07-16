@@ -1,3 +1,9 @@
+## [2.1.0]
+### Added
+- uploadFile() to enable file storage.
+- getFile() to enable retrieving files.
+- items inside the changeHandler() callback passed to openDatabase() will now provide file metadata if a file is stored on an item.
+
 ## [2.0.1] - 2020-07-02
 ### Fixed
 - signUp(), signIn(), and init() working in Firefox.
