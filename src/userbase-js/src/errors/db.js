@@ -380,6 +380,176 @@ class ItemUpdateConflict extends Error {
   }
 }
 
+class FileMissing extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'FileMissing'
+    this.message = 'File missing.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class FileMustBeFile extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'FileMustBeFile'
+    this.message = 'File must be a file.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class FileCannotBeEmpty extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'FileCannotBeEmpty'
+    this.message = 'File cannot be empty.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class FileUploadConflict extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'FileUploadConflict'
+    this.message = 'File upload conflict.'
+    this.status = statusCodes['Conflict']
+  }
+}
+
+class FileNotFound extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'FileNotFound'
+    this.message = 'File not found.'
+    this.status = statusCodes['Not Found']
+  }
+}
+
+class FileIdMissing extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'FileIdMissing'
+    this.message = 'File id missing.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class FileIdMustBeString extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'FileIdMustBeString'
+    this.message = 'File id must be a string.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class FileIdCannotBeBlank extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'FileIdCannotBeBlank'
+    this.message = 'File id cannot be blank.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class FileIdTooLong extends Error {
+  constructor(maxLength, ...params) {
+    super(maxLength, ...params)
+
+    this.name = 'FileIdTooLong'
+    this.message = `File id cannot be more than ${maxLength} characters.`
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class RangeMustBeObject extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'RangeMustBeObject'
+    this.message = 'Range param provided must be object.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class RangeMissingStart extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'RangeMissingStart'
+    this.message = 'Range param missing start.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class RangeMissingEnd extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'RangeMissingEnd'
+    this.message = 'Range param missing end.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class RangeStartMustBeNumber extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'RangeStartMustBeNumber'
+    this.message = 'Range start provided must be a number.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class RangeEndMustBeNumber extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'RangeEndMustBeNumber'
+    this.message = 'Range end provided must be a number.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class RangeStartMustBeGreaterThanZero extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'RangeStartMustBeGreaterThanZero'
+    this.message = 'Range start provided must be greater than 0.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class RangeEndMustBeGreaterThanRangeStart extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'RangeEndMustBeGreaterThanRangeStart'
+    this.message = 'Range end provided must be greater than range start.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class RangeEndMustBeLessThanFileSize extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'RangeEndMustBeLessThanFileSize'
+    this.message = 'Range end provided must be less than file size.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
 class OperationsMissing extends Error {
   constructor(...params) {
     super(...params)
@@ -549,6 +719,23 @@ export default {
   ItemAlreadyExists,
   ItemDoesNotExist,
   ItemUpdateConflict,
+  FileMissing,
+  FileMustBeFile,
+  FileCannotBeEmpty,
+  FileUploadConflict,
+  FileNotFound,
+  FileIdMissing,
+  FileIdMustBeString,
+  FileIdCannotBeBlank,
+  FileIdTooLong,
+  RangeMustBeObject,
+  RangeMissingStart,
+  RangeMissingEnd,
+  RangeStartMustBeNumber,
+  RangeEndMustBeNumber,
+  RangeStartMustBeGreaterThanZero,
+  RangeEndMustBeGreaterThanRangeStart,
+  RangeEndMustBeLessThanFileSize,
   OperationsMissing,
   OperationsMustBeArray,
   OperationsConflict,
