@@ -5,6 +5,7 @@ const beforeEachHook = function () {
     expect(win).to.have.property('userbase')
     const userbase = win.userbase
     this.currentTest.userbase = userbase
+    this.currentTest.win = win
 
     const { appId, endpoint } = Cypress.env()
     win._userbaseEndpoint = endpoint
@@ -825,7 +826,7 @@ describe('DB Sharing Tests', function () {
           expect(e.status, 'error status').to.be.equal(403)
         }
 
-        // recipient tries to insert, update, delete, putTransaction into database
+        // recipient tries to insert, update, delete, putTransaction, uploadFile into database
         try {
           await this.test.userbase.insertItem({ databaseId, item: testItem })
           throw new Error('Should have failed')
@@ -849,6 +850,16 @@ describe('DB Sharing Tests', function () {
 
         try {
           await this.test.userbase.putTransaction({ databaseId, operations: [{ command: 'Insert', item: testItem, itemId: testItemId }] })
+          throw new Error('Should have failed')
+        } catch (e) {
+          expectedError(e)
+        }
+
+        try {
+          const testFileName = 'test-file-name.txt'
+          const testFileType = 'text/plain'
+          const testFile = new this.test.win.File([1], testFileName, { type: testFileType })
+          await this.test.userbase.uploadFile({ databaseId, file: testFile, itemId: testItemId })
           throw new Error('Should have failed')
         } catch (e) {
           expectedError(e)

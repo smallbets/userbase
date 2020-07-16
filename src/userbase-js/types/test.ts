@@ -13,6 +13,8 @@ const {
   insertItem,
   updateItem,
   putTransaction,
+  uploadFile,
+  getFile,
   getVerificationMessage,
   verifyUser,
   shareDatabase,
@@ -163,6 +165,30 @@ putTransaction({ databaseName: 'tdb', operations: [{ command: 'Update', item: { 
 
 // $ExpectError
 putTransaction({ databaseName: 'tdb', operations: [{ command: 'Delete' }] })
+
+// $ExpectType Promise<void>
+uploadFile({ databaseName: 'tdb', itemId: 'tid', file: new File(['tbp' as BlobPart], 'tf.txt') })
+
+// $ExpectError
+uploadFile({ databaseName: 'tdb', itemId: 'tid' })
+
+// $ExpectType Promise<FileResult>
+getFile({ databaseName: 'tdb', fileId: 'tfid' })
+
+// $ExpectType Promise<FileResult>
+getFile({ databaseName: 'tdb', fileId: 'tfid', range: { start: 0, end: 1 } })
+
+// $ExpectError
+getFile({ databaseName: 'tdb' })
+
+// $ExpectError
+getFile({ databaseName: 'tdb', fileId: 'tfid', range: {} })
+
+// $ExpectError
+getFile({ databaseName: 'tdb', fileId: 'tfid', range: { start: 0 } })
+
+// $ExpectError
+getFile({ databaseName: 'tdb', fileId: 'tfid', range: { start: false, end: 1 } })
 
 // $ExpectType Promise<void>
 getVerificationMessage()

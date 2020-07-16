@@ -1939,6 +1939,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
       // must check the server logs to verify bundling occurs

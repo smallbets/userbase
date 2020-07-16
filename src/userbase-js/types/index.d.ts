@@ -77,6 +77,13 @@ export interface DeleteOperation {
 export interface Item {
   itemId: string
   item: any
+  fileId?: string
+  fileName?: string
+  fileSize?: number
+}
+
+export interface FileResult {
+  file: File
 }
 
 export interface CancelSubscriptionResult {
@@ -109,6 +116,10 @@ export interface Userbase {
   deleteItem(params: { databaseName?: string, databaseId?: string, itemId: string }): Promise<void>
 
   putTransaction(params: { databaseName?: string, databaseId?: string, operations: DatabaseOperation[] }): Promise<void>
+
+  uploadFile(params: { databaseName?: string, databaseId?: string, itemId: string, file: File }): Promise<void>
+
+  getFile(params: { databaseName?: string, databaseId?: string, fileId: string, range?: { start: number, end: number } }): Promise<FileResult>
 
   getVerificationMessage(): Promise<{ verificationMessage: string }>
 

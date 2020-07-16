@@ -234,6 +234,9 @@ class Connection {
             case 'Delete':
             case 'BatchTransaction':
             case 'Bundle':
+            case 'UploadFileChunk':
+            case 'CompleteFileUpload':
+            case 'GetChunk':
             case 'ValidateKey':
             case 'GetPasswordSalts':
             case 'PurchaseSubscription':

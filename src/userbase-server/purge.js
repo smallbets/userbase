@@ -138,30 +138,30 @@ const purgeDatabase = async (userDb) => {
   await connection.ddbClient().delete(deleteDatabaseParams).promise()
 }
 
-const removeS3DatabaseStates = async (databaseId) => {
+const removeS3Objects = async (bucketName, prefix) => {
   const params = {
-    Bucket: setup.getDbStatesBucketName(),
-    Prefix: databaseId
+    Bucket: bucketName,
+    Prefix: prefix
   }
 
-  let dbStatesResponse = await setup.s3().listObjectsV2(params).promise()
-  if (!dbStatesResponse.KeyCount) return
+  let response = await setup.s3().listObjectsV2(params).promise()
+  if (!response.KeyCount) return
 
   const deleteParams = {
-    Bucket: setup.getDbStatesBucketName(),
+    Bucket: bucketName,
     Delete: {
-      Objects: dbStatesResponse.Contents.map(dbState => ({ Key: dbState.Key }))
+      Objects: response.Contents.map(object => ({ Key: object.Key }))
     }
   }
 
   await setup.s3().deleteObjects(deleteParams).promise()
 
-  while (dbStatesResponse.IsTruncated) {
-    params.ContinuationToken = dbStatesResponse.NextContinuationToken
-    dbStatesResponse = await setup.s3().listObjectsV2(params).promise()
-    if (!dbStatesResponse.KeyCount) return
+  while (response.IsTruncated) {
+    params.ContinuationToken = response.NextContinuationToken
+    response = await setup.s3().listObjectsV2(params).promise()
+    if (!response.KeyCount) return
 
-    deleteParams.Delete.Objects = dbStatesResponse.Contents.map(dbState => ({ Key: dbState.Key }))
+    deleteParams.Delete.Objects = response.Contents.map(object => ({ Key: object.Key }))
 
     await setup.s3().deleteObjects(deleteParams).promise()
   }
@@ -213,7 +213,8 @@ const purgeTransactions = async (userDb) => {
 
   await Promise.all([
     ddbWhileLoop(params, ddbQuery, action),
-    removeS3DatabaseStates(userDb['database-id'])
+    removeS3Objects(setup.getDbStatesBucketName(), userDb['database-id']),
+    removeS3Objects(setup.getFilesBucketName(), userDb['database-id']),
   ])
 
   await purgeDatabase(userDb)

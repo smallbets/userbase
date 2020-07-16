@@ -11,6 +11,8 @@ import {
   lastEvaluatedKeyToNextPageToken,
   nextPageTokenToLastEvaluatedKey,
   getTtl,
+  stringToArrayBuffer,
+  arrayBufferToString,
 } from './utils'
 
 const MAX_OPERATIONS_IN_TX = 10
@@ -20,6 +22,7 @@ const SECONDS_IN_A_DAY = 60 * 60 * HOURS_IN_A_DAY
 const MS_IN_A_DAY = SECONDS_IN_A_DAY * 1000
 
 const getS3DbStateKey = (databaseId, bundleSeqNo) => `${databaseId}/${bundleSeqNo}`
+const getS3FileChunkKey = (databaseId, fileId, chunkNumber) => `${databaseId}/${fileId}/${chunkNumber}`
 
 const _buildUserDatabaseParams = (userId, dbNameHash, dbId, encryptedDbKey, readOnly, resharingAllowed) => {
   return {
@@ -603,11 +606,9 @@ const rollbackAttempt = async function (transaction, ddbClient) {
   }
 }
 
-exports.doCommand = async function (command, userId, connectionId, dbNameHash, databaseId, key, record) {
-  if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
+const doCommand = async function (command, userId, connectionId, databaseId, key, record, fileEncryptionKey, fileMetadata, fileId) {
   if (!databaseId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
   if (!key) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing item key')
-  if (!record) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing record')
 
   if (!connections.isDatabaseOpen(userId, connectionId, databaseId)) {
     return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Database not open')
@@ -617,7 +618,24 @@ exports.doCommand = async function (command, userId, connectionId, dbNameHash, d
     'database-id': databaseId,
     key,
     command,
-    record
+  }
+
+  switch (command) {
+    case 'Insert':
+    case 'Update':
+    case 'Delete': {
+      transaction.record = record
+      break
+    }
+    case 'UploadFile': {
+      transaction['file-encryption-key'] = fileEncryptionKey
+      transaction['file-metadata'] = fileMetadata
+      transaction['file-id'] = fileId
+      break
+    }
+    default: {
+      throw new Error('Unknown command')
+    }
   }
 
   try {
@@ -637,9 +655,9 @@ exports.doCommand = async function (command, userId, connectionId, dbNameHash, d
     }
   }
 }
+exports.doCommand = doCommand
 
-exports.batchTransaction = async function (userId, connectionId, dbNameHash, databaseId, operations) {
-  if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
+exports.batchTransaction = async function (userId, connectionId, databaseId, operations) {
   if (!databaseId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
   if (!operations || !operations.length) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing operations')
 
@@ -779,6 +797,133 @@ exports.getBundle = async function (databaseId, bundleSeqNo) {
 
   } catch (e) {
     return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to query db state with ${e}`)
+  }
+}
+
+const uploadFileChunk = async function (logChildObject, userId, connectionId, databaseId, chunkEncryptionKey, chunk, chunkNumber, providedFileId) {
+  logChildObject.databaseId = databaseId
+  logChildObject.chunkNumber = chunkNumber
+
+  if (!databaseId) throw { status: statusCodes['Bad Request'], error: { message: 'Missing database id' } }
+  if (!chunk) throw { status: statusCodes['Bad Request'], error: { message: 'Missing chunk' } }
+  if (!chunkEncryptionKey) throw { status: statusCodes['Bad Request'], error: { message: 'Missing chunk encryption key' } }
+  if (typeof chunkNumber !== 'number') throw { status: statusCodes['Bad Request'], error: { message: 'Missing chunk number' } }
+
+  if (!connections.isDatabaseOpen(userId, connectionId, databaseId)) {
+    return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Database not open')
+  }
+
+  let fileId
+  if (chunkNumber === 0) {
+    const userDb = await _getUserDatabaseByUserIdAndDatabaseId(userId, databaseId)
+    if (userDb['read-only']) {
+      throw {
+        status: statusCodes['Forbidden'],
+        error: { message: 'DatabaseIsReadOnly' }
+      }
+    }
+
+    // generate a new unique file ID for this file on the first chunk
+    fileId = uuidv4()
+
+    // cache the file ID so server knows user is in the process of uploading this file
+    connections.cacheFileId(userId, fileId)
+  } else {
+    // use provided file ID for all chunks after first chunk
+    fileId = providedFileId
+
+    // server makes sure user is already in the process of uploading this exact file
+    if (!connections.isFileIdCached(userId, fileId)) {
+      throw { status: statusCodes['Not Found'], error: { message: 'File not found' } }
+    }
+  }
+  logChildObject.fileId = fileId
+
+  const fileChunkParams = {
+    Bucket: setup.getFilesBucketName(),
+    Key: getS3FileChunkKey(databaseId, fileId, chunkNumber),
+    Body: Buffer.concat([
+      // necessary multi-step type conversion to maintain size of array buffer
+      new Uint8Array(new Uint16Array(stringToArrayBuffer(chunkEncryptionKey))),
+      new Uint8Array(new Uint16Array(stringToArrayBuffer(chunk)))
+    ])
+  }
+
+  logger.child(logChildObject).info('Uploading file chunk')
+  const s3 = setup.s3()
+  await s3.upload(fileChunkParams).promise()
+
+  return fileId
+}
+
+exports.uploadFileChunk = async function (logChildObject, userId, connectionId, databaseId, chunkEncryptionKey, chunk, chunkNumber, providedFileId) {
+  try {
+    const fileId = await uploadFileChunk(logChildObject, userId, connectionId, databaseId, chunkEncryptionKey, chunk, chunkNumber, providedFileId)
+    return responseBuilder.successResponse({ fileId })
+  } catch (e) {
+    logChildObject.err = e
+
+    if (e.status && e.error) return responseBuilder.errorResponse(e.status, e.error.message)
+    else return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to upload file chunk')
+  }
+}
+
+exports.completeFileUpload = async function (logChildObject, userId, connectionId, databaseId, chunkEncryptionKey, chunk, chunkNumber, providedFileId, fileEncryptionKey, itemKey, fileMetadata) {
+  try {
+    const fileId = await uploadFileChunk(logChildObject, userId, connectionId, databaseId, chunkEncryptionKey, chunk, chunkNumber, providedFileId)
+
+    // places transaction in transaction log to attach file to an item
+    const nullRecord = null
+    const response = await doCommand('UploadFile', userId, connectionId, databaseId, itemKey, nullRecord, fileEncryptionKey, fileMetadata, fileId)
+    return response
+  } catch (e) {
+    logChildObject.err = e
+
+    if (e.status && e.error) return responseBuilder.errorResponse(e.status, e.error.message)
+    else return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to complete file upload')
+  }
+}
+
+const getChunk = async function (userId, connectionId, databaseId, fileId, chunkNumber) {
+  if (!databaseId) throw { status: statusCodes['Bad Request'], error: { message: 'Missing database id' } }
+  if (!fileId) throw { status: statusCodes['Bad Request'], error: { message: 'Missing file id' } }
+  if (typeof chunkNumber !== 'number') throw { status: statusCodes['Bad Request'], error: { message: 'Missing chunk number' } }
+
+  if (!connections.isDatabaseOpen(userId, connectionId, databaseId)) {
+    throw { status: statusCodes['Bad Request'], error: { message: 'Database not open' } }
+  }
+
+  const params = {
+    Bucket: setup.getFilesBucketName(),
+    Key: getS3FileChunkKey(databaseId, fileId, chunkNumber),
+  }
+  const s3 = setup.s3()
+  const result = await s3.getObject(params).promise()
+
+  const CHUNK_ENCRYPTION_KEY_BYTE_LENGTH = 60
+  const chunkEncryptionKeyBuffer = result.Body.slice(0, CHUNK_ENCRYPTION_KEY_BYTE_LENGTH)
+  const chunkBuffer = result.Body.slice(CHUNK_ENCRYPTION_KEY_BYTE_LENGTH)
+
+  return {
+    // reverse multi-step type conversion done at upload
+    chunkEncryptionKey: arrayBufferToString(new Uint16Array(new Uint8Array(chunkEncryptionKeyBuffer))),
+    chunk: arrayBufferToString(new Uint16Array(new Uint8Array(chunkBuffer))),
+  }
+}
+
+exports.getChunk = async function (logChildObject, userId, connectionId, databaseId, fileId, chunkNumber) {
+  try {
+    logChildObject.databaseId = databaseId
+    logChildObject.fileId = fileId
+    logChildObject.chunkNumber = chunkNumber
+
+    const { chunk, chunkEncryptionKey } = await getChunk(userId, connectionId, databaseId, fileId, chunkNumber)
+    return responseBuilder.successResponse({ chunk, chunkEncryptionKey })
+  } catch (e) {
+    logChildObject.err = e
+
+    if (e.status && e.error) return responseBuilder.errorResponse(e.status, e.error.message)
+    else return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to get file chunk')
   }
 }
 
