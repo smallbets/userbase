@@ -27,4 +27,9 @@ import './commands'
 //   throw error // throw error to have test still fail
 // })
 
+// https://github.com/cypress-io/cypress/issues/5029
+Cypress.Screenshot.defaults({
+  screenshotOnRunFailure: false,
+})
+
 require('cypress-skip-and-only-ui/support')

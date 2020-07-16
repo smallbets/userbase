@@ -5,5 +5,5 @@
   "chromeWebSecurity": false,
   "projectId": "uokg4h",
   "watchForFileChanges": false,
-  "numTestsKeptInMemory": 0
+  "video": false
 }
