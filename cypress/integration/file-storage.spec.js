@@ -904,7 +904,19 @@ describe('File Storage', function () {
         const actualArrayBuffer = new Uint8Array(await readBlobAsArrayBuffer(file))
         const expectedArrayBuffer = new Uint8Array(await readBlobAsArrayBuffer(testFile))
 
-        expect(actualArrayBuffer, 'file content').to.deep.equal(expectedArrayBuffer)
+        expect(actualArrayBuffer.byteLength, 'file content len').to.equal(expectedArrayBuffer.byteLength)
+
+        // deep equal slows down browser -- do this manually to reduce memory footprint
+        for (let i = 0; i < actualArrayBuffer.byteLength; i++) {
+          if (actualArrayBuffer[i] !== expectedArrayBuffer[i]) {
+            expect(actualArrayBuffer[i], 'byte num ' + i).to.equal(expectedArrayBuffer[i])
+          }
+
+          // sanity check
+          if (i % (TOTAL_MB / 10) === 0) {
+            expect(actualArrayBuffer[i], 'byte num ' + i).to.equal(expectedArrayBuffer[i])
+          }
+        }
 
         await this.test.userbase.deleteUser()
       })
