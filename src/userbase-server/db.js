@@ -606,7 +606,7 @@ const rollbackAttempt = async function (transaction, ddbClient) {
   }
 }
 
-const doCommand = async function (command, userId, connectionId, databaseId, key, record, fileEncryptionKey, fileMetadata, fileId) {
+const doCommand = async function (command, userId, connectionId, databaseId, key, record, fileId, fileEncryptionKey, fileMetadata) {
   if (!databaseId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
   if (!key) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing item key')
 
@@ -628,9 +628,9 @@ const doCommand = async function (command, userId, connectionId, databaseId, key
       break
     }
     case 'UploadFile': {
+      transaction['file-id'] = fileId
       transaction['file-encryption-key'] = fileEncryptionKey
       transaction['file-metadata'] = fileMetadata
-      transaction['file-id'] = fileId
       break
     }
     default: {
@@ -800,21 +800,14 @@ exports.getBundle = async function (databaseId, bundleSeqNo) {
   }
 }
 
-const uploadFileChunk = async function (logChildObject, userId, connectionId, databaseId, chunkEncryptionKey, chunk, chunkNumber, providedFileId) {
-  logChildObject.databaseId = databaseId
-  logChildObject.chunkNumber = chunkNumber
+exports.generateFileId = async function (logChildObject, userId, connectionId, databaseId) {
+  try {
+    if (!databaseId) throw { status: statusCodes['Bad Request'], error: { message: 'Missing database id' } }
 
-  if (!databaseId) throw { status: statusCodes['Bad Request'], error: { message: 'Missing database id' } }
-  if (!chunk) throw { status: statusCodes['Bad Request'], error: { message: 'Missing chunk' } }
-  if (!chunkEncryptionKey) throw { status: statusCodes['Bad Request'], error: { message: 'Missing chunk encryption key' } }
-  if (typeof chunkNumber !== 'number') throw { status: statusCodes['Bad Request'], error: { message: 'Missing chunk number' } }
+    if (!connections.isDatabaseOpen(userId, connectionId, databaseId)) {
+      return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Database not open')
+    }
 
-  if (!connections.isDatabaseOpen(userId, connectionId, databaseId)) {
-    return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Database not open')
-  }
-
-  let fileId
-  if (chunkNumber === 0) {
     const userDb = await _getUserDatabaseByUserIdAndDatabaseId(userId, databaseId)
     if (userDb['read-only']) {
       throw {
@@ -823,21 +816,45 @@ const uploadFileChunk = async function (logChildObject, userId, connectionId, da
       }
     }
 
-    // generate a new unique file ID for this file on the first chunk
-    fileId = uuidv4()
+    // generate a new unique file ID for this file
+    const fileId = uuidv4()
+    logChildObject.fileId = fileId
 
     // cache the file ID so server knows user is in the process of uploading this file
     connections.cacheFileId(userId, fileId)
-  } else {
-    // use provided file ID for all chunks after first chunk
-    fileId = providedFileId
 
-    // server makes sure user is already in the process of uploading this exact file
-    if (!connections.isFileIdCached(userId, fileId)) {
-      throw { status: statusCodes['Not Found'], error: { message: 'File not found' } }
-    }
+    return responseBuilder.successResponse({ fileId })
+  } catch (e) {
+    logChildObject.err = e
+
+    if (e.status && e.error) return responseBuilder.errorResponse(e.status, e.error.message)
+    else return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to generate file id')
   }
+}
+
+const _validateFileUpload = (userId, connectionId, databaseId, fileId) => {
+  if (!databaseId) throw { status: statusCodes['Bad Request'], error: { message: 'Missing database id' } }
+
+  if (!connections.isDatabaseOpen(userId, connectionId, databaseId)) {
+    return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Database not open')
+  }
+
+  // server makes sure user is already in the process of uploading this exact file
+  if (!connections.isFileIdCached(userId, fileId)) {
+    throw { status: statusCodes['Not Found'], error: { message: 'File not found' } }
+  }
+}
+
+const uploadFileChunk = async function (logChildObject, userId, connectionId, databaseId, chunkEncryptionKey, chunk, chunkNumber, fileId) {
+  logChildObject.databaseId = databaseId
   logChildObject.fileId = fileId
+  logChildObject.chunkNumber = chunkNumber
+
+  if (!chunk) throw { status: statusCodes['Bad Request'], error: { message: 'Missing chunk' } }
+  if (!chunkEncryptionKey) throw { status: statusCodes['Bad Request'], error: { message: 'Missing chunk encryption key' } }
+  if (typeof chunkNumber !== 'number') throw { status: statusCodes['Bad Request'], error: { message: 'Missing chunk number' } }
+
+  _validateFileUpload(userId, connectionId, databaseId, fileId)
 
   const fileChunkParams = {
     Bucket: setup.getFilesBucketName(),
@@ -856,9 +873,9 @@ const uploadFileChunk = async function (logChildObject, userId, connectionId, da
   return fileId
 }
 
-exports.uploadFileChunk = async function (logChildObject, userId, connectionId, databaseId, chunkEncryptionKey, chunk, chunkNumber, providedFileId) {
+exports.uploadFileChunk = async function (logChildObject, userId, connectionId, databaseId, chunkEncryptionKey, chunk, chunkNumber, fileId) {
   try {
-    const fileId = await uploadFileChunk(logChildObject, userId, connectionId, databaseId, chunkEncryptionKey, chunk, chunkNumber, providedFileId)
+    await uploadFileChunk(logChildObject, userId, connectionId, databaseId, chunkEncryptionKey, chunk, chunkNumber, fileId)
     return responseBuilder.successResponse({ fileId })
   } catch (e) {
     logChildObject.err = e
@@ -868,13 +885,16 @@ exports.uploadFileChunk = async function (logChildObject, userId, connectionId, 
   }
 }
 
-exports.completeFileUpload = async function (logChildObject, userId, connectionId, databaseId, chunkEncryptionKey, chunk, chunkNumber, providedFileId, fileEncryptionKey, itemKey, fileMetadata) {
+exports.completeFileUpload = async function (logChildObject, userId, connectionId, databaseId, fileId, fileEncryptionKey, itemKey, fileMetadata) {
   try {
-    const fileId = await uploadFileChunk(logChildObject, userId, connectionId, databaseId, chunkEncryptionKey, chunk, chunkNumber, providedFileId)
+    logChildObject.databaseId = databaseId
+    logChildObject.fileId = fileId
+
+    _validateFileUpload(userId, connectionId, databaseId, fileId)
 
     // places transaction in transaction log to attach file to an item
     const nullRecord = null
-    const response = await doCommand('UploadFile', userId, connectionId, databaseId, itemKey, nullRecord, fileEncryptionKey, fileMetadata, fileId)
+    const response = await doCommand('UploadFile', userId, connectionId, databaseId, itemKey, nullRecord, fileId, fileEncryptionKey, fileMetadata)
     return response
   } catch (e) {
     logChildObject.err = e

@@ -250,6 +250,10 @@ async function start(express, app, userbaseConfig = {}) {
                     response = await db.bundleTransactionLog(userId, connectionId, params.dbId, params.seqNo, params.bundle)
                     break
                   }
+                  case 'GenerateFileId': {
+                    response = await db.generateFileId(logChildObject, userId, connectionId, params.dbId)
+                    break
+                  }
                   case 'UploadFileChunk': {
                     response = conn.fileStorageRateLimiter.atCapacity()
                       ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
@@ -271,9 +275,6 @@ async function start(express, app, userbaseConfig = {}) {
                       userId,
                       connectionId,
                       params.dbId,
-                      params.chunkEncryptionKey,
-                      params.chunk,
-                      params.chunkNumber,
                       params.fileId,
                       params.fileEncryptionKey,
                       params.itemKey,
