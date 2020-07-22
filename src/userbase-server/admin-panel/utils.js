@@ -23,3 +23,14 @@ export const formatDate = (date, long = true) => {
     return date
   }
 }
+
+export const formatSize = (size) => {
+  const kb = (size || 0) / 1000
+  if (kb < 100) return kb.toFixed(3) + ' KB'
+
+  const mb = kb / 1000
+  if (mb < 100) return mb.toFixed(1) + ' MB'
+
+  const gb = mb / 1000
+  return gb.toFixed(1) + ' GB'
+}

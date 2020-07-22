@@ -5,6 +5,7 @@ import { faTrashAlt } from '@fortawesome/free-regular-svg-icons'
 import dashboardLogic from './logic'
 import adminLogic from '../Admin/logic'
 import UnknownError from '../Admin/UnknownError'
+import { formatSize } from '../../utils'
 
 export default class Dashboard extends Component {
   constructor(props) {
@@ -186,6 +187,7 @@ export default class Dashboard extends Component {
                     <tr className='border-b'>
                       <th className='px-1 py-1 text-gray-800 text-left'>App</th>
                       <th className='px-1 py-1 text-gray-800 text-left'>App ID</th>
+                      <th className='px-1 py-1 text-gray-800 text-left'>Data Stored (updated every 24hr)</th>
                     </tr>
                   </thead>
 
@@ -197,6 +199,7 @@ export default class Dashboard extends Component {
                           <a href={`#app=${app['app-name']}`}>{app['app-name']}</a>
                         </td>
                         <td className='px-1 font-mono font-light text-left'>{app['app-id']}</td>
+                        <td className='px-1 font-light text-left'>{formatSize(app['size'])}</td>
                       </tr>
                     ))}
 
@@ -246,42 +249,45 @@ export default class Dashboard extends Component {
                   </div>
 
                   {showDeletedApps &&
-                    <table className='mt-6 table-auto w-full border-none mx-auto text-xs'>
+                    <div className='text-center overflow-scroll whitespace-no-wrap'>
+                      <table className='mt-6 table-auto w-full border-none mx-auto text-xs'>
 
-                      <thead>
-                        <tr className='border-b'>
-                          <th className='px-1 py-1 text-gray-800 text-left'>App</th>
-                          <th className='px-1 py-1 text-gray-800 text-left'>App ID</th>
-                          <th className='px-1 py-1 text-gray-800 w-8'></th>
-                        </tr>
-                      </thead>
-
-                      <tbody>
-
-                        {deletedApps.map((app) => (
-                          <tr key={app['app-id']} className='border-b mouse:hover:bg-yellow-200 h-8'>
-                            <td className='px-1 font-light text-left text-red-700'>{app['app-name']}</td>
-                            <td className='px-1 font-mono font-light text-left'>{app['app-id']}</td>
-                            <td className='px-1 font-light w-8 text-center'>
-
-                              {app['permanentDeleting']
-                                ? <div className='loader w-4 h-4 inline-block' />
-                                : <div
-                                  className='font-normal text-sm cursor-pointer text-yellow-700'
-                                  onClick={() => this.handlePermanentDeleteApp(app)}
-                                >
-                                  <FontAwesomeIcon icon={faTrashAlt} />
-                                </div>
-                              }
-
-                            </td>
+                        <thead>
+                          <tr className='border-b'>
+                            <th className='px-1 py-1 text-gray-800 text-left'>App</th>
+                            <th className='px-1 py-1 text-gray-800 text-left'>App ID</th>
+                            <th className='px-1 py-1 text-gray-800 text-left'>Data Stored (updated every 24hr)</th>
+                            <th className='px-1 py-1 text-gray-800 w-8'></th>
                           </tr>
-                        ))}
+                        </thead>
 
-                      </tbody>
+                        <tbody>
 
-                    </table>
+                          {deletedApps.map((app) => (
+                            <tr key={app['app-id']} className='border-b mouse:hover:bg-yellow-200 h-8'>
+                              <td className='px-1 font-light text-left text-red-700'>{app['app-name']}</td>
+                              <td className='px-1 font-mono font-light text-left'>{app['app-id']}</td>
+                              <td className='px-1 font-light text-left'>{formatSize(app['size'])}</td>
+                              <td className='px-1 font-light w-8 text-center'>
 
+                                {app['permanentDeleting']
+                                  ? <div className='loader w-4 h-4 inline-block' />
+                                  : <div
+                                    className='font-normal text-sm cursor-pointer text-yellow-700'
+                                    onClick={() => this.handlePermanentDeleteApp(app)}
+                                  >
+                                    <FontAwesomeIcon icon={faTrashAlt} />
+                                  </div>
+                                }
+
+                              </td>
+                            </tr>
+                          ))}
+
+                        </tbody>
+
+                      </table>
+                    </div>
                   }
 
                 </div>
