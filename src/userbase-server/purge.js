@@ -10,7 +10,7 @@ import stripe from './stripe'
 
 const MS_IN_AN_HOUR = 60 * 60 * 1000
 const MS_IN_A_DAY = 24 * MS_IN_AN_HOUR
-const TIME_TO_PURGE = 0 * MS_IN_A_DAY
+const TIME_TO_PURGE = 30 * MS_IN_A_DAY
 
 const ddbWhileLoop = async (params, ddbQuery, action) => {
   let itemsResponse = await ddbQuery(params)
