@@ -28,6 +28,9 @@ export default class EditAdmin extends Component {
       loadingCancel: false,
       loadingUpdatePaymentMethod: false,
       loadingResumeSubscription: false,
+      loadingBuyStoragePlan: false,
+      loadingCancelStoragePlan: false,
+      loadingResumeStoragePlan: false,
       loadingBuyAddOn: false,
       loadingCancelAddOn: false,
       loadingResumeAddOn: false,
@@ -42,6 +45,9 @@ export default class EditAdmin extends Component {
       errorCancelling: false,
       errorUpdatingPaymentMethod: false,
       errorResumingSubscription: false,
+      errorBuyingStoragePlan: false,
+      errorCancellingStoragePlan: false,
+      errorResumingStoragePlan: false,
       errorBuyingAddOn: false,
       errorCancellingAddOn: false,
       errorResumingAddOn: false,
@@ -59,6 +65,9 @@ export default class EditAdmin extends Component {
     this.handleCancelSubscription = this.handleCancelSubscription.bind(this)
     this.handleResumeSubscription = this.handleResumeSubscription.bind(this)
     this.handleCheckout = this.handleCheckout.bind(this)
+    this.handleBuyStoragePlan = this.handleBuyStoragePlan.bind(this)
+    this.handleCancelStoragePlan = this.handleCancelStoragePlan.bind(this)
+    this.handleResumeStoragePlan = this.handleResumeStoragePlan.bind(this)
     this.handleBuyAddOn = this.handleBuyAddOn.bind(this)
     this.handleCancelAddOn = this.handleCancelAddOn.bind(this)
     this.handleResumeAddOn = this.handleResumeAddOn.bind(this)
@@ -122,9 +131,7 @@ export default class EditAdmin extends Component {
 
       // only attempt to enable payments if admin has active Userbase subscription
       if (paymentStatus === 'active' && !cancelSaasSubscriptionAt) {
-        if (window.confirm(`Purchase the payments add-on for $${PAYMENTS_ADD_ON_PRICE} per year!`)) {
-          this.handleBuyAddOn()
-        }
+        this.handleBuyAddOn()
       } else {
         window.alert(`You must ${paymentStatus === 'active' ? 'purchase the' : 'have an active'} Userbase subscription first before you can enable payments!`)
       }
@@ -154,6 +161,9 @@ export default class EditAdmin extends Component {
       || this.state.errorCancelling
       || this.state.errorUpdatingPaymentMethod
       || this.state.errorResumingSubscription
+      || this.state.errorBuyingStoragePlan
+      || this.state.errorCancellingStoragePlan
+      || this.state.errorResumingStoragePlan
       || this.state.errorBuyingAddOn
       || this.state.errorCancellingAddOn
       || this.state.errorResumingAddOn
@@ -170,6 +180,9 @@ export default class EditAdmin extends Component {
         errorCancelling: false,
         errorUpdatingPaymentMethod: false,
         errorResumingSubscription: false,
+        errorBuyingStoragePlan: false,
+        errorCancellingStoragePlan: false,
+        errorResumingStoragePlan: false,
         errorBuyingAddOn: false,
         errorCancellingAddOn: false,
         errorResumingAddOn: false,
@@ -360,9 +373,9 @@ export default class EditAdmin extends Component {
     try {
       if (window.confirm('Are you sure you want to cancel your subscription? ' + getStripeCancelWarning(true))) {
         this.setState({ loadingCancel: true })
-        const { cancelSaasSubscriptionAt, cancelPaymentsAddOnSubscriptionAt } = await adminLogic.cancelSaasSubscription()
+        const { cancelSaasSubscriptionAt, cancelPaymentsAddOnSubscriptionAt, cancelStorageSubscriptionAt, sizeAllowed } = await adminLogic.cancelSaasSubscription()
 
-        this.props.handleUpdateAccount({ cancelSaasSubscriptionAt, cancelPaymentsAddOnSubscriptionAt })
+        this.props.handleUpdateAccount({ cancelSaasSubscriptionAt, cancelPaymentsAddOnSubscriptionAt, cancelStorageSubscriptionAt, sizeAllowed })
 
         if (this._isMounted) this.setState({ loadingCancel: false })
       }
@@ -377,13 +390,72 @@ export default class EditAdmin extends Component {
     try {
       this.handleClearErrors({ loadingResumeSubscription: true })
 
-      await adminLogic.resumeSaasSubscription()
+      const { sizeAllowed } = await adminLogic.resumeSaasSubscription()
 
-      this.props.handleUpdateAccount({ cancelSaasSubscriptionAt: undefined })
+      this.props.handleUpdateAccount({ cancelSaasSubscriptionAt: undefined, sizeAllowed })
 
       if (this._isMounted) this.setState({ loadingResumeSubscription: false })
     } catch (e) {
       if (this._isMounted) this.setState({ loadingResumeSubscription: false, errorResumingSubscription: true })
+    }
+  }
+
+  async handleBuyStoragePlan(event) {
+    if (event) event.preventDefault()
+
+    this.handleClearErrors({ loadingBuyStoragePlan: true })
+
+    try {
+      if (window.confirm(`Purchase the storage plan for $99 per year!`)) {
+        const { storageSubscriptionStatus, sizeAllowed } = await adminLogic.buyStoragePlan()
+
+        this.props.handleUpdateAccount({ storageSubscriptionStatus, sizeAllowed })
+        if (storageSubscriptionStatus === 'incomplete') {
+          window.alert('Please update your payment method!')
+        }
+      }
+
+      if (this._isMounted) this.setState({ loadingBuyStoragePlan: false })
+    } catch (e) {
+      if (this._isMounted) this.setState({ loadingBuyStoragePlan: false, errorBuyingStoragePlan: true })
+    }
+  }
+
+  async handleCancelStoragePlan(event) {
+    event.preventDefault()
+
+    if (this.state.loadingCancelStoragePlan) return
+
+    this.handleClearErrors()
+
+    try {
+      if (window.confirm('Are you sure you want to cancel your storage plan?')) {
+        this.setState({ loadingCancelStoragePlan: true })
+
+        const { cancelStorageSubscriptionAt, sizeAllowed } = await adminLogic.cancelStorageSubscription()
+
+        this.props.handleUpdateAccount({ cancelStorageSubscriptionAt, sizeAllowed })
+
+        if (this._isMounted) this.setState({ loadingCancelStoragePlan: false })
+      }
+    } catch (e) {
+      if (this._isMounted) this.setState({ loadingCancelStoragePlan: false, errorCancellingStoragePlan: true })
+    }
+  }
+
+  async handleResumeStoragePlan(event) {
+    event.preventDefault()
+
+    try {
+      this.handleClearErrors({ loadingResumeStoragePlan: true, sizeAllowed: null })
+
+      const { storageSubscriptionStatus, sizeAllowed } = await adminLogic.resumeStorageSubscription()
+
+      this.props.handleUpdateAccount({ cancelStorageSubscriptionAt: undefined, storageSubscriptionStatus, sizeAllowed })
+
+      if (this._isMounted) this.setState({ loadingResumeStoragePlan: false })
+    } catch (e) {
+      if (this._isMounted) this.setState({ loadingResumeStoragePlan: false, errorResumingStoragePlan: true })
     }
   }
 
@@ -393,11 +465,13 @@ export default class EditAdmin extends Component {
     this.handleClearErrors({ loadingBuyAddOn: true })
 
     try {
-      const paymentsAddOnSubscriptionStatus = await adminLogic.buyAddOn()
+      if (window.confirm(`Purchase the payments add-on for $${PAYMENTS_ADD_ON_PRICE} per year!`)) {
+        const paymentsAddOnSubscriptionStatus = await adminLogic.buyAddOn()
 
-      this.props.handleUpdateAccount({ paymentsAddOnSubscriptionStatus })
-      if (paymentsAddOnSubscriptionStatus === 'incomplete') {
-        window.alert('Please update your payment method!')
+        this.props.handleUpdateAccount({ paymentsAddOnSubscriptionStatus })
+        if (paymentsAddOnSubscriptionStatus === 'incomplete') {
+          window.alert('Please update your payment method!')
+        }
       }
 
       if (this._isMounted) this.setState({ loadingBuyAddOn: false })
@@ -465,7 +539,15 @@ export default class EditAdmin extends Component {
 
   render() {
     const { admin } = this.props
-    const { paymentStatus, cancelSaasSubscriptionAt, connectedToStripe, paymentsAddOnSubscriptionStatus, cancelPaymentsAddOnSubscriptionAt } = admin
+    const {
+      paymentStatus,
+      cancelSaasSubscriptionAt,
+      connectedToStripe,
+      paymentsAddOnSubscriptionStatus,
+      cancelPaymentsAddOnSubscriptionAt,
+      storageSubscriptionStatus,
+      cancelStorageSubscriptionAt,
+    } = admin
     const {
       fullName,
       email,
@@ -479,6 +561,9 @@ export default class EditAdmin extends Component {
       loadingChangePassword,
       loadingDeleteAdmin,
       loadingCheckout,
+      loadingBuyStoragePlan,
+      loadingCancelStoragePlan,
+      loadingResumeStoragePlan,
       loadingBuyAddOn,
       loadingCancelAddOn,
       loadingResumeAddOn,
@@ -491,6 +576,9 @@ export default class EditAdmin extends Component {
       errorChangingPassword,
       errorDeletingAdmin,
       errorCheckingOut,
+      errorBuyingStoragePlan,
+      errorCancellingStoragePlan,
+      errorResumingStoragePlan,
       errorBuyingAddOn,
       errorCancellingAddOn,
       errorResumingAddOn,
@@ -567,6 +655,43 @@ export default class EditAdmin extends Component {
               }
 
               <hr className='border border-t-0 border-gray-400 mt-8 mb-4' />
+
+              {(!storageSubscriptionStatus || cancelStorageSubscriptionAt) &&
+                <div>
+                  <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Storage Plan</div>
+                  <div className='font-normal text-left mb-4'>
+                    <p>Store up to 1 terabyte of data for an additional $99 per year.</p>
+                    {(paymentStatus !== 'active' || cancelSaasSubscriptionAt) && <p>You must have an active Userbase subscription.</p>}
+                  </div>
+
+                  {
+                    cancelStorageSubscriptionAt
+                      ?
+                      <input
+                        className='btn w-56 text-center'
+                        type='button'
+                        role='link'
+                        value={loadingResumeStoragePlan ? 'Resuming Storage Plan...' : 'Resume 1 TB Storage Plan'}
+                        disabled={loadingResumeStoragePlan || paymentStatus !== 'active' || cancelSaasSubscriptionAt}
+                        onClick={this.handleResumeStoragePlan}
+                      />
+                      :
+                      <input
+                        className='btn w-56 text-center'
+                        type='button'
+                        role='link'
+                        disabled={loadingBuyStoragePlan || paymentStatus !== 'active' || cancelSaasSubscriptionAt}
+                        value={loadingBuyStoragePlan ? 'Loading...' : 'Buy Storage Plan (1 TB)'}
+                        onClick={this.handleBuyStoragePlan}
+                      />
+                  }
+
+                  {errorBuyingStoragePlan && <UnknownError action='buying the storage plan' />}
+                  {errorResumingStoragePlan && <UnknownError action='resuming the storage plan' />}
+
+                  <hr className='border border-t-0 border-gray-400 mt-8 mb-4' />
+                </div>
+              }
 
               {(!paymentsAddOnSubscriptionStatus || cancelPaymentsAddOnSubscriptionAt) &&
                 <div>
@@ -866,6 +991,27 @@ export default class EditAdmin extends Component {
                   />
 
                   {errorCancelling && <UnknownError action='cancelling your subscription' />}
+
+                  <br />
+                  <br />
+                </div>
+              }
+
+              {storageSubscriptionStatus && storageSubscriptionStatus !== 'canceled' && !cancelStorageSubscriptionAt &&
+                <div>
+                  <div className='flex-0 text-base sm:text-lg text-left mb-1'>Cancel Storage Plan</div>
+                  <p className='text-left font-normal'>By cancelling your storage plan, you will be limited to 1 GB of storage.</p>
+
+                  <input
+                    className='btn w-56'
+                    type='button'
+                    role='link'
+                    value={loadingCancelStoragePlan ? 'Cancelling Storage Plan...' : 'Cancel Storage Plan'}
+                    disabled={loadingCancelStoragePlan}
+                    onClick={this.handleCancelStoragePlan}
+                  />
+
+                  {errorCancellingStoragePlan && <UnknownError action='cancelling your storage plan' />}
 
                   <br />
                   <br />

@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import { string } from 'prop-types'
+import { object } from 'prop-types'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faTrashAlt } from '@fortawesome/free-regular-svg-icons'
 import dashboardLogic from './logic'
@@ -150,7 +150,7 @@ export default class Dashboard extends Component {
   }
 
   render() {
-    const { paymentStatus, cancelSaasSubscriptionAt } = this.props
+    const { paymentStatus, cancelSaasSubscriptionAt, size, sizeAllowed } = this.props.admin
     const { loading, activeApps, deletedApps, showDeletedApps, error, appName, loadingApp } = this.state
 
     return (
@@ -178,6 +178,14 @@ export default class Dashboard extends Component {
                   : <div className='text-left mb-4 text-red-600 font-normal'>
                     Your account is limited to 1 app and 3 users. <a href="#edit-account">Remove this limit</a> with a Userbase subscription.
                 </div>
+              }
+
+              {
+                (sizeAllowed && size > sizeAllowed)
+                  ? <div className='text-left mb-4 text-red-600 font-normal'>
+                    You have exceeded your storage limit of {formatSize(sizeAllowed, false)}. Please <a href="#edit-account">upgrade your storage plan</a>.
+                  </div>
+                  : <div />
               }
 
               {activeApps && activeApps.length > 0 &&
@@ -310,6 +318,5 @@ export default class Dashboard extends Component {
 }
 
 Dashboard.propTypes = {
-  paymentStatus: string,
-  cancelSaasSubscriptionAt: string,
+  admin: object,
 }

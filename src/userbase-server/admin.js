@@ -20,6 +20,13 @@ const SECONDS_IN_A_DAY = 60 * 60 * HOURS_IN_A_DAY
 const MS_IN_A_DAY = 1000 * SECONDS_IN_A_DAY
 const SESSION_LENGTH = MS_IN_A_DAY
 
+// STORAGE PLANS
+const ONE_KB = 1000
+const ONE_MB = ONE_KB * 1000
+const ONE_GB = ONE_MB * 1000
+
+const DEFAULT_STORAGE_SIZE = ONE_GB
+
 const createSession = async function (adminId) {
   const sessionId = crypto
     .randomBytes(ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID)
@@ -223,6 +230,13 @@ const _validateAdminPassword = async (password, admin) => {
   }
 }
 
+const _getSizeAllowed = (admin) => {
+  return (admin['stripe-saas-subscription-status'] === 'active' && !admin['stripe-cancel-saas-subscription-at'] &&
+    admin['stripe-storage-subscription-status'] === 'active' && !admin['stripe-cancel-storage-subscription-at'])
+    ? null // No enforced limit for now
+    : DEFAULT_STORAGE_SIZE
+}
+
 const _buildAdminResult = (admin) => {
   return {
     email: admin['email'],
@@ -232,6 +246,10 @@ const _buildAdminResult = (admin) => {
     connectedToStripe: admin['stripe-account-id'] ? true : false,
     paymentsAddOnSubscriptionStatus: admin['stripe-payments-add-on-subscription-status'],
     cancelPaymentsAddOnSubscriptionAt: admin['stripe-cancel-payments-add-on-subscription-at'],
+    storageSubscriptionStatus: admin['stripe-storage-subscription-status'],
+    cancelStorageSubscriptionAt: admin['stripe-cancel-storage-subscription-at'],
+    size: admin['size'],
+    sizeAllowed: _getSizeAllowed(admin),
   }
 }
 
@@ -726,6 +744,7 @@ exports.deleteAdmin = async function (req, res) {
     await Promise.all([
       stripe.deleteSubscription(admin['stripe-saas-subscription-id'], admin['stripe-saas-subscription-status']),
       stripe.deleteSubscription(admin['stripe-payments-add-on-subscription-id'], admin['stripe-payments-add-on-subscription-status']),
+      stripe.deleteSubscription(admin['stripe-storage-subscription-id'], admin['stripe-storage-subscription-status']),
     ])
 
     const params = {
@@ -797,13 +816,26 @@ const _buildStripeSubscriptionDdbParams = async (admin, customerId, subscription
     #stripeEventTimestamp = :stripeEventTimestamp
   `
 
-  const isSaasPlan = stripe.getStripeSaasSubscriptionPlanId() === subscriptionPlanId
+  let subscriptionType
+  switch (subscriptionPlanId) {
+    case stripe.getStripeSaasSubscriptionPlanId():
+      subscriptionType = 'saas'
+      break
+    case stripe.getStripePaymentsAddOnPlanId():
+      subscriptionType = 'payments-add-on'
+      break
+    case stripe.getStripeStoragePlanId():
+      subscriptionType = 'storage'
+      break
+    default:
+      throw new Error('UnknownPlanId')
+  }
 
   stripeSubscriptionDdbParams.ExpressionAttributeNames['#stripeCustomerId'] = 'stripe-customer-id'
-  stripeSubscriptionDdbParams.ExpressionAttributeNames['#stripeSubscriptionId'] = 'stripe-' + (isSaasPlan ? 'saas' : 'payments-add-on') + '-subscription-id'
-  stripeSubscriptionDdbParams.ExpressionAttributeNames['#stripeSubscriptionStatus'] = 'stripe-' + (isSaasPlan ? 'saas' : 'payments-add-on') + '-subscription-status'
-  stripeSubscriptionDdbParams.ExpressionAttributeNames['#stripeEventTimestamp'] = 'stripe-' + (isSaasPlan ? 'saas' : 'payments-add-on') + '-event-timestamp'
-  stripeSubscriptionDdbParams.ExpressionAttributeNames['#cancelAt'] = 'stripe-cancel-' + (isSaasPlan ? 'saas' : 'payments-add-on') + '-subscription-at'
+  stripeSubscriptionDdbParams.ExpressionAttributeNames['#stripeSubscriptionId'] = 'stripe-' + subscriptionType + '-subscription-id'
+  stripeSubscriptionDdbParams.ExpressionAttributeNames['#stripeSubscriptionStatus'] = 'stripe-' + subscriptionType + '-subscription-status'
+  stripeSubscriptionDdbParams.ExpressionAttributeNames['#stripeEventTimestamp'] = 'stripe-' + subscriptionType + '-event-timestamp'
+  stripeSubscriptionDdbParams.ExpressionAttributeNames['#cancelAt'] = 'stripe-cancel-' + subscriptionType + '-subscription-at'
 
   stripeSubscriptionDdbParams.ExpressionAttributeValues[':stripeCustomerId'] = customerId
   stripeSubscriptionDdbParams.ExpressionAttributeValues[':stripeSubscriptionId'] = subscriptionId
@@ -831,10 +863,6 @@ exports.updateSubscriptionInDdb = async (logChildObject, logs, metadata, custome
   const admin = await findAdminByAdminId(adminId)
 
   if (!admin) throw new Error('MissingFromDdb')
-
-  if (subscriptionPlanId !== stripe.getStripeSaasSubscriptionPlanId() && subscriptionPlanId !== stripe.getStripePaymentsAddOnPlanId()) {
-    throw new Error('UnknownPlanId')
-  }
 
   const updateUserParams = await _buildStripeSubscriptionDdbParams(admin, customerId, subscriptionId, subscriptionPlanId, status, cancelAt, stripeEventTimestamp)
   const ddbClient = connection.ddbClient()
@@ -916,19 +944,23 @@ exports.cancelSaasSubscription = async function (req, res) {
 
   const saasSubscriptionId = admin['stripe-saas-subscription-id']
   const paymentsAddOnSubscriptionId = admin['stripe-payments-add-on-subscription-id']
+  const storageSubscriptionId = admin['stripe-storage-subscription-id']
 
-  if (!saasSubscriptionId && !paymentsAddOnSubscriptionId) return res.status(statusCodes['Not Found']).send('No subscription found')
+  if (!saasSubscriptionId && !paymentsAddOnSubscriptionId && !storageSubscriptionId) return res.status(statusCodes['Not Found']).send('No subscription found')
 
   try {
-    // cancels both saas subscription and payments add-on subscription
-    const [cancelSaasSubscriptionAt, cancelPaymentsAddOnSubscriptionAt] = await Promise.all([
+    // cancels all admin's subscriptions
+    const [cancelSaasSubscriptionAt, cancelPaymentsAddOnSubscriptionAt, cancelStorageSubscriptionAt] = await Promise.all([
       saasSubscriptionId && _cancelSubscription(admin, saasSubscriptionId, 'saas'),
       paymentsAddOnSubscriptionId && _cancelSubscription(admin, paymentsAddOnSubscriptionId, 'payments-add-on'),
+      storageSubscriptionId && _cancelSubscription(admin, storageSubscriptionId, 'storage'),
     ])
 
     return res.send({
       cancelSaasSubscriptionAt,
       cancelPaymentsAddOnSubscriptionAt,
+      cancelStorageSubscriptionAt,
+      sizeAllowed: DEFAULT_STORAGE_SIZE
     })
   } catch (e) {
     logger.error(`Failed to cancel subscription for admin '${adminId}' with ${e}`)
@@ -951,12 +983,158 @@ exports.resumeSaasSubscription = async function (req, res) {
 
     await _resumeStripeSubscriptionInDdb(admin, 'saas')
 
-    return res.end()
+    return res.send({
+      sizeAllowed: _getSizeAllowed({
+        ...admin,
+        'stripe-cancel-saas-subscription-at': undefined
+      })
+    })
   } catch (e) {
     logger.error(`Failed to resume subscription for admin '${adminId}' with ${e}`)
     return res.status(statusCodes['Internal Server Error']).send('Failed to resume subscription')
   }
 }
+
+exports.subscribeToStoragePlan = async function (req, res) {
+  const admin = res.locals.admin
+  const adminId = admin['admin-id']
+
+  let logChildObject = {}
+  try {
+    const stripeCustomerId = admin['stripe-customer-id']
+    logChildObject = { adminId, stripeCustomerId }
+    logger.child(logChildObject).info('Subscribing to Stripe storage plan')
+
+    logger.child(logChildObject).warn('howdy')
+
+    if (admin['stripe-saas-subscription-status'] !== 'active' || admin['stripe-cancel-saas-subscription-at']) throw {
+      status: statusCodes['Payment Required'],
+      error: { message: 'Must have an active Userbase subscription.' }
+    }
+
+    const subscription = await stripe.getClient().subscriptions.create({
+      customer: stripeCustomerId,
+      items: [{ plan: stripe.getStripeStoragePlanId() }],
+      metadata: { adminId }
+    },
+      {
+        idempotency_key: stripeCustomerId + '_storage_plan_1_TB' // admin can only checkout a single subscription plan
+      })
+
+    logger
+      .child({ ...logChildObject, subscriptionId: subscription.id, statusCode: statusCodes['Success'] })
+      .info('Successfully subscribed to Stripe storage plan')
+
+    return res.send({
+      storageSubscriptionStatus: subscription.status,
+      sizeAllowed: _getSizeAllowed({ ...admin, 'stripe-storage-subscription-status': subscription.status })
+    })
+  } catch (e) {
+    const message = 'Failed to subscribe to Stripe storage plan.'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).info(message)
+      return res.status(e.status).send(e.error.message)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return res.status(statusCode).send(message)
+    }
+  }
+}
+
+exports.cancelStorageSubscription = async function (req, res) {
+  let logChildObject = {}
+  try {
+    const { admin } = res.locals
+    const adminId = admin['admin-id']
+    const subscriptionId = admin['stripe-storage-subscription-id']
+
+    logChildObject = { adminId, subscriptionId, req: trimReq(req) }
+    logger.child(logChildObject).info('Cancelling storage subscription')
+
+    if (!subscriptionId) throw {
+      status: statusCodes['Not Found'],
+      error: { message: 'No storage subscription found.' }
+    }
+
+    if (admin['stripe-cancel-storage-subscription-at']) return res
+      .send(admin['stripe-cancel-storage-subscription-at'])
+
+    const cancelStorageSubscriptionAt = await _cancelSubscription(admin, subscriptionId, 'storage')
+
+    logger
+      .child({ ...logChildObject, statusCode: statusCodes['Success'] })
+      .info('Successfully cancelled storage subscription')
+
+    return res.send({
+      cancelStorageSubscriptionAt,
+      sizeAllowed: DEFAULT_STORAGE_SIZE
+    })
+  } catch (e) {
+    const message = 'Failed to cancel storage subscription'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
+      return res.status(e.status).send(message)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).warn(message)
+      return res.status(statusCode).send(message)
+    }
+  }
+}
+
+exports.resumeStorageSubscription = async function (req, res) {
+  let logChildObject = {}
+  try {
+    const { admin } = res.locals
+    const adminId = admin['admin-id']
+    const subscriptionId = admin['stripe-storage-subscription-id']
+
+    logChildObject = { adminId, subscriptionId, req: trimReq(req) }
+    logger.child(logChildObject).info('Resuming storage subscription')
+
+    if (!subscriptionId) throw {
+      status: statusCodes['Not Found'],
+      error: { message: 'No storage subscription found.' }
+    }
+
+    if (!admin['stripe-cancel-storage-subscription-at']) return res.end()
+
+    const subscription = await stripe.getClient().subscriptions.update(
+      subscriptionId,
+      { cancel_at_period_end: false }
+    )
+
+    await _resumeStripeSubscriptionInDdb(admin, 'storage')
+
+    logger
+      .child({ ...logChildObject, statusCode: statusCodes['Success'] })
+      .info('Successfully resumed storage subscription')
+
+    return res.send({
+      storageSubscriptionStatus: subscription.status,
+      sizeAllowed: _getSizeAllowed({
+        ...admin,
+        'stripe-storage-subscription-status': subscription.status,
+        'stripe-cancel-storage-subscription-at': undefined
+      })
+    })
+  } catch (e) {
+    const message = 'Failed to resume storage subscription'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
+      return res.status(e.status).send(message)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).warn(message)
+      return res.status(statusCode).send(message)
+    }
+  }
+}
+
 
 exports.subscribeToPaymentsAddOn = async function (req, res) {
   const admin = res.locals.admin

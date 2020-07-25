@@ -257,8 +257,7 @@ export default class App extends Component {
 
                 case 'dashboard':
                   return <Dashboard
-                    paymentStatus={admin.paymentStatus}
-                    cancelSaasSubscriptionAt={admin.cancelSaasSubscriptionAt}
+                    admin={admin}
                   />
 
                 case 'app-users-table':
