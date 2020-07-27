@@ -42,14 +42,14 @@ export default class EditAdmin extends Component {
       errorCheckingOut: false,
       errorGeneratingAccessToken: false,
       errorDeletingAccessToken: false,
-      errorCancelling: false,
+      errorCanceling: false,
       errorUpdatingPaymentMethod: false,
       errorResumingSubscription: false,
       errorBuyingStoragePlan: false,
-      errorCancellingStoragePlan: false,
+      errorCancelingStoragePlan: false,
       errorResumingStoragePlan: false,
       errorBuyingAddOn: false,
-      errorCancellingAddOn: false,
+      errorCancelingAddOn: false,
       errorResumingAddOn: false,
       errorDisconnectingStripeAccount: false,
     }
@@ -177,14 +177,14 @@ export default class EditAdmin extends Component {
       || this.state.errorDeletingAdmin
       || this.state.errorChangingPassword
       || this.state.errorCheckingOut
-      || this.state.errorCancelling
+      || this.state.errorCanceling
       || this.state.errorUpdatingPaymentMethod
       || this.state.errorResumingSubscription
       || this.state.errorBuyingStoragePlan
-      || this.state.errorCancellingStoragePlan
+      || this.state.errorCancelingStoragePlan
       || this.state.errorResumingStoragePlan
       || this.state.errorBuyingAddOn
-      || this.state.errorCancellingAddOn
+      || this.state.errorCancelingAddOn
       || this.state.errorResumingAddOn
       || this.state.errorGeneratingAccessToken
       || this.state.errorDeletingAccessToken
@@ -196,14 +196,14 @@ export default class EditAdmin extends Component {
         errorChangingPassword: '',
         errorDeletingAdmin: '',
         errorCheckingOut: false,
-        errorCancelling: false,
+        errorCanceling: false,
         errorUpdatingPaymentMethod: false,
         errorResumingSubscription: false,
         errorBuyingStoragePlan: false,
-        errorCancellingStoragePlan: false,
+        errorCancelingStoragePlan: false,
         errorResumingStoragePlan: false,
         errorBuyingAddOn: false,
-        errorCancellingAddOn: false,
+        errorCancelingAddOn: false,
         errorResumingAddOn: false,
         errorGeneratingAccessToken: false,
         errorDeletingAccessToken: false,
@@ -399,7 +399,7 @@ export default class EditAdmin extends Component {
         if (this._isMounted) this.setState({ loadingCancel: false })
       }
     } catch (e) {
-      if (this._isMounted) this.setState({ loadingCancel: false, errorCancelling: true })
+      if (this._isMounted) this.setState({ loadingCancel: false, errorCanceling: true })
     }
   }
 
@@ -458,7 +458,7 @@ export default class EditAdmin extends Component {
         if (this._isMounted) this.setState({ loadingCancelStoragePlan: false })
       }
     } catch (e) {
-      if (this._isMounted) this.setState({ loadingCancelStoragePlan: false, errorCancellingStoragePlan: true })
+      if (this._isMounted) this.setState({ loadingCancelStoragePlan: false, errorCancelingStoragePlan: true })
     }
   }
 
@@ -517,7 +517,7 @@ export default class EditAdmin extends Component {
         if (this._isMounted) this.setState({ loadingCancelAddOn: false })
       }
     } catch (e) {
-      if (this._isMounted) this.setState({ loadingCancelAddOn: false, errorCancellingAddOn: true })
+      if (this._isMounted) this.setState({ loadingCancelAddOn: false, errorCancelingAddOn: true })
     }
   }
 
@@ -596,14 +596,14 @@ export default class EditAdmin extends Component {
       errorDeletingAdmin,
       errorCheckingOut,
       errorBuyingStoragePlan,
-      errorCancellingStoragePlan,
+      errorCancelingStoragePlan,
       errorResumingStoragePlan,
       errorBuyingAddOn,
-      errorCancellingAddOn,
+      errorCancelingAddOn,
       errorResumingAddOn,
       errorGeneratingAccessToken,
       errorDeletingAccessToken,
-      errorCancelling,
+      errorCanceling,
       errorUpdatingPaymentMethod,
       errorDisconnectingStripeAccount,
       errorResumingSubscription,
@@ -998,18 +998,18 @@ export default class EditAdmin extends Component {
               {(paymentStatus === 'active' || paymentStatus === 'past_due') && !cancelSaasSubscriptionAt &&
                 <div>
                   <div className='flex-0 text-base sm:text-lg text-left mb-1'>Cancel Subscription</div>
-                  <p className='text-left font-normal'>By cancelling your subscription, your account will become limited to 3 users, and no new sign ups will succeed once that limit is reached.</p>
+                  <p className='text-left font-normal'>By canceling your subscription, your account will become limited to 3 users, and no new sign ups will succeed once that limit is reached.</p>
 
                   <input
                     className='btn w-56'
                     type='button'
                     role='link'
-                    value={loadingCancel ? 'Cancelling Subscription...' : 'Cancel Subscription'}
+                    value={loadingCancel ? 'Canceling Subscription...' : 'Cancel Subscription'}
                     disabled={loadingCancel}
                     onClick={this.handleCancelSubscription}
                   />
 
-                  {errorCancelling && <UnknownError action='cancelling your subscription' />}
+                  {errorCanceling && <UnknownError action='canceling your subscription' />}
 
                   <br />
                   <br />
@@ -1019,18 +1019,18 @@ export default class EditAdmin extends Component {
               {storageSubscriptionStatus && storageSubscriptionStatus !== 'canceled' && !cancelStorageSubscriptionAt &&
                 <div>
                   <div className='flex-0 text-base sm:text-lg text-left mb-1'>Cancel Storage Plan</div>
-                  <p className='text-left font-normal'>By cancelling your storage plan, you will be limited to 1 GB of storage.</p>
+                  <p className='text-left font-normal'>By canceling your storage plan, you will be limited to 1 GB of storage.</p>
 
                   <input
                     className='btn w-56'
                     type='button'
                     role='link'
-                    value={loadingCancelStoragePlan ? 'Cancelling Storage Plan...' : 'Cancel Storage Plan'}
+                    value={loadingCancelStoragePlan ? 'Canceling Storage Plan...' : 'Cancel Storage Plan'}
                     disabled={loadingCancelStoragePlan}
                     onClick={this.handleCancelStoragePlan}
                   />
 
-                  {errorCancellingStoragePlan && <UnknownError action='cancelling your storage plan' />}
+                  {errorCancelingStoragePlan && <UnknownError action='canceling your storage plan' />}
 
                   <br />
                   <br />
@@ -1040,18 +1040,18 @@ export default class EditAdmin extends Component {
               {paymentsAddOnSubscriptionStatus && paymentsAddOnSubscriptionStatus !== 'canceled' && !cancelPaymentsAddOnSubscriptionAt &&
                 <div>
                   <div className='flex-0 text-base sm:text-lg text-left mb-1'>Cancel Payments Add-On</div>
-                  <p className='text-left font-normal'>By cancelling your payments add-on, you will no longer be able to accept new payments on your apps.</p>
+                  <p className='text-left font-normal'>By canceling your payments add-on, you will no longer be able to accept new payments on your apps.</p>
 
                   <input
                     className='btn w-56'
                     type='button'
                     role='link'
-                    value={loadingCancelAddOn ? 'Cancelling Add-On...' : 'Cancel Add-On'}
+                    value={loadingCancelAddOn ? 'Canceling Add-On...' : 'Cancel Add-On'}
                     disabled={loadingCancelAddOn}
                     onClick={this.handleCancelAddOn}
                   />
 
-                  {errorCancellingAddOn && <UnknownError action='cancelling your payments add-on' />}
+                  {errorCancelingAddOn && <UnknownError action='canceling your payments add-on' />}
 
                   <br />
                   <br />

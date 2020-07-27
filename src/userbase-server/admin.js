@@ -1051,7 +1051,7 @@ exports.cancelStorageSubscription = async function (req, res) {
     const subscriptionId = admin['stripe-storage-subscription-id']
 
     logChildObject = { adminId, subscriptionId, req: trimReq(req) }
-    logger.child(logChildObject).info('Cancelling storage subscription')
+    logger.child(logChildObject).info('Canceling storage subscription')
 
     if (!subscriptionId) throw {
       status: statusCodes['Not Found'],
@@ -1065,7 +1065,7 @@ exports.cancelStorageSubscription = async function (req, res) {
 
     logger
       .child({ ...logChildObject, statusCode: statusCodes['Success'] })
-      .info('Successfully cancelled storage subscription')
+      .info('Successfully canceled storage subscription')
 
     return res.send({
       cancelStorageSubscriptionAt,
@@ -1187,7 +1187,7 @@ exports.cancelPaymentsAddOnSubscription = async function (req, res) {
     const subscriptionId = admin['stripe-payments-add-on-subscription-id']
 
     logChildObject = { adminId, subscriptionId, req: trimReq(req) }
-    logger.child(logChildObject).info('Cancelling payments add-on subscription')
+    logger.child(logChildObject).info('Canceling payments add-on subscription')
 
     if (!subscriptionId) throw {
       status: statusCodes['Not Found'],
@@ -1201,7 +1201,7 @@ exports.cancelPaymentsAddOnSubscription = async function (req, res) {
 
     logger
       .child({ ...logChildObject, statusCode: statusCodes['Success'] })
-      .info('Successfully cancelled payments add-on subscription')
+      .info('Successfully canceled payments add-on subscription')
 
     return res.send(cancelAt)
   } catch (e) {

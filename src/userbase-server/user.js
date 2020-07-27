@@ -2434,7 +2434,7 @@ exports.cancelSubscription = async function (logChildObject, app, admin, user) {
   try {
     const stripeAccount = admin['stripe-account-id']
     logChildObject.stripeAccountId = stripeAccount
-    logger.child(logChildObject).info('Cancelling user subscription')
+    logger.child(logChildObject).info('Canceling user subscription')
 
     const { subscriptionId, isProduction } = _validateModifySubscription(logChildObject, app, user)
     const useTestClient = !isProduction
@@ -2449,7 +2449,7 @@ exports.cancelSubscription = async function (logChildObject, app, admin, user) {
 
     logger
       .child({ ...logChildObject, statusCode: statusCodes['Success'] })
-      .info('Successfully cancelled user subscription')
+      .info('Successfully canceled user subscription')
 
     return responseBuilder.successResponse(cancelAt)
   } catch (e) {
