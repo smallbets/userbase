@@ -38,7 +38,8 @@ export default class App extends Component {
 
         if (
           admin.paymentStatus === 'past_due' || admin.paymentStatus === 'incomplete' ||
-          admin.paymentsAddOnSubscriptionStatus === 'past_due' || admin.paymentsAddOnSubscriptionStatus === 'incomplete'
+          admin.paymentsAddOnSubscriptionStatus === 'past_due' || admin.paymentsAddOnSubscriptionStatus === 'incomplete' ||
+          admin.storageSubscriptionStatus === 'past_due' || admin.storageSubscriptionStatus === 'incomplete'
         ) {
           window.alert('Please update your payment method!')
         }
