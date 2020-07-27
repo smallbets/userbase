@@ -56,6 +56,7 @@ export default class EditAdmin extends Component {
 
     this.handleUpgradeAtLoad = this.handleUpgradeAtLoad.bind(this)
     this.handleEnablePaymentsAtLoad = this.handleEnablePaymentsAtLoad.bind(this)
+    this.handleEnableStoragePlan1AtLoad = this.handleEnableStoragePlan1AtLoad.bind(this)
     this.handleInputChange = this.handleInputChange.bind(this)
     this.handleUpdateAcount = this.handleUpdateAcount.bind(this)
     this.handleChangePassword = this.handleChangePassword.bind(this)
@@ -106,6 +107,9 @@ export default class EditAdmin extends Component {
           } else if (_this.props.enablePayments && !_this._handledEnablePayments) {
             _this._handledEnablePayments = true
             _this.handleEnablePaymentsAtLoad()
+          } else if (_this.props.enableStoragePlan1 && !_this._handledStoragePlan1) {
+            _this._handledStoragePlan1 = true
+            _this.handleEnableStoragePlan1AtLoad()
           }
         }
       })
@@ -134,6 +138,21 @@ export default class EditAdmin extends Component {
         this.handleBuyAddOn()
       } else {
         window.alert(`You must ${paymentStatus === 'active' ? 'purchase the' : 'have an active'} Userbase subscription first before you can enable payments!`)
+      }
+    }
+  }
+
+  handleEnableStoragePlan1AtLoad() {
+    const { admin } = this.props
+    const { paymentStatus, cancelSaasSubscriptionAt, storageSubscriptionStatus, cancelStorageSubscriptionAt } = admin
+
+    if (!storageSubscriptionStatus || cancelStorageSubscriptionAt) {
+
+      // only attempt to enable payments if admin has active Userbase subscription
+      if (paymentStatus === 'active' && !cancelSaasSubscriptionAt) {
+        this.handleBuyStoragePlan()
+      } else {
+        window.alert(`You must ${paymentStatus === 'active' ? 'purchase the' : 'have an active'} Userbase subscription first before you can activate a storage plan!`)
       }
     }
   }
@@ -1089,4 +1108,5 @@ EditAdmin.propTypes = {
   admin: object,
   upgrade: bool,
   enablePayments: bool,
+  enableStoragePlan1: bool,
 }

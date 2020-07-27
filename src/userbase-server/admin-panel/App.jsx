@@ -148,10 +148,12 @@ export default class App extends Component {
         break
 
       case 'upgrade':
+      case 'storage-plan-1':
       case 'enable-payments':
         // will redirect to edit-account when admin visits this link, then signs in or signs up. Will automatically
         // simulate clicking the button to perform the action (upgrade or enable payments)
         if (hashRoute === 'enable-payments') this.setState({ enablePayments: true })
+        else if (hashRoute === 'storage-plan-1') this.setState({ enableStoragePlan1: true })
         else this.setState({ [hashRoute]: true })
         window.location.hash = 'edit-account'
         break
@@ -186,6 +188,7 @@ export default class App extends Component {
       errorGettingAdmin,
       upgrade,
       enablePayments,
+      enableStoragePlan1,
     } = this.state
 
     if (!mode) {
@@ -243,6 +246,7 @@ export default class App extends Component {
                     handleUpdateAccount={this.handleUpdateAccount}
                     upgrade={upgrade}
                     enablePayments={enablePayments}
+                    enableStoragePlan1={enableStoragePlan1}
                   />
 
                 case 'sign-in':
@@ -253,6 +257,7 @@ export default class App extends Component {
                     handleUpdateAccount={this.handleUpdateAccount}
                     upgrade={upgrade}
                     enablePayments={enablePayments}
+                    enableStoragePlan1={enableStoragePlan1}
                   />
 
                 case 'dashboard':
@@ -271,6 +276,7 @@ export default class App extends Component {
                   return <EditAdmin
                     upgrade={upgrade}
                     enablePayments={enablePayments}
+                    enableStoragePlan1={enableStoragePlan1}
                     handleUpdateAccount={this.handleUpdateAccount}
                     admin={admin}
                   />
