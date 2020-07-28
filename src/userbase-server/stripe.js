@@ -142,6 +142,13 @@ const _updateStripePaymentMethod = async function (logChildObject, session, stri
   const setupIntent = await getClient(useTestClient).setupIntents.retrieve(session.setup_intent, { stripeAccount })
   const { payment_method, metadata: { customer_id, subscription_id } } = setupIntent
 
+  // customer_id gets set in metadata by Userbase server. If not set, expect that either admin deleted it,
+  // or this webhook is handling an update payment method event not generated through Userbase
+  if (!customer_id) {
+    logger.child(logChildObject).info('Setup intent missing metadata')
+    return
+  }
+
   logChildObject.customerId = customer_id
   const type = stripeAccount ? 'user' : 'admin'
   logger.child(logChildObject).info(`Updating ${type}'s payment method`)
@@ -194,12 +201,10 @@ const _saveDefaultPaymentMethod = async (subscription, stripeAccount, useTestCli
 const _handleCheckoutSubscriptionCompleted = async (logChildObject, session, stripeAccount) => {
   const customerId = session.customer
   const subscriptionId = session.subscription
-  const planId = session.display_items[0].plan.id
   const isProduction = session.livemode
 
   logChildObject.customerId = customerId
   logChildObject.subscriptionId = subscriptionId
-  logChildObject.subscriptionPlanId = planId
   logChildObject.isProduction = isProduction
 
   const type = stripeAccount ? 'user' : 'admin'
@@ -207,6 +212,8 @@ const _handleCheckoutSubscriptionCompleted = async (logChildObject, session, str
 
   const useTestClient = !isProduction
   const subscription = await getClient(useTestClient).subscriptions.retrieve(subscriptionId, { stripeAccount })
+
+  logChildObject.subscriptionId = subscription.items.data[0].plan.id
 
   await _saveDefaultPaymentMethod(subscription, stripeAccount, useTestClient)
 
