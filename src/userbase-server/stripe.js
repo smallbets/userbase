@@ -213,7 +213,7 @@ const _handleCheckoutSubscriptionCompleted = async (logChildObject, session, str
   const useTestClient = !isProduction
   const subscription = await getClient(useTestClient).subscriptions.retrieve(subscriptionId, { stripeAccount })
 
-  logChildObject.subscriptionId = subscription.items.data[0].plan.id
+  logChildObject.subscriptionPlanId = subscription.items.data[0].plan.id
 
   await _saveDefaultPaymentMethod(subscription, stripeAccount, useTestClient)
 
