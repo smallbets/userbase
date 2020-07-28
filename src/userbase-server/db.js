@@ -375,8 +375,8 @@ const _queryOtherUserDatabases = async function (dbId, userId, nextPageTokenLess
   }
 }
 
-const _getOtherDatabaseUsers = async function (dbId, userId) {
-  const otherDatabaseUsersQueryResult = await _queryOtherUserDatabases(dbId, userId)
+const _getOtherDatabaseUsers = async function (dbId, userId, nextPageTokenLessThanUserId, nextPageTokenMoreThanUserId) {
+  const otherDatabaseUsersQueryResult = await _queryOtherUserDatabases(dbId, userId, nextPageTokenLessThanUserId, nextPageTokenMoreThanUserId)
   const { otherUserDatabases } = otherDatabaseUsersQueryResult
 
   const userQueries = []
@@ -871,7 +871,7 @@ exports.shareDatabase = async function (logChildObject, sender, dbId, dbNameHash
       error: { message: 'ResharingAllowedMustBeBoolean' }
     }
 
-    const { recipient, database, recipientUserDb } = await _validateShareDatabase(sender, dbId, dbNameHash, recipientUsername, readOnly, resharingAllowed)
+    const { recipient, database, recipientUserDb } = await _validateShareDatabase(sender, dbId, dbNameHash, recipientUsername, readOnly)
 
     if (recipientUserDb) throw {
       status: statusCodes['Conflict'],

@@ -304,7 +304,7 @@ const handleWebhook = async function (req, res, webhookOption) {
 
         // only want to update trial periods for apps on Connect accounts
         if (stripeAccountId) {
-          await _handleUpdatedSubscriptionPlan(logChildObject, subscriptionPlan, stripeEventTimestamp, stripeAccountId)
+          await _handleUpdatedSubscriptionPlan(logChildObject, subscriptionPlan, stripeEventTimestamp)
         }
         break
       }
