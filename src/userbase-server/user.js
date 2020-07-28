@@ -2265,7 +2265,7 @@ exports.updateSubscriptionInDdb = async (logChildObject, logs, metadata, custome
       throw new Error('IncorrectSubscriptionPlanId')
     }
 
-    const updateUserParams = await _buildStripeSubscriptionDdbParams(user, customerId, subscriptionId, subscriptionPlanId, status, cancelAt, stripeEventTimestamp, isProduction, stripeAccountId)
+    const updateUserParams = await _buildStripeSubscriptionDdbParams(user, customerId, subscriptionId, subscriptionPlanId, status, cancelAt, stripeEventTimestamp, isProduction)
     const ddbClient = connection.ddbClient()
     await ddbClient.update(updateUserParams).promise()
   } catch (e) {

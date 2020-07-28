@@ -1124,7 +1124,7 @@ const _buildDatabaseResult = async (db, encryptionKey, ecdhPrivateKey, verifiedU
     resharingAllowed,
   }
 
-  const users = await _getDatabaseUsers(databaseId, databaseNameHash, dbKey, verifiedUsers, username, senderUsername, isOwner)
+  const users = await _getDatabaseUsers(databaseId, databaseNameHash, dbKey, verifiedUsers, username, senderUsername)
 
   // if database has no owner, owner must have been deleted and database should not be accessible to user
   if (isOwner || _databaseHasOwner(users)) result.users = users

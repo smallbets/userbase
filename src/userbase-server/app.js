@@ -346,7 +346,7 @@ exports.listAppUsers = async function (req, res) {
 
 const _validateAppResponseToGetApp = function (app, adminId, logChildObject) {
   // allow return of deleted app
-  if (!app) {
+  if (!app || app['deleted']) {
     logChildObject.deletedAppId = app && app['app-id']
     throw {
       status: statusCodes['Not Found'],
