@@ -563,15 +563,20 @@ class Connection {
   }
 
   async buildBundle(database) {
+    const dbId = database.dbId
+    const lastSeqNo = database.lastSeqNo
+    const dbKey = database.dbKey
+
+    // Client will only attempt to bundle at a particular seqNo a single time. This prevents server from spamming
+    // client with buildBundle to maliciously get the client to re-use an IV in AES-GCM and reveal the dbKey
+    if (database.bundledAtSeqNo && database.bundledAtSeqNo >= lastSeqNo) return
+    else database.bundledAtSeqNo = lastSeqNo
+
     const bundle = {
       items: database.items,
       itemsIndex: database.itemsIndex.array
     }
     const plaintextString = JSON.stringify(bundle)
-
-    const dbId = database.dbId
-    const lastSeqNo = database.lastSeqNo
-    const dbKey = database.dbKey
 
     const itemKeyPromises = []
     for (let i = 0; i < bundle.itemsIndex.length; i++) {
