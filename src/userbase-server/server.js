@@ -49,14 +49,26 @@ async function start(express, app, userbaseConfig = {}) {
     const httpPort = userbaseConfig.httpPort || 8080
     const httpsPort = userbaseConfig.httpsPort || 8443
 
-    const server = certExists ?
-      https.createServer({ key: httpsKey, cert: httpsCert }, app)
-        .listen(httpsPort, () => logger.info(`App listening on https port ${httpsPort}....`)) :
-      http.createServer(app)
-        .listen(httpPort, () => logger.info(`App listening on http port ${httpPort}....`))
+    const httpServer = http.createServer(app)
+      .listen(httpPort, () => logger.info(`App listening on http port ${httpPort}....`))
+
+    const httpsServer = certExists && https.createServer({ key: httpsKey, cert: httpsCert }, app)
+      .listen(httpsPort, () => logger.info(`App listening on https port ${httpsPort}....`))
+
+    if (httpsServer) {
+      // redirect all http requests to https
+      app.all('*', function (req, res, next) {
+        if (req.secure) {
+          return next()
+        }
+
+        return res.redirect('https://' + req.hostname + req.url)
+      })
+    }
 
     const wss = new WebSocket.Server({ noServer: true })
 
+    const server = httpsServer || httpServer
     server.on('upgrade', (req, socket, head) => {
       const res = new http.ServerResponse(req)
       res.assignSocket(socket)
