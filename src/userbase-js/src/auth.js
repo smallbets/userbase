@@ -202,31 +202,6 @@ const _generateKeysAndSignUp = async (username, password, seed, email, profile) 
   }
 }
 
-const _buildUserResult = ({ username, userId, authToken, email, profile, protectedProfile, usedTempPassword, userData }) => {
-  const result = { username, userId, authToken }
-
-  if (email) result.email = email
-  if (profile) result.profile = profile
-  if (protectedProfile) result.protectedProfile = protectedProfile
-  if (usedTempPassword) result.usedTempPassword = usedTempPassword
-
-  if (userData) {
-    const { creationDate, stripeData } = userData
-    if (creationDate) result.creationDate = creationDate
-
-    if (stripeData) {
-      const { paymentsMode, subscriptionStatus, cancelSubscriptionAt, trialExpirationDate } = stripeData
-
-      if (paymentsMode) result.paymentsMode = paymentsMode
-      if (subscriptionStatus) result.subscriptionStatus = subscriptionStatus
-      if (cancelSubscriptionAt) result.cancelSubscriptionAt = cancelSubscriptionAt
-      if (trialExpirationDate) result.trialExpirationDate = trialExpirationDate
-    }
-  }
-
-  return result
-}
-
 const _validateProfile = (profile) => {
   if (typeof profile !== 'object') throw new errors.ProfileMustBeObject
 
@@ -262,7 +237,7 @@ const signUp = async (params) => {
     const seed = await crypto.generateSeed()
 
     const { sessionId, creationDate, expirationDate, userId, authToken } = await _generateKeysAndSignUp(username, password, seed, email, profile)
-    const session = { username, sessionId, creationDate, expirationDate, authToken }
+    const session = { username, userId, sessionId, creationDate, expirationDate, authToken }
 
     const seedString = base64.encode(seed)
 
@@ -271,7 +246,7 @@ const signUp = async (params) => {
 
     await _connectWebSocket(session, seedString, rememberMe)
 
-    return _buildUserResult({ username, userId, authToken, email, profile, userData: ws.userData })
+    return ws.buildUserResult({ username, userId, authToken, email, profile, userData: ws.userData })
   } catch (e) {
 
     switch (e.name) {
@@ -416,7 +391,8 @@ const signIn = async (params) => {
     const { userId, email, profile, passwordBasedBackup, protectedProfile, usedTempPassword } = apiSignInResult
     const session = {
       ...apiSignInResult.session,
-      username
+      username,
+      userId,
     }
 
     const savedSeedString = localData.getSeedString(appId, username)
@@ -435,7 +411,7 @@ const signIn = async (params) => {
 
     await _connectWebSocket(session, seedString, rememberMe)
 
-    return _buildUserResult({
+    return ws.buildUserResult({
       username, userId, authToken: session.authToken, email,
       profile, protectedProfile, usedTempPassword, userData: ws.userData
     })
@@ -477,11 +453,16 @@ const init = async (params) => {
     if (typeof params !== 'object') throw new errors.ParamsMustBeObject
 
     if (!objectHasOwnProperty(params, 'appId')) throw new errors.AppIdMissing
+    if (typeof params.appId !== 'string') throw new errors.AppIdMustBeString
+    if (params.appId.length === 0) throw new errors.AppIdCannotBeBlank
 
-    const { appId } = params
-    config.configure({ appId })
+    if (objectHasOwnProperty(params, 'updateUserHandler') && typeof params.updateUserHandler !== 'function') {
+      throw new errors.UpdateUserHandlerMustBeFunction
+    }
 
-    const session = await signInWithSession(appId)
+    config.configure(params)
+
+    const session = await signInWithSession(params.appId)
     return session
   } catch (e) {
 
@@ -493,6 +474,7 @@ const init = async (params) => {
       case 'AppIdMustBeString':
       case 'AppIdCannotBeBlank':
       case 'AppIdNotValid':
+      case 'UpdateUserHandlerMustBeFunction':
       case 'UserAlreadySignedIn':
       case 'ServiceUnavailable':
         throw e
@@ -542,16 +524,16 @@ const signInWithSession = async (appId) => {
     // enable idempotent calls to init()
     if (ws.connectionResolved) {
       if (ws.session.sessionId === sessionId) {
-        return { user: _buildUserResult({ username, userId, authToken: ws.session.authToken, email, profile, protectedProfile, userData: ws.userData }) }
+        return { user: ws.buildUserResult({ username, userId, authToken: ws.session.authToken, email, profile, protectedProfile, userData: ws.userData }) }
       } else {
         throw new errors.UserAlreadySignedIn(ws.session.username)
       }
     }
 
-    const session = { ...currentSession, authToken }
+    const session = { ...currentSession, userId, authToken }
     await _connectWebSocket(session, savedSeedString, rememberMe)
 
-    return { user: _buildUserResult({ username, userId, authToken, email, profile, protectedProfile, userData: ws.userData }) }
+    return { user: ws.buildUserResult({ username, userId, authToken, email, profile, protectedProfile, userData: ws.userData }) }
   } catch (e) {
     _parseGenericErrors(e)
     throw e
@@ -571,7 +553,7 @@ const _validateUpdatedUserInput = (params) => {
 
   if (objectHasOwnProperty(params, 'username')) _validateUsername(username)
   if (objectHasOwnProperty(params, 'newPassword')) {
-    if (!currentPassword) throw new errors.CurrentPasswordMissing
+    if (!objectHasOwnProperty(params, 'currentPassword')) throw new errors.CurrentPasswordMissing
 
     _validatePassword(currentPassword)
     _validatePassword(newPassword)
@@ -634,11 +616,10 @@ const updateUser = async (params) => {
         localData.saveSeedString(ws.rememberMe, config.getAppId(), finalParams.username, ws.seedString)
       }
 
-      await ws.request(action, finalParams)
+      const response = await ws.request(action, finalParams)
+      const updatedUser = response.data.updatedUser
+      ws.handleUpdateUser(updatedUser)
 
-      if (finalParams.username && ws.seedString === startingSeedString) {
-        ws.session.username = finalParams.username
-      }
     } catch (e) {
       _parseUserResponseError(e, finalParams.username)
     }

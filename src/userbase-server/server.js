@@ -155,6 +155,8 @@ async function start(express, app, userbaseConfig = {}) {
                   }
                   case 'UpdateUser': {
                     response = await userController.updateUser(
+                      connectionId,
+                      adminId,
                       userId,
                       params.username,
                       params.currentPasswordToken,
@@ -591,7 +593,7 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.get('/apps', admin.authenticateAccessToken, appController.listAppsWithPagination)
     v1Admin.get('/auth-tokens/:authToken', admin.authenticateAccessToken, userController.verifyAuthToken)
 
-    // internal server used to receive notifications of transactions from peers -- shouldn't be exposed to public
+    // internal server used to receive notifications of transactions and user updates from peers -- shouldn't be exposed to public
     const internalServer = express()
     const internalServerPort = 9000
     http.createServer(internalServer)
@@ -612,6 +614,26 @@ async function start(express, app, userbaseConfig = {}) {
         connections.push(transaction, userId)
       } catch (e) {
         const msg = 'Error pushing internal transaction to connected clients'
+        logger.child({ ...logChildObject, err: e }).error(msg)
+        return res.status(statusCodes['Internal Server Error']).send(msg)
+      }
+
+      return res.end()
+    })
+
+    internalServer.post('/internal/notify-updated-user', (req, res) => {
+      const updatedUser = req.body.updatedUser
+
+      let logChildObject
+      try {
+        logChildObject = { userId: updatedUser.userId, req: trimReq(req) }
+        logger
+          .child(logChildObject)
+          .info('Received internal notification to update user')
+
+        connections.pushUpdatedUser(updatedUser)
+      } catch (e) {
+        const msg = 'Error pushing internal updated user to connected clients'
         logger.child({ ...logChildObject, err: e }).error(msg)
         return res.status(statusCodes['Internal Server Error']).send(msg)
       }

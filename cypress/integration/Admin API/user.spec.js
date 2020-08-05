@@ -83,6 +83,7 @@ const beforeEachHook = function () {
           that.currentTest.username = randomUser
           that.currentTest.password = password
           that.currentTest.userId = user.userId
+          that.currentTest.user = user
         })
       })
     }
@@ -405,6 +406,58 @@ describe('UpdateUser', function () {
                 })
               })
 
+            })
+        })
+      })
+    })
+
+    it('Userbase updateUserHandler called when UpdateUser sets protected profile', function () {
+      const {
+        userId,
+        userbase,
+        accessToken,
+        appId,
+        user,
+      } = this.test
+
+      const protectedProfile = { 'Hello': 'World!' }
+
+      let success
+      const updateUserHandler = function (updatedUserResult) {
+        const updatedUser = updatedUserResult.user
+        expect(updatedUser, 'user object').to.deep.equal({ ...user, protectedProfile })
+        success = true
+      }
+
+      function setUpdateUserHandler() {
+        return new Cypress.Promise(function (resolve, reject) {
+          userbase.init({ appId, updateUserHandler })
+            .then(() => resolve())
+            .catch((e) => reject(e))
+        })
+      }
+
+      cy.wrap(null).then(() => {
+        return setUpdateUserHandler().then(function () {
+          cy
+            .request({
+              method: 'POST',
+              url: USER_ENDPOINT + userId,
+              auth: {
+                bearer: accessToken
+              },
+              body: {
+                protectedProfile
+              }
+            })
+            .then(function (response) {
+              expect(response.status, 'status').to.eq(200)
+              expect(response.body, 'no body').to.be.undefined
+
+              cy.wait(3000)
+              expect(success, 'success').to.be.true
+
+              cy.request({ method: 'POST', url: Cypress.env('endpoint') + '/admin/delete-admin' })
             })
         })
       })
@@ -740,6 +793,150 @@ describe('UpdateUser', function () {
             })
         })
       })
+    })
+
+    it('Userbase updateUserHandler called when UpdateUser sets protected profile to false', function () {
+      const {
+        userId,
+        userbase,
+        accessToken,
+        appId,
+        user,
+      } = this.test
+
+      const protectedProfile = { 'Hello': 'World!' }
+
+      let success
+      const updateUserHandler = function (updatedUserResult) {
+        const updatedUser = updatedUserResult.user
+        expect(updatedUser, 'user object').to.deep.equal(user)
+        expect(updatedUser, 'no protected profile key').to.not.have.key('protectedProfile')
+        success = true
+      }
+
+      function setUpdateUserHandler() {
+        return new Cypress.Promise(function (resolve, reject) {
+          userbase.init({ appId, updateUserHandler })
+            .then(() => resolve())
+            .catch((e) => reject(e))
+        })
+      }
+
+      cy
+        .request({
+          method: 'POST',
+          url: USER_ENDPOINT + userId,
+          auth: {
+            bearer: accessToken
+          },
+          body: {
+            protectedProfile
+          }
+        })
+        .then(function (response) {
+          expect(response.status, 'status').to.eq(200)
+          expect(response.body, 'no body').to.be.undefined
+
+          cy.wrap(null).then(() => {
+            return setUpdateUserHandler().then(function () {
+              cy
+                .request({
+                  method: 'POST',
+                  url: USER_ENDPOINT + userId,
+                  auth: {
+                    bearer: accessToken
+                  },
+                  body: {
+                    protectedProfile: false
+                  }
+                })
+                .then(function (response) {
+                  expect(response.status, 'status').to.eq(200)
+                  expect(response.body, 'no body').to.be.undefined
+
+                  cy.wait(3000)
+                  expect(success, 'success').to.be.true
+
+                  cy.request({ method: 'POST', url: Cypress.env('endpoint') + '/admin/delete-admin' })
+                })
+            })
+          })
+
+
+        })
+
+    })
+
+    it('Userbase updateUserHandler called when UpdateUser sets protected profile to null', function () {
+      const {
+        userId,
+        userbase,
+        accessToken,
+        appId,
+        user,
+      } = this.test
+
+      const protectedProfile = { 'Hello': 'World!' }
+
+      let success
+      const updateUserHandler = function (updatedUserResult) {
+        const updatedUser = updatedUserResult.user
+        expect(updatedUser, 'user object').to.deep.equal(user)
+        expect(updatedUser, 'no protected profile key').to.not.have.key('protectedProfile')
+        success = true
+      }
+
+      function setUpdateUserHandler() {
+        return new Cypress.Promise(function (resolve, reject) {
+          userbase.init({ appId, updateUserHandler })
+            .then(() => resolve())
+            .catch((e) => reject(e))
+        })
+      }
+
+      cy
+        .request({
+          method: 'POST',
+          url: USER_ENDPOINT + userId,
+          auth: {
+            bearer: accessToken
+          },
+          body: {
+            protectedProfile
+          }
+        })
+        .then(function (response) {
+          expect(response.status, 'status').to.eq(200)
+          expect(response.body, 'no body').to.be.undefined
+
+          cy.wrap(null).then(() => {
+            return setUpdateUserHandler().then(function () {
+              cy
+                .request({
+                  method: 'POST',
+                  url: USER_ENDPOINT + userId,
+                  auth: {
+                    bearer: accessToken
+                  },
+                  body: {
+                    protectedProfile: null
+                  }
+                })
+                .then(function (response) {
+                  expect(response.status, 'status').to.eq(200)
+                  expect(response.body, 'no body').to.be.undefined
+
+                  cy.wait(3000)
+                  expect(success, 'success').to.be.true
+
+                  cy.request({ method: 'POST', url: Cypress.env('endpoint') + '/admin/delete-admin' })
+                })
+            })
+          })
+
+
+        })
+
     })
 
   })

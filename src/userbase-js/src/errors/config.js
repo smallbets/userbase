@@ -50,10 +50,20 @@ class WebCryptoUnavailable extends Error {
   }
 }
 
+class UpdateUserHandlerMustBeFunction extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'UpdateUserHandlerMustBeFunction'
+    this.message = 'Update user handler must be a function.'
+    this.status = statusCodes['Bad Request']
+  }
+}
 export default {
   AppIdAlreadySet,
   AppIdMustBeString,
   AppIdMissing,
   AppIdCannotBeBlank,
   WebCryptoUnavailable,
+  UpdateUserHandlerMustBeFunction,
 }
