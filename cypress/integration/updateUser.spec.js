@@ -577,7 +577,7 @@ describe('Update User Tests', function () {
         }
 
         // cooldown for rate limiter
-        await wait(1000)
+        await wait(1500)
       }
 
       try {
