@@ -576,7 +576,7 @@ const putTransaction = async function (transaction, userId, databaseId) {
   connections.push(transaction, userId)
 
   // broadcast transaction to all peers so they also push to their connected clients
-  peers.broadcast(transaction, userId)
+  peers.broadcastTransaction(transaction, userId)
 
   return transaction['sequence-no']
 }

@@ -1,6 +1,8 @@
 // Expose as userbase when loaded in an IIFE environment
 export as namespace userbase
 
+export type UpdateUserHandler = (updatedUser: { user: UserResult }) => void
+
 export interface Session {
   user?: UserResult
   lastUsedUsername?: string
@@ -28,6 +30,8 @@ export interface UserResult {
   email?: string
   profile?: UserProfile
   protectedProfile?: UserProfile
+  usedTempPassword?: boolean
+  passwordChanged?: boolean
 }
 
 export type DatabaseChangeHandler = (items: Item[]) => void
@@ -84,7 +88,7 @@ export interface CancelSubscriptionResult {
 }
 
 export interface Userbase {
-  init(params: { appId: string }): Promise<Session>
+  init(params: { appId: string, updateUserHandler?: UpdateUserHandler }): Promise<Session>
 
   signUp(params: { username: string, password: string, email?: string, profile?: UserProfile, rememberMe?: RememberMeOption }): Promise<UserResult>
 
