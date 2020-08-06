@@ -105,6 +105,8 @@ describe('Forgot Password Tests', function () {
 
       await this.test.userbase.deleteUser()
 
+      localStorage.setItem(`userbaseSeed.${this.test.appId}.${username}`, 'fakekey')
+
       try {
         await this.test.userbase.forgotPassword({ username })
         throw new Error('should have failed')
