@@ -571,7 +571,7 @@ const signInWithSession = async (appId, sessionLength) => {
       }
     }
 
-    const session = { ...currentSession, userId, authToken }
+    const session = { ...currentSession, username, userId, authToken }
     await _connectWebSocket(session, savedSeedString, rememberMe)
 
     return { user: ws.buildUserResult({ username, userId, authToken, email, profile, protectedProfile, userData: ws.userData }) }
@@ -709,7 +709,7 @@ const deleteUser = async () => {
     if (!ws.keys.init) throw new errors.UserNotSignedIn
 
     const username = ws.session.username
-    localData.removeSeedString(username)
+    localData.removeSeedString(config.getAppId(), username)
     localData.removeCurrentSession()
 
     try {
