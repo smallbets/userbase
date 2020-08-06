@@ -4,7 +4,7 @@ const TEN_SECONDS = 1000 * 10
 const ONE_HOUR = 60 * 60 * 1000
 const TWENTY_FOUR_HOURS = 24 * ONE_HOUR
 
-const beforeEachHook = function () {
+const beforeEachHook = function (signUp = true) {
   cy.visit('./cypress/integration/index.html').then(async function (win) {
     expect(win).to.have.property('userbase')
     const userbase = win.userbase
@@ -13,21 +13,35 @@ const beforeEachHook = function () {
     const { appId, endpoint } = Cypress.env()
     win._userbaseEndpoint = endpoint
     userbase.init({ appId })
+
+    if (signUp) {
+      const username = 'test-user-' + getRandomString()
+      const password = getRandomString()
+
+      await userbase.signUp({
+        username,
+        password,
+        rememberMe: 'none'
+      })
+      await userbase.signOut()
+
+      this.currentTest.username = username
+      this.currentTest.password = password
+    }
   })
 }
 
-describe('Sign Up Tests', function () {
+describe('Sign In Tests', function () {
 
   describe('Success Tests', function () {
     beforeEach(function () { beforeEachHook() })
 
     it('Default', async function () {
-      const username = 'test-user-' + getRandomString()
-      const password = getRandomString()
+      const { username, password } = this.test
 
       const startTime = Date.now()
 
-      const user = await this.test.userbase.signUp({
+      const user = await this.test.userbase.signIn({
         username,
         password
       })
@@ -79,12 +93,11 @@ describe('Sign Up Tests', function () {
     })
 
     it('rememberMe=local', async function () {
-      const username = 'test-user-' + getRandomString()
-      const password = getRandomString()
+      const { username, password } = this.test
 
       const startTime = Date.now()
 
-      const user = await this.test.userbase.signUp({
+      const user = await this.test.userbase.signIn({
         username,
         password,
         rememberMe: 'local'
@@ -137,12 +150,11 @@ describe('Sign Up Tests', function () {
     })
 
     it('rememberMe=none', async function () {
-      const username = 'test-user-' + getRandomString()
-      const password = getRandomString()
+      const { username, password } = this.test
 
       const startTime = Date.now()
 
-      const user = await this.test.userbase.signUp({
+      const user = await this.test.userbase.signIn({
         username,
         password,
         rememberMe: 'none'
@@ -174,164 +186,15 @@ describe('Sign Up Tests', function () {
       expect(localStorage.length, 'localStorage length').to.eq(0)
     })
 
-    it('Set email', async function () {
-      const username = 'test-user-' + getRandomString()
-      const password = getRandomString()
-      const email = 'test@email.com'
-
-      const startTime = Date.now()
-
-      const user = await this.test.userbase.signUp({
-        username,
-        password,
-        email,
-        rememberMe: 'none',
-      })
-
-      // expected return values
-      expect(user, 'result').to.deep.equal({
-        username,
-        email,
-        paymentsMode: 'disabled',
-        userId: user.userId,
-        authToken: user.authToken,
-        creationDate: user.creationDate,
-      })
-
-      const { userId, authToken, creationDate } = user
-      const creationTime = new Date(creationDate).getTime()
-
-      expect(userId, 'userId').to.be.a('string').that.has.lengthOf(36)
-      expect(authToken, 'authToken').to.be.a('string').that.has.lengthOf(32)
-      expect(creationTime, 'creationDate').to.be.within(startTime - TEN_SECONDS, Date.now() + TEN_SECONDS)
-
-      // clean up
-      await this.test.userbase.deleteUser()
-    })
-
-    it('Set profile', async function () {
-      const username = 'test-user-' + getRandomString()
-      const password = getRandomString()
-      const profile = { key: 'value' }
-
-      const startTime = Date.now()
-
-      const user = await this.test.userbase.signUp({
-        username,
-        password,
-        profile,
-        rememberMe: 'none',
-      })
-
-      // expected return values
-      expect(user, 'result').to.deep.equal({
-        username,
-        profile,
-        paymentsMode: 'disabled',
-        userId: user.userId,
-        authToken: user.authToken,
-        creationDate: user.creationDate,
-      })
-
-      const { userId, authToken, creationDate } = user
-      const creationTime = new Date(creationDate).getTime()
-
-      expect(userId, 'userId').to.be.a('string').that.has.lengthOf(36)
-      expect(authToken, 'authToken').to.be.a('string').that.has.lengthOf(32)
-      expect(creationTime, 'creationDate').to.be.within(startTime - TEN_SECONDS, Date.now() + TEN_SECONDS)
-
-      // clean up
-      await this.test.userbase.deleteUser()
-    })
-
-    it('Set profile with max keys', async function () {
-      const username = 'test-user-' + getRandomString()
-      const password = getRandomString()
-
-      const profile = {}
-      const MAX_KEYS = 100
-      for (let i = 0; i < MAX_KEYS; i++) {
-        profile[i] = i.toString()
-      }
-
-      const startTime = Date.now()
-
-      const user = await this.test.userbase.signUp({
-        username,
-        password,
-        profile,
-        rememberMe: 'none',
-      })
-
-      // expected return values
-      expect(user, 'result').to.deep.equal({
-        username,
-        profile,
-        paymentsMode: 'disabled',
-        userId: user.userId,
-        authToken: user.authToken,
-        creationDate: user.creationDate,
-      })
-
-      const { userId, authToken, creationDate } = user
-      const creationTime = new Date(creationDate).getTime()
-
-      expect(userId, 'userId').to.be.a('string').that.has.lengthOf(36)
-      expect(authToken, 'authToken').to.be.a('string').that.has.lengthOf(32)
-      expect(creationTime, 'creationDate').to.be.within(startTime - TEN_SECONDS, Date.now() + TEN_SECONDS)
-
-      // clean up
-      await this.test.userbase.deleteUser()
-    })
-
-    it('Set email + profile', async function () {
-      const username = 'test-user-' + getRandomString()
-      const password = getRandomString()
-      const email = 'test@email.com'
-      const profile = { key: 'value' }
-
-      const startTime = Date.now()
-
-      const user = await this.test.userbase.signUp({
-        username,
-        password,
-        email,
-        profile,
-        rememberMe: 'none',
-      })
-
-      // expected return values
-      expect(user, 'result').to.deep.equal({
-        username,
-        email,
-        profile,
-        paymentsMode: 'disabled',
-        userId: user.userId,
-        authToken: user.authToken,
-        creationDate: user.creationDate,
-      })
-
-      const { userId, authToken, creationDate } = user
-      const creationTime = new Date(creationDate).getTime()
-
-      expect(userId, 'userId').to.be.a('string').that.has.lengthOf(36)
-      expect(authToken, 'authToken').to.be.a('string').that.has.lengthOf(32)
-      expect(creationTime, 'creationDate').to.be.within(startTime - TEN_SECONDS, Date.now() + TEN_SECONDS)
-
-      // clean up
-      await this.test.userbase.deleteUser()
-    })
-
     it('Set session length', async function () {
-      const username = 'test-user-' + getRandomString()
-      const password = getRandomString()
+      const { username, password } = this.test
 
       const NUM_HOURS = 1
       const HOURS_MS = NUM_HOURS * ONE_HOUR
 
       const startTime = Date.now()
 
-      const user = await this.test.userbase.signUp({
+      const user = await this.test.userbase.signIn({
         username,
         password,
         sessionLength: NUM_HOURS,
@@ -385,15 +248,14 @@ describe('Sign Up Tests', function () {
     })
 
     it('Set session length to max', async function () {
-      const username = 'test-user-' + getRandomString()
-      const password = getRandomString()
+      const { username, password } = this.test
 
       const NUM_HOURS = 365 * 24
       const HOURS_MS = NUM_HOURS * ONE_HOUR
 
       const startTime = Date.now()
 
-      const user = await this.test.userbase.signUp({
+      const user = await this.test.userbase.signIn({
         username,
         password,
         sessionLength: NUM_HOURS,
@@ -449,11 +311,11 @@ describe('Sign Up Tests', function () {
   })
 
   describe('Failure Tests', function () {
-    beforeEach(function () { beforeEachHook() })
+    beforeEach(function () { beforeEachHook(false) })
 
     it('Missing params object', async function () {
       try {
-        await this.test.userbase.signUp()
+        await this.test.userbase.signIn()
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('ParamsMustBeObject')
@@ -464,7 +326,7 @@ describe('Sign Up Tests', function () {
 
     it('Incorrect params type', async function () {
       try {
-        await this.test.userbase.signUp(false)
+        await this.test.userbase.signIn(false)
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('ParamsMustBeObject')
@@ -475,7 +337,7 @@ describe('Sign Up Tests', function () {
 
     it('Username missing', async function () {
       try {
-        await this.test.userbase.signUp({ password: 'test-pass' })
+        await this.test.userbase.signIn({ password: 'test-pass' })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('UsernameMissing')
@@ -484,43 +346,9 @@ describe('Sign Up Tests', function () {
       }
     })
 
-    it('Username already exists', async function () {
-      const randomUser1 = 'test-user-' + getRandomString()
-      const password = getRandomString()
-      const rememberMe = 'none'
-
-      await this.test.userbase.signUp({
-        username: randomUser1,
-        password,
-        rememberMe
-      })
-      await this.test.userbase.signOut()
-
-      try {
-        await this.test.userbase.signUp({
-          username: randomUser1,
-          password,
-          rememberMe
-        })
-        throw new Error('should have failed')
-      } catch (e) {
-        expect(e.name, 'error name').to.equal('UsernameAlreadyExists')
-        expect(e.message, 'error message').to.equal('Username already exists.')
-        expect(e.status, 'error status').to.equal(409)
-      }
-
-      // clean up
-      await this.test.userbase.signIn({
-        username: randomUser1,
-        password,
-        rememberMe
-      })
-      await this.test.userbase.deleteUser()
-    })
-
     it('Blank username', async function () {
       try {
-        await this.test.userbase.signUp({ username: '', password: 'test-pass' })
+        await this.test.userbase.signIn({ username: '', password: 'test-pass' })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('UsernameCannotBeBlank')
@@ -531,7 +359,7 @@ describe('Sign Up Tests', function () {
 
     it('Username must be string', async function () {
       try {
-        await this.test.userbase.signUp({ username: false, password: 'test-pass' })
+        await this.test.userbase.signIn({ username: false, password: 'test-pass' })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('UsernameMustBeString')
@@ -546,7 +374,7 @@ describe('Sign Up Tests', function () {
       const rememberMe = 'none'
 
       try {
-        await this.test.userbase.signUp({
+        await this.test.userbase.signIn({
           username,
           password,
           rememberMe
@@ -561,7 +389,7 @@ describe('Sign Up Tests', function () {
 
     it('Password missing', async function () {
       try {
-        await this.test.userbase.signUp({ username: 'test-username' })
+        await this.test.userbase.signIn({ username: 'test-username' })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('PasswordMissing')
@@ -572,7 +400,7 @@ describe('Sign Up Tests', function () {
 
     it('Password must be string', async function () {
       try {
-        await this.test.userbase.signUp({ username: 'test-username', password: 1 })
+        await this.test.userbase.signIn({ username: 'test-username', password: 1 })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('PasswordMustBeString')
@@ -583,7 +411,7 @@ describe('Sign Up Tests', function () {
 
     it('Password blank', async function () {
       try {
-        await this.test.userbase.signUp({ username: 'test-username', password: '' })
+        await this.test.userbase.signIn({ username: 'test-username', password: '' })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('PasswordCannotBeBlank')
@@ -594,7 +422,7 @@ describe('Sign Up Tests', function () {
 
     it('Password too short', async function () {
       try {
-        await this.test.userbase.signUp({ username: 'test-username', password: 'pass' })
+        await this.test.userbase.signIn({ username: 'test-username', password: 'pass' })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('PasswordTooShort')
@@ -605,7 +433,7 @@ describe('Sign Up Tests', function () {
 
     it('Password too long', async function () {
       try {
-        await this.test.userbase.signUp({ username: 'test-username', password: 'a'.repeat(1001) })
+        await this.test.userbase.signIn({ username: 'test-username', password: 'a'.repeat(1001) })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('PasswordTooLong')
@@ -616,7 +444,7 @@ describe('Sign Up Tests', function () {
 
     it('rememberMe not valid', async function () {
       try {
-        await this.test.userbase.signUp({ username: 'test-username', password: 'test-pass', rememberMe: 'invalid' })
+        await this.test.userbase.signIn({ username: 'test-username', password: 'test-pass', rememberMe: 'invalid' })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('RememberMeValueNotValid')
@@ -625,105 +453,9 @@ describe('Sign Up Tests', function () {
       }
     })
 
-    it('Profile must be object', async function () {
-      try {
-        await this.test.userbase.signUp({ username: 'test-username', password: 'test-pass', profile: 123 })
-        throw new Error('should have failed')
-      } catch (e) {
-        expect(e.name, 'error name').to.equal('ProfileMustBeObject')
-        expect(e.message, 'error message').to.equal('Profile must be a flat JSON object.')
-        expect(e.status, 'error status').to.equal(400)
-      }
-    })
-
-    it('Profile empty', async function () {
-      try {
-        await this.test.userbase.signUp({ username: 'test-username', password: 'test-pass', profile: {} })
-        throw new Error('should have failed')
-      } catch (e) {
-        expect(e.name, 'error name').to.equal('ProfileCannotBeEmpty')
-        expect(e.message, 'error message').to.equal('Profile cannot be empty.')
-        expect(e.status, 'error status').to.equal(400)
-      }
-    })
-
-    it('Profile has too many keys', async function () {
-      const profile = {}
-      const MAX_KEYS = 100
-      for (let i = 0; i <= MAX_KEYS; i++) {
-        profile[i] = i.toString()
-      }
-
-      try {
-        await this.test.userbase.signUp({ username: 'test-username', password: 'test-pass', profile })
-        throw new Error('should have failed')
-      } catch (e) {
-        expect(e.name, 'error name').to.equal('ProfileHasTooManyKeys')
-        expect(e.message, 'error message').to.equal(`Profile has too many keys. Must have a max of ${MAX_KEYS} keys.`)
-        expect(e.status, 'error status').to.equal(400)
-      }
-    })
-
-    it('Profile key too long', async function () {
-      const key = 'a'.repeat(21)
-
-      try {
-        await this.test.userbase.signUp({ username: 'test-username', password: 'test-pass', profile: { [key]: 'hello' } })
-        throw new Error('should have failed')
-      } catch (e) {
-        expect(e.name, 'error name').to.equal('ProfileKeyTooLong')
-        expect(e.message, 'error message').to.equal('Profile key too long. Must be a max of 20 characters.')
-        expect(e.status, 'error status').to.equal(400)
-        expect(e.key, 'error key').to.equal(key)
-      }
-    })
-
-    it('Profile value must be string', async function () {
-      const key = 'nest'
-      const value = {}
-
-      try {
-        await this.test.userbase.signUp({ username: 'test-username', password: 'test-pass', profile: { [key]: value } })
-        throw new Error('should have failed')
-      } catch (e) {
-        expect(e.name, 'error name').to.equal('ProfileValueMustBeString')
-        expect(e.message, 'error message').to.equal('Profile value must be a string.')
-        expect(e.status, 'error status').to.equal(400)
-        expect(e.key, 'error key').to.equal(key)
-        expect(e.value, 'error value').to.equal(value)
-      }
-    })
-
-    it('Profile value too long', async function () {
-      const key = 'nest'
-      const value = 'a'.repeat(1001)
-
-      try {
-        await this.test.userbase.signUp({ username: 'test-username', password: 'test-pass', profile: { [key]: value } })
-        throw new Error('should have failed')
-      } catch (e) {
-        expect(e.name, 'error name').to.equal('ProfileValueTooLong')
-        expect(e.message, 'error message').to.equal('Profile value too long. Must be a max of 1000 characters.')
-        expect(e.status, 'error status').to.equal(400)
-        expect(e.key, 'error key').to.equal(key)
-        expect(e.value, 'error value').to.equal(value)
-      }
-    })
-
-    it('Email not valid', async function () {
-      try {
-        await this.test.userbase.signUp({ username: 'test-username', password: 'test-pass', email: 'd' })
-        throw new Error('should have failed')
-      } catch (e) {
-        expect(e.name, 'error name').to.equal('EmailNotValid')
-        expect(e.message, 'error message').to.equal('Email not valid.')
-        expect(e.status, 'error status').to.equal(400)
-      }
-    })
-
     it('Session length must be number', async function () {
       try {
-        await this.test.userbase.signUp({ username: 'test-username', password: 'test-pass', sessionLength: false })
+        await this.test.userbase.signIn({ username: 'test-username', password: 'test-pass', sessionLength: false })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('SessionLengthMustBeNumber')
@@ -734,7 +466,7 @@ describe('Sign Up Tests', function () {
 
     it('Session length too short', async function () {
       try {
-        await this.test.userbase.signUp({ username: 'test-username', password: 'test-pass', sessionLength: 0.001 })
+        await this.test.userbase.signIn({ username: 'test-username', password: 'test-pass', sessionLength: 0.001 })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('SessionLengthTooShort')
@@ -746,7 +478,7 @@ describe('Sign Up Tests', function () {
     it('Session length too long', async function () {
       try {
         const sessionLength = (365 * 24) + 1
-        await this.test.userbase.signUp({ username: 'test-username', password: 'test-pass', sessionLength })
+        await this.test.userbase.signIn({ username: 'test-username', password: 'test-pass', sessionLength })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('SessionLengthTooLong')

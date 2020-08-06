@@ -88,11 +88,11 @@ export interface CancelSubscriptionResult {
 }
 
 export interface Userbase {
-  init(params: { appId: string, updateUserHandler?: UpdateUserHandler }): Promise<Session>
+  init(params: { appId: string, updateUserHandler?: UpdateUserHandler, sessionLength?: number }): Promise<Session>
 
-  signUp(params: { username: string, password: string, email?: string, profile?: UserProfile, rememberMe?: RememberMeOption }): Promise<UserResult>
+  signUp(params: { username: string, password: string, email?: string, profile?: UserProfile, rememberMe?: RememberMeOption, sessionLength?: number }): Promise<UserResult>
 
-  signIn(params: { username: string, password: string, rememberMe?: RememberMeOption }): Promise<UserResult>
+  signIn(params: { username: string, password: string, rememberMe?: RememberMeOption, sessionLength?: number }): Promise<UserResult>
 
   signOut(): Promise<void>
 

@@ -34,7 +34,11 @@ const LIMIT_NUM_TRIAL_USERS = 3
 
 const MAX_INCORRECT_PASSWORD_GUESSES = 25
 
-const createSession = async function (userId, appId) {
+const MIN_SESSION_LENGTH = 1000 * 60 * 5 // 5 minutes
+const MAX_SESSION_LENGTH = 1000 * 60 * 60 * 24 * 365 // 2 years
+const DEFAULT_SESSION_LENGTH = MS_IN_A_DAY // 24 hours
+
+const createSession = async function (userId, appId, sessionLength = DEFAULT_SESSION_LENGTH) {
   // sessionId is used to authenticate that a user is signed in. The sessionId allows
   // the user to sign in without their password and open a WebSocket connection to the server
   const sessionId = crypto
@@ -48,7 +52,7 @@ const createSession = async function (userId, appId) {
     .toString('hex')
 
   const creationDate = new Date().toISOString()
-  const expirationDate = new Date(Date.now() + MS_IN_A_DAY).toISOString()
+  const expirationDate = new Date(Date.now() + sessionLength).toISOString()
 
   const session = {
     'session-id': sessionId,
@@ -231,6 +235,24 @@ const _incrementIncorrectPasswordAttempt = (user) => {
   ddbClient.update(incrementParams).promise()
 }
 
+const _validateSessionLength = (sessionLength) => {
+  if (sessionLength !== undefined) {
+    if (typeof sessionLength !== 'number') throw 'Session length must be a number.'
+
+    if (sessionLength <= MIN_SESSION_LENGTH) {
+      throw {
+        error: 'SessionLengthTooShort',
+        minLen: '5 minutes'
+      }
+    } else if (sessionLength > MAX_SESSION_LENGTH) {
+      throw {
+        error: 'SessionLengthTooLong',
+        maxLen: '1 year'
+      }
+    }
+  }
+}
+
 const _validatePassword = (passwordToken, user, req) => {
   if (!user) throw new Error('User does not exist')
 
@@ -335,7 +357,7 @@ const _verifyEcdhPublicKey = (ecdhPublicKey, ecdsaPublicKey, signedEcdhPublicKey
   }
 }
 
-const _validateSignUpInput = (appId, username, passwordToken, publicKeyData, passwordSalts, keySalts, passwordBasedBackup, email, profile) => {
+const _validateSignUpInput = (appId, username, passwordToken, publicKeyData, passwordSalts, keySalts, passwordBasedBackup, email, profile, sessionLength) => {
   try {
     const {
       ecKeyData,    // userbase-js >= v2.0.0
@@ -412,6 +434,8 @@ const _validateSignUpInput = (appId, username, passwordToken, publicKeyData, pas
     }
 
     if (profile) _validateProfile(profile)
+
+    _validateSessionLength(sessionLength)
   } catch (e) {
     throw {
       status: statusCodes['Bad Request'],
@@ -453,13 +477,15 @@ exports.signUp = async function (req, res) {
   const profile = req.body.profile
   const passwordBasedBackup = req.body.passwordBasedBackup
 
+  const sessionLength = req.body.sessionLength
+
   let logChildObject
   try {
     logChildObject = { appId, username, req: trimReq(req) }
     logger.child(logChildObject).info('Signing up user')
 
     const publicKeyData = { dhPublicKey, ecKeyData }
-    _validateSignUpInput(appId, username, passwordToken, publicKeyData, passwordSalts, keySalts, passwordBasedBackup, email, profile)
+    _validateSignUpInput(appId, username, passwordToken, publicKeyData, passwordSalts, keySalts, passwordBasedBackup, email, profile, sessionLength)
 
     const userId = uuidv4()
 
@@ -508,7 +534,7 @@ exports.signUp = async function (req, res) {
       throw e
     }
 
-    const session = await createSession(userId, appId)
+    const session = await createSession(userId, appId, sessionLength)
 
     logger.child(logChildObject).info('Signed up user')
 
@@ -1148,6 +1174,8 @@ exports.signIn = async function (req, res) {
   const username = req.body.username
   const passwordToken = req.body.passwordToken
 
+  const sessionLength = req.body.sessionLength
+
   let logChildObject
   try {
     logChildObject = { appId, username, req: trimReq(req) }
@@ -1162,6 +1190,7 @@ exports.signIn = async function (req, res) {
 
     try {
       _validateUsernameInput(username)
+      _validateSessionLength(sessionLength)
     } catch (e) {
       throw {
         status: statusCodes['Bad Request'],
@@ -1215,7 +1244,7 @@ exports.signIn = async function (req, res) {
       }
     }
 
-    const session = await createSession(user['user-id'], appId)
+    const session = await createSession(user['user-id'], appId, sessionLength)
 
     const result = { session, userId: user['user-id'] }
 
@@ -1418,13 +1447,24 @@ exports.extendSession = async function (req, res) {
 
   const sessionId = req.query.sessionId
 
+  const sessionLength = req.body.sessionLength
+
   let logChildObject
   try {
     logChildObject = { userId: user['user-id'], sessionId: truncateSessionId(sessionId), adminId: admin['admin-id'], app: app['app-id'], req: trimReq(req) }
     logger.child(logChildObject).info('Extending session')
 
+    try {
+      _validateSessionLength(sessionLength)
+    } catch (e) {
+      throw {
+        status: statusCodes['Bad Request'],
+        error: e
+      }
+    }
+
     const extendedDate = new Date().toISOString()
-    const expirationDate = new Date(Date.now() + MS_IN_A_DAY).toISOString()
+    const expirationDate = new Date(Date.now() + (sessionLength || DEFAULT_SESSION_LENGTH)).toISOString()
 
     const params = {
       TableName: setup.sessionsTableName,
@@ -1457,9 +1497,16 @@ exports.extendSession = async function (req, res) {
     return res.send(result)
   } catch (e) {
     const message = 'Failed to extend session'
-    const statusCode = statusCodes['Internal Server Error']
-    logger.child({ ...logChildObject, statusCode, err: e }).error(message)
-    return res.status(statusCode).send(message)
+
+    if (e.status && e.error) {
+      const statusCode = e.status
+      logger.child({ ...logChildObject, statusCode, err: e }).warn(message)
+      return res.status(statusCode).send(e.error)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return res.status(statusCode).send(message)
+    }
   }
 }
 
