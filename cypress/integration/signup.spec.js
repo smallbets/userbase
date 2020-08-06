@@ -561,7 +561,8 @@ describe('Sign Up Tests', function () {
 
     it('Password missing', async function () {
       try {
-        await this.test.userbase.signUp({ username: 'test-username' })
+        const username = 'test-user-' + getRandomString()
+        await this.test.userbase.signUp({ username })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('PasswordMissing')
@@ -572,7 +573,8 @@ describe('Sign Up Tests', function () {
 
     it('Password must be string', async function () {
       try {
-        await this.test.userbase.signUp({ username: 'test-username', password: 1 })
+        const username = 'test-user-' + getRandomString()
+        await this.test.userbase.signUp({ username, password: 1 })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('PasswordMustBeString')
@@ -583,7 +585,8 @@ describe('Sign Up Tests', function () {
 
     it('Password blank', async function () {
       try {
-        await this.test.userbase.signUp({ username: 'test-username', password: '' })
+        const username = 'test-user-' + getRandomString()
+        await this.test.userbase.signUp({ username, password: '' })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('PasswordCannotBeBlank')
@@ -594,7 +597,8 @@ describe('Sign Up Tests', function () {
 
     it('Password too short', async function () {
       try {
-        await this.test.userbase.signUp({ username: 'test-username', password: 'pass' })
+        const username = 'test-user-' + getRandomString()
+        await this.test.userbase.signUp({ username, password: 'pass' })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('PasswordTooShort')
@@ -605,7 +609,8 @@ describe('Sign Up Tests', function () {
 
     it('Password too long', async function () {
       try {
-        await this.test.userbase.signUp({ username: 'test-username', password: 'a'.repeat(1001) })
+        const username = 'test-user-' + getRandomString()
+        await this.test.userbase.signUp({ username, password: 'a'.repeat(1001) })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('PasswordTooLong')
@@ -616,7 +621,8 @@ describe('Sign Up Tests', function () {
 
     it('rememberMe not valid', async function () {
       try {
-        await this.test.userbase.signUp({ username: 'test-username', password: 'test-pass', rememberMe: 'invalid' })
+        const username = 'test-user-' + getRandomString()
+        await this.test.userbase.signUp({ username, password: 'test-pass', rememberMe: 'invalid' })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('RememberMeValueNotValid')
@@ -627,7 +633,8 @@ describe('Sign Up Tests', function () {
 
     it('Profile must be object', async function () {
       try {
-        await this.test.userbase.signUp({ username: 'test-username', password: 'test-pass', profile: 123 })
+        const username = 'test-user-' + getRandomString()
+        await this.test.userbase.signUp({ username, password: 'test-pass', profile: 123 })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('ProfileMustBeObject')
@@ -638,7 +645,8 @@ describe('Sign Up Tests', function () {
 
     it('Profile empty', async function () {
       try {
-        await this.test.userbase.signUp({ username: 'test-username', password: 'test-pass', profile: {} })
+        const username = 'test-user-' + getRandomString()
+        await this.test.userbase.signUp({ username, password: 'test-pass', profile: {} })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('ProfileCannotBeEmpty')
@@ -655,7 +663,8 @@ describe('Sign Up Tests', function () {
       }
 
       try {
-        await this.test.userbase.signUp({ username: 'test-username', password: 'test-pass', profile })
+        const username = 'test-user-' + getRandomString()
+        await this.test.userbase.signUp({ username, password: 'test-pass', profile })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('ProfileHasTooManyKeys')
@@ -668,7 +677,8 @@ describe('Sign Up Tests', function () {
       const key = 'a'.repeat(21)
 
       try {
-        await this.test.userbase.signUp({ username: 'test-username', password: 'test-pass', profile: { [key]: 'hello' } })
+        const username = 'test-user-' + getRandomString()
+        await this.test.userbase.signUp({ username, password: 'test-pass', profile: { [key]: 'hello' } })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('ProfileKeyTooLong')
@@ -683,7 +693,8 @@ describe('Sign Up Tests', function () {
       const value = {}
 
       try {
-        await this.test.userbase.signUp({ username: 'test-username', password: 'test-pass', profile: { [key]: value } })
+        const username = 'test-user-' + getRandomString()
+        await this.test.userbase.signUp({ username, password: 'test-pass', profile: { [key]: value } })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('ProfileValueMustBeString')
@@ -699,7 +710,8 @@ describe('Sign Up Tests', function () {
       const value = 'a'.repeat(1001)
 
       try {
-        await this.test.userbase.signUp({ username: 'test-username', password: 'test-pass', profile: { [key]: value } })
+        const username = 'test-user-' + getRandomString()
+        await this.test.userbase.signUp({ username, password: 'test-pass', profile: { [key]: value } })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('ProfileValueTooLong')
@@ -712,7 +724,8 @@ describe('Sign Up Tests', function () {
 
     it('Email not valid', async function () {
       try {
-        await this.test.userbase.signUp({ username: 'test-username', password: 'test-pass', email: 'd' })
+        const username = 'test-user-' + getRandomString()
+        await this.test.userbase.signUp({ username, password: 'test-pass', email: 'd' })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('EmailNotValid')
@@ -723,7 +736,8 @@ describe('Sign Up Tests', function () {
 
     it('Session length must be number', async function () {
       try {
-        await this.test.userbase.signUp({ username: 'test-username', password: 'test-pass', sessionLength: false })
+        const username = 'test-user-' + getRandomString()
+        await this.test.userbase.signUp({ username, password: 'test-pass', sessionLength: false })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('SessionLengthMustBeNumber')
@@ -734,7 +748,8 @@ describe('Sign Up Tests', function () {
 
     it('Session length too short', async function () {
       try {
-        await this.test.userbase.signUp({ username: 'test-username', password: 'test-pass', sessionLength: 0.001 })
+        const username = 'test-user-' + getRandomString()
+        await this.test.userbase.signUp({ username, password: 'test-pass', sessionLength: 0.001 })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('SessionLengthTooShort')
@@ -745,8 +760,9 @@ describe('Sign Up Tests', function () {
 
     it('Session length too long', async function () {
       try {
+        const username = 'test-user-' + getRandomString()
         const sessionLength = (365 * 24) + 1
-        await this.test.userbase.signUp({ username: 'test-username', password: 'test-pass', sessionLength })
+        await this.test.userbase.signUp({ username, password: 'test-pass', sessionLength })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('SessionLengthTooLong')

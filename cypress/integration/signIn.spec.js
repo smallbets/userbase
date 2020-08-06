@@ -389,7 +389,8 @@ describe('Sign In Tests', function () {
 
     it('Password missing', async function () {
       try {
-        await this.test.userbase.signIn({ username: 'test-username' })
+        const username = 'test-user-' + getRandomString()
+        await this.test.userbase.signIn({ username })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('PasswordMissing')
@@ -400,7 +401,8 @@ describe('Sign In Tests', function () {
 
     it('Password must be string', async function () {
       try {
-        await this.test.userbase.signIn({ username: 'test-username', password: 1 })
+        const username = 'test-user-' + getRandomString()
+        await this.test.userbase.signIn({ username, password: 1 })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('PasswordMustBeString')
@@ -411,7 +413,8 @@ describe('Sign In Tests', function () {
 
     it('Password blank', async function () {
       try {
-        await this.test.userbase.signIn({ username: 'test-username', password: '' })
+        const username = 'test-user-' + getRandomString()
+        await this.test.userbase.signIn({ username, password: '' })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('PasswordCannotBeBlank')
@@ -422,7 +425,8 @@ describe('Sign In Tests', function () {
 
     it('Password too short', async function () {
       try {
-        await this.test.userbase.signIn({ username: 'test-username', password: 'pass' })
+        const username = 'test-user-' + getRandomString()
+        await this.test.userbase.signIn({ username, password: 'pass' })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('PasswordTooShort')
@@ -433,7 +437,8 @@ describe('Sign In Tests', function () {
 
     it('Password too long', async function () {
       try {
-        await this.test.userbase.signIn({ username: 'test-username', password: 'a'.repeat(1001) })
+        const username = 'test-user-' + getRandomString()
+        await this.test.userbase.signIn({ username, password: 'a'.repeat(1001) })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('PasswordTooLong')
@@ -444,7 +449,8 @@ describe('Sign In Tests', function () {
 
     it('rememberMe not valid', async function () {
       try {
-        await this.test.userbase.signIn({ username: 'test-username', password: 'test-pass', rememberMe: 'invalid' })
+        const username = 'test-user-' + getRandomString()
+        await this.test.userbase.signIn({ username, password: 'test-pass', rememberMe: 'invalid' })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('RememberMeValueNotValid')
@@ -455,7 +461,8 @@ describe('Sign In Tests', function () {
 
     it('Session length must be number', async function () {
       try {
-        await this.test.userbase.signIn({ username: 'test-username', password: 'test-pass', sessionLength: false })
+        const username = 'test-user-' + getRandomString()
+        await this.test.userbase.signIn({ username, password: 'test-pass', sessionLength: false })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('SessionLengthMustBeNumber')
@@ -465,26 +472,53 @@ describe('Sign In Tests', function () {
     })
 
     it('Session length too short', async function () {
+      const username = 'test-user-' + getRandomString()
+      const password = getRandomString()
+
+      await this.test.userbase.signUp({
+        username,
+        password,
+        rememberMe: 'none'
+      })
+      await this.test.userbase.signOut()
+
       try {
-        await this.test.userbase.signIn({ username: 'test-username', password: 'test-pass', sessionLength: 0.001 })
+        await this.test.userbase.signIn({ username, password, sessionLength: 0.001 })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('SessionLengthTooShort')
         expect(e.message, 'error message').to.equal(`Session length cannot be shorter than 5 minutes.`)
         expect(e.status, 'error status').to.equal(400)
       }
+
+      // clean up
+      await this.test.userbase.signIn({ username, password, rememberMe: 'none' })
+      await this.test.userbase.deleteUser()
     })
 
     it('Session length too long', async function () {
+      const username = 'test-user-' + getRandomString()
+      const password = getRandomString()
+      await this.test.userbase.signUp({
+        username,
+        password,
+        rememberMe: 'none'
+      })
+      await this.test.userbase.signOut()
+
       try {
         const sessionLength = (365 * 24) + 1
-        await this.test.userbase.signIn({ username: 'test-username', password: 'test-pass', sessionLength })
+        await this.test.userbase.signIn({ username, password, sessionLength })
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'error name').to.equal('SessionLengthTooLong')
         expect(e.message, 'error message').to.equal(`Session length cannot be longer than 1 year.`)
         expect(e.status, 'error status').to.equal(400)
       }
+
+      // clean up
+      await this.test.userbase.signIn({ username, password, rememberMe: 'none' })
+      await this.test.userbase.deleteUser()
     })
 
   })
