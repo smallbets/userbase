@@ -405,6 +405,12 @@ const disconnectStripeAccount = async () => {
   }
 }
 
+const saasSubscriptionNotActive = (admin) => {
+  const { paymentStatus, cancelSaasSubscriptionAt, altPaymentStatus } = admin
+  return (paymentStatus !== 'active' || cancelSaasSubscriptionAt) &&
+    altPaymentStatus !== 'active'
+}
+
 export default {
   createAdmin,
   createApp,
@@ -432,4 +438,5 @@ export default {
   deleteAccessToken,
   completeStripeConnection,
   disconnectStripeAccount,
+  saasSubscriptionNotActive,
 }

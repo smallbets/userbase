@@ -122,7 +122,7 @@ export default class EditAdmin extends Component {
 
   handleUpgradeAtLoad() {
     // only attempt upgrade if admin does not already have a subscription
-    if (!this.props.admin.paymentStatus) {
+    if (!this.props.admin.paymentStatus && !this.props.admin.altPaymentStatus) {
       this.handleCheckout()
     }
   }
@@ -566,6 +566,7 @@ export default class EditAdmin extends Component {
       cancelPaymentsAddOnSubscriptionAt,
       storageSubscriptionStatus,
       cancelStorageSubscriptionAt,
+      altPaymentStatus,
     } = admin
     const {
       fullName,
@@ -638,49 +639,59 @@ export default class EditAdmin extends Component {
 
                   {errorUpdatingPaymentMethod && <UnknownError action='loading the form to update your payment method' />}
 
+                  <hr className='border border-t-0 border-gray-400 mt-8 mb-4' />
+
                 </div>
                 :
                 <div>
-                  <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Userbase Subscription</div>
+                  {
+                    altPaymentStatus !== 'active' &&
+                    <div>
+                      <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Userbase Subscription</div>
 
-                  <div className='font-normal text-left mb-4'>
-                    <p>Your trial account is limited to 1 app and 3 users.</p>
-                    <p>Remove this limit with a Userbase subscription for only $49 per year.</p>
-                  </div>
+                      <div className='font-normal text-left mb-4'>
+                        <p>Your trial account is limited to 1 app and 3 users.</p>
+                        <p>Remove this limit with a Userbase subscription for only $49 per year.</p>
+                      </div>
 
-                  {cancelSaasSubscriptionAt
-                    ? <input
-                      className='btn w-56 text-center'
-                      type='button'
-                      role='link'
-                      value={loadingResumeSubscription ? 'Resuming Subscription...' : 'Resume Subscription'}
-                      disabled={loadingResumeSubscription}
-                      onClick={this.handleResumeSubscription}
-                    />
-                    : <input
-                      className='btn w-56 text-center'
-                      type='button'
-                      role='link'
-                      disabled={loadingCheckout}
-                      value={loadingCheckout ? 'Loading...' : 'Buy Subscription'}
-                      onClick={this.handleCheckout}
-                    />
+                      {cancelSaasSubscriptionAt
+                        ? <input
+                          className='btn w-56 text-center'
+                          type='button'
+                          role='link'
+                          value={loadingResumeSubscription ? 'Resuming Subscription...' : 'Resume Subscription'}
+                          disabled={loadingResumeSubscription}
+                          onClick={this.handleResumeSubscription}
+                        />
+                        : <input
+                          className='btn w-56 text-center'
+                          type='button'
+                          role='link'
+                          disabled={loadingCheckout}
+                          value={loadingCheckout ? 'Loading...' : 'Buy Subscription'}
+                          onClick={this.handleCheckout}
+                        />
+                      }
+
+                      {errorCheckingOut && <UnknownError action='loading the checkout form' />}
+                      {errorResumingSubscription && <UnknownError action='resuming your subscription' />}
+
+                      <hr className='border border-t-0 border-gray-400 mt-8 mb-4' />
+
+                    </div>
                   }
-
-                  {errorCheckingOut && <UnknownError action='loading the checkout form' />}
-                  {errorResumingSubscription && <UnknownError action='resuming your subscription' />}
-
                 </div>
               }
-
-              <hr className='border border-t-0 border-gray-400 mt-8 mb-4' />
 
               {(!storageSubscriptionStatus || cancelStorageSubscriptionAt) &&
                 <div>
                   <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Storage Plan</div>
                   <div className='font-normal text-left mb-4'>
                     <p>Store up to 1 terabyte of data for an additional $99 per year.</p>
-                    {(paymentStatus !== 'active' || cancelSaasSubscriptionAt) && <p>You must have an active Userbase subscription.</p>}
+                    {(paymentStatus !== 'active' || cancelSaasSubscriptionAt) && (altPaymentStatus !== 'active'
+                      ? <p>You must have an active Userbase subscription.</p>
+                      : <p>Please contact <a href='mailto:support@userbase.com'>support@userbase.com</a> to enable this feature.</p>
+                    )}
                   </div>
 
                   {
@@ -717,7 +728,10 @@ export default class EditAdmin extends Component {
                   <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Payments Portal Add-On</div>
                   <div className='font-normal text-left mb-4'>
                     <p>Collect payments on your apps with Stripe for an additional ${PAYMENTS_ADD_ON_PRICE} per year.</p>
-                    {(paymentStatus !== 'active' || cancelSaasSubscriptionAt) && <p>You must have an active Userbase subscription.</p>}
+                    {(paymentStatus !== 'active' || cancelSaasSubscriptionAt) && (altPaymentStatus !== 'active'
+                      ? <p>You must have an active Userbase subscription.</p>
+                      : <p>Please contact <a href='mailto:support@userbase.com'>support@userbase.com</a> to enable this feature.</p>
+                    )}
                   </div>
 
                   {
