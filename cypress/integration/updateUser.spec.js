@@ -242,17 +242,6 @@ describe('Update User Tests', function () {
   describe('Failure Tests', function () {
     beforeEach(function () { beforeEachHook(false) })
 
-    it('Update user handler must be function', async function () {
-      try {
-        await this.test.userbase.init({ appId: this.test.appId, updateUserHandler: 1 })
-        throw new Error('should have failed')
-      } catch (e) {
-        expect(e.name, 'error name').to.equal('UpdateUserHandlerMustBeFunction')
-        expect(e.message, 'error message').to.equal('Update user handler must be a function.')
-        expect(e.status, 'error status').to.equal(400)
-      }
-    })
-
     it('Missing params object', async function () {
       try {
         await this.test.userbase.updateUser()

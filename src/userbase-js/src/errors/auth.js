@@ -120,6 +120,36 @@ class UsernameOrPasswordMismatch extends Error {
   }
 }
 
+class SessionLengthMustBeNumber extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'SessionLengthMustBeNumber'
+    this.message = 'Session length must be a number.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class SessionLengthTooShort extends Error {
+  constructor(minLen, ...params) {
+    super(minLen, ...params)
+
+    this.name = 'SessionLengthTooShort'
+    this.message = `Session length cannot be shorter than ${minLen}.`
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class SessionLengthTooLong extends Error {
+  constructor(maxLen, ...params) {
+    super(maxLen, ...params)
+
+    this.name = 'SessionLengthTooLong'
+    this.message = `Session length cannot be longer than ${maxLen}.`
+    this.status = statusCodes['Bad Request']
+  }
+}
+
 class UserAlreadySignedIn extends Error {
   constructor(username, ...params) {
     super(...params)
@@ -340,6 +370,9 @@ export default {
   PasswordMustBeString,
   PasswordAttemptLimitExceeded,
   UsernameOrPasswordMismatch,
+  SessionLengthMustBeNumber,
+  SessionLengthTooShort,
+  SessionLengthTooLong,
   UserAlreadySignedIn,
   UserPendingDeletion,
   AppIdNotValid,

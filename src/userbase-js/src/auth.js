@@ -49,6 +49,20 @@ const _parseGenericUsernamePasswordError = (e) => {
   }
 }
 
+const _parseSessionLengthError = (e) => {
+  if (e.response && e.response.data) {
+    const data = e.response.data
+
+    switch (data.error) {
+      case 'SessionLengthTooShort':
+        throw new errors.SessionLengthTooShort(data.minLen)
+
+      case 'SessionLengthTooLong':
+        throw new errors.SessionLengthTooLong(data.maxLen)
+    }
+  }
+}
+
 const _parseUserResponseError = (e, username) => {
   _parseGenericErrors(e)
   _parseGenericUsernamePasswordError(e)
@@ -100,6 +114,8 @@ const _parseUserResponseError = (e, username) => {
   throw e
 }
 
+const _calculateSessionLengthMs = sessionLength => sessionLength && sessionLength * 60 * 60 * 1000
+
 const _validateUsername = (username) => {
   if (typeof username !== 'string') throw new errors.UsernameMustBeString
   if (username.length === 0) throw new errors.UsernameCannotBeBlank
@@ -123,6 +139,10 @@ const _validateSignUpOrSignInInput = (params) => {
 
   if (objectHasOwnProperty(params, 'rememberMe') && !config.REMEMBER_ME_OPTIONS[params.rememberMe]) {
     throw new errors.RememberMeValueNotValid(config.REMEMBER_ME_OPTIONS)
+  }
+
+  if (objectHasOwnProperty(params, 'sessionLength') && typeof params.sessionLength !== 'number') {
+    throw new errors.SessionLengthMustBeNumber
   }
 }
 
@@ -158,7 +178,7 @@ const _generatePasswordToken = async (password, seed) => {
   }
 }
 
-const _generateKeysAndSignUp = async (username, password, seed, email, profile) => {
+const _generateKeysAndSignUp = async (username, password, seed, email, profile, sessionLength) => {
   const {
     passwordToken,
     passwordSalts,
@@ -194,10 +214,12 @@ const _generateKeysAndSignUp = async (username, password, seed, email, profile) 
       keySalts,
       email,
       profile,
-      passwordBasedBackup
+      passwordBasedBackup,
+      sessionLength,
     )
     return session
   } catch (e) {
+    _parseSessionLengthError(e)
     _parseUserResponseError(e, username)
   }
 }
@@ -236,7 +258,9 @@ const signUp = async (params) => {
     const appId = config.getAppId()
     const seed = await crypto.generateSeed()
 
-    const { sessionId, creationDate, expirationDate, userId, authToken } = await _generateKeysAndSignUp(username, password, seed, email, profile)
+    const sessionLength = _calculateSessionLengthMs(params.sessionLength)
+
+    const { sessionId, creationDate, expirationDate, userId, authToken } = await _generateKeysAndSignUp(username, password, seed, email, profile, sessionLength)
     const session = { username, userId, sessionId, creationDate, expirationDate, authToken }
 
     const seedString = base64.encode(seed)
@@ -270,6 +294,9 @@ const signUp = async (params) => {
       case 'ProfileValueCannotBeBlank':
       case 'ProfileValueTooLong':
       case 'RememberMeValueNotValid':
+      case 'SessionLengthMustBeNumber':
+      case 'SessionLengthTooShort':
+      case 'SessionLengthTooLong':
       case 'TrialExceededLimit':
       case 'AppIdNotSet':
       case 'AppIdNotValid':
@@ -320,13 +347,14 @@ const _getSeedStringFromPasswordBasedBackup = async (passwordHkdfKey, passwordBa
   return seedStringFromBackup
 }
 
-const _signInWrapper = async (username, passwordToken) => {
+const _signInWrapper = async (username, passwordToken, sessionLength) => {
   try {
-    const apiSignInResult = await api.auth.signIn(username, passwordToken)
+    const apiSignInResult = await api.auth.signIn(username, passwordToken, sessionLength)
     return apiSignInResult
   } catch (e) {
     _parseGenericErrors(e)
     _parseGenericUsernamePasswordError(e)
+    _parseSessionLengthError(e)
 
     if (e.response && e.response.data === 'Invalid password') {
       throw new errors.UsernameOrPasswordMismatch
@@ -387,7 +415,9 @@ const signIn = async (params) => {
     const passwordSalts = await _getPasswordSaltsOverRestEndpoint(username)
     const { passwordHkdfKey, passwordToken } = await _rebuildPasswordToken(password, passwordSalts)
 
-    const apiSignInResult = await _signInWrapper(username, passwordToken)
+    const sessionLength = _calculateSessionLengthMs(params.sessionLength)
+
+    const apiSignInResult = await _signInWrapper(username, passwordToken, sessionLength)
     const { userId, email, profile, passwordBasedBackup, protectedProfile, usedTempPassword } = apiSignInResult
     const session = {
       ...apiSignInResult.session,
@@ -432,6 +462,9 @@ const signIn = async (params) => {
       case 'PasswordMustBeString':
       case 'PasswordAttemptLimitExceeded':
       case 'RememberMeValueNotValid':
+      case 'SessionLengthMustBeNumber':
+      case 'SessionLengthTooShort':
+      case 'SessionLengthTooLong':
       case 'KeyNotFound':
       case 'AppIdNotSet':
       case 'AppIdNotValid':
@@ -460,9 +493,13 @@ const init = async (params) => {
       throw new errors.UpdateUserHandlerMustBeFunction
     }
 
+    if (objectHasOwnProperty(params, 'sessionLength') && typeof params.sessionLength !== 'number') {
+      throw new errors.SessionLengthMustBeNumber
+    }
+
     config.configure(params)
 
-    const session = await signInWithSession(params.appId)
+    const session = await signInWithSession(params.appId, _calculateSessionLengthMs(params.sessionLength))
     return session
   } catch (e) {
 
@@ -475,6 +512,9 @@ const init = async (params) => {
       case 'AppIdCannotBeBlank':
       case 'AppIdNotValid':
       case 'UpdateUserHandlerMustBeFunction':
+      case 'SessionLengthMustBeNumber':
+      case 'SessionLengthTooShort':
+      case 'SessionLengthTooLong':
       case 'UserAlreadySignedIn':
       case 'ServiceUnavailable':
         throw e
@@ -486,7 +526,7 @@ const init = async (params) => {
   }
 }
 
-const signInWithSession = async (appId) => {
+const signInWithSession = async (appId, sessionLength) => {
   try {
     const currentSession = localData.getCurrentSession()
     if (!currentSession) return {}
@@ -500,9 +540,10 @@ const signInWithSession = async (appId) => {
 
     let apiSignInWithSessionResult
     try {
-      apiSignInWithSessionResult = await api.auth.signInWithSession(sessionId)
+      apiSignInWithSessionResult = await api.auth.signInWithSession(sessionId, sessionLength)
     } catch (e) {
       _parseGenericErrors(e)
+      _parseSessionLengthError(e)
 
       if (e.response && e.response.data === 'Session invalid') {
         return { lastUsedUsername: currentSession.username }
@@ -530,7 +571,7 @@ const signInWithSession = async (appId) => {
       }
     }
 
-    const session = { ...currentSession, userId, authToken }
+    const session = { ...currentSession, username, userId, authToken }
     await _connectWebSocket(session, savedSeedString, rememberMe)
 
     return { user: ws.buildUserResult({ username, userId, authToken, email, profile, protectedProfile, userData: ws.userData }) }
@@ -668,7 +709,7 @@ const deleteUser = async () => {
     if (!ws.keys.init) throw new errors.UserNotSignedIn
 
     const username = ws.session.username
-    localData.removeSeedString(username)
+    localData.removeSeedString(config.getAppId(), username)
     localData.removeCurrentSession()
 
     try {
