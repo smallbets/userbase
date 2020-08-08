@@ -16,7 +16,7 @@ This document describes Userbase’s design roughly following the [4+1 architect
 - [2 - Process View](#2---Process-View)
 - [3 - Development View](#3---Development-View)
 - [4 - Physical View](#4---Physical-View)
-- [+1 - Scenarios](#+1---Scenarios)
+- [+1 - Scenarios](#1---Scenarios)
 
 
 # 1 - Logical View
