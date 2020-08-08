@@ -398,16 +398,16 @@ Sample applications are deployed with [Vercel](https://vercel.com/) and Netlify.
 
 Note: each scenario contains lower level cryptographic implementation details.
 
-1. [Signing Up](#1.-Signing-Up)
-    - 1.1 - [Seed Generation](#1.1---Seed-Generation-(HKDF))
-    - 1.2 - [Password-Based Key Derivation](#1.2---Password-Based-Key-Derivation-(Scrypt))
-    - 1.3 - [Asymmetric Key Generation](#1.3---Asymmetric-Key-Generation-(ECDSA,-ECDH))
-2. [Signing In](#2.-Signing-In)
-3. [Resuming a Session](#3.-Resuming-a-Session)
-4. [Forgetting a Password](#4.-Forgetting-a-Password)
-5. [Using a Database](#5.-Using-a-Database)
-6. [Verifying a User](#6.-Verifying-a-User)
-7. [Sharing a Database](#7.-Sharing-a-Database)
+1. [Signing Up](#1-Signing-Up)
+    - 1.1 - [Seed Generation](#11---Seed-Generation-(HKDF))
+    - 1.2 - [Password-Based Key Derivation](#12---Password-Based-Key-Derivation-(Scrypt))
+    - 1.3 - [Asymmetric Key Generation](#13---Asymmetric-Key-Generation-(ECDSA,-ECDH))
+2. [Signing In](#2-Signing-In)
+3. [Resuming a Session](#3-Resuming-a-Session)
+4. [Forgetting a Password](#4-Forgetting-a-Password)
+5. [Using a Database](#5-Using-a-Database)
+6. [Verifying a User](#6-Verifying-a-User)
+7. [Sharing a Database](#7-Sharing-a-Database)
 
 ## 1. Signing Up
 
