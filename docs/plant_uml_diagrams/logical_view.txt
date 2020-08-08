@@ -1,0 +1,65 @@
+@startuml
+hide circle
+hide members
+
+entity User
+
+
+entity Browser
+entity "**Web App**" as WebApp {
+* Created by end-user of Userbase:
+a web app developer
+}
+show WebApp fields
+
+entity "userbase-js" as UserbaseJs {
+* npm package or downloadable script
+that runs in the browser
+}
+show UserbaseJs fields
+
+entity "Userbase SaaS Server" as UserbaseSaaSServer {
+* userbase-js points to this server by default
+}
+show UserbaseSaaSServer fields
+
+entity "Other Web Server" as OtherWebServer {
+* developer can configure userbase-js
+to point to this server
+}
+show OtherWebServer fields
+
+entity "userbase-server" as UserbaseServer {
+* npm package
+}
+show UserbaseServer fields
+
+entity "aws-sdk" as AWSSDK {
+* npm package
+* If hosting the server, web app developer
+must provide their AWS account creds
+}
+show AWSSDK fields
+
+
+entity "DynamoDB" as DDB
+entity S3
+entity "AWS Secrets Manager" as AWSSM
+entity "AWS Simple Email Service" as SES
+
+User o-right- Browser
+Browser o-right- WebApp
+WebApp o-right- UserbaseJs
+
+UserbaseJs o-down- UserbaseSaaSServer
+UserbaseJs o-down- OtherWebServer
+
+UserbaseSaaSServer o-down- UserbaseServer
+OtherWebServer o-down- UserbaseServer
+
+UserbaseServer o-down- AWSSDK
+AWSSDK o-down- DDB
+AWSSDK o-down- S3
+AWSSDK o-down- AWSSM
+AWSSDK o-down- SES
+@enduml

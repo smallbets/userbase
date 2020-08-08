@@ -1,0 +1,17 @@
+@startuml
+partition Client {
+  (*) --> "Random Seed" as rs
+
+  rs --> [ hkdf] "Encryption Key\nEncryption Key Salt" as aesKey
+  rs --> [ hkdf] "HMAC Key\nHMAC Key Salt" as hmacKey
+  rs --> [ hkdf] "ECDSA Key Encryption Key\nECDSA Key Encryption Key Salt" as ecdsaKeyEncryptionKey
+  rs --> [ hkdf] "ECDH Key Encryption Key\nECDH Key Encryption Key Salt" as ecdhKeyEncryptionKey
+}
+
+partition Server #LightSkyBlue {
+  aesKey --->  [ https] "Encryption Key Salt\nHMAC Key Salt\nECDSA Key Encryption Key Salt\nECDH Key Encryption Key Salt" as server
+  hmacKey ---> [ https] server
+  ecdsaKeyEncryptionKey ---> [ https] server
+  ecdhKeyEncryptionKey ---> [ https] server
+}
+@enduml

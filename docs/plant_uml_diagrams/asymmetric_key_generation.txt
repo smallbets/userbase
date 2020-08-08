@@ -1,0 +1,20 @@
+@startuml
+partition Client {
+  (*) --> "ECDSA Private Key\nECDSA Public Key" as ecdsaKey
+  (*) --> "ECDH Private Key\nECDH Public Key" as ecdhKey
+
+  "ECDSA Key Encryption Key from 1.1" -right-> [ aes-gcm-256] "Encrypted ECDSA Private Key" as encryptedEcdsa
+  "ECDH Key Encryption Key from 1.1" -right-> [ aes-gcm-256] "Encrypted ECDH Private Key" as encryptedEcdh
+
+  ecdsaKey ---> encryptedEcdsa
+  ecdhKey ---> encryptedEcdh
+
+}
+
+partition Server #LightSkyBlue {
+  ecdsaKey -->  [ https] "ECDSA Public Key\nEncrypted ECDSA Private Key" as serverEcdsa
+  ecdhKey --> [ https] "ECDH Public Key\nEncrypted ECDH Private Key"  as serverEcdh
+  encryptedEcdsa ---> [ https] serverEcdsa
+  encryptedEcdh ---> [ https] serverEcdh
+}
+@enduml

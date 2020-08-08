@@ -1,0 +1,12 @@
+@startuml
+package Server <<Database>> {
+  class User {
+    Username
+    Password Token Hash
+    Password Encrypted Seed
+    Public Keys
+    Encrypted Private Keys
+    Salts
+  }
+}
+@enduml
