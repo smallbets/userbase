@@ -420,9 +420,8 @@ const _validateSignUpInput = (appId, username, passwordToken, publicKeyData, pas
   }
 }
 
-const _validateSubscription = async (status, cancelAt, appId) => {
-  const unpaidSubscription = status !== 'active' || cancelAt
-  if (unpaidSubscription) {
+const _validateSubscription = async (admin, appId) => {
+  if (adminController.saasSubscriptionNotActive(admin)) {
     const numUsers = await appController.countNonDeletedAppUsers(appId, LIMIT_NUM_TRIAL_USERS)
     if (numUsers >= LIMIT_NUM_TRIAL_USERS) {
       throw {
@@ -486,7 +485,7 @@ exports.signUp = async function (req, res) {
       logChildObject.adminId = admin['admin-id']
     }
 
-    await _validateSubscription(admin['stripe-saas-subscription-status'], admin['stripe-cancel-saas-subscription-at'], appId)
+    await _validateSubscription(admin, appId)
 
     const params = _buildSignUpParams(username, passwordToken, appId, userId,
       publicKeyData, passwordSalts, keySalts, email, profile, passwordBasedBackup)

@@ -150,7 +150,8 @@ export default class Dashboard extends Component {
   }
 
   render() {
-    const { paymentStatus, cancelSaasSubscriptionAt, size, sizeAllowed } = this.props.admin
+    const { admin } = this.props
+    const { size, sizeAllowed } = admin
     const { loading, activeApps, deletedApps, showDeletedApps, error, appName, loadingApp } = this.state
 
     return (
@@ -174,7 +175,7 @@ export default class Dashboard extends Component {
               </div>
 
               {
-                (paymentStatus === 'active' && !cancelSaasSubscriptionAt) ? <div />
+                (!adminLogic.saasSubscriptionNotActive(admin)) ? <div />
                   : <div className='text-left mb-4 text-red-600 font-normal'>
                     Your account is limited to 1 app and 3 users. <a href="#edit-account">Remove this limit</a> with a Userbase subscription.
                 </div>
@@ -216,7 +217,7 @@ export default class Dashboard extends Component {
                 </table>
               }
 
-              {paymentStatus === 'active' && !cancelSaasSubscriptionAt &&
+              {!adminLogic.saasSubscriptionNotActive(admin) &&
 
                 <form className={`flex text-left ${(activeApps && activeApps.length) ? 'mt-8' : ''}`}>
                   <div className='flex-1'>

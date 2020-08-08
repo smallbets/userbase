@@ -248,6 +248,7 @@ const _buildAdminResult = (admin) => {
     cancelPaymentsAddOnSubscriptionAt: admin['stripe-cancel-payments-add-on-subscription-at'],
     storageSubscriptionStatus: admin['stripe-storage-subscription-status'],
     cancelStorageSubscriptionAt: admin['stripe-cancel-storage-subscription-at'],
+    altPaymentStatus: admin['alt-saas-subscription-status'],
     size: admin['size'],
     sizeAllowed: _getSizeAllowed(admin),
   }
@@ -1611,3 +1612,9 @@ const prodPaymentsEnabled = (admin) => {
   )
 }
 exports.prodPaymentsEnabled = prodPaymentsEnabled
+
+const saasSubscriptionNotActive = (admin) => {
+  return (admin['stripe-saas-subscription-status'] !== 'active' || admin['stripe-cancel-saas-subscription-at']) &&
+    admin['alt-saas-subscription-status'] !== 'active'
+}
+exports.saasSubscriptionNotActive = saasSubscriptionNotActive
