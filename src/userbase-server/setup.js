@@ -42,6 +42,7 @@ const deletedUsersTableName = resourceNamePrefix + 'deleted-users'
 const deletedAppsTableName = resourceNamePrefix + 'deleted-apps'
 const deletedAdminsTableName = resourceNamePrefix + 'deleted-admins'
 const dbStatesBucketNamePrefix = resourceNamePrefix + 'database-states'
+const filesBucketNamePrefix = resourceNamePrefix + 'files'
 const secretManagerSecretId = resourceNamePrefix + 'env'
 
 exports.adminTableName = adminTableName
@@ -74,18 +75,27 @@ exports.authTokenIndex = authTokenIndex
 exports.subscriptionPlanIndex = subscriptionPlanIndex
 exports.userDatabaseIdIndex = userDatabaseIdIndex
 
-const getDbStatesBucketName = function () {
+const _getBucketName = function (bucketNamePrefix) {
   if (!initialized || !awsAccountId) {
     throw new Error('Setup not initialized')
   }
 
-  return dbStatesBucketNamePrefix + '-' + awsAccountId
+  return bucketNamePrefix + '-' + awsAccountId
+}
+
+const getDbStatesBucketName = function () {
+  return _getBucketName(dbStatesBucketNamePrefix)
+}
+
+const getFilesBucketName = function () {
+  return _getBucketName(filesBucketNamePrefix)
 }
 
 let s3
 const getS3Connection = () => s3
 exports.s3 = getS3Connection
 exports.getDbStatesBucketName = getDbStatesBucketName
+exports.getFilesBucketName = getFilesBucketName
 
 let sm
 exports.getSecrets = getSecrets
@@ -400,13 +410,23 @@ async function setupDdb() {
 async function setupS3() {
   s3 = new aws.S3({ apiVersion: '2006-03-01' })
 
-  const bucketParams = {
+  // holds database's encrypted states
+  const dbStatesBucketParams = {
     Bucket: getDbStatesBucketName(),
     ACL: 'private'
   }
 
-  logger.info('Creating S3 bucket if necessary')
-  await createBucket(s3, bucketParams)
+  // holds encrypted files
+  const filesBucketParams = {
+    Bucket: getFilesBucketName(),
+    ACL: 'private'
+  }
+
+  logger.info('Creating S3 buckets if necessary')
+  await Promise.all([
+    createBucket(s3, dbStatesBucketParams),
+    createBucket(s3, filesBucketParams),
+  ])
 }
 
 async function createTable(ddb, params) {

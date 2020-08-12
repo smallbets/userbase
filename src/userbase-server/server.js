@@ -21,9 +21,7 @@ import stripe from './stripe'
 const adminPanelDir = '/admin-panel/dist'
 
 const ONE_KB = 1024
-
-// DynamoDB single item limit: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html#limits-items
-const FOUR_HUNDRED_KB = 400 * ONE_KB
+const ONE_MB = 1024 * ONE_KB
 
 const FIVE_KB = 5 * ONE_KB
 
@@ -108,7 +106,7 @@ async function start(express, app, userbaseConfig = {}) {
           try {
             logChildObject = { userId, connectionId, adminId, clientId, appId, size: msg.length || msg.byteLength }
 
-            if (msg.length > FOUR_HUNDRED_KB || msg.byteLength > FOUR_HUNDRED_KB) {
+            if (msg.length > ONE_MB || msg.byteLength > ONE_MB) {
               logger.child(logChildObject).warn('Received large message')
               return ws.send('Message is too large')
             }
@@ -130,7 +128,9 @@ async function start(express, app, userbaseConfig = {}) {
             logChildObject.action = action
             logger.child(logChildObject).info('Received WebSocket request')
 
-            if (conn.rateLimiter.atCapacity()) {
+            if (action !== 'UploadFileChunk' && action !== 'ReadFileChunk' // enforce separate rate limiter for these routes
+              && conn.rateLimiter.atCapacity()
+            ) {
 
               response = responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
 
@@ -250,7 +250,6 @@ async function start(express, app, userbaseConfig = {}) {
                       action,
                       userId,
                       connectionId,
-                      params.dbNameHash,
                       params.dbId,
                       params.itemKey,
                       params.encryptedItem
@@ -258,11 +257,56 @@ async function start(express, app, userbaseConfig = {}) {
                     break
                   }
                   case 'BatchTransaction': {
-                    response = await db.batchTransaction(userId, connectionId, params.dbNameHash, params.dbId, params.operations)
+                    response = await db.batchTransaction(userId, connectionId, params.dbId, params.operations)
                     break
                   }
                   case 'Bundle': {
                     response = await db.bundleTransactionLog(userId, connectionId, params.dbId, params.seqNo, params.bundle)
+                    break
+                  }
+                  case 'GenerateFileId': {
+                    response = await db.generateFileId(logChildObject, userId, connectionId, params.dbId)
+                    break
+                  }
+                  case 'UploadFileChunk': {
+                    response = conn.fileStorageRateLimiter.atCapacity()
+                      ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
+                      : await db.uploadFileChunk(
+                        logChildObject,
+                        userId,
+                        connectionId,
+                        params.dbId,
+                        params.chunkEncryptionKey,
+                        params.chunk,
+                        params.chunkNumber,
+                        params.fileId,
+                      )
+                    break
+                  }
+                  case 'CompleteFileUpload': {
+                    response = await db.completeFileUpload(
+                      logChildObject,
+                      userId,
+                      connectionId,
+                      params.dbId,
+                      params.fileId,
+                      params.fileEncryptionKey,
+                      params.itemKey,
+                      params.fileMetadata,
+                    )
+                    break
+                  }
+                  case 'GetChunk': {
+                    response = conn.fileStorageRateLimiter.atCapacity()
+                      ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
+                      : await db.getChunk(
+                        logChildObject,
+                        userId,
+                        connectionId,
+                        params.dbId,
+                        params.fileId,
+                        params.chunkNumber,
+                      )
                     break
                   }
                   case 'GetPasswordSalts': {

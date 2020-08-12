@@ -77,6 +77,25 @@ export const stringToArrayBuffer = (str) => {
   return buf
 }
 
+// matches arrayBufferToString from userbase-js/Crypto/utils
+// https://stackoverflow.com/a/20604561/11601853
+export const arrayBufferToString = (buf) => {
+  const bufView = new Uint16Array(buf)
+  const length = bufView.length
+  let result = ''
+  let chunkSize = 10 * 1024 // using chunks prevents stack from blowing up
+
+  for (var i = 0; i < length; i += chunkSize) {
+    if (i + chunkSize > length) {
+      chunkSize = length - i
+    }
+    const chunk = bufView.subarray(i, i + chunkSize)
+    result += String.fromCharCode.apply(null, chunk)
+  }
+
+  return result
+}
+
 export const getMsUntil1AmPst = () => {
   const time = new Date()
 

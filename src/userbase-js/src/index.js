@@ -19,6 +19,9 @@ export default {
   deleteItem: db.deleteItem,
   putTransaction: db.putTransaction,
 
+  uploadFile: db.uploadFile,
+  getFile: db.getFile,
+
   getDatabases: db.getDatabases,
   shareDatabase: db.shareDatabase,
   modifyDatabasePermissions: db.modifyDatabasePermissions,

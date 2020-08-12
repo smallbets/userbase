@@ -8,3 +8,35 @@ export const getStringOfByteLength = (byteLength) => {
 export const wait = (ms) => new Promise(resolve => {
   setTimeout(() => resolve(), ms)
 })
+
+export const readBlobAsText = async (blob) => {
+  const reader = new FileReader()
+
+  return new Promise((resolve, reject) => {
+    reader.onload = (e) => {
+      if (!e.target.error) {
+        resolve(e.target.result)
+      } else {
+        reject(e.target.error)
+      }
+    }
+
+    reader.readAsText(blob)
+  })
+}
+
+export const readBlobAsArrayBuffer = async (blob) => {
+  const reader = new FileReader()
+
+  return new Promise((resolve, reject) => {
+    reader.onload = (e) => {
+      if (!e.target.error) {
+        resolve(e.target.result)
+      } else {
+        reject(e.target.error)
+      }
+    }
+
+    reader.readAsArrayBuffer(blob)
+  })
+}

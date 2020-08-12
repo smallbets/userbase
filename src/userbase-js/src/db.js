@@ -6,6 +6,7 @@ import ws from './ws'
 import errors from './errors'
 import statusCodes from './statusCodes'
 import { byteSizeOfString, Queue, objectHasOwnProperty } from './utils'
+import { arrayBufferToString, stringToArrayBuffer } from './Crypto/utils'
 import api from './api'
 
 const success = 'Success'
@@ -17,7 +18,10 @@ const MAX_ITEM_KB = 10
 const TEN_KB = MAX_ITEM_KB * 1024
 const MAX_ITEM_BYTES = TEN_KB
 
-const DB_ID_CHAR_LENGTH = 36
+const UUID_CHAR_LENGTH = 36
+
+const FILE_CHUNK_SIZE = 1024 * 512 // 512kb
+const FILE_CHUNKS_PER_BATCH = 10
 
 const VERIFIED_USERS_DATABASE_NAME = '__userbase_verified_users'
 
@@ -102,6 +106,7 @@ class Database {
     this.onChange = changeHandler
 
     this.items = {}
+    this.fileIds = {}
 
     const compareItems = (a, b) => {
       if (a.seqNo < b.seqNo || (a.seqNo === b.seqNo && a.operationIndex < b.operationIndex)) {
@@ -240,6 +245,25 @@ class Database {
         return this.applyBatchTransaction(seqNo, batch, records)
       }
 
+      case 'UploadFile': {
+        const fileEncryptionKeyRaw = await crypto.aesGcm.decrypt(key, base64.decode(transaction.fileEncryptionKey))
+        const fileEncryptionKey = await crypto.aesGcm.getKeyFromRawKey(fileEncryptionKeyRaw)
+        const fileMetadata = await crypto.aesGcm.decryptJson(fileEncryptionKey, transaction.fileMetadata)
+
+        const itemId = fileMetadata.itemId
+        const fileVersion = fileMetadata.__v
+        const { fileName, fileSize, fileType } = fileMetadata
+        const fileId = transaction.fileId
+
+        try {
+          this.validateUploadFile(itemId, fileVersion)
+        } catch (transactionCode) {
+          return transactionCode
+        }
+
+        return this.applyUploadFile(itemId, fileVersion, fileEncryptionKey, fileName, fileId, fileSize, fileType)
+      }
+
       case 'Rollback': {
         // no-op
         return
@@ -269,6 +293,18 @@ class Database {
     }
   }
 
+  validateUploadFile(itemId, __v) {
+    if (!this.items[itemId]) {
+      throw new errors.ItemDoesNotExist
+    }
+
+    const currentVersion = this.getFileVersionNumber(itemId)
+
+    if (__v <= currentVersion) {
+      throw new errors.FileUploadConflict
+    }
+  }
+
   itemExists(itemId) {
     return objectHasOwnProperty(this.items, itemId)
   }
@@ -289,6 +325,19 @@ class Database {
   applyUpdate(itemId, record, __v) {
     this.items[itemId].record = record
     this.items[itemId].__v = __v
+    return success
+  }
+
+  applyUploadFile(itemId, __v, fileEncryptionKey, fileName, fileId, fileSize, fileType) {
+    this.items[itemId].file = {
+      fileName,
+      fileId,
+      fileSize,
+      fileType,
+      fileEncryptionKey,
+      __v,
+    }
+    this.fileIds[fileId] = itemId
     return success
   }
 
@@ -365,13 +414,25 @@ class Database {
     for (let i = 0; i < this.itemsIndex.array.length; i++) {
       const itemId = this.itemsIndex.array[i].itemId
       const record = this.items[itemId].record
-      result.push({ itemId, item: record })
+      const item = { itemId, item: record }
+      if (this.items[itemId].file) {
+        const { fileId, fileName, fileSize } = this.items[itemId].file
+        item.fileId = fileId
+        item.fileName = fileName
+        item.fileSize = fileSize
+      }
+
+      result.push(item)
     }
     return result
   }
 
   getItemVersionNumber(itemId) {
     return this.items[itemId].__v
+  }
+
+  getFileVersionNumber(itemId) {
+    return this.items[itemId].file && this.items[itemId].file.__v
   }
 }
 
@@ -504,7 +565,7 @@ const _validateDbName = (dbName) => {
 const _validateDbId = (dbId) => {
   if (typeof dbId !== 'string') throw new errors.DatabaseIdMustBeString
   if (dbId.length === 0) throw new errors.DatabaseIdCannotBeBlank
-  if (dbId.length !== DB_ID_CHAR_LENGTH) throw new errors.DatabaseIdInvalidLength(DB_ID_CHAR_LENGTH)
+  if (dbId.length !== UUID_CHAR_LENGTH) throw new errors.DatabaseIdInvalidLength(UUID_CHAR_LENGTH)
 }
 
 const _validateDbInput = (params) => {
@@ -707,7 +768,7 @@ const updateItem = async (params) => {
         throw e
 
       default:
-        throw new errors.UnknownServiceUnavailable
+        throw new errors.UnknownServiceUnavailable(e)
     }
 
   }
@@ -918,6 +979,337 @@ const postTransaction = async (database, action, params) => {
     }
 
     throw e
+  }
+}
+
+const _completeFileUpload = async (database, fileId, itemKey, encryptedFileMetadata, encryptedFileEncryptionKey) => {
+  const params = {
+    dbId: database.dbId,
+    fileId,
+    itemKey,
+    fileMetadata: encryptedFileMetadata,
+    fileEncryptionKey: base64.encode(encryptedFileEncryptionKey)
+  }
+
+  const action = 'CompleteFileUpload'
+  await postTransaction(database, action, params)
+}
+
+const _readBlob = async (blob) => {
+  const reader = new FileReader()
+
+  return new Promise((resolve, reject) => {
+    reader.onload = (e) => {
+      if (!e.target.error) {
+        resolve(e.target.result)
+      } else {
+        reject(e.target.error)
+      }
+    }
+
+    reader.readAsArrayBuffer(blob)
+  })
+}
+
+const _uploadChunk = async (batch, chunk, dbId, fileId, fileEncryptionKey, chunkNumber) => {
+  const plaintextChunk = await _readBlob(chunk)
+
+  // encrypt each chunk with new encryption key to maintain lower usage of file encryption key
+  const [chunkEncryptionKey, encryptedChunkEncryptionKey] = await _generateAndEncryptKeyEncryptionKey(fileEncryptionKey)
+  const encryptedChunk = await crypto.aesGcm.encrypt(chunkEncryptionKey, plaintextChunk)
+
+  const uploadChunkParams = {
+    dbId,
+    chunkNumber,
+    fileId,
+
+    // arrayBufferToString takes up less space than base64 encoding. Uint8Array format required so that encrypted
+    // chunks that are odd number sized get converted to string properly
+    chunk: arrayBufferToString(new Uint8Array(encryptedChunk)),
+    chunkEncryptionKey: arrayBufferToString(new Uint8Array(encryptedChunkEncryptionKey)),
+  }
+
+  // queue UploadFileChunk request into batch of requests
+  const action = 'UploadFileChunk'
+  batch.push(ws.request(action, uploadChunkParams))
+
+  // wait for batch of UploadFileChunk requests to finish before moving on to upload the next batch of chunks
+  if (batch.length === FILE_CHUNKS_PER_BATCH) {
+    await Promise.all(batch)
+    batch.length = 0
+  }
+}
+
+const _buildFileMetadata = async (params, database) => {
+  if (!objectHasOwnProperty(params, 'itemId')) throw new errors.ItemIdMissing
+  if (!objectHasOwnProperty(params, 'file')) throw new errors.FileMissing
+
+  const { itemId, file } = params
+
+  if (typeof itemId !== 'string') throw new errors.ItemIdMustBeString
+  if (itemId.length === 0) throw new errors.ItemIdCannotBeBlank
+  if (itemId.length > MAX_ITEM_ID_CHAR_LENGTH) throw new errors.ItemIdTooLong(MAX_ITEM_ID_CHAR_LENGTH)
+
+  if (!database.itemExists(itemId)) throw new errors.ItemDoesNotExist
+
+  if (!(file instanceof File)) throw new errors.FileMustBeFile
+  if (file.size === 0) throw new errors.FileCannotBeEmpty
+
+  const itemKey = await crypto.hmac.signString(ws.keys.hmacKey, itemId)
+  const currentVersion = database.getFileVersionNumber(itemId)
+  const fileMetadata = {
+    itemId,
+    __v: currentVersion === undefined ? 0 : currentVersion + 1,
+    fileName: file.name,
+    fileSize: file.size,
+    fileType: file.type,
+  }
+  return { itemKey, fileMetadata }
+}
+
+const _generateAndEncryptKeyEncryptionKey = async (key) => {
+  const keyEncryptionKey = await crypto.aesGcm.generateKey()
+  const keyEncryptionKeyRaw = await crypto.aesGcm.getRawKeyFromKey(keyEncryptionKey)
+  const encryptedKeyEncryptionKey = await crypto.aesGcm.encrypt(key, keyEncryptionKeyRaw)
+  return [keyEncryptionKey, encryptedKeyEncryptionKey]
+}
+
+const uploadFile = async (params) => {
+  try {
+    _validateDbInput(params)
+
+    const database = getOpenDb(params.databaseName, params.databaseId)
+    const { dbId } = database
+
+    try {
+      const { itemKey, fileMetadata } = await _buildFileMetadata(params, database)
+
+      // generate a new key particular to this file to maintain lower usage of dbKey
+      const [fileEncryptionKey, encryptedFileEncryptionKey] = await _generateAndEncryptKeyEncryptionKey(database.dbKey)
+      const encryptedFileMetadata = await crypto.aesGcm.encryptJson(fileEncryptionKey, fileMetadata)
+
+      // server generates unique file identifier
+      const { data: { fileId } } = await ws.request('GenerateFileId', { dbId: database.dbId })
+
+      // upload file in chunks of size FILE_CHUNK_SIZE
+      const file = params.file
+      let position = 0
+      let chunkNumber = 0
+      let batch = [] // will use this to send chunks to server in batches of FILE_CHUNKS_PER_BATCH
+
+      while (position < file.size) {
+        // read a chunk at a time to keep memory overhead low
+        const chunk = file.slice(position, position + FILE_CHUNK_SIZE)
+        await _uploadChunk(batch, chunk, dbId, fileId, fileEncryptionKey, chunkNumber)
+
+        chunkNumber += 1
+        position += FILE_CHUNK_SIZE
+      }
+
+      await Promise.all(batch)
+      await _completeFileUpload(database, fileId, itemKey, encryptedFileMetadata, encryptedFileEncryptionKey)
+    } catch (e) {
+      _parseGenericErrors(e)
+
+      if (e.response && e.response.data === 'DatabaseIsReadOnly') {
+        throw new errors.DatabaseIsReadOnly
+      }
+
+      throw e
+    }
+  } catch (e) {
+
+    switch (e.name) {
+      case 'ParamsMustBeObject':
+      case 'DatabaseNotOpen':
+      case 'DatabaseNameMissing':
+      case 'DatabaseNameMustBeString':
+      case 'DatabaseNameCannotBeBlank':
+      case 'DatabaseNameTooLong':
+      case 'DatabaseNameRestricted':
+      case 'DatabaseIdMustBeString':
+      case 'DatabaseIdCannotBeBlank':
+      case 'DatabaseIdInvalidLength':
+      case 'DatabaseIdNotAllowed':
+      case 'DatabaseIsReadOnly':
+      case 'ItemIdMissing':
+      case 'ItemIdMustBeString':
+      case 'ItemIdCannotBeBlank':
+      case 'ItemIdTooLong':
+      case 'ItemDoesNotExist':
+      case 'FileMustBeFile':
+      case 'FileCannotBeEmpty':
+      case 'FileMissing':
+      case 'FileUploadConflict':
+      case 'UserNotSignedIn':
+      case 'TooManyRequests':
+      case 'ServiceUnavailable':
+        throw e
+
+      default:
+        throw new errors.UnknownServiceUnavailable(e)
+    }
+
+  }
+}
+
+const _getChunk = async (dbId, fileId, chunkNumber, fileEncryptionKey) => {
+  try {
+    const action = 'GetChunk'
+    const params = {
+      dbId,
+      fileId,
+      chunkNumber,
+    }
+    const response = await ws.request(action, params)
+    const data = response.data
+
+    const chunkRawBuffer = new Uint8Array(new Uint16Array(stringToArrayBuffer(data.chunk))).buffer
+    const chunkEncryptionKeyRawBuffer = new Uint8Array(new Uint16Array(stringToArrayBuffer(data.chunkEncryptionKey))).buffer
+
+    const chunkEncryptionKeyRaw = await crypto.aesGcm.decrypt(fileEncryptionKey, chunkEncryptionKeyRawBuffer)
+    const chunkEncryptionKey = await crypto.aesGcm.getKeyFromRawKey(chunkEncryptionKeyRaw)
+
+    const chunk = await crypto.aesGcm.decrypt(chunkEncryptionKey, chunkRawBuffer)
+    return chunk
+  } catch (e) {
+    _parseGenericErrors(e)
+    throw e
+  }
+}
+
+const _getByteRange = async (dbId, fileId, fileEncryptionKey, range) => {
+  const { start, end } = range
+
+  const chunks = []
+  const startChunkNumber = Math.floor(start / FILE_CHUNK_SIZE)
+  const endChunkNumber = Math.floor(end / FILE_CHUNK_SIZE) - (end % FILE_CHUNK_SIZE === 0 ? 1 : 0)
+
+  let chunkNumber = startChunkNumber
+  while (chunkNumber <= endChunkNumber) {
+    let chunk = await _getChunk(dbId, fileId, chunkNumber, fileEncryptionKey)
+
+    if (chunkNumber === startChunkNumber && chunkNumber === endChunkNumber && end % FILE_CHUNK_SIZE) {
+      chunk = chunk.slice(start % FILE_CHUNK_SIZE, end % FILE_CHUNK_SIZE)
+    } else if (chunkNumber === startChunkNumber) {
+      chunk = chunk.slice(start % FILE_CHUNK_SIZE)
+    } else if (chunkNumber === endChunkNumber && end % FILE_CHUNK_SIZE) {
+      chunk = chunk.slice(0, end % FILE_CHUNK_SIZE)
+    }
+
+    chunks.push(chunk)
+    chunkNumber += 1
+  }
+
+  return chunks
+}
+
+const _getFile = async (dbId, fileId, fileEncryptionKey, fileSize) => {
+  const chunks = []
+  let chunkNumber = 0
+
+  const finalChunkNumber = fileSize < FILE_CHUNK_SIZE
+    ? 0
+    : Math.floor(fileSize / FILE_CHUNK_SIZE) - (fileSize % FILE_CHUNK_SIZE === 0 ? 1 : 0)
+
+  while (chunkNumber <= finalChunkNumber) {
+    const chunk = await _getChunk(dbId, fileId, chunkNumber, fileEncryptionKey)
+    chunks.push(chunk)
+    chunkNumber += 1
+  }
+
+  return chunks
+}
+
+const _validateGetFileParams = (params) => {
+  _validateDbInput(params)
+
+  if (!objectHasOwnProperty(params, 'fileId')) throw new errors.FileIdMissing
+
+  const { fileId, range } = params
+
+  if (typeof fileId !== 'string') throw new errors.FileIdMustBeString
+  if (fileId.length === 0) throw new errors.FileIdCannotBeBlank
+  if (fileId.length > MAX_ITEM_ID_CHAR_LENGTH) throw new errors.FileIdTooLong(MAX_ITEM_ID_CHAR_LENGTH)
+
+  if (objectHasOwnProperty(params, 'range')) {
+    if (typeof range !== 'object') throw new errors.RangeMustBeObject
+
+    if (!objectHasOwnProperty(range, 'start')) throw new errors.RangeMissingStart
+    if (!objectHasOwnProperty(range, 'end')) throw new errors.RangeMissingEnd
+
+    const { start, end } = range
+
+    if (typeof start !== 'number') throw new errors.RangeStartMustBeNumber
+    if (typeof end !== 'number') throw new errors.RangeEndMustBeNumber
+
+    if (start < 0) throw new errors.RangeStartMustBeGreaterThanZero
+    if (end <= start) throw new errors.RangeEndMustBeGreaterThanRangeStart
+  }
+}
+
+const getFile = async (params) => {
+  try {
+    _validateGetFileParams(params)
+
+    const database = getOpenDb(params.databaseName, params.databaseId)
+    const { dbId } = database
+    const { fileId, range } = params
+
+    const itemId = database.fileIds[fileId]
+    const item = database.items[itemId]
+
+    if (!item || !item.file) throw new errors.FileNotFound
+
+    const { file: { fileName, fileSize, fileType, fileEncryptionKey } } = item
+
+    if (range && range.end > fileSize) throw new errors.RangeEndMustBeLessThanFileSize
+
+    const chunks = range
+      ? await _getByteRange(dbId, fileId, fileEncryptionKey, range)
+      : await _getFile(dbId, fileId, fileEncryptionKey, fileSize)
+
+    return {
+      file: new File(chunks, fileName, { type: fileType })
+    }
+  } catch (e) {
+
+    switch (e.name) {
+      case 'ParamsMustBeObject':
+      case 'DatabaseNotOpen':
+      case 'DatabaseNameMissing':
+      case 'DatabaseNameMustBeString':
+      case 'DatabaseNameCannotBeBlank':
+      case 'DatabaseNameTooLong':
+      case 'DatabaseNameRestricted':
+      case 'DatabaseIdMustBeString':
+      case 'DatabaseIdCannotBeBlank':
+      case 'DatabaseIdInvalidLength':
+      case 'DatabaseIdNotAllowed':
+      case 'DatabaseIsReadOnly':
+      case 'FileIdMissing':
+      case 'FileIdMustBeString':
+      case 'FileIdCannotBeBlank':
+      case 'FileIdTooLong':
+      case 'FileNotFound':
+      case 'RangeMustBeObject':
+      case 'RangeMissingStart':
+      case 'RangeMissingEnd':
+      case 'RangeStartMustBeNumber':
+      case 'RangeEndMustBeNumber':
+      case 'RangeStartMustBeGreaterThanZero':
+      case 'RangeEndMustBeGreaterThanRangeStart':
+      case 'RangeEndMustBeLessThanFileSize':
+      case 'UserNotSignedIn':
+      case 'UserNotFound':
+      case 'TooManyRequests':
+      case 'ServiceUnavailable':
+        throw e
+
+      default:
+        throw new errors.UnknownServiceUnavailable(e)
+    }
+
   }
 }
 
@@ -1603,6 +1995,9 @@ export default {
   updateItem,
   deleteItem,
   putTransaction,
+
+  uploadFile,
+  getFile,
 
   shareDatabase,
   modifyDatabasePermissions,

@@ -9,16 +9,23 @@ import statusCodes from './statusCodes'
 const SECONDS_BEFORE_ROLLBACK_GAP_TRIGGERED = 1000 * 10 // 10s
 const TRANSACTION_SIZE_BUNDLE_TRIGGER = 1024 * 50 // 50 KB
 
-const MAX_REQUESTS_PER_SECOND = 25
+const FILE_ID_CACHE_LIFE = 60 * 1000 // 60s
 
-// Rate limiter. Enforces a max of MAX_REQUESTS_PER_SECOND. Once a token is taken from
+const WS_MAX_REQUESTS_PER_SECOND = 25
+
+// caps single file download and upload speed at 100 mb/s
+const FILE_STORAGE_MAX_REQUESTS_PER_SECOND = 200
+const FILE_STORAGE_TOKENS_REFILLED_PER_SECOND = 200
+
+// Rate limiter. Enforces a max of <capacity> requests per second. Once a token is taken from
 // the bucket, it is refilled at a rate of 1 per second.
 //
 // source: https://kendru.github.io/javascript/2018/12/28/rate-limiting-in-javascript-with-a-token-bucket/
 class TokenBucket {
-  constructor() {
-    this.capacity = this.tokens = MAX_REQUESTS_PER_SECOND
+  constructor(capacity, tokensRefilledPerSecond = 1) {
+    this.capacity = this.tokens = capacity
     this.lastFilled = Date.now()
+    this.tokensRefilledPerSecond = tokensRefilledPerSecond
   }
 
   atCapacity() {
@@ -36,7 +43,7 @@ class TokenBucket {
     const now = Date.now()
     const secondsSinceLastFill = Math.floor((now - this.lastFilled) / 1000)
 
-    this.tokens = Math.min(this.capacity, this.tokens + secondsSinceLastFill)
+    this.tokens = Math.min(this.capacity, this.tokens + (secondsSinceLastFill * this.tokensRefilledPerSecond))
     this.lastFilled = now
   }
 }
@@ -52,7 +59,8 @@ class Connection {
     this.databases = {}
     this.keyValidated = false
 
-    this.rateLimiter = new TokenBucket()
+    this.rateLimiter = new TokenBucket(WS_MAX_REQUESTS_PER_SECOND)
+    this.fileStorageRateLimiter = new TokenBucket(FILE_STORAGE_MAX_REQUESTS_PER_SECOND, FILE_STORAGE_TOKENS_REFILLED_PER_SECOND)
   }
 
   openDatabase(databaseId, dbNameHash, bundleSeqNo, reopenAtSeqNo, isOwner) {
@@ -271,6 +279,9 @@ class Connection {
           command: transaction['command'],
           key: transaction['key'],
           record: transaction['record'],
+          fileMetadata: transaction['file-metadata'],
+          fileId: transaction['file-id'],
+          fileEncryptionKey: transaction['file-encryption-key'],
           operations: transaction['operations'],
           dbId: transaction['database-id']
         }
@@ -321,7 +332,7 @@ class Connection {
 export default class Connections {
   static register(userId, socket, clientId, adminId, appId) {
     if (!Connections.sockets) Connections.sockets = {}
-    if (!Connections.sockets[userId]) Connections.sockets[userId] = { numConnections: 0 }
+    if (!Connections.sockets[userId]) Connections.sockets[userId] = { numConnections: 0, fileIds: {} }
     if (!Connections.sockets[adminId]) Connections.sockets[adminId] = { numConnections: 0 }
     if (!Connections.sockets[appId]) Connections.sockets[appId] = { numConnections: 0 }
 
@@ -474,5 +485,27 @@ export default class Connections {
     for (const userId of Object.values(Connections.sockets[adminId])) {
       this.closeUsersConnectedClients(userId)
     }
+  }
+
+  static cacheFileId(userId, fileId) {
+    if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId].fileIds) return
+
+    // after FILE_ID_CACHE_LIFE seconds, delete the fileId from the cache
+    Connections.sockets[userId].fileIds[fileId] = setTimeout(() => {
+      if (Connections.sockets && Connections.sockets[userId] && Connections.sockets[userId].fileIds) {
+        delete Connections.sockets[userId].fileIds[fileId]
+      }
+    },
+      FILE_ID_CACHE_LIFE
+    )
+  }
+
+  static isFileIdCached(userId, fileId) {
+    if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId].fileIds || !Connections.sockets[userId].fileIds[fileId]) return false
+
+    // reset the cache
+    clearTimeout(Connections.sockets[userId].fileIds[fileId])
+    this.cacheFileId(userId, fileId)
+    return true
   }
 }
