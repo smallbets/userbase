@@ -1307,6 +1307,7 @@ const buildUserResult = (user, app) => {
     userId: user['user-id'],
     appId: user['app-id'],
     creationDate: user['creation-date'],
+    size: user['size'],
   }
 
   if (user['email']) result['email'] = user['email']
