@@ -1,0 +1,19 @@
+@startuml
+partition Client {
+  (*) --> "Username\nPassword" as pw
+  pw -->[ scrypt] "Password Hash" as pwh
+
+  pwh --> [ hkdf] "Password Token" as pwt
+  pwh ---> [ hkdf] "Password-Based Encryption Key" as pbk
+
+  pbk --> [ aes-gcm-256] "Password Encrypted Seed" as pes
+
+  "Random Seed" as rs --> pes
+  rs --> [ hkdf] "Key Encryption Keys" as keks
+  rs --> [ hkdf] "Encryption Key"
+  rs --> [ hkdf] "HMAC Key"
+
+  "Asymmetric Key Pairs" --> [ aes-gcm-256] "Encrypted Private Keys" as encAsymm
+  keks --> encAsymm
+}
+@enduml

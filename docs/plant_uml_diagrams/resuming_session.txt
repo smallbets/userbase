@@ -1,0 +1,15 @@
+@startuml
+User --> Client: init
+
+Client -> Server: Open WebSocket with Session ID
+
+Client <- Server: Encrypted private keys + salts + validation message
+
+Client -> Client: Use seed to decrypt private keys, sign validation message
+
+Client -> Server: Signed validation message
+
+Client <- Server: Authenticated successfully!
+
+User <- Client: App is ready to use
+@enduml
