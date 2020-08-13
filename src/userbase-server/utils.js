@@ -43,15 +43,15 @@ export const estimateSizeOfDdbItem = (item) => {
         bytes += 1 // The size of a null attribute or a Boolean attribute is(length of attribute name) + (1 byte).
         break
       case 'object':
-        bytes += 3 // An attribute of type List or Map requires 3 bytes of overhead, regardless of its contents
-        for (let objectItem of value) {
-          bytes += estimateSizeOfDdbItem(objectItem)
-        }
-        break
-      default:
         if (value.type === 'Buffer') {
           bytes += value.data.length // The size of a binary attribute is (length of attribute name) + (number of raw bytes).
+        } else {
+          bytes += 3 // An attribute of type List or Map requires 3 bytes of overhead, regardless of its contents
+          for (let key in value) {
+            bytes += estimateSizeOfDdbItem(value[key])
+          }
         }
+        break
     }
   }
 

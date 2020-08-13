@@ -1,10 +1,11 @@
 import React, { Component } from 'react'
-import { string } from 'prop-types'
+import { object } from 'prop-types'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faTrashAlt } from '@fortawesome/free-regular-svg-icons'
 import dashboardLogic from './logic'
 import adminLogic from '../Admin/logic'
 import UnknownError from '../Admin/UnknownError'
+import { formatSize } from '../../utils'
 
 export default class Dashboard extends Component {
   constructor(props) {
@@ -149,7 +150,8 @@ export default class Dashboard extends Component {
   }
 
   render() {
-    const { paymentStatus, cancelSaasSubscriptionAt } = this.props
+    const { admin } = this.props
+    const { size, sizeAllowed } = admin
     const { loading, activeApps, deletedApps, showDeletedApps, error, appName, loadingApp } = this.state
 
     return (
@@ -173,10 +175,18 @@ export default class Dashboard extends Component {
               </div>
 
               {
-                (paymentStatus === 'active' && !cancelSaasSubscriptionAt) ? <div />
+                (!adminLogic.saasSubscriptionNotActive(admin)) ? <div />
                   : <div className='text-left mb-4 text-red-600 font-normal'>
                     Your account is limited to 1 app and 3 users. <a href="#edit-account">Remove this limit</a> with a Userbase subscription.
                 </div>
+              }
+
+              {
+                (sizeAllowed && size > sizeAllowed)
+                  ? <div className='text-left mb-4 text-red-600 font-normal'>
+                    You have exceeded your storage limit of {formatSize(sizeAllowed, false)}. Please <a href="#edit-account">upgrade your storage plan</a>.
+                  </div>
+                  : <div />
               }
 
               {activeApps && activeApps.length > 0 &&
@@ -186,6 +196,7 @@ export default class Dashboard extends Component {
                     <tr className='border-b'>
                       <th className='px-1 py-1 text-gray-800 text-left'>App</th>
                       <th className='px-1 py-1 text-gray-800 text-left'>App ID</th>
+                      <th className='px-1 py-1 text-gray-800 text-left'>Data Stored (updated every 24hr)</th>
                     </tr>
                   </thead>
 
@@ -197,6 +208,7 @@ export default class Dashboard extends Component {
                           <a href={`#app=${app['app-name']}`}>{app['app-name']}</a>
                         </td>
                         <td className='px-1 font-mono font-light text-left'>{app['app-id']}</td>
+                        <td className='px-1 font-light text-left'>{formatSize(app['size'])}</td>
                       </tr>
                     ))}
 
@@ -205,7 +217,7 @@ export default class Dashboard extends Component {
                 </table>
               }
 
-              {paymentStatus === 'active' && !cancelSaasSubscriptionAt &&
+              {!adminLogic.saasSubscriptionNotActive(admin) &&
 
                 <form className={`flex text-left ${(activeApps && activeApps.length) ? 'mt-8' : ''}`}>
                   <div className='flex-1'>
@@ -246,42 +258,45 @@ export default class Dashboard extends Component {
                   </div>
 
                   {showDeletedApps &&
-                    <table className='mt-6 table-auto w-full border-none mx-auto text-xs'>
+                    <div className='text-center overflow-scroll whitespace-no-wrap'>
+                      <table className='mt-6 table-auto w-full border-none mx-auto text-xs'>
 
-                      <thead>
-                        <tr className='border-b'>
-                          <th className='px-1 py-1 text-gray-800 text-left'>App</th>
-                          <th className='px-1 py-1 text-gray-800 text-left'>App ID</th>
-                          <th className='px-1 py-1 text-gray-800 w-8'></th>
-                        </tr>
-                      </thead>
-
-                      <tbody>
-
-                        {deletedApps.map((app) => (
-                          <tr key={app['app-id']} className='border-b mouse:hover:bg-yellow-200 h-8'>
-                            <td className='px-1 font-light text-left text-red-700'>{app['app-name']}</td>
-                            <td className='px-1 font-mono font-light text-left'>{app['app-id']}</td>
-                            <td className='px-1 font-light w-8 text-center'>
-
-                              {app['permanentDeleting']
-                                ? <div className='loader w-4 h-4 inline-block' />
-                                : <div
-                                  className='font-normal text-sm cursor-pointer text-yellow-700'
-                                  onClick={() => this.handlePermanentDeleteApp(app)}
-                                >
-                                  <FontAwesomeIcon icon={faTrashAlt} />
-                                </div>
-                              }
-
-                            </td>
+                        <thead>
+                          <tr className='border-b'>
+                            <th className='px-1 py-1 text-gray-800 text-left'>App</th>
+                            <th className='px-1 py-1 text-gray-800 text-left'>App ID</th>
+                            <th className='px-1 py-1 text-gray-800 text-left'>Data Stored (updated every 24hr)</th>
+                            <th className='px-1 py-1 text-gray-800 w-8'></th>
                           </tr>
-                        ))}
+                        </thead>
 
-                      </tbody>
+                        <tbody>
 
-                    </table>
+                          {deletedApps.map((app) => (
+                            <tr key={app['app-id']} className='border-b mouse:hover:bg-yellow-200 h-8'>
+                              <td className='px-1 font-light text-left text-red-700'>{app['app-name']}</td>
+                              <td className='px-1 font-mono font-light text-left'>{app['app-id']}</td>
+                              <td className='px-1 font-light text-left'>{formatSize(app['size'])}</td>
+                              <td className='px-1 font-light w-8 text-center'>
 
+                                {app['permanentDeleting']
+                                  ? <div className='loader w-4 h-4 inline-block' />
+                                  : <div
+                                    className='font-normal text-sm cursor-pointer text-yellow-700'
+                                    onClick={() => this.handlePermanentDeleteApp(app)}
+                                  >
+                                    <FontAwesomeIcon icon={faTrashAlt} />
+                                  </div>
+                                }
+
+                              </td>
+                            </tr>
+                          ))}
+
+                        </tbody>
+
+                      </table>
+                    </div>
                   }
 
                 </div>
@@ -304,6 +319,5 @@ export default class Dashboard extends Component {
 }
 
 Dashboard.propTypes = {
-  paymentStatus: string,
-  cancelSaasSubscriptionAt: string,
+  admin: object,
 }

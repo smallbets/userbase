@@ -37,7 +37,7 @@ strong {
 }
 
 .content {
-  @apply max-w-3xl font-bold bg-white p-6 shadow-md mt-8;
+  @apply max-w-3xl font-bold bg-white p-6 shadow-md mt-8 mb-8;
 }
 
 @screen sm {

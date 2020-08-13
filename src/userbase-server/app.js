@@ -5,6 +5,7 @@ import statusCodes from './statusCodes'
 import setup from './setup'
 import userController from './user'
 import stripe from './stripe'
+import adminController from './admin'
 import { trimReq, lastEvaluatedKeyToNextPageToken, nextPageTokenToLastEvaluatedKey } from './utils'
 
 const UUID_STRING_LENGTH = 36
@@ -65,7 +66,7 @@ exports.createAppController = async function (req, res) {
   const admin = res.locals.admin
   const adminId = admin['admin-id']
 
-  if (admin['stripe-saas-subscription-status'] !== 'active' || admin['stripe-cancel-saas-subscription-at']) return res
+  if (adminController.saasSubscriptionNotActive(admin)) return res
     .status(statusCodes['Payment Required'])
     .send('Pay subscription fee to create an app.')
 
@@ -185,7 +186,7 @@ exports.deleteApp = async function (req, res) {
   const admin = res.locals.admin
   const adminId = admin['admin-id']
 
-  if (admin['stripe-saas-subscription-status'] !== 'active' || admin['stripe-cancel-saas-subscription-at']) return res
+  if (adminController.saasSubscriptionNotActive(admin)) return res
     .status(statusCodes['Payment Required'])
     .send('Pay subscription fee to delete an app.')
 
@@ -277,7 +278,7 @@ exports.permanentDeleteAppController = async function (req, res) {
   const admin = res.locals.admin
   const adminId = admin['admin-id']
 
-  if (admin['stripe-saas-subscription-status'] !== 'active' || admin['stripe-cancel-saas-subscription-at']) return res
+  if (adminController.saasSubscriptionNotActive(admin)) return res
     .status(statusCodes['Payment Required'])
     .send('Pay subscription fee to permanently delete an app.')
 

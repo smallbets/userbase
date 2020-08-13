@@ -1,4 +1,3 @@
-import uuidv4 from 'uuid/v4'
 import logger from './logger'
 import setup from './setup'
 import connection from './connection'
@@ -7,7 +6,6 @@ import dbController from './db'
 import userController from './user'
 import appController from './app'
 import adminController from './admin'
-import { getMsUntil1AmPst } from './utils'
 import stripe from './stripe'
 
 const MS_IN_AN_HOUR = 60 * 60 * 1000
@@ -56,9 +54,9 @@ const scanForDeleted = async (TableName, closeConnectedClients, permanentDelete)
   await ddbWhileLoop(params, ddbQuery, action)
 }
 
-const scanForDeletedApps = async (purgeId) => {
+const scanForDeletedApps = async (nightlyId) => {
   const start = Date.now()
-  const logChildObject = { purgeId }
+  const logChildObject = { nightlyId }
   logger.child(logChildObject).info('Scanning for deleted apps')
 
   await scanForDeleted(
@@ -70,9 +68,9 @@ const scanForDeletedApps = async (purgeId) => {
   logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished scanning for deleted apps')
 }
 
-const scanForDeletedAdmins = async (purgeId) => {
+const scanForDeletedAdmins = async (nightlyId) => {
   const start = Date.now()
-  const logChildObject = { purgeId }
+  const logChildObject = { nightlyId }
   logger.child(logChildObject).info('Scanning for deleted admins')
 
   await scanForDeleted(
@@ -84,9 +82,9 @@ const scanForDeletedAdmins = async (purgeId) => {
   logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished scanning for deleted admins')
 }
 
-const scanForDeletedUsers = async (purgeId) => {
+const scanForDeletedUsers = async (nightlyId) => {
   const start = Date.now()
-  const logChildObject = { purgeId }
+  const logChildObject = { nightlyId }
   logger.child(logChildObject).info('Scanning for deleted users')
 
   await scanForDeleted(
@@ -473,9 +471,9 @@ const purgeAdmin = async (admin) => {
   logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purging admin')
 }
 
-const purgeDeletedUsers = async (purgeId) => {
+const purgeDeletedUsers = async (nightlyId) => {
   const start = Date.now()
-  const logChildObject = { purgeId }
+  const logChildObject = { nightlyId }
   logger.child(logChildObject).info('Purging deleted users')
 
   const params = {
@@ -491,9 +489,9 @@ const purgeDeletedUsers = async (purgeId) => {
   logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purging deleted users')
 }
 
-const purgeDeletedApps = async (purgeId) => {
+const purgeDeletedApps = async (nightlyId) => {
   const start = Date.now()
-  const logChildObject = { purgeId }
+  const logChildObject = { nightlyId }
   logger.child(logChildObject).info('Purging deleted apps')
 
   const params = {
@@ -509,9 +507,9 @@ const purgeDeletedApps = async (purgeId) => {
   logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purging deleted apps')
 }
 
-const purgeDeletedAdmins = async (purgeId) => {
+const purgeDeletedAdmins = async (nightlyId) => {
   const start = Date.now()
-  const logChildObject = { purgeId }
+  const logChildObject = { nightlyId }
   logger.child(logChildObject).info('Purging deleted admins')
 
   const params = {
@@ -525,50 +523,30 @@ const purgeDeletedAdmins = async (purgeId) => {
   logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purging deleted admins')
 }
 
-const commencePurge = async (purgeId) => {
+const purge = async (nightlyId) => {
   const start = Date.now()
-  const logChildObject = { purgeId }
+  const logChildObject = { nightlyId, start }
 
   try {
     logger.child(logChildObject).info('Commencing purge')
 
     // place deleted items in permanent deleted tables
     await Promise.all([
-      scanForDeletedAdmins(purgeId),
-      scanForDeletedApps(purgeId),
-      scanForDeletedUsers(purgeId),
+      scanForDeletedAdmins(nightlyId),
+      scanForDeletedApps(nightlyId),
+      scanForDeletedUsers(nightlyId),
     ])
 
     // purge items from permanent deleted tables. Do each synchronously because top level may delete level below it;
     // for example, purging admins will purge apps and users, reducing the number of deleted apps and deleted users
-    await purgeDeletedAdmins(purgeId)
-    await purgeDeletedApps(purgeId)
-    await purgeDeletedUsers(purgeId)
+    await purgeDeletedAdmins(nightlyId)
+    await purgeDeletedApps(nightlyId)
+    await purgeDeletedUsers(nightlyId)
 
     logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purge')
   } catch (e) {
     logger.child({ timeToPurge: Date.now() - start, err: e, ...logChildObject }).fatal('Failed purge')
   }
-
-  schedulePurge()
 }
 
-const schedulePurge = () => {
-  const msUntil1AmPst = getMsUntil1AmPst()
-
-  // quick and dirty way to reduce the chance >1 instances run the purge at the same time. Ok if 2 happen
-  // to run at the same time, worst case is 1 encounters a conflict error and fails, but other should succeed
-  const randomTwoHourWindow = Math.random() * 2 * MS_IN_AN_HOUR
-  const nextPurgeStart = msUntil1AmPst + randomTwoHourWindow
-
-  const purgeId = uuidv4()
-
-  // schedule next purge to start some time between 1am - 3am PST
-  setTimeout(() => commencePurge(purgeId), nextPurgeStart)
-
-  logger.child({ purgeId, nextPurge: new Date(Date.now() + nextPurgeStart).toISOString() }).info('Scheduled purge')
-}
-
-export default function () {
-  schedulePurge()
-}
+export default purge

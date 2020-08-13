@@ -217,8 +217,7 @@ const cancelSaasSubscription = async () => {
       url: `/${VERSION}/admin/stripe/cancel-saas-subscription`,
       timeout: TEN_SECONDS_MS
     })
-    const { cancelSaasSubscriptionAt, cancelPaymentsAddOnSubscriptionAt } = cancelResponse.data
-    return { cancelSaasSubscriptionAt, cancelPaymentsAddOnSubscriptionAt }
+    return cancelResponse.data
   } catch (e) {
     errorHandler(e)
   }
@@ -226,11 +225,51 @@ const cancelSaasSubscription = async () => {
 
 const resumeSaasSubscription = async () => {
   try {
-    await axios({
+    const response = await axios({
       method: 'POST',
       url: `/${VERSION}/admin/stripe/resume-saas-subscription`,
       timeout: TEN_SECONDS_MS
     })
+    return response.data
+  } catch (e) {
+    errorHandler(e)
+  }
+}
+
+const buyStoragePlan = async () => {
+  try {
+    const response = await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/stripe/storage-plan/`,
+      timeout: TEN_SECONDS_MS
+    })
+    return response.data
+  } catch (e) {
+    errorHandler(e)
+  }
+}
+
+const cancelStorageSubscription = async () => {
+  try {
+    const response = await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/stripe/cancel-storage-subscription`,
+      timeout: TEN_SECONDS_MS
+    })
+    return response.data
+  } catch (e) {
+    errorHandler(e)
+  }
+}
+
+const resumeStorageSubscription = async () => {
+  try {
+    const response = await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/stripe/resume-storage-subscription`,
+      timeout: TEN_SECONDS_MS
+    })
+    return response.data
   } catch (e) {
     errorHandler(e)
   }
@@ -366,6 +405,12 @@ const disconnectStripeAccount = async () => {
   }
 }
 
+const saasSubscriptionNotActive = (admin) => {
+  const { paymentStatus, cancelSaasSubscriptionAt, altPaymentStatus } = admin
+  return (paymentStatus !== 'active' || cancelSaasSubscriptionAt) &&
+    altPaymentStatus !== 'active'
+}
+
 export default {
   createAdmin,
   createApp,
@@ -381,6 +426,9 @@ export default {
   updateSaasPaymentMethod,
   cancelSaasSubscription,
   resumeSaasSubscription,
+  buyStoragePlan,
+  cancelStorageSubscription,
+  resumeStorageSubscription,
   buyAddOn,
   cancelPaymentsAddOnSubscription,
   resumePaymentsAddOnSubscription,
@@ -390,4 +438,5 @@ export default {
   deleteAccessToken,
   completeStripeConnection,
   disconnectStripeAccount,
+  saasSubscriptionNotActive,
 }

@@ -3,8 +3,9 @@ import { string, object } from 'prop-types'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faTrashAlt } from '@fortawesome/free-regular-svg-icons'
 import dashboardLogic from './logic'
+import adminLogic from '../Admin/logic'
 import UnknownError from '../Admin/UnknownError'
-import { formatDate } from '../../utils'
+import { formatDate, formatSize } from '../../utils'
 import { ProfileTable } from './ProfileTable'
 import { StripeDataTable } from './StripeDataTable'
 import { STRIPE_CLIENT_ID, getStripeState } from '../../config'
@@ -571,7 +572,7 @@ export default class AppUsersTable extends Component {
 
   render() {
     const { appName, admin } = this.props
-    const { paymentStatus, cancelSaasSubscriptionAt, connectedToStripe } = admin
+    const { connectedToStripe } = admin
     const {
       loading,
       activeUsers,
@@ -612,7 +613,7 @@ export default class AppUsersTable extends Component {
               </span>
             </div>
             {
-              paymentStatus === 'active' && !cancelSaasSubscriptionAt ? <div />
+              !adminLogic.saasSubscriptionNotActive(admin) ? <div />
                 : <div className='text-left mb-4 text-red-600 font-normal'>
                   Your account is limited to 1 app and 3 users. <a href="#edit-account">Remove this limit</a> with a Userbase subscription.
                 </div>
@@ -641,13 +642,14 @@ export default class AppUsersTable extends Component {
               ?
               <div>
                 {activeUsers && activeUsers.length > 0 &&
-                  <div className='text-center'>
+                  <div className='text-center overflow-scroll whitespace-no-wrap'>
                     <table className='table-auto w-full border-none mx-auto text-xs'>
 
                       <thead>
                         <tr className='border-b'>
                           <th className='px-1 py-1 text-gray-800 text-left'>Username</th>
                           <th className='px-1 py-1 text-gray-800 text-left'>Created</th>
+                          <th className='px-1 py-1 text-gray-800 text-left'>Data Stored (updated every 24hr)</th>
                           <th className='px-1 py-1'></th>
                         </tr>
                       </thead>
@@ -665,6 +667,7 @@ export default class AppUsersTable extends Component {
                                 </a>
                               </td>
                               <td className='px-1 font-light text-left'>{user['formattedCreationDate']}</td>
+                              <td className='px-1 font-light text-left'>{formatSize(user['size'])}</td>
                               <td className='px-1 font-light w-8 text-center'>
 
                                 {user['deleting']
@@ -682,7 +685,7 @@ export default class AppUsersTable extends Component {
 
                             {user['displayUserMetadata'] &&
                               <tr className='border-b h-auto bg-yellow-200 mt-4'>
-                                <th className='px-1 py-1 text-gray-800 text-left'>
+                                <td colSpan='4' className='px-1 py-4 text-gray-800 text-left'>
 
                                   <h6 className='mb-4'>User ID:
                                     <span className='font-light ml-1'>
@@ -732,9 +735,7 @@ export default class AppUsersTable extends Component {
                                     }
                                   </h6>
 
-                                </th>
-                                <th></th>
-                                <th></th>
+                                </td>
                               </tr>
                             }
 
@@ -752,110 +753,111 @@ export default class AppUsersTable extends Component {
                     </a>
 
                     {showDeletedUsers &&
+                      <div className='text-center overflow-scroll whitespace-no-wrap'>
+                        <table className='mt-6 table-auto w-full border-none mx-auto text-xs'>
 
-                      <table className='mt-6 table-auto w-full border-none mx-auto text-xs'>
+                          <thead>
+                            <tr className='border-b'>
+                              <th className='px-1 py-1 text-gray-800 text-left'>Username</th>
+                              <th className='px-1 py-1 text-gray-800 text-left'>Created</th>
+                              <th className='px-1 py-1 text-gray-800 text-left'>Data Stored (updated every 24hr)</th>
+                              <th className='px-1 py-1'></th>
+                            </tr>
+                          </thead>
 
-                        <thead>
-                          <tr className='border-b'>
-                            <th className='px-1 py-1 text-gray-800 text-left'>Username</th>
-                            <th className='px-1 py-1 text-gray-800 text-left'>Created</th>
-                            <th className='px-1 py-1'></th>
-                          </tr>
-                        </thead>
+                          <tbody>
 
-                        <tbody>
-
-                          {deletedUsers.map((user) => (
-                            <React.Fragment key={user['userId']} >
-                              <tr className={`mouse:hover:bg-yellow-200 h-8 ${user['displayUserMetadata'] ? 'bg-yellow-200' : 'border-b'}`}>
-                                <td className='px-1 font-light text-left text-red-700'>
-                                  <a
-                                    className={`font-light cursor-pointer ${user['displayUserMetadata'] ? 'text-orange-700' : ''}`}
-                                    onClick={(e) => this.handleToggleDisplayUserMetadata(e, user['userId'])}
-                                  >
-                                    {user['username']}
-                                  </a>
-                                </td>
-                                <td className='px-1 font-light text-left'>{user['formattedCreationDate']}</td>
-                                <td className='px-1 font-light w-8 text-center'>
-
-                                  {user['permanentDeleting']
-                                    ? <div className='loader w-4 h-4 inline-block' />
-                                    : <div
-                                      className='font-normal text-sm cursor-pointer text-yellow-700'
-                                      onClick={() => this.handlePermanentDeleteUser(user)}
+                            {deletedUsers.map((user) => (
+                              <React.Fragment key={user['userId']} >
+                                <tr className={`mouse:hover:bg-yellow-200 h-8 ${user['displayUserMetadata'] ? 'bg-yellow-200' : 'border-b'}`}>
+                                  <td className='px-1 font-light text-left text-red-700'>
+                                    <a
+                                      className={`font-light cursor-pointer ${user['displayUserMetadata'] ? 'text-orange-700' : ''}`}
+                                      onClick={(e) => this.handleToggleDisplayUserMetadata(e, user['userId'])}
                                     >
-                                      <FontAwesomeIcon icon={faTrashAlt} />
-                                    </div>
-                                  }
+                                      {user['username']}
+                                    </a>
+                                  </td>
+                                  <td className='px-1 font-light text-left'>{user['formattedCreationDate']}</td>
+                                  <td className='px-1 font-light text-left'>{formatSize(user['size'])}</td>
+                                  <td className='px-1 font-light w-8 text-center'>
 
-                                </td>
-                              </tr>
+                                    {user['permanentDeleting']
+                                      ? <div className='loader w-4 h-4 inline-block' />
+                                      : <div
+                                        className='font-normal text-sm cursor-pointer text-yellow-700'
+                                        onClick={() => this.handlePermanentDeleteUser(user)}
+                                      >
+                                        <FontAwesomeIcon icon={faTrashAlt} />
+                                      </div>
+                                    }
 
-                              {user['displayUserMetadata'] &&
-                                <tr className='border-b h-auto bg-yellow-200 mt-4'>
-                                  <th className='px-1 py-1 text-gray-800 text-left'>
-
-                                    <h6 className='mb-4'>User ID:
-                                    <span className='font-light ml-1'>
-                                        {user['userId']}
-                                      </span>
-                                    </h6>
-
-                                    <h6 className='mb-4'>Email:
-                                    <span className='font-light ml-1'>
-                                        {user['email'] || 'No email saved.'}
-                                      </span>
-                                    </h6>
-
-                                    <h6 className='mb-4'>Profile:
-                                    {user['profile']
-                                        ? ProfileTable(user['profile'])
-                                        : <span className='font-light ml-1'>
-                                          No profile saved.
-                                      </span>
-                                      }
-                                    </h6>
-
-
-                                    <h6 className='mb-4'>Protected Profile:
-                                    {user['protectedProfile']
-                                        ? ProfileTable(user['protectedProfile'])
-                                        : <span className='font-light ml-1'>
-                                          No protected profile saved.
-                                      </span>
-                                      }
-                                    </h6>
-
-                                    <h6 className='mb-4'>Test Stripe Data:
-                                    {user['testStripeData']
-                                        ? StripeDataTable(user['testStripeData'])
-                                        : <span className='font-light ml-1'>
-                                          No test Stripe data saved.
-                                      </span>
-                                      }
-                                    </h6>
-
-                                    <h6 className='mb-4'>Prod Stripe Data:
-                                    {user['prodStripeData']
-                                        ? StripeDataTable(user['prodStripeData'], true)
-                                        : <span className='font-light ml-1'>
-                                          No prod Stripe data saved.
-                                      </span>
-                                      }
-                                    </h6>
-
-                                  </th>
-                                  <th></th>
-                                  <th></th>
+                                  </td>
                                 </tr>
-                              }
 
-                            </React.Fragment>
-                          ))}
+                                {user['displayUserMetadata'] &&
+                                  <tr className='border-b h-auto bg-yellow-200 mt-4'>
+                                    <td colSpan='4' className='px-1 py-4 text-gray-800 text-left'>
 
-                        </tbody>
-                      </table>
+                                      <h6 className='mb-4'>User ID:
+                                        <span className='font-light ml-1'>
+                                          {user['userId']}
+                                        </span>
+                                      </h6>
+
+                                      <h6 className='mb-4'>Email:
+                                        <span className='font-light ml-1'>
+                                          {user['email'] || 'No email saved.'}
+                                        </span>
+                                      </h6>
+
+                                      <h6 className='mb-4'>Profile:
+                                        {user['profile']
+                                          ? ProfileTable(user['profile'])
+                                          : <span className='font-light ml-1'>
+                                            No profile saved.
+                                          </span>
+                                        }
+                                      </h6>
+
+
+                                      <h6 className='mb-4'>Protected Profile:
+                                        {user['protectedProfile']
+                                          ? ProfileTable(user['protectedProfile'])
+                                          : <span className='font-light ml-1'>
+                                            No protected profile saved.
+                                          </span>
+                                        }
+                                      </h6>
+
+                                      <h6 className='mb-4'>Test Stripe Data:
+                                        {user['testStripeData']
+                                          ? StripeDataTable(user['testStripeData'])
+                                          : <span className='font-light ml-1'>
+                                            No test Stripe data saved.
+                                          </span>
+                                        }
+                                      </h6>
+
+                                      <h6 className='mb-4'>Prod Stripe Data:
+                                        {user['prodStripeData']
+                                          ? StripeDataTable(user['prodStripeData'], true)
+                                          : <span className='font-light ml-1'>
+                                            No prod Stripe data saved.
+                                          </span>
+                                        }
+                                      </h6>
+
+                                    </td>
+                                  </tr>
+                                }
+
+                              </React.Fragment>
+                            ))}
+
+                          </tbody>
+                        </table>
+                      </div>
                     }
                   </div>
                 }
@@ -883,7 +885,7 @@ export default class AppUsersTable extends Component {
           {
             prodPaymentsAllowed(admin) ? <div />
               : <div className='text-left mb-6 text-red-600 font-normal'>
-                Your account is limited to test payments. <a href="#edit-account">Remove this limit</a> with {(paymentStatus !== 'active' || cancelSaasSubscriptionAt) ? 'a Userbase subscription and' : ''} the payments portal add-on.
+                Your account is limited to test payments. <a href="#edit-account">Remove this limit</a> with {adminLogic.saasSubscriptionNotActive(admin) ? 'a Userbase subscription and' : ''} the payments portal add-on.
               </div>
           }
 
@@ -1082,8 +1084,9 @@ export default class AppUsersTable extends Component {
             )}
           </div>
 
-          {(paymentStatus === 'active' && !cancelSaasSubscriptionAt)
-            ? <div>
+          {adminLogic.saasSubscriptionNotActive(admin)
+            ? <div />
+            : <div>
               <hr className='border border-t-0 border-gray-400 mt-8 mb-6' />
 
               <div className='flex-0 text-lg sm:text-xl text-left mb-4 text-red-600'>Danger Zone</div>
@@ -1100,7 +1103,6 @@ export default class AppUsersTable extends Component {
                 />
               </div>
             </div>
-            : <div />
           }
 
         </div>
