@@ -1,0 +1,25 @@
+@startuml
+User --> Client: signIn(username, password)
+
+Client --> Server: username
+
+Client <-- Server: Password salts
+
+Client -> Client: Build passwordToken
+
+Client --> Server: signIn(username, passwordToken)
+
+Client <- Server: Session ID
+
+Client -> Server: Open WebSocket with Session ID
+
+Client <- Server: Password encrypted seed + encrypted private keys + salts + validation message
+
+Client -> Client: Decrypt seed, decrypt private keys, sign validation message
+
+Client -> Server: Signed validation message
+
+Client <- Server: Authenticated successfully!
+
+User <- Client: App is ready to use
+@enduml

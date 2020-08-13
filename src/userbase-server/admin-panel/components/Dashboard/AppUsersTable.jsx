@@ -3,6 +3,7 @@ import { string, object } from 'prop-types'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faTrashAlt } from '@fortawesome/free-regular-svg-icons'
 import dashboardLogic from './logic'
+import adminLogic from '../Admin/logic'
 import UnknownError from '../Admin/UnknownError'
 import { formatDate, formatSize } from '../../utils'
 import { ProfileTable } from './ProfileTable'
@@ -573,7 +574,7 @@ export default class AppUsersTable extends Component {
 
   render() {
     const { appName, admin } = this.props
-    const { paymentStatus, cancelSaasSubscriptionAt, connectedToStripe } = admin
+    const { connectedToStripe } = admin
     const {
       loading,
       activeUsers,
@@ -614,7 +615,7 @@ export default class AppUsersTable extends Component {
               </span>
             </div>
             {
-              paymentStatus === 'active' && !cancelSaasSubscriptionAt ? <div />
+              !adminLogic.saasSubscriptionNotActive(admin) ? <div />
                 : <div className='text-left mb-4 text-red-600 font-normal'>
                   Your account is limited to 1 app and 3 users. <a href="#edit-account">Remove this limit</a> with a Userbase subscription.
                 </div>
@@ -886,7 +887,7 @@ export default class AppUsersTable extends Component {
           {
             prodPaymentsAllowed(admin) ? <div />
               : <div className='text-left mb-6 text-red-600 font-normal'>
-                Your account is limited to test payments. <a href="#edit-account">Remove this limit</a> with {(paymentStatus !== 'active' || cancelSaasSubscriptionAt) ? 'a Userbase subscription and' : ''} the payments portal add-on.
+                Your account is limited to test payments. <a href="#edit-account">Remove this limit</a> with {adminLogic.saasSubscriptionNotActive(admin) ? 'a Userbase subscription and' : ''} the payments portal add-on.
               </div>
           }
 
@@ -1087,8 +1088,9 @@ export default class AppUsersTable extends Component {
             )}
           </div>
 
-          {(paymentStatus === 'active' && !cancelSaasSubscriptionAt)
-            ? <div>
+          {adminLogic.saasSubscriptionNotActive(admin)
+            ? <div />
+            : <div>
               <hr className='border border-t-0 border-gray-400 mt-8 mb-6' />
 
               <div className='flex-0 text-lg sm:text-xl text-left mb-4 text-red-600'>Danger Zone</div>
@@ -1105,7 +1107,6 @@ export default class AppUsersTable extends Component {
                 />
               </div>
             </div>
-            : <div />
           }
 
         </div>
