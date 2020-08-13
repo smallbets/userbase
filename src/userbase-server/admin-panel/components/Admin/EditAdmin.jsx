@@ -5,7 +5,14 @@ import { faTrashAlt } from '@fortawesome/free-regular-svg-icons'
 import adminLogic from './logic'
 import UnknownError from './UnknownError'
 import { formatDate } from '../../utils'
-import { STRIPE_CLIENT_ID, PAYMENTS_ADD_ON_PRICE, getStripeState, getStripeCancelWarning } from '../../config'
+import {
+  STRIPE_CLIENT_ID,
+  PAYMENTS_ADD_ON_PRICE,
+  STORAGE_PLAN_1_TB_PRICE,
+  METERED_COST_PER_GB,
+  getStripeState,
+  getStripeCancelWarning
+} from '../../config'
 
 export default class EditAdmin extends Component {
   constructor(props) {
@@ -425,7 +432,7 @@ export default class EditAdmin extends Component {
     this.handleClearErrors({ loadingBuyStoragePlan: true })
 
     try {
-      if (window.confirm(`Purchase the storage plan for $99 per year!`)) {
+      if (window.confirm(`Purchase the storage plan for $${STORAGE_PLAN_1_TB_PRICE} per year!`)) {
         const { storageSubscriptionStatus, sizeAllowed } = await adminLogic.buyStoragePlan()
 
         this.props.handleUpdateAccount({ storageSubscriptionStatus, sizeAllowed })
@@ -687,7 +694,7 @@ export default class EditAdmin extends Component {
                 <div>
                   <div className='flex-0 text-lg sm:text-xl text-left mb-4'>Storage Plan</div>
                   <div className='font-normal text-left mb-4'>
-                    <p>Store up to 1 terabyte of data for an additional $99 per year.</p>
+                    <p>{`Store up to 1 TB of data for an additional $${STORAGE_PLAN_1_TB_PRICE} per year. Each GB above is $${METERED_COST_PER_GB.toFixed(2)} per month.`}</p>
                     {(paymentStatus !== 'active' || cancelSaasSubscriptionAt) && (altPaymentStatus !== 'active'
                       ? <p>You must have an active Userbase subscription.</p>
                       : <p>Please contact <a href='mailto:support@userbase.com'>support@userbase.com</a> to enable this feature.</p>
