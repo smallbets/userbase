@@ -49,6 +49,12 @@ const getStripeSaasSubscriptionPlanId = () => {
   return saasSubscriptionPlanId
 }
 
+const getStripeStoragePlanId = () => {
+  const storagePlanId = process.env['sm.STRIPE_STORAGE_PLAN_ID_1_TB']
+  if (!storagePlanId) throw new Error('Missing Stripe storage plan ID')
+  return storagePlanId
+}
+
 const getStripePaymentsAddOnPlanId = () => {
   const paymentsAddOnPlanId = process.env['sm.STRIPE_PAYMENTS_ADD_ON_PLAN_ID']
   if (!paymentsAddOnPlanId) throw new Error('Missing Stripe payments add-on plan ID')
@@ -346,6 +352,7 @@ const WEBHOOK_OPTIONS = {
 export default {
   getClient,
   getStripeSaasSubscriptionPlanId,
+  getStripeStoragePlanId,
   getStripePaymentsAddOnPlanId,
   convertStripeTimestamptToIsoString,
   handleWebhook,

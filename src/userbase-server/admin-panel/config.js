@@ -26,3 +26,7 @@ export const getStripeState = () => {
 export const getStripeCancelWarning = (usePlural) => `\n\nWarning! If you have any customers subscribed to your ${usePlural ? 'apps' : 'app'}, you will need to cancel their subscriptions manually in the Stripe dashboard.`
 
 export const PAYMENTS_ADD_ON_PRICE = 129
+
+export const STORAGE_PLAN_1_TB_PRICE = 299
+
+export const METERED_COST_PER_GB = .10

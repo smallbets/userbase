@@ -32,7 +32,7 @@ class CancelUrlMissing extends Error {
     super(...params)
 
     this.name = 'CancelUrlMissing'
-    this.message = 'Cancel url missing to let Stripe know where to redirect users on cancelled payment.'
+    this.message = 'Cancel url missing to let Stripe know where to redirect users on canceled payment.'
     this.status = statusCodes['Bad Request']
   }
 }
