@@ -1,8 +1,14 @@
-## [2.1.0]
+## [2.1.0] - 2020-08-12
 ### Added
 - uploadFile() to enable file storage.
 - getFile() to enable retrieving files.
-- items inside the changeHandler() callback passed to openDatabase() will now provide file metadata if a file is stored on an item.
+- items inside the changeHandler() callback passed to openDatabase() provide file metadata if a file is stored on an item.
+- `sessionLength` parameter to signUp(), signIn(), and init() allow developer to set custom session duration.
+- `updateUserHandler` callback function as a parameter to init() allows developers to listen for changes to users in real-time.
+
+### Fixed
+- deleteUser() removes user's seed from browser storage.
+- updateUser() throws PasswordCannotBeBlank instead of PasswordMissing when `currentPassword` or `newPassword` is empty string.
 
 ## [2.0.1] - 2020-07-02
 ### Fixed

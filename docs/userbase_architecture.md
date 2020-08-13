@@ -3,7 +3,7 @@
 </p>
 
 <p align="center" >
-  <i>August 2020</i>
+  <i>August 12, 2020</i>
 </p>
 
 # Intro
@@ -383,7 +383,7 @@ Userbase uses [Checkly](https://www.checklyhq.com/) to monitor uptime across all
 
 ## Testing
 
-Userbase uses [Github Actions](https://github.com/features/actions) to automatically run the suite of Cypress tests on each PR to the Userbase master branch. At the time of this writing, this includes around 500 tests across 12 total specs. All tests run in both Chrome and Firefox and specs run in parallel.
+Userbase uses [Github Actions](https://github.com/features/actions) to automatically run the suite of Cypress tests on each PR to the Userbase master branch. At the time of this writing, this includes over 500 tests across 13 total specs. All tests run in both Chrome and Firefox and specs run in parallel.
 
 ## Documentation
 
