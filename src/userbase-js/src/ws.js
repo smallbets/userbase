@@ -59,6 +59,7 @@ class Connection {
       username: session && session.username,
       sessionId: session && session.sessionId,
       creationDate: session && session.creationDate,
+      userId: session && session.userId,
       authToken: session && session.authToken,
     }
 
@@ -216,6 +217,11 @@ class Connection {
                 startApplyingNextBatchInQueue()
               }
 
+              break
+            }
+
+            case 'UpdatedUser': {
+              this.handleUpdateUser(message.updatedUser)
               break
             }
 
@@ -567,15 +573,20 @@ class Connection {
   }
 
   async buildBundle(database) {
+    const dbId = database.dbId
+    const lastSeqNo = database.lastSeqNo
+    const dbKey = database.dbKey
+
+    // Client will only attempt to bundle at a particular seqNo a single time. This prevents server from spamming
+    // client with buildBundle to maliciously get the client to re-use an IV in AES-GCM and reveal the dbKey
+    if (database.bundledAtSeqNo && database.bundledAtSeqNo >= lastSeqNo) return
+    else database.bundledAtSeqNo = lastSeqNo
+
     const bundle = {
       items: database.items,
       itemsIndex: database.itemsIndex.array
     }
     const plaintextString = JSON.stringify(bundle)
-
-    const dbId = database.dbId
-    const lastSeqNo = database.lastSeqNo
-    const dbKey = database.dbKey
 
     const itemKeyPromises = []
     for (let i = 0; i < bundle.itemsIndex.length; i++) {
@@ -590,6 +601,45 @@ class Connection {
     const action = 'Bundle'
     const params = { dbId, seqNo: lastSeqNo, bundle: base64Bundle, keys: itemKeys }
     this.request(action, params)
+  }
+
+  buildUserResult({ username, userId, authToken, email, profile, protectedProfile, usedTempPassword, passwordChanged, userData }) {
+    const result = { username, userId, authToken }
+
+    if (email) result.email = email
+    if (profile) result.profile = profile
+    if (protectedProfile) result.protectedProfile = protectedProfile
+    if (usedTempPassword) result.usedTempPassword = usedTempPassword
+    if (passwordChanged) result.passwordChanged = passwordChanged
+
+    if (userData) {
+      const { creationDate, stripeData } = userData
+      if (creationDate) result.creationDate = creationDate
+
+      if (stripeData) {
+        const { paymentsMode, subscriptionStatus, cancelSubscriptionAt, trialExpirationDate } = stripeData
+
+        if (paymentsMode) result.paymentsMode = paymentsMode
+        if (subscriptionStatus) result.subscriptionStatus = subscriptionStatus
+        if (cancelSubscriptionAt) result.cancelSubscriptionAt = cancelSubscriptionAt
+        if (trialExpirationDate) result.trialExpirationDate = trialExpirationDate
+      }
+    }
+
+    return result
+  }
+
+  handleUpdateUser(updatedUser) {
+    // make sure WebSocket session matches provided user
+    if (this.session && this.session.userId === updatedUser['userId']) {
+      this.session.username = updatedUser['username']
+      this.userData = updatedUser.userData
+
+      const updateUserHandler = config.getUpdateUserHandler()
+      if (updateUserHandler) {
+        updateUserHandler({ user: this.buildUserResult({ authToken: this.session.authToken, ...updatedUser }) })
+      }
+    }
   }
 }
 

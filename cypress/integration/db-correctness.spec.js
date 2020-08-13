@@ -1986,6 +1986,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(3)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
       // must check the server to verify reading bundle from S3 and not DDB
@@ -2034,6 +2036,8 @@ describe('DB Correctness Tests', function () {
         await this.test.userbase.openDatabase({ databaseName, changeHandler })
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
       // must check the server to verify reading bundle from S3 and not DDB
@@ -2085,6 +2089,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
       // must check the server to verify reading bundle from S3 and not DDB
@@ -2138,6 +2144,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
       // must check the server logs to verify bundling occurs
@@ -2178,6 +2186,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1 + numItemsNeededToTriggerBundle)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
       // must check the server logs to verify bundling occurs
@@ -2227,6 +2237,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
       // must check the server logs to verify bundling occurs
@@ -2278,6 +2290,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1 + numBundles)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
       // must check the server logs to verify bundling occurs
@@ -2338,6 +2352,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
     })
 
@@ -2401,6 +2417,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(3)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
       // must check the server logs to verify bundling occurs
@@ -2468,6 +2486,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
       // must check the server logs to verify bundling occurs
@@ -2530,6 +2550,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(3)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
       // must check the server logs to verify bundling occurs
@@ -2600,6 +2622,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
       // must check the server logs to verify bundling occurs. Failing to bundle is ok
@@ -2662,6 +2686,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.be.lte(1 + numBundles)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
       // must check the server logs to verify reading from bundle. Failing to bundle is ok
@@ -2730,6 +2756,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
     })

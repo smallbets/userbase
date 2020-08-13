@@ -416,6 +416,26 @@ export default class Connections {
     }
   }
 
+  static pushUpdatedUser(updatedUser, thisConnectionId) {
+    const userId = updatedUser.userId
+    if (!Connections.sockets || !Connections.sockets[userId]) return
+
+    const payload = JSON.stringify({
+      route: 'UpdatedUser',
+      updatedUser,
+    })
+
+    for (const connectionId in Connections.sockets[userId]) {
+      // no need to push over WebSocket to current connection. Current connection will handle it in response to request
+      if (connectionId === thisConnectionId) continue
+
+      const conn = Connections.sockets[userId][connectionId]
+      if (conn.socket) {
+        conn.socket.send(payload)
+      }
+    }
+  }
+
   static close(connection) {
     const { userId, id, clientId, adminId, appId } = connection
     const connectionId = id

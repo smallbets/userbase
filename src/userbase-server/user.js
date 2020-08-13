@@ -9,6 +9,8 @@ import { validateEmail, trimReq, truncateSessionId, getTtl } from './utils'
 import appController from './app'
 import adminController from './admin'
 import stripe from './stripe'
+import connections from './ws'
+import peers from './peers'
 
 // source: https://github.com/OWASP/CheatSheetSeries/blob/master/cheatsheets/Session_Management_Cheat_Sheet.md#session-id-length
 const ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID = 16
@@ -32,7 +34,11 @@ const LIMIT_NUM_TRIAL_USERS = 3
 
 const MAX_INCORRECT_PASSWORD_GUESSES = 25
 
-const createSession = async function (userId, appId) {
+const MIN_SESSION_LENGTH = 1000 * 60 * 5 // 5 minutes
+const MAX_SESSION_LENGTH = 1000 * 60 * 60 * 24 * 365 // 2 years
+const DEFAULT_SESSION_LENGTH = MS_IN_A_DAY // 24 hours
+
+const createSession = async function (userId, appId, sessionLength = DEFAULT_SESSION_LENGTH) {
   // sessionId is used to authenticate that a user is signed in. The sessionId allows
   // the user to sign in without their password and open a WebSocket connection to the server
   const sessionId = crypto
@@ -46,7 +52,7 @@ const createSession = async function (userId, appId) {
     .toString('hex')
 
   const creationDate = new Date().toISOString()
-  const expirationDate = new Date(Date.now() + MS_IN_A_DAY).toISOString()
+  const expirationDate = new Date(Date.now() + sessionLength).toISOString()
 
   const session = {
     'session-id': sessionId,
@@ -229,6 +235,24 @@ const _incrementIncorrectPasswordAttempt = (user) => {
   ddbClient.update(incrementParams).promise()
 }
 
+const _validateSessionLength = (sessionLength) => {
+  if (sessionLength !== undefined) {
+    if (typeof sessionLength !== 'number') throw 'Session length must be a number.'
+
+    if (sessionLength <= MIN_SESSION_LENGTH) {
+      throw {
+        error: 'SessionLengthTooShort',
+        minLen: '5 minutes'
+      }
+    } else if (sessionLength > MAX_SESSION_LENGTH) {
+      throw {
+        error: 'SessionLengthTooLong',
+        maxLen: '1 year'
+      }
+    }
+  }
+}
+
 const _validatePassword = (passwordToken, user, req) => {
   if (!user) throw new Error('User does not exist')
 
@@ -239,7 +263,7 @@ const _validatePassword = (passwordToken, user, req) => {
       _suspendUser(user)
 
       logger
-        .child({ userId: user['user-id'], req: trimReq(req) })
+        .child({ userId: user['user-id'], req: req && trimReq(req) })
         .warn('Someone has exceeded the password attempt limit')
     }
 
@@ -333,7 +357,7 @@ const _verifyEcdhPublicKey = (ecdhPublicKey, ecdsaPublicKey, signedEcdhPublicKey
   }
 }
 
-const _validateSignUpInput = (appId, username, passwordToken, publicKeyData, passwordSalts, keySalts, passwordBasedBackup, email, profile) => {
+const _validateSignUpInput = (appId, username, passwordToken, publicKeyData, passwordSalts, keySalts, passwordBasedBackup, email, profile, sessionLength) => {
   try {
     const {
       ecKeyData,    // userbase-js >= v2.0.0
@@ -410,6 +434,8 @@ const _validateSignUpInput = (appId, username, passwordToken, publicKeyData, pas
     }
 
     if (profile) _validateProfile(profile)
+
+    _validateSessionLength(sessionLength)
   } catch (e) {
     throw {
       status: statusCodes['Bad Request'],
@@ -450,13 +476,15 @@ exports.signUp = async function (req, res) {
   const profile = req.body.profile
   const passwordBasedBackup = req.body.passwordBasedBackup
 
+  const sessionLength = req.body.sessionLength
+
   let logChildObject
   try {
     logChildObject = { appId, username, req: trimReq(req) }
     logger.child(logChildObject).info('Signing up user')
 
     const publicKeyData = { dhPublicKey, ecKeyData }
-    _validateSignUpInput(appId, username, passwordToken, publicKeyData, passwordSalts, keySalts, passwordBasedBackup, email, profile)
+    _validateSignUpInput(appId, username, passwordToken, publicKeyData, passwordSalts, keySalts, passwordBasedBackup, email, profile, sessionLength)
 
     const userId = uuidv4()
 
@@ -505,7 +533,7 @@ exports.signUp = async function (req, res) {
       throw e
     }
 
-    const session = await createSession(userId, appId)
+    const session = await createSession(userId, appId, sessionLength)
 
     logger.child(logChildObject).info('Signed up user')
 
@@ -990,6 +1018,13 @@ const _validateKey = (user, validationMessage, userProvidedValidationMessage, ec
   }
 }
 
+const _buildUserData = (user, app, admin) => {
+  return {
+    creationDate: user['creation-date'],
+    stripeData: _buildStripeData(user, app, admin)
+  }
+}
+
 exports.validateKey = async function (validationMessage, userProvidedValidationMessage, conn, admin, app, user, ecKeyData) {
   const seedNotSavedYet = user['seed-not-saved-yet']
   const userId = user['user-id']
@@ -1015,10 +1050,7 @@ exports.validateKey = async function (validationMessage, userProvidedValidationM
 
       conn.validateKey()
 
-      return responseBuilder.successResponse({
-        creationDate: user['creation-date'],
-        stripeData: _buildStripeData(user, app, admin)
-      })
+      return responseBuilder.successResponse(_buildUserData(user, app, admin))
     } catch (e) {
       logger.error(`Failed to validate key with ${e}`)
       return responseBuilder.errorResponse(
@@ -1141,6 +1173,8 @@ exports.signIn = async function (req, res) {
   const username = req.body.username
   const passwordToken = req.body.passwordToken
 
+  const sessionLength = req.body.sessionLength
+
   let logChildObject
   try {
     logChildObject = { appId, username, req: trimReq(req) }
@@ -1155,6 +1189,7 @@ exports.signIn = async function (req, res) {
 
     try {
       _validateUsernameInput(username)
+      _validateSessionLength(sessionLength)
     } catch (e) {
       throw {
         status: statusCodes['Bad Request'],
@@ -1208,7 +1243,7 @@ exports.signIn = async function (req, res) {
       }
     }
 
-    const session = await createSession(user['user-id'], appId)
+    const session = await createSession(user['user-id'], appId, sessionLength)
 
     const result = { session, userId: user['user-id'] }
 
@@ -1412,13 +1447,24 @@ exports.extendSession = async function (req, res) {
 
   const sessionId = req.query.sessionId
 
+  const sessionLength = req.body.sessionLength
+
   let logChildObject
   try {
     logChildObject = { userId: user['user-id'], sessionId: truncateSessionId(sessionId), adminId: admin['admin-id'], app: app['app-id'], req: trimReq(req) }
     logger.child(logChildObject).info('Extending session')
 
+    try {
+      _validateSessionLength(sessionLength)
+    } catch (e) {
+      throw {
+        status: statusCodes['Bad Request'],
+        error: e
+      }
+    }
+
     const extendedDate = new Date().toISOString()
-    const expirationDate = new Date(Date.now() + MS_IN_A_DAY).toISOString()
+    const expirationDate = new Date(Date.now() + (sessionLength || DEFAULT_SESSION_LENGTH)).toISOString()
 
     const params = {
       TableName: setup.sessionsTableName,
@@ -1451,9 +1497,16 @@ exports.extendSession = async function (req, res) {
     return res.send(result)
   } catch (e) {
     const message = 'Failed to extend session'
-    const statusCode = statusCodes['Internal Server Error']
-    logger.child({ ...logChildObject, statusCode, err: e }).error(message)
-    return res.status(statusCode).send(message)
+
+    if (e.status && e.error) {
+      const statusCode = e.status
+      logger.child({ ...logChildObject, statusCode, err: e }).warn(message)
+      return res.status(statusCode).send(e.error)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return res.status(statusCode).send(message)
+    }
   }
 }
 
@@ -1511,6 +1564,15 @@ exports.getPublicKey = async function (req, res) {
   }
 }
 
+const pushAndBroadcastUpdatedUser = (updatedUser, connectionId) => {
+  if (updatedUser) {
+    // notify all websocket connections that there's an updated user
+    connections.pushUpdatedUser(updatedUser, connectionId)
+
+    // broadcast updated users to all peers so they also push to their connected clients
+    peers.broadcastUpdatedUser(updatedUser)
+  }
+}
 
 const _updateUserExcludingUsernameUpdate = async (user, userId, passwordToken, passwordSalts,
   email, profile, passwordBasedBackup) => {
@@ -1566,10 +1628,13 @@ const _updateUserExcludingUsernameUpdate = async (user, userId, passwordToken, p
   }
 
   updateUserParams.UpdateExpression = UpdateExpression
+  updateUserParams.ReturnValues = 'ALL_NEW'
 
   try {
     const ddbClient = connection.ddbClient()
-    await ddbClient.update(updateUserParams).promise()
+    const result = await ddbClient.update(updateUserParams).promise()
+    const updatedUser = result.Attributes
+    return updatedUser
   } catch (e) {
     if (e.name === 'ConditionalCheckFailedException') {
       throw new Error('UserNotFound')
@@ -1626,6 +1691,7 @@ const _updateUserIncludingUsernameUpdate = async (oldUser, userId, passwordToken
   try {
     const ddbClient = connection.ddbClient()
     await ddbClient.transactWrite(params).promise()
+    return updatedUser
   } catch (e) {
     if (e.message.includes('[ConditionalCheckFailed')) {
       throw new Error('UserNotFound')
@@ -1636,7 +1702,25 @@ const _updateUserIncludingUsernameUpdate = async (oldUser, userId, passwordToken
   }
 }
 
-exports.updateUser = async function (userId, username, currentPasswordToken, passwordToken, passwordSalts,
+const updateUser = async function (user, userId, passwordToken, passwordSalts, email, profile, passwordBasedBackup, username) {
+  let updatedUser = user
+  if (username && username.toLowerCase() !== user['username']) {
+
+    updatedUser = await _updateUserIncludingUsernameUpdate(
+      user, userId, passwordToken, passwordSalts, email, profile, passwordBasedBackup, username
+    )
+
+  } else if (passwordToken || (email || email === false) || (profile || profile === false)) {
+
+    updatedUser = _updateUserExcludingUsernameUpdate(
+      user, userId, passwordToken, passwordSalts, email, profile, passwordBasedBackup
+    )
+
+  }
+  return updatedUser
+}
+
+exports.updateUser = async function (connectionId, adminId, userId, username, currentPasswordToken, passwordToken, passwordSalts,
   email, profile, passwordBasedBackup) {
   if (!username && !currentPasswordToken && !passwordToken && !email && !profile && email !== false && profile !== false) {
     return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing all params')
@@ -1675,28 +1759,28 @@ exports.updateUser = async function (userId, username, currentPasswordToken, pas
         _validatePassword(currentPasswordToken, user)
       } catch (e) {
         if (e.error === 'PasswordAttemptLimitExceeded') {
-          return responseBuilder.errorResponse(status(statusCodes['Unauthorized']), e)
+          return responseBuilder.errorResponse(statusCodes['Unauthorized'], e)
         }
 
         return responseBuilder.errorResponse(statusCodes['Bad Request'], 'CurrentPasswordIncorrect')
       }
     }
 
-    if (username && username.toLowerCase() !== user['username']) {
+    const [updatedUser, app, admin] = await Promise.all([
+      updateUser(user, userId, passwordToken, passwordSalts, email, profile, passwordBasedBackup, username),
+      appController.getAppByAppId(user['app-id']),
+      adminController.findAdminByAdminId(adminId),
+    ])
 
-      await _updateUserIncludingUsernameUpdate(
-        user, userId, passwordToken, passwordSalts, email, profile, passwordBasedBackup, username
-      )
-
-    } else if (passwordToken || (email || email === false) || (profile || profile === false)) {
-
-      await _updateUserExcludingUsernameUpdate(
-        user, userId, passwordToken, passwordSalts, email, profile, passwordBasedBackup
-      )
-
+    const updatedUserResult = {
+      ...buildUserResult(updatedUser, app),
+      userData: { ..._buildUserData(updatedUser, app, admin) },
+      passwordChanged: passwordToken ? true : undefined
     }
 
-    return responseBuilder.successResponse()
+    pushAndBroadcastUpdatedUser(updatedUserResult, connectionId)
+
+    return responseBuilder.successResponse({ updatedUser: updatedUserResult })
   } catch (e) {
     if (e.message === 'UserNotFound') return responseBuilder.errorResponse(statusCodes['Not Found'], 'UserNotFound')
     else if (e.message === 'UsernameAlreadyExists') return responseBuilder.errorResponse(statusCodes['Conflict'], 'UsernameAlreadyExists')
@@ -1766,10 +1850,13 @@ const updateProtectedProfile = async function (username, appId, userId, protecte
   }
 
   updateUserParams.UpdateExpression = UpdateExpression
+  updateUserParams.ReturnValues = 'ALL_NEW'
 
   try {
     const ddbClient = connection.ddbClient()
-    await ddbClient.update(updateUserParams).promise()
+    const result = await ddbClient.update(updateUserParams).promise()
+    const updatedUser = result.Attributes
+    return updatedUser
   } catch (e) {
     if (e.name === 'ConditionalCheckFailedException') {
       throw { status: statusCodes['Not Found'], error: { message: 'User not found' } }
@@ -1811,10 +1898,17 @@ exports.updateProtectedProfile = async function (req, res) {
     const { user, app } = await adminGetUser(userId, res.locals.admin['admin-id'], logChildObject)
     if (user['deleted']) throw { status: statusCodes['Not Found'], error: { message: 'User not found' } }
 
-    await updateProtectedProfile(user['username'], app['app-id'], userId, protectedProfile)
+    const updatedUser = await updateProtectedProfile(user['username'], app['app-id'], userId, protectedProfile)
 
     logChildObject.statusCode = statusCodes['Success']
     logger.child(logChildObject).info('Successfully updated protected profile')
+
+    const updatedUserResult = {
+      ...buildUserResult(updatedUser, app),
+      userData: { ..._buildUserData(updatedUser, app, res.locals.admin) },
+    }
+
+    pushAndBroadcastUpdatedUser(updatedUserResult)
 
     return res.end()
   } catch (e) {
@@ -2265,7 +2359,7 @@ exports.updateSubscriptionInDdb = async (logChildObject, logs, metadata, custome
       throw new Error('IncorrectSubscriptionPlanId')
     }
 
-    const updateUserParams = await _buildStripeSubscriptionDdbParams(user, customerId, subscriptionId, subscriptionPlanId, status, cancelAt, stripeEventTimestamp, isProduction, stripeAccountId)
+    const updateUserParams = await _buildStripeSubscriptionDdbParams(user, customerId, subscriptionId, subscriptionPlanId, status, cancelAt, stripeEventTimestamp, isProduction)
     const ddbClient = connection.ddbClient()
     await ddbClient.update(updateUserParams).promise()
   } catch (e) {

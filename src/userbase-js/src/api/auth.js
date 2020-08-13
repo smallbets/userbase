@@ -47,7 +47,7 @@ const processXhr = (xhr, resolve, reject) => {
   xhr.ontimeout = () => reject(new TimeoutError(TEN_SECONDS_MS))
 }
 
-const signUp = (username, passwordToken, ecKeyData, passwordSalts, keySalts, email, profile, passwordBasedBackup) => {
+const signUp = (username, passwordToken, ecKeyData, passwordSalts, keySalts, email, profile, passwordBasedBackup, sessionLength) => {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
 
@@ -61,7 +61,8 @@ const signUp = (username, passwordToken, ecKeyData, passwordSalts, keySalts, ema
       keySalts,
       email,
       profile,
-      passwordBasedBackup
+      passwordBasedBackup,
+      sessionLength,
     })
 
     xhr.open(method, url)
@@ -86,7 +87,7 @@ const getPasswordSalts = (username) => {
   })
 }
 
-const signIn = async (username, passwordToken) => {
+const signIn = async (username, passwordToken, sessionLength) => {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
 
@@ -95,6 +96,7 @@ const signIn = async (username, passwordToken) => {
     const data = JSON.stringify({
       username,
       passwordToken,
+      sessionLength,
     })
 
     xhr.open(method, url)
@@ -105,15 +107,19 @@ const signIn = async (username, passwordToken) => {
   })
 }
 
-const signInWithSession = (sessionId) => {
+const signInWithSession = (sessionId, sessionLength) => {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
 
     const method = 'POST'
     const url = `${config.getEndpoint()}/api/auth/sign-in-with-session?appId=${config.getAppId()}&sessionId=${sessionId}`
+    const data = JSON.stringify({
+      sessionLength,
+    })
 
     xhr.open(method, url)
-    xhr.send()
+    xhr.setRequestHeader('Content-Type', 'application/json')
+    xhr.send(data)
 
     processXhr(xhr, resolve, reject)
   })

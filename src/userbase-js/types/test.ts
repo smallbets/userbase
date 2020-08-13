@@ -30,8 +30,14 @@ const {
 // $ExpectType Promise<Session>
 init({ appId: 'tid' })
 
+// $ExpectType Promise<Session>
+init({ appId: 'tid', updateUserHandler: ({ user }) => { } })
+
 // $ExpectError
 init({})
+
+// $ExpectError
+init({ appId: 'tid', updateUserHandler: 'tup' })
 
 // $ExpectType Promise<UserResult>
 signUp({ username: 'tuser', password: 'tpass' })

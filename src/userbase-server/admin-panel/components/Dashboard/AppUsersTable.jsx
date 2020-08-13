@@ -10,8 +10,6 @@ import { ProfileTable } from './ProfileTable'
 import { StripeDataTable } from './StripeDataTable'
 import { STRIPE_CLIENT_ID, getStripeState } from '../../config'
 
-const MAX_PLAN_ID_LEN = 20 // price_ adds extra character
-
 // admin must have an active Userbase subscripion & active payments add-on subscription to enable prod payments
 const prodPaymentsAllowed = ({ paymentStatus, cancelSaasSubscriptionAt, paymentsAddOnSubscriptionStatus, cancelPaymentsAddOnSubscriptionAt }) => {
   return (
@@ -983,7 +981,6 @@ export default class AppUsersTable extends Component {
                           name='newTestSubscriptionPlanId'
                           autoComplete='off'
                           value={newTestSubscriptionPlanId}
-                          maxLength={MAX_PLAN_ID_LEN}
                           spellCheck={false}
                           onChange={this.handlePaymentsPlanInputChange}
                           placeholder='price_ or plan_'
@@ -994,7 +991,7 @@ export default class AppUsersTable extends Component {
                         className='btn w-24 ml-2'
                         type='submit'
                         value={loadingSetTestSubscriptionPlanId ? 'Saving...' : 'Save'}
-                        disabled={!newTestSubscriptionPlanId || newTestSubscriptionPlanId.length !== MAX_PLAN_ID_LEN || loadingSetTestSubscriptionPlanId}
+                        disabled={!newTestSubscriptionPlanId || loadingSetTestSubscriptionPlanId}
                       />
 
                     </div>
@@ -1048,7 +1045,6 @@ export default class AppUsersTable extends Component {
                           name='newProdSubscriptionPlanId'
                           autoComplete='off'
                           value={newProdSubscriptionPlanId}
-                          maxLength={MAX_PLAN_ID_LEN}
                           spellCheck={false}
                           onChange={this.handlePaymentsPlanInputChange}
                           placeholder='price_ or plan_'
@@ -1060,7 +1056,7 @@ export default class AppUsersTable extends Component {
                         className='btn w-24 ml-2'
                         type='submit'
                         value={loadingSetProdSubscriptionPlanId ? 'Saving...' : 'Save'}
-                        disabled={!newProdSubscriptionPlanId || newProdSubscriptionPlanId.length !== MAX_PLAN_ID_LEN || loadingSetProdSubscriptionPlanId}
+                        disabled={!newProdSubscriptionPlanId || loadingSetProdSubscriptionPlanId}
                       />
 
                     </div>

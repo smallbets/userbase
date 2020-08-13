@@ -7,6 +7,7 @@ const STRIPE_PRODUCTION_PUBLISHABLE_KEY = 'pk_live_jI6lbsAIQlu2u4uTkDXFrSEW'
 const STRIPE_TEST_PUBLISHABLE_KEY = 'pk_test_rYANrLdNfdJXJ2d808wW4pqY'
 
 let userbaseAppId = null
+let userbaseUpdateUserHandler = null
 
 const REMEMBER_ME_OPTIONS = {
   local: true,
@@ -19,19 +20,16 @@ const getAppId = () => {
   return userbaseAppId
 }
 
+const getUpdateUserHandler = () => userbaseUpdateUserHandler
+
 const getEndpoint = () => {
   return window._userbaseEndpoint || DEFAULT_ENDPOINT
 }
 
-const setAppId = (appId) => {
+const configure = ({ appId, updateUserHandler }) => {
   if (userbaseAppId && userbaseAppId !== appId) throw new errors.AppIdAlreadySet(userbaseAppId)
-  if (typeof appId !== 'string') throw new errors.AppIdMustBeString
-  if (appId.length === 0) throw new errors.AppIdCannotBeBlank
   userbaseAppId = appId
-}
-
-const configure = ({ appId }) => {
-  setAppId(appId)
+  userbaseUpdateUserHandler = updateUserHandler
 }
 
 const getStripePublishableKey = (isProduction) => {
@@ -43,6 +41,7 @@ const getStripePublishableKey = (isProduction) => {
 export default {
   REMEMBER_ME_OPTIONS,
   getAppId,
+  getUpdateUserHandler,
   getEndpoint,
   configure,
   getStripePublishableKey,
