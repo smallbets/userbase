@@ -642,7 +642,7 @@ export default class AppUsersTable extends Component {
               ?
               <div>
                 {activeUsers && activeUsers.length > 0 &&
-                  <div className='text-center overflow-scroll whitespace-no-wrap'>
+                  <div className='text-center overflow-auto whitespace-no-wrap'>
                     <table className='table-auto w-full border-none mx-auto text-xs'>
 
                       <thead>
@@ -753,7 +753,7 @@ export default class AppUsersTable extends Component {
                     </a>
 
                     {showDeletedUsers &&
-                      <div className='text-center overflow-scroll whitespace-no-wrap'>
+                      <div className='text-center overflow-auto whitespace-no-wrap'>
                         <table className='mt-6 table-auto w-full border-none mx-auto text-xs'>
 
                           <thead>
