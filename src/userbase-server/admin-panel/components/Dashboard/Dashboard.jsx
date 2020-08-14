@@ -258,7 +258,7 @@ export default class Dashboard extends Component {
                   </div>
 
                   {showDeletedApps &&
-                    <div className='text-center overflow-scroll whitespace-no-wrap'>
+                    <div className='text-center overflow-auto whitespace-no-wrap'>
                       <table className='mt-6 table-auto w-full border-none mx-auto text-xs'>
 
                         <thead>
