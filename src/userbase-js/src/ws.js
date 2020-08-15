@@ -193,7 +193,7 @@ class Connection {
                 const plaintextString = LZString.decompress(compressedString)
                 const bundle = JSON.parse(plaintextString)
 
-                database.applyBundle(bundle, bundleSeqNo)
+                await database.applyBundle(bundle, bundleSeqNo)
               }
 
               const newTransactions = message.transactionLog

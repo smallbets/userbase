@@ -1,4 +1,10 @@
+## [2.1.1] - 2020-08-15
+### Fixed
+- getFile() works after user has inserted many items into a database instead of throwing FileNotFound.
+
 ## [2.1.0] - 2020-08-12
+Note: Deprecated. Please use the latest version.
+
 ### Added
 - uploadFile() to enable file storage.
 - getFile() to enable retrieving files.
