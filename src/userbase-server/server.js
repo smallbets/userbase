@@ -15,7 +15,7 @@ import appController from './app'
 import connections from './ws'
 import statusCodes from './statusCodes'
 import responseBuilder from './responseBuilder'
-import { trimReq } from './utils'
+import { trimReq, truncateSessionId } from './utils'
 import stripe from './stripe'
 
 const adminPanelDir = '/admin-panel/dist'
@@ -87,12 +87,14 @@ async function start(express, app, userbaseConfig = {}) {
       const appId = res.locals.app['app-id']
 
       const clientId = req.query.clientId
+      const userbaseJsVersion = req.query.userbaseJsVersion
+      const sessionId = req.query.sessionId && truncateSessionId(req.query.sessionId)
 
       const conn = connections.register(userId, ws, clientId, adminId, appId)
       if (conn) {
         const connectionId = conn.id
 
-        const connectionLogObject = { userId, connectionId, adminId, appId, route: 'Connection' }
+        const connectionLogObject = { userId, connectionId, adminId, appId, userbaseJsVersion, sessionId, route: 'Connection' }
         const validationMessage = userController.sendConnection(connectionLogObject, ws, res.locals.user)
 
         ws.on('close', () => connections.close(conn))
@@ -104,7 +106,7 @@ async function start(express, app, userbaseConfig = {}) {
           let logChildObject
 
           try {
-            logChildObject = { userId, connectionId, adminId, clientId, appId, size: msg.length || msg.byteLength }
+            logChildObject = { userId, connectionId, adminId, clientId, appId, userbaseJsVersion, sessionId, size: msg.length || msg.byteLength }
 
             if (msg.length > ONE_MB || msg.byteLength > ONE_MB) {
               logger.child(logChildObject).warn('Received large message')
