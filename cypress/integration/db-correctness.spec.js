@@ -1,8 +1,9 @@
-import { getRandomString, getStringOfByteLength, wait } from '../support/utils'
+import { getRandomString, getStringOfByteLength, wait, readBlobAsText } from '../support/utils'
 
 const beforeEachHook = function () {
   cy.visit('./cypress/integration/index.html').then(async function (win) {
     expect(win).to.have.property('userbase')
+    this.currentTest.win = win
     const userbase = win.userbase
     this.currentTest.userbase = userbase
 
@@ -2144,6 +2145,100 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
+      })
+
+      // must check the server to verify reading bundle from S3 and not DDB
+      it('Upload file, read from bundled transaction log, then read file', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        // upload file
+        const testItem = 'test-item'
+        const testItemId = 'test-id'
+        const testFileName = 'test-file-name.txt'
+        const testFileType = 'text/plain'
+        const testFileContent = 1
+        const testFile = new this.test.win.File([testFileContent], testFileName, { type: testFileType })
+
+        await this.test.userbase.insertItem({ databaseName, itemId: testItemId, item: testItem })
+        await this.test.userbase.uploadFile({ databaseName, itemId: testItemId, file: testFile })
+
+        // trigger bundle
+        const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
+        const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
+        expect(numItemsNeededToTriggerBundle, 'items needed to trigger bundle').to.be.lte(10) // max operations allowed in tx
+
+        const largeString = getStringOfByteLength(ITEM_SIZE)
+        const operations = []
+        for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
+          operations.push({ command: 'Insert', item: largeString, itemId: i.toString() })
+        }
+
+        await this.test.userbase.putTransaction({ databaseName, operations })
+
+        // give client sufficient time to finish the bundle
+        const THREE_SECONDS = 3 * 1000
+        await wait(THREE_SECONDS)
+        await this.test.userbase.signOut()
+        await this.test.userbase.signIn({ username: this.test.username, password: this.test.password, rememberMe: 'none' })
+
+        let changeHandlerCallCount = 0
+        let successful
+        let fileId
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (changeHandlerCallCount === 1) {
+            const expectedItemsCount = numItemsNeededToTriggerBundle + 1
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(expectedItemsCount)
+
+            // check item with the file
+            const itemWithFile = items[0]
+            expect(itemWithFile, 'item with file in items array passed to changeHandler').to.be.an('object').that.has.all.keys(
+              'item', 'itemId', 'fileName', 'fileSize', 'fileId'
+            )
+
+            expect(itemWithFile, 'item in items array passed to changeHandler').to.deep.equal({
+              item: testItem,
+              itemId: testItemId,
+              fileName: testFileName,
+              fileSize: testFile.size,
+              fileId: itemWithFile.fileId
+            })
+            expect(itemWithFile.fileId, 'file id').to.be.a.string
+            fileId = itemWithFile.fileId
+
+            // check the rest of the items
+            for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
+              const insertedItem = items[i + 1]
+              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+
+              const { item, itemId } = insertedItem
+              expect(item, 'item in items array passed to changeHandler').to.equal(largeString)
+              expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(i.toString())
+            }
+
+            successful = true
+          }
+        }
+
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+        expect(successful, 'successful state').to.be.true
+
+        // get file
+        const result = await this.test.userbase.getFile({ databaseName, fileId })
+        expect(result, 'result keys').to.have.keys(['file'])
+
+        const { file } = result
+        expect(file.name, 'file name').to.equal(testFileName)
+        expect(file.type, 'file type').to.equal(testFileType)
+        expect(file.size, 'file size').to.equal(testFile.size)
+
+        const text = await readBlobAsText(file)
+        expect(text, 'file text').to.equal(testFileContent.toString())
 
         await this.test.userbase.deleteUser()
       })

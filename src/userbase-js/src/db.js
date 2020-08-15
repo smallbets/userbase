@@ -160,7 +160,7 @@ class Database {
     }
   }
 
-  applyBundle(bundle, bundleSeqNo) {
+  async applyBundle(bundle, bundleSeqNo) {
     // client must only apply bundle when opening state
     if (this.lastSeqNo !== 0) {
       console.warn(`Client attempted to apply bundle when last seq no is ${this.lastSeqNo}`)
@@ -171,6 +171,11 @@ class Database {
       const itemIndex = bundle.itemsIndex[i]
       const itemId = bundle.itemsIndex[i].itemId
       const item = bundle.items[itemId]
+
+      if (item.file && item.file.fileEncryptionKeyString) {
+        item.file.fileEncryptionKey = await crypto.aesGcm.getKeyFromKeyString(item.file.fileEncryptionKeyString)
+        this.fileIds[item.file.fileId] = itemId
+      }
 
       this.items[itemId] = item
       this.itemsIndex.insert(itemIndex)
@@ -248,6 +253,7 @@ class Database {
       case 'UploadFile': {
         const fileEncryptionKeyRaw = await crypto.aesGcm.decrypt(key, base64.decode(transaction.fileEncryptionKey))
         const fileEncryptionKey = await crypto.aesGcm.getKeyFromRawKey(fileEncryptionKeyRaw)
+        const fileEncryptionKeyString = await crypto.aesGcm.getKeyStringFromKey(fileEncryptionKey)
         const fileMetadata = await crypto.aesGcm.decryptJson(fileEncryptionKey, transaction.fileMetadata)
 
         const itemId = fileMetadata.itemId
@@ -261,7 +267,7 @@ class Database {
           return transactionCode
         }
 
-        return this.applyUploadFile(itemId, fileVersion, fileEncryptionKey, fileName, fileId, fileSize, fileType)
+        return this.applyUploadFile(itemId, fileVersion, fileEncryptionKey, fileEncryptionKeyString, fileName, fileId, fileSize, fileType)
       }
 
       case 'Rollback': {
@@ -328,13 +334,14 @@ class Database {
     return success
   }
 
-  applyUploadFile(itemId, __v, fileEncryptionKey, fileName, fileId, fileSize, fileType) {
+  applyUploadFile(itemId, __v, fileEncryptionKey, fileEncryptionKeyString, fileName, fileId, fileSize, fileType) {
     this.items[itemId].file = {
       fileName,
       fileId,
       fileSize,
       fileType,
       fileEncryptionKey,
+      fileEncryptionKeyString,
       __v,
     }
     this.fileIds[fileId] = itemId

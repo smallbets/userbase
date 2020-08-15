@@ -100,7 +100,7 @@ class Connection {
         10000
       )
 
-      const url = `${getWsUrl(config.getEndpoint())}/api?appId=${config.getAppId()}&sessionId=${session.sessionId}&clientId=${clientId}`
+      const url = `${getWsUrl(config.getEndpoint())}/api?appId=${config.getAppId()}&sessionId=${session.sessionId}&clientId=${clientId}&userbaseJsVersion=${config.USERBASE_JS_VERSION}`
 
       const ws = new WebSocket(url)
 
@@ -193,7 +193,7 @@ class Connection {
                 const plaintextString = LZString.decompress(compressedString)
                 const bundle = JSON.parse(plaintextString)
 
-                database.applyBundle(bundle, bundleSeqNo)
+                await database.applyBundle(bundle, bundleSeqNo)
               }
 
               const newTransactions = message.transactionLog

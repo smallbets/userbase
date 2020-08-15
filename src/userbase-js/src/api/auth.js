@@ -52,7 +52,7 @@ const signUp = (username, passwordToken, ecKeyData, passwordSalts, keySalts, ema
     const xhr = new XMLHttpRequest()
 
     const method = 'POST'
-    const url = `${config.getEndpoint()}/api/auth/sign-up?appId=${config.getAppId()}`
+    const url = `${config.getEndpoint()}/api/auth/sign-up?appId=${config.getAppId()}&userbaseJsVersion=${config.USERBASE_JS_VERSION}`
     const data = JSON.stringify({
       username,
       passwordToken,
@@ -78,7 +78,7 @@ const getPasswordSalts = (username) => {
     const xhr = new XMLHttpRequest()
 
     const method = 'GET'
-    const url = `${config.getEndpoint()}/api/auth/get-password-salts?appId=${config.getAppId()}&username=${encodeURIComponent(username)}`
+    const url = `${config.getEndpoint()}/api/auth/get-password-salts?appId=${config.getAppId()}&username=${encodeURIComponent(username)}&userbaseJsVersion=${config.USERBASE_JS_VERSION}`
 
     xhr.open(method, url)
     xhr.send()
@@ -92,7 +92,7 @@ const signIn = async (username, passwordToken, sessionLength) => {
     const xhr = new XMLHttpRequest()
 
     const method = 'POST'
-    const url = `${config.getEndpoint()}/api/auth/sign-in?appId=${config.getAppId()}`
+    const url = `${config.getEndpoint()}/api/auth/sign-in?appId=${config.getAppId()}&userbaseJsVersion=${config.USERBASE_JS_VERSION}`
     const data = JSON.stringify({
       username,
       passwordToken,
@@ -112,7 +112,7 @@ const signInWithSession = (sessionId, sessionLength) => {
     const xhr = new XMLHttpRequest()
 
     const method = 'POST'
-    const url = `${config.getEndpoint()}/api/auth/sign-in-with-session?appId=${config.getAppId()}&sessionId=${sessionId}`
+    const url = `${config.getEndpoint()}/api/auth/sign-in-with-session?appId=${config.getAppId()}&sessionId=${sessionId}&userbaseJsVersion=${config.USERBASE_JS_VERSION}`
     const data = JSON.stringify({
       sessionLength,
     })
@@ -130,7 +130,7 @@ const getServerPublicKey = async () => {
     const xhr = new XMLHttpRequest()
 
     const method = 'GET'
-    const url = `${config.getEndpoint()}/api/auth/server-public-key`
+    const url = `${config.getEndpoint()}/api/auth/server-public-key?&userbaseJsVersion=${config.USERBASE_JS_VERSION}`
     const responseType = 'arraybuffer'
 
     xhr.open(method, url)
@@ -146,7 +146,7 @@ const getPublicKey = (username) => {
     const xhr = new XMLHttpRequest()
 
     const method = 'GET'
-    const url = `${config.getEndpoint()}/api/public-key?appId=${config.getAppId()}&username=${encodeURIComponent(username)}`
+    const url = `${config.getEndpoint()}/api/public-key?appId=${config.getAppId()}&username=${encodeURIComponent(username)}&userbaseJsVersion=${config.USERBASE_JS_VERSION}`
 
     xhr.open(method, url)
     xhr.send()
