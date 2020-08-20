@@ -3,7 +3,7 @@
 </p>
 
 <p align="center" >
-  <i>August 12, 2020</i>
+  <i>August 20, 2020</i>
 </p>
 
 # Intro
