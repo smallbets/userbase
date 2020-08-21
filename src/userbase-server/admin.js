@@ -137,7 +137,7 @@ async function createAdmin(email, password, fullName, adminId = uuidv4(), receiv
 
     return adminId
   } catch (e) {
-    if (e.data === 'Admin already exists') throw e
+    if (e.data && e.status) throw e
 
     logger.error(`Failed to create admin with ${e}`)
     throw {
@@ -222,10 +222,17 @@ const _validateAdminPassword = async (password, admin) => {
         }
       }
     }
-  } catch {
-    throw {
-      status: statusCodes['Unauthorized'],
-      error: { message: 'Incorrect password' }
+  } catch (e) {
+    if (e.status && e.data) {
+      throw {
+        status: e.status,
+        error: { message: e.data }
+      }
+    } else {
+      throw {
+        status: statusCodes['Unauthorized'],
+        error: { message: 'Incorrect password' }
+      }
     }
   }
 }
@@ -279,8 +286,8 @@ exports.signInAdmin = async function (req, res) {
       await _validateAdminPassword(password, admin)
     } catch (e) {
       return res
-        .status(statusCodes['Unauthorized'])
-        .send('Incorrect password')
+        .status(e.status)
+        .send(e.error.message)
     }
 
     const sessionId = await createSession(admin['admin-id'])
@@ -719,11 +726,19 @@ exports.changePassword = async function (req, res) {
       await _validateAdminPassword(currentPassword, admin)
     } catch (e) {
       return res
-        .status(statusCodes['Unauthorized'])
-        .send('Incorrect password')
+        .status(e.status)
+        .send(e.error.message)
     }
 
-    await _changePassword(admin, adminId, newPassword)
+    try {
+      await _changePassword(admin, adminId, newPassword)
+    } catch (e) {
+      if (e.status && e.data) {
+        return res.status(e.status).send(e.data)
+      } else {
+        throw e
+      }
+    }
 
     return res.end()
   } catch (e) {
@@ -1005,8 +1020,6 @@ exports.subscribeToStoragePlan = async function (req, res) {
     const stripeCustomerId = admin['stripe-customer-id']
     logChildObject = { adminId, stripeCustomerId }
     logger.child(logChildObject).info('Subscribing to Stripe storage plan')
-
-    logger.child(logChildObject).warn('howdy')
 
     if (admin['stripe-saas-subscription-status'] !== 'active' || admin['stripe-cancel-saas-subscription-at']) throw {
       status: statusCodes['Payment Required'],
