@@ -282,9 +282,18 @@ const _queryUserDatabases = async (userId, nextPageToken) => {
   return userDbsResponse
 }
 
-exports.getDatabases = async function (logChildObject, userId, nextPageToken) {
+exports.getDatabases = async function (logChildObject, userId, nextPageToken, databaseId, dbNameHash) {
   try {
-    const userDbsResponse = await _queryUserDatabases(userId, nextPageToken)
+    let userDbsResponse
+    if (!databaseId && !dbNameHash) {
+      userDbsResponse = await _queryUserDatabases(userId, nextPageToken, databaseId, dbNameHash)
+    } else if (databaseId) {
+      const userDb = await await _getUserDatabaseByUserIdAndDatabaseId(userId, databaseId)
+      userDbsResponse = { Items: userDb ? [userDb] : [] }
+    } else {
+      const userDb = await _getUserDatabase(userId, dbNameHash)
+      userDbsResponse = { Items: userDb ? [userDb] : [] }
+    }
     const userDbs = userDbsResponse.Items
 
     const [databases, senders] = await Promise.all([
