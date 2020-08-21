@@ -1181,63 +1181,230 @@ describe('DB Tests', function () {
   })
 
   describe('Get Databases', function () {
-    beforeEach(function () { beforeEachHook() })
+    describe('Success Tests', function () {
 
-    it('Get 0 Databases', async function () {
-      const databasesResult = await this.test.userbase.getDatabases()
-      expect(databasesResult, 'result structure').to.have.key('databases')
-      expect(databasesResult.databases, 'databases result').to.be.an('array').that.has.lengthOf(0)
+      beforeEach(function () { beforeEachHook() })
+
+      it('Get 0 Databases', async function () {
+        const databasesResult = await this.test.userbase.getDatabases()
+        expect(databasesResult, 'result structure').to.have.key('databases')
+        expect(databasesResult.databases, 'databases result').to.be.an('array').that.has.lengthOf(0)
+      })
+
+      it('Get 1 Database', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        const databasesResult = await this.test.userbase.getDatabases()
+
+        expect(databasesResult, 'result structure').to.have.key('databases')
+        expect(databasesResult.databases, 'databases result').to.be.an('array').that.has.lengthOf(1)
+
+        const database = databasesResult.databases[0]
+        expect(database, 'database name').to.deep.equal({
+          databaseName,
+          isOwner: true,
+          readOnly: false,
+          resharingAllowed: true,
+          users: []
+        })
+
+        await this.test.userbase.deleteUser()
+      })
+
+      it('Get 10 Databases', async function () {
+        const numDatabases = 10
+        const createdDatabases = {}
+        const openDatabases = []
+        for (let i = 0; i < numDatabases; i++) {
+          openDatabases.push(this.test.userbase.openDatabase({ databaseName: databaseName + i, changeHandler: () => { } }))
+          createdDatabases[databaseName + i] = true
+        }
+        await Promise.all(openDatabases)
+
+        const databasesResult = await this.test.userbase.getDatabases()
+
+        expect(databasesResult, 'result structure').to.have.key('databases')
+        expect(databasesResult.databases, 'databases result').to.be.an('array').that.has.lengthOf(numDatabases)
+
+        for (let i = 0; i < numDatabases; i++) {
+          const database = databasesResult.databases[i]
+
+          expect(database, 'database keys').to.have.keys(['databaseName', 'isOwner', 'readOnly', 'resharingAllowed', 'users'])
+          const { isOwner, readOnly, resharingAllowed, users } = database
+          expect(isOwner, 'isOwner').to.be.true
+          expect(readOnly, 'readOnly').to.be.false
+          expect(resharingAllowed, 'resharingAllowe').to.be.true
+          expect(users, 'users').to.deep.equal([])
+
+          const databaseName = database.databaseName
+
+          expect(createdDatabases[databaseName], 'created database and was not already found').to.be.true
+          createdDatabases[databaseName] = false
+        }
+
+        await this.test.userbase.deleteUser()
+      })
+
+      it('Get 1 Database using database name', async function () {
+        await Promise.all([
+          this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } }),
+
+          // spice test up with an extra database
+          this.test.userbase.openDatabase({ databaseName: databaseName + '-1', changeHandler: () => { } }),
+        ])
+
+        const databasesResult = await this.test.userbase.getDatabases({ databaseName })
+
+        expect(databasesResult, 'result structure').to.have.key('databases')
+        expect(databasesResult.databases, 'databases result').to.be.an('array').that.has.lengthOf(1)
+
+        const database = databasesResult.databases[0]
+        expect(database, 'database name').to.deep.equal({
+          databaseName,
+          isOwner: true,
+          readOnly: false,
+          resharingAllowed: true,
+          users: []
+        })
+
+        await this.test.userbase.deleteUser()
+      })
+
+      it('Get 1 Database using database ID', async function () {
+        // User A
+        const { username, password } = this.test
+
+        // User B user must share database with User A
+        await this.test.userbase.signOut()
+        const usernameB = 'test-user-' + getRandomString()
+        const passwordB = getRandomString()
+
+        await this.test.userbase.signUp({
+          username: usernameB,
+          password: passwordB,
+          rememberMe: 'none'
+        })
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } }),
+          await this.test.userbase.shareDatabase({ username, databaseName, requireVerified: false })
+        await this.test.userbase.signOut()
+
+        await this.test.userbase.signIn({ username, password, rememberMe: 'none' })
+
+        // first call getDatabases() to find the databaseId
+        const initDatabasesResult = await this.test.userbase.getDatabases()
+        const databaseId = initDatabasesResult.databases[0].databaseId
+
+        // open a database to spice up test
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        // now call getDatabases() using databaseId
+        const databasesResult = await this.test.userbase.getDatabases({ databaseId })
+
+        expect(databasesResult, 'result structure').to.have.key('databases')
+        expect(databasesResult.databases, 'databases result').to.be.an('array').that.has.lengthOf(1)
+
+        const database = databasesResult.databases[0]
+        expect(database, 'database name').to.deep.equal({
+          databaseName,
+          databaseId,
+          isOwner: false,
+          readOnly: true,
+          resharingAllowed: false,
+          receivedFromUsername: usernameB,
+          users: [{
+            username: usernameB,
+            isOwner: true,
+            readOnly: false,
+            resharingAllowed: true,
+          }]
+        })
+
+        // clean up
+        await this.test.userbase.deleteUser()
+        await this.test.userbase.signIn({ username: usernameB, password: passwordB, rememberMe: 'none' })
+        await this.test.userbase.deleteUser()
+      })
+
+      it('Get 0 Databases using database name', async function () {
+        const databasesResult = await this.test.userbase.getDatabases({ databaseName })
+
+        expect(databasesResult, 'result structure').to.have.key('databases')
+        expect(databasesResult.databases, 'databases result').to.be.an('array').that.has.lengthOf(0)
+
+        await this.test.userbase.deleteUser()
+      })
+
+      it('Get 0 Databases using database ID', async function () {
+        const databaseId = '3a041059-5809-4d90-bc57-8686e3c8ba8e' // made up
+        const databasesResult = await this.test.userbase.getDatabases({ databaseId })
+
+        expect(databasesResult, 'result structure').to.have.key('databases')
+        expect(databasesResult.databases, 'databases result').to.be.an('array').that.has.lengthOf(0)
+
+        await this.test.userbase.deleteUser()
+      })
+
     })
 
-    it('Get 1 Database', async function () {
-      await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+    describe('Failure Tests', function () {
+      beforeEach(function () { beforeEachHook() })
 
-      const databasesResult = await this.test.userbase.getDatabases()
+      it('Params as false', async function () {
+        try {
+          await this.test.userbase.getDatabases(false)
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ParamsMustBeObject')
+          expect(e.message, 'error message').to.equal('Parameters passed to function must be placed inside an object.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
 
-      expect(databasesResult, 'result structure').to.have.key('databases')
-      expect(databasesResult.databases, 'databases result').to.be.an('array').that.has.lengthOf(1)
+      it('Database name as false', async function () {
+        try {
+          await this.test.userbase.getDatabases({ databaseName: false })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('DatabaseNameMustBeString')
+          expect(e.message, 'error message').to.equal('Database name must be a string.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
 
-      const database = databasesResult.databases[0]
-      expect(database, 'database name').to.deep.equal({
-        databaseName,
-        isOwner: true,
-        readOnly: false,
-        resharingAllowed: true,
-        users: []
+      it('Database name as null', async function () {
+        try {
+          await this.test.userbase.getDatabases({ databaseName: null })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('DatabaseNameMustBeString')
+          expect(e.message, 'error message').to.equal('Database name must be a string.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Database name as 0 length string', async function () {
+        try {
+          await this.test.userbase.getDatabases({ databaseName: '' })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('DatabaseNameCannotBeBlank')
+          expect(e.message, 'error message').to.equal('Database name cannot be blank.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+      })
+
+      it('Database name too long', async function () {
+        try {
+          await this.test.userbase.getDatabases({ databaseName: 'a'.repeat(51) })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('DatabaseNameTooLong')
+          expect(e.message, 'error message').to.equal('Database name cannot be more than 50 characters.')
+          expect(e.status, 'error status').to.equal(400)
+        }
       })
     })
 
-    it('Get 10 Databases', async function () {
-      const numDatabases = 10
-      const createdDatabases = {}
-      const openDatabases = []
-      for (let i = 0; i < numDatabases; i++) {
-        openDatabases.push(this.test.userbase.openDatabase({ databaseName: databaseName + i, changeHandler: () => { } }))
-        createdDatabases[databaseName + i] = true
-      }
-      await Promise.all(openDatabases)
-
-      const databasesResult = await this.test.userbase.getDatabases()
-
-      expect(databasesResult, 'result structure').to.have.key('databases')
-      expect(databasesResult.databases, 'databases result').to.be.an('array').that.has.lengthOf(numDatabases)
-
-      for (let i = 0; i < numDatabases; i++) {
-        const database = databasesResult.databases[i]
-
-        expect(database, 'database keys').to.have.keys(['databaseName', 'isOwner', 'readOnly', 'resharingAllowed', 'users'])
-        const { isOwner, readOnly, resharingAllowed, users } = database
-        expect(isOwner, 'isOwner').to.be.true
-        expect(readOnly, 'readOnly').to.be.false
-        expect(resharingAllowed, 'resharingAllowe').to.be.true
-        expect(users, 'users').to.deep.equal([])
-
-        const databaseName = database.databaseName
-
-        expect(createdDatabases[databaseName], 'created database and was not already found').to.be.true
-        createdDatabases[databaseName] = false
-      }
-    })
   })
 
 })

@@ -1537,8 +1537,10 @@ const _buildDatabaseResult = async (db, encryptionKey, ecdhPrivateKey, verifiedU
   return result
 }
 
-const getDatabases = async () => {
+const getDatabases = async (params) => {
   try {
+    if (params !== undefined) _validateDbInput(params)
+    if (ws.reconnecting) throw new errors.Reconnecting
     if (!ws.keys.init) throw new errors.UserNotSignedIn
 
     const { encryptionKey, ecdhPrivateKey } = ws.keys
@@ -1547,7 +1549,12 @@ const getDatabases = async () => {
     try {
       const databases = []
       const action = 'GetDatabases'
-      let [databasesResponse, verifiedUsers] = await Promise.all([ws.request(action), _openVerifiedUsersDatabase()])
+      const requestParams = params && {
+        databaseId: params.databaseId,
+        dbNameHash: params.databaseName && await crypto.hmac.signString(ws.keys.hmacKey, params.databaseName)
+      }
+
+      let [databasesResponse, verifiedUsers] = await Promise.all([ws.request(action, requestParams), _openVerifiedUsersDatabase()])
       let databaseResults = await Promise.all(databasesResponse.data.databases.map(db => _buildDatabaseResult(db, encryptionKey, ecdhPrivateKey, verifiedUsers, username)))
       databases.push(...databaseResults)
 
@@ -1567,6 +1574,15 @@ const getDatabases = async () => {
   } catch (e) {
 
     switch (e.name) {
+      case 'ParamsMustBeObject':
+      case 'DatabaseNameMustBeString':
+      case 'DatabaseNameCannotBeBlank':
+      case 'DatabaseNameTooLong':
+      case 'DatabaseNameRestricted':
+      case 'DatabaseIdMustBeString':
+      case 'DatabaseIdCannotBeBlank':
+      case 'DatabaseIdInvalidLength':
+      case 'DatabaseIdNotAllowed':
       case 'UserNotSignedIn':
       case 'ServiceUnavailable':
         throw e

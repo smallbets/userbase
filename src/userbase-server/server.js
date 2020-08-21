@@ -215,7 +215,7 @@ async function start(express, app, userbaseConfig = {}) {
                     break
                   }
                   case 'GetDatabases': {
-                    response = await db.getDatabases(logChildObject, res.locals.user['user-id'], params.nextPageToken)
+                    response = await db.getDatabases(logChildObject, res.locals.user['user-id'], params.nextPageToken, params.databaseId, params.dbNameHash)
                     break
                   }
                   case 'GetDatabaseUsers': {
