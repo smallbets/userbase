@@ -1,3 +1,7 @@
+## [2.1.2] - 2020-08-21
+### Added
+- getDatabases() now accepts `databaseName` or `databaseId` as a parameter to filter the result.
+
 ## [2.1.1] - 2020-08-15
 ### Fixed
 - getFile() works after user has inserted many items into a database instead of throwing FileNotFound.

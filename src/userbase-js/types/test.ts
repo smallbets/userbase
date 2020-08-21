@@ -136,6 +136,12 @@ openDatabase({ databaseName: 'tdb' })
 getDatabases()
 
 // $ExpectType Promise<void>
+getDatabases({ databaseName: 'tdb' })
+
+// $ExpectType Promise<void>
+getDatabases({ databaseId: 'tid' })
+
+// $ExpectType Promise<void>
 insertItem({ databaseName: 'tdb', item: { name: 'tname' } })
 
 // $ExpectType Promise<void>
