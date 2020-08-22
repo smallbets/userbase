@@ -335,6 +335,9 @@ class Database {
   }
 
   applyUploadFile(itemId, __v, fileEncryptionKey, fileEncryptionKeyString, fileName, fileId, fileSize, fileType) {
+    const existingFile = this.items[itemId].file
+    if (existingFile) delete this.fileIds[existingFile.fileId]
+
     this.items[itemId].file = {
       fileName,
       fileId,

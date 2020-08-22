@@ -1178,6 +1178,45 @@ describe('File Storage', function () {
         await this.test.userbase.deleteUser()
       })
 
+      it('File not found after overwriting', async function () {
+        const testItem = 'test-item'
+        const testItemId = 'test-id'
+
+        const testFileName = 'test-file-name.txt'
+        const testFileName2 = 2 + 'test-file-name.txt'
+
+        const testFileType = 'text/plain'
+
+        const testFile1 = new this.test.win.File([1], testFileName, { type: testFileType })
+        const testFile2 = new this.test.win.File([2], testFileName2, { type: testFileType })
+
+        let fileId
+        let changeHandlerCallCount = 0
+        const changeHandler = function (items) {
+          if (changeHandlerCallCount === 2) {
+            fileId = items[0].fileId
+          }
+
+          changeHandlerCallCount += 1
+        }
+
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+        await this.test.userbase.insertItem({ databaseName, itemId: testItemId, item: testItem })
+        await this.test.userbase.uploadFile({ databaseName, itemId: testItemId, file: testFile1 })
+        await this.test.userbase.uploadFile({ databaseName, itemId: testItemId, file: testFile2 })
+
+        try {
+          await this.test.userbase.getFile({ databaseName, fileId })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('FileNotFound')
+          expect(e.message, 'error message').to.equal('File not found.')
+          expect(e.status, 'error status').to.equal(404)
+        }
+
+        await this.test.userbase.deleteUser()
+      })
+
       it('Upload files concurrently', async function () {
         const testItem = 'test-item'
         const testItemId = 'test-id'

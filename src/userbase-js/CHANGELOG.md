@@ -1,3 +1,7 @@
+## [2.1.3] - 2020-08-22
+### Fixed
+- getFile() throws FileNotFound when user attempts to get a file that has been overwritten, rather than ServiceUnavailable.
+
 ## [2.1.2] - 2020-08-21
 ### Added
 - getDatabases() now accepts `databaseName` or `databaseId` as a parameter to filter the result.
