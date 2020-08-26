@@ -130,69 +130,63 @@ async function start(express, app, userbaseConfig = {}) {
             logChildObject.action = action
             logger.child(logChildObject).info('Received WebSocket request')
 
-            if (action !== 'UploadFileChunk' && action !== 'ReadFileChunk' // enforce separate rate limiter for these routes
-              && conn.rateLimiter.atCapacity()
-            ) {
+            if (action === 'SignOut') {
+              response = await userController.signOut(params.sessionId)
+            } else if (!conn.keyValidated) {
 
-              response = responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
+              switch (action) {
+                case 'ValidateKey': {
+                  response = await userController.validateKey(
+                    validationMessage,
+                    params.validationMessage,
+                    conn,
+                    res.locals.admin,
+                    res.locals.app,
+                    res.locals.user,
+                    params.ecKeyData,
+                  )
+                  break
+                }
+                default: {
+                  response = responseBuilder.errorResponse(statusCodes['Unauthorized'], 'Key not validated')
+                }
+              }
 
             } else {
 
-              if (action === 'SignOut') {
-                response = await userController.signOut(params.sessionId)
-              } else if (!conn.keyValidated) {
-
-                switch (action) {
-                  case 'ValidateKey': {
-                    response = await userController.validateKey(
-                      validationMessage,
-                      params.validationMessage,
-                      conn,
-                      res.locals.admin,
-                      res.locals.app,
-                      res.locals.user,
-                      params.ecKeyData,
-                    )
-                    break
-                  }
-                  default: {
-                    response = responseBuilder.errorResponse(statusCodes['Unauthorized'], 'Key not validated')
-                  }
+              switch (action) {
+                case 'ValidateKey': {
+                  response = responseBuilder.errorResponse(statusCodes['Bad Request'], 'Already validated key')
+                  break
                 }
-
-              } else {
-
-                switch (action) {
-                  case 'ValidateKey': {
-                    response = responseBuilder.errorResponse(statusCodes['Bad Request'], 'Already validated key')
-                    break
-                  }
-                  case 'UpdateUser': {
-                    response = await userController.updateUser(
-                      connectionId,
-                      adminId,
-                      userId,
-                      params.username,
-                      params.currentPasswordToken,
-                      params.passwordToken,
-                      params.passwordSalts,
-                      params.email,
-                      params.profile,
-                      params.passwordBasedBackup
-                    )
-                    break
-                  }
-                  case 'DeleteUser': {
-                    response = await userController.deleteUserController(
-                      userId,
-                      adminId,
-                      res.locals.app['app-name'],
-                      res.locals.admin['stripe-account-id']
-                    )
-                    break
-                  }
-                  case 'OpenDatabase': {
-                    response = await db.openDatabase(
+                case 'UpdateUser': {
+                  response = await userController.updateUser(
+                    connectionId,
+                    adminId,
+                    userId,
+                    params.username,
+                    params.currentPasswordToken,
+                    params.passwordToken,
+                    params.passwordSalts,
+                    params.email,
+                    params.profile,
+                    params.passwordBasedBackup
+                  )
+                  break
+                }
+                case 'DeleteUser': {
+                  response = await userController.deleteUserController(
+                    userId,
+                    adminId,
+                    res.locals.app['app-name'],
+                    res.locals.admin['stripe-account-id']
+                  )
+                  break
+                }
+                case 'OpenDatabase': {
+                  response = conn.rateLimiter.atCapacity()
+                    ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
+                    : await db.openDatabase(
                       res.locals.user,
                       res.locals.app,
                       res.locals.admin,
@@ -201,10 +195,12 @@ async function start(express, app, userbaseConfig = {}) {
                       params.newDatabaseParams,
                       params.reopenAtSeqNo
                     )
-                    break
-                  }
-                  case 'OpenDatabaseByDatabaseId': {
-                    response = await db.openDatabaseByDatabaseId(
+                  break
+                }
+                case 'OpenDatabaseByDatabaseId': {
+                  response = conn.rateLimiter.atCapacity()
+                    ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
+                    : await db.openDatabaseByDatabaseId(
                       res.locals.user,
                       res.locals.app,
                       res.locals.admin,
@@ -212,43 +208,45 @@ async function start(express, app, userbaseConfig = {}) {
                       params.databaseId,
                       params.reopenAtSeqNo
                     )
-                    break
-                  }
-                  case 'GetDatabases': {
-                    response = await db.getDatabases(logChildObject, res.locals.user['user-id'], params.nextPageToken, params.databaseId, params.dbNameHash)
-                    break
-                  }
-                  case 'GetDatabaseUsers': {
-                    response = await db.getDatabaseUsers(
-                      logChildObject,
-                      res.locals.user['user-id'],
-                      params.databaseId,
-                      params.databaseNameHash,
-                      params.nextPageTokenLessThanUserId,
-                      params.nextPageTokenMoreThanUserId,
-                    )
-                    break
-                  }
-                  case 'GetUserDatabaseByDatabaseNameHash': {
-                    response = await db.getUserDatabaseByDbNameHash(
-                      logChildObject,
-                      res.locals.user['user-id'],
-                      params.dbNameHash,
-                    )
-                    break
-                  }
-                  case 'GetUserDatabaseByDatabaseId': {
-                    response = await db.getUserDatabaseByDatabaseId(
-                      logChildObject,
-                      res.locals.user['user-id'],
-                      params.databaseId,
-                    )
-                    break
-                  }
-                  case 'Insert':
-                  case 'Update':
-                  case 'Delete': {
-                    response = await db.doCommand(
+                  break
+                }
+                case 'GetDatabases': {
+                  response = await db.getDatabases(logChildObject, res.locals.user['user-id'], params.nextPageToken, params.databaseId, params.dbNameHash)
+                  break
+                }
+                case 'GetDatabaseUsers': {
+                  response = await db.getDatabaseUsers(
+                    logChildObject,
+                    res.locals.user['user-id'],
+                    params.databaseId,
+                    params.databaseNameHash,
+                    params.nextPageTokenLessThanUserId,
+                    params.nextPageTokenMoreThanUserId,
+                  )
+                  break
+                }
+                case 'GetUserDatabaseByDatabaseNameHash': {
+                  response = await db.getUserDatabaseByDbNameHash(
+                    logChildObject,
+                    res.locals.user['user-id'],
+                    params.dbNameHash,
+                  )
+                  break
+                }
+                case 'GetUserDatabaseByDatabaseId': {
+                  response = await db.getUserDatabaseByDatabaseId(
+                    logChildObject,
+                    res.locals.user['user-id'],
+                    params.databaseId,
+                  )
+                  break
+                }
+                case 'Insert':
+                case 'Update':
+                case 'Delete': {
+                  response = conn.rateLimiter.atCapacity()
+                    ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
+                    : await db.doCommand(
                       action,
                       userId,
                       connectionId,
@@ -256,162 +254,165 @@ async function start(express, app, userbaseConfig = {}) {
                       params.itemKey,
                       params.encryptedItem
                     )
-                    break
-                  }
-                  case 'BatchTransaction': {
-                    response = await db.batchTransaction(userId, connectionId, params.dbId, params.operations)
-                    break
-                  }
-                  case 'Bundle': {
-                    response = await db.bundleTransactionLog(userId, connectionId, params.dbId, params.seqNo, params.bundle)
-                    break
-                  }
-                  case 'GenerateFileId': {
-                    response = await db.generateFileId(logChildObject, userId, connectionId, params.dbId)
-                    break
-                  }
-                  case 'UploadFileChunk': {
-                    response = conn.fileStorageRateLimiter.atCapacity()
-                      ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
-                      : await db.uploadFileChunk(
-                        logChildObject,
-                        userId,
-                        connectionId,
-                        params.dbId,
-                        params.chunkEncryptionKey,
-                        params.chunk,
-                        params.chunkNumber,
-                        params.fileId,
-                      )
-                    break
-                  }
-                  case 'CompleteFileUpload': {
-                    response = await db.completeFileUpload(
+                  break
+                }
+                case 'BatchTransaction': {
+                  response = conn.rateLimiter.atCapacity()
+                    ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
+                    : await db.batchTransaction(userId, connectionId, params.dbId, params.operations)
+                  break
+                }
+                case 'Bundle': {
+                  response = conn.rateLimiter.atCapacity()
+                    ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
+                    : await db.bundleTransactionLog(userId, connectionId, params.dbId, params.seqNo, params.bundle)
+                  break
+                }
+                case 'GenerateFileId': {
+                  response = await db.generateFileId(logChildObject, userId, connectionId, params.dbId)
+                  break
+                }
+                case 'UploadFileChunk': {
+                  response = conn.fileStorageRateLimiter.atCapacity()
+                    ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
+                    : await db.uploadFileChunk(
+                      logChildObject,
+                      userId,
+                      connectionId,
+                      params.dbId,
+                      params.chunkEncryptionKey,
+                      params.chunk,
+                      params.chunkNumber,
+                      params.fileId,
+                    )
+                  break
+                }
+                case 'CompleteFileUpload': {
+                  response = await db.completeFileUpload(
+                    logChildObject,
+                    userId,
+                    connectionId,
+                    params.dbId,
+                    params.fileId,
+                    params.fileEncryptionKey,
+                    params.itemKey,
+                    params.fileMetadata,
+                  )
+                  break
+                }
+                case 'GetChunk': {
+                  response = conn.fileStorageRateLimiter.atCapacity()
+                    ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
+                    : await db.getChunk(
                       logChildObject,
                       userId,
                       connectionId,
                       params.dbId,
                       params.fileId,
-                      params.fileEncryptionKey,
-                      params.itemKey,
-                      params.fileMetadata,
+                      params.chunkNumber,
                     )
-                    break
-                  }
-                  case 'GetChunk': {
-                    response = conn.fileStorageRateLimiter.atCapacity()
-                      ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
-                      : await db.getChunk(
-                        logChildObject,
-                        userId,
-                        connectionId,
-                        params.dbId,
-                        params.fileId,
-                        params.chunkNumber,
-                      )
-                    break
-                  }
-                  case 'GetPasswordSalts': {
-                    response = await userController.getPasswordSaltsByUserId(userId)
-                    break
-                  }
-                  case 'PurchaseSubscription': {
-                    response = await userController.createSubscriptionPaymentSession(
-                      logChildObject,
-                      res.locals.app,
-                      res.locals.admin,
-                      res.locals.user,
-                      params.successUrl,
-                      params.cancelUrl
-                    )
-                    break
-                  }
-                  case 'CancelSubscription': {
-                    response = await userController.cancelSubscription(
-                      logChildObject,
-                      res.locals.app,
-                      res.locals.admin,
-                      res.locals.user
-                    )
-                    break
-                  }
-                  case 'ResumeSubscription': {
-                    response = await userController.resumeSubscription(
-                      logChildObject,
-                      res.locals.app,
-                      res.locals.admin,
-                      res.locals.user
-                    )
-                    break
-                  }
-                  case 'UpdatePaymentMethod': {
-                    response = await userController.updatePaymentMethod(
-                      logChildObject,
-                      res.locals.app,
-                      res.locals.admin,
-                      res.locals.user,
-                      params.successUrl,
-                      params.cancelUrl
-                    )
-                    break
-                  }
-                  case 'ShareDatabase': {
-                    response = await db.shareDatabase(
-                      logChildObject,
-                      res.locals.user,
-                      params.databaseId,
-                      params.databaseNameHash,
-                      params.username,
-                      params.readOnly,
-                      params.resharingAllowed,
-                      params.sharedEncryptedDbKey, // userbase-js >= v2.0.1
-                      params.wrappedDbKey,         // userbase-js  = v2.0.0
-                      params.ephemeralPublicKey,
-                      params.signedEphemeralPublicKey,
-                      params.sentSignature,
-                      params.recipientEcdsaPublicKey,
-                    )
-                    break
-                  }
-                  case 'SaveDatabase': {
-                    response = await db.saveDatabase(
-                      logChildObject,
-                      res.locals.user,
-                      params.databaseNameHash,
-                      params.encryptedDbKey,
-                      params.receivedSignature,
-                    )
-                    break
-                  }
-                  case 'ModifyDatabasePermissions': {
-                    response = await db.modifyDatabasePermissions(
-                      logChildObject,
-                      res.locals.user,
-                      params.databaseId,
-                      params.databaseNameHash,
-                      params.username,
-                      params.readOnly,
-                      params.resharingAllowed,
-                      params.revoke,
-                    )
-                    break
-                  }
-                  case 'VerifyUser': {
-                    response = await db.verifyUser(
-                      logChildObject,
-                      res.locals.user['user-id'],
-                      params.verifiedUsername,
-                      params.ecdsaPublicKeyString,
-                      params.signedVerificationMessage,
-                    )
-                    break
-                  }
-                  default: {
-                    logger
-                      .child(logChildObject)
-                      .error('Received unknown action over WebSocket')
-                    return ws.send(`Received unkown action ${action}`)
-                  }
+                  break
+                }
+                case 'GetPasswordSalts': {
+                  response = await userController.getPasswordSaltsByUserId(userId)
+                  break
+                }
+                case 'PurchaseSubscription': {
+                  response = await userController.createSubscriptionPaymentSession(
+                    logChildObject,
+                    res.locals.app,
+                    res.locals.admin,
+                    res.locals.user,
+                    params.successUrl,
+                    params.cancelUrl
+                  )
+                  break
+                }
+                case 'CancelSubscription': {
+                  response = await userController.cancelSubscription(
+                    logChildObject,
+                    res.locals.app,
+                    res.locals.admin,
+                    res.locals.user
+                  )
+                  break
+                }
+                case 'ResumeSubscription': {
+                  response = await userController.resumeSubscription(
+                    logChildObject,
+                    res.locals.app,
+                    res.locals.admin,
+                    res.locals.user
+                  )
+                  break
+                }
+                case 'UpdatePaymentMethod': {
+                  response = await userController.updatePaymentMethod(
+                    logChildObject,
+                    res.locals.app,
+                    res.locals.admin,
+                    res.locals.user,
+                    params.successUrl,
+                    params.cancelUrl
+                  )
+                  break
+                }
+                case 'ShareDatabase': {
+                  response = await db.shareDatabase(
+                    logChildObject,
+                    res.locals.user,
+                    params.databaseId,
+                    params.databaseNameHash,
+                    params.username,
+                    params.readOnly,
+                    params.resharingAllowed,
+                    params.sharedEncryptedDbKey, // userbase-js >= v2.0.1
+                    params.wrappedDbKey,         // userbase-js  = v2.0.0
+                    params.ephemeralPublicKey,
+                    params.signedEphemeralPublicKey,
+                    params.sentSignature,
+                    params.recipientEcdsaPublicKey,
+                  )
+                  break
+                }
+                case 'SaveDatabase': {
+                  response = await db.saveDatabase(
+                    logChildObject,
+                    res.locals.user,
+                    params.databaseNameHash,
+                    params.encryptedDbKey,
+                    params.receivedSignature,
+                  )
+                  break
+                }
+                case 'ModifyDatabasePermissions': {
+                  response = await db.modifyDatabasePermissions(
+                    logChildObject,
+                    res.locals.user,
+                    params.databaseId,
+                    params.databaseNameHash,
+                    params.username,
+                    params.readOnly,
+                    params.resharingAllowed,
+                    params.revoke,
+                  )
+                  break
+                }
+                case 'VerifyUser': {
+                  response = await db.verifyUser(
+                    logChildObject,
+                    res.locals.user['user-id'],
+                    params.verifiedUsername,
+                    params.ecdsaPublicKeyString,
+                    params.signedVerificationMessage,
+                  )
+                  break
+                }
+                default: {
+                  logger
+                    .child(logChildObject)
+                    .error('Received unknown action over WebSocket')
+                  return ws.send(`Received unkown action ${action}`)
                 }
               }
             }
