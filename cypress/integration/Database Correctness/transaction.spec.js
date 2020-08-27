@@ -807,8 +807,8 @@ describe('DB Correctness Tests', function () {
         expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
       })
 
-      it('50 concurrent Inserts, then 50 concurrent Updates', async function () {
-        const numConcurrentOperations = 50
+      it('30 concurrent Inserts, then 30 concurrent Updates', async function () {
+        const numConcurrentOperations = 30
         expect(numConcurrentOperations % 2).to.be.equal(0)
 
         const accumulatedUpdatedItems = {}
@@ -890,8 +890,8 @@ describe('DB Correctness Tests', function () {
         expect(accumulatorChecked, 'accumulator was checked at least once').to.be.true
       })
 
-      it('50 concurrent Inserts, then 50 concurrent Deletes', async function () {
-        const numConcurrentOperations = 50
+      it('30 concurrent Inserts, then 30 concurrent Deletes', async function () {
+        const numConcurrentOperations = 30
         expect(numConcurrentOperations % 2).to.be.equal(0)
 
         const accumulatedDeletedItems = {}
@@ -966,7 +966,7 @@ describe('DB Correctness Tests', function () {
       })
 
       it('30 concurrent Inserts, then concurrent 15 Updates & 15 Deletes', async function () {
-        const numConcurrentOperations = 30 // lower concurrency than others because extra expects() are slow painting the DOM
+        const numConcurrentOperations = 30
         expect(numConcurrentOperations % 2).to.be.equal(0)
 
         const numUpdates = numConcurrentOperations / 2
@@ -1144,7 +1144,7 @@ describe('DB Correctness Tests', function () {
         expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
       })
 
-      it('25 concurrent Inserts across 6 open databases', async function () {
+      it('30 concurrent Inserts across 6 open databases', async function () {
         const numConcurrentOperations = 25
         const insertedItems = {}
 
