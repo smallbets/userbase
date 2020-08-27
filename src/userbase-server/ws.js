@@ -409,9 +409,10 @@ export default class Connections {
           }
 
           conn.sendPayload(payload, [transaction], database)
-        } else {
-          conn.push(transaction['database-id'])
         }
+
+        // requery DDB anyway in case there are any lingering transactions that need to get pushed out
+        conn.push(transaction['database-id'])
       }
     }
   }
