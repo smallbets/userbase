@@ -68,7 +68,7 @@ class UnverifiedTransaction {
       this.promiseResolve = resolve
       this.promiseReject = reject
 
-      setTimeout(() => { reject(new Error('timeout')) }, 10000)
+      setTimeout(() => { reject(new Error('timeout')) }, 20000)
     })
 
     this.verifyPromise()

@@ -11,7 +11,8 @@ const TRANSACTION_SIZE_BUNDLE_TRIGGER = 1024 * 50 // 50 KB
 
 const FILE_ID_CACHE_LIFE = 60 * 1000 // 60s
 
-const WS_MAX_REQUESTS_PER_SECOND = 25
+const DATA_STORAGE_MAX_REQUESTS_PER_SECOND = 200
+const DATA_STORAGE_TOKENS_REFILLED_PER_SECOND = 20
 
 // caps single file download and upload speed at 100 mb/s
 const FILE_STORAGE_MAX_REQUESTS_PER_SECOND = 200
@@ -59,7 +60,7 @@ class Connection {
     this.databases = {}
     this.keyValidated = false
 
-    this.rateLimiter = new TokenBucket(WS_MAX_REQUESTS_PER_SECOND)
+    this.rateLimiter = new TokenBucket(DATA_STORAGE_MAX_REQUESTS_PER_SECOND, DATA_STORAGE_TOKENS_REFILLED_PER_SECOND)
     this.fileStorageRateLimiter = new TokenBucket(FILE_STORAGE_MAX_REQUESTS_PER_SECOND, FILE_STORAGE_TOKENS_REFILLED_PER_SECOND)
   }
 
