@@ -62,7 +62,7 @@
                 assert(item, 'Hello world!', 'Item is correct')
                 assert(itemId, 'test-id', 'Item ID is correct')
 
-                completedTest(testNum)
+                completedTest(testNum, userbase)
               })
           })
           .catch((e) => console.assert(false, e))
@@ -114,7 +114,7 @@
 
                     console.log(JSON.stringify(database))
 
-                    completedTest(testNum)
+                    completedTest(testNum, userbase)
                   })
               })
           })
@@ -124,9 +124,9 @@
   }
 
   const test3 = (testNum) => {
-    console.log(`%cTest ${testNum}: Browser 1 waits for Browser 2 to Insert 10 items concurrently`, 'font-size: large')
+    console.log(`%cTest ${testNum}: Browser 1 waits for Browser 2 to Insert ${CONCURRENCY} items concurrently`, 'font-size: large')
 
-    const NUM_INSERTS = 10
+    const NUM_INSERTS = CONCURRENCY
 
     userbase.init({ appId })
 
@@ -155,7 +155,7 @@
         userbase.openDatabase({ databaseName, changeHandler })
           .then(() => {
 
-            console.log('Waiting for 10 inserts...')
+            console.log(`Waiting for ${NUM_INSERTS} inserts...`)
             waitForInserts
               .then(() => {
                 console.log('Items inserted...')
@@ -180,7 +180,7 @@
                   assert(actualInserts[itemId], expectedInserts[itemId], 'Actual is same as expected')
                 }
 
-                completedTest(testNum)
+                completedTest(testNum, userbase)
               })
           })
           .catch((e) => console.assert(false, e))
@@ -189,9 +189,9 @@
   }
 
   const test4 = (testNum) => {
-    console.log(`%cTest ${testNum}: Browser 1 & Browser 2 each Insert 10 items concurrently`, 'font-size: large')
+    console.log(`%cTest ${testNum}: Browser 1 & Browser 2 each Insert ${CONCURRENCY} items concurrently`, 'font-size: large')
 
-    const NUM_INSERTS = 10
+    const NUM_INSERTS = CONCURRENCY
     const TOTAL_INSERTS = NUM_INSERTS * 2
 
     userbase.init({ appId })
@@ -264,7 +264,7 @@
                       assert(actualInserts[itemId], expectedInserts[itemId], 'Actual is same as expected')
                     }
 
-                    completedTest(testNum)
+                    completedTest(testNum, userbase)
                   })
               })
           })
@@ -274,9 +274,9 @@
   }
 
   const test5 = (testNum) => {
-    console.log(`%cTest ${testNum}: Browser 1 & Browser 2 each Insert the same batch of 20 items concurrently`, 'font-size: large')
+    console.log(`%cTest ${testNum}: Browser 1 & Browser 2 each Insert the same batch of ${CONCURRENCY} items concurrently`, 'font-size: large')
 
-    const NUM_INSERTS = 20
+    const NUM_INSERTS = CONCURRENCY
 
     userbase.init({ appId })
 
@@ -422,7 +422,7 @@
                         console.log('Inserts from this Browser: ', numInsertsFromThisBrowser)
                         console.log('Inserts from other Browser: ', numInsertsFromOtherBrowser)
 
-                        completedTest(testNum)
+                        completedTest(testNum, userbase)
                       })
                   })
               })
@@ -456,6 +456,7 @@
 
     case '#complete':
       console.log('%cTests complete!', 'color: green; font-size: large;')
+      location.hash = ''
       break
 
     default:

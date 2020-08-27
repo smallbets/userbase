@@ -91,8 +91,8 @@ describe('DB Correctness Tests', function () {
     describe('Concurrency Tests', function () {
       beforeEach(function () { beforeEachHook() })
 
-      it('Open 10 different Databases concurrently', async function () {
-        const numDatabases = 10
+      it('Open 100 different Databases concurrently', async function () {
+        const numDatabases = 100
 
         let changeHandlerCallCount = 0
 
@@ -109,11 +109,11 @@ describe('DB Correctness Tests', function () {
         }
         await Promise.all(promises)
 
-        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(10)
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(numDatabases)
       })
 
-      it('Open the same 10 Databases concurrently', async function () {
-        const numDatabases = 10
+      it('Open the same 100 Databases concurrently', async function () {
+        const numDatabases = 100
 
         const successfulChangeHandlersCalled = []
 
@@ -863,8 +863,8 @@ describe('DB Correctness Tests', function () {
     describe('Concurrency Tests', function () {
       beforeEach(function () { beforeEachHook() })
 
-      it('10 concurrent Inserts', async function () {
-        const numConcurrentOperations = 10
+      it('100 concurrent Inserts', async function () {
+        const numConcurrentOperations = 100
         const insertedItems = {}
 
         let changeHandlerCallCount = 0
@@ -920,8 +920,8 @@ describe('DB Correctness Tests', function () {
         expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
       })
 
-      it('10 concurrent Inserts, then 10 concurrent Updates', async function () {
-        const numConcurrentOperations = 10
+      it('50 concurrent Inserts, then 50 concurrent Updates', async function () {
+        const numConcurrentOperations = 50
         expect(numConcurrentOperations % 2).to.be.equal(0)
 
         const accumulatedUpdatedItems = {}
@@ -1003,8 +1003,8 @@ describe('DB Correctness Tests', function () {
         expect(accumulatorChecked, 'accumulator was checked at least once').to.be.true
       })
 
-      it('10 concurrent Inserts, then 10 concurrent Deletes', async function () {
-        const numConcurrentOperations = 10
+      it('50 concurrent Inserts, then 50 concurrent Deletes', async function () {
+        const numConcurrentOperations = 50
         expect(numConcurrentOperations % 2).to.be.equal(0)
 
         const accumulatedDeletedItems = {}
@@ -1078,8 +1078,8 @@ describe('DB Correctness Tests', function () {
         expect(accumulatorChecked, 'accumulator was checked at least once').to.be.true
       })
 
-      it('10 concurrent Inserts, then concurrent 5 Updates & 5 Deletes', async function () {
-        const numConcurrentOperations = 10
+      it.only('50 concurrent Inserts, then concurrent 25 Updates & 25 Deletes', async function () {
+        const numConcurrentOperations = 50
         expect(numConcurrentOperations % 2).to.be.equal(0)
 
         const numUpdates = numConcurrentOperations / 2
@@ -1190,8 +1190,8 @@ describe('DB Correctness Tests', function () {
         expect(accumulatorChecked, 'accumulator was checked at least once').to.be.true
       })
 
-      it('10 concurrent Inserts with same Item ID', async function () {
-        const numConcurrentOperations = 10
+      it('100 concurrent Inserts with same Item ID', async function () {
+        const numConcurrentOperations = 100
 
         const testItemId = 'test-id'
 
@@ -1257,11 +1257,11 @@ describe('DB Correctness Tests', function () {
         expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
       })
 
-      it('5 concurrent Inserts across 4 open databases', async function () {
-        const numConcurrentOperations = 5
+      it('25 concurrent Inserts across 6 open databases', async function () {
+        const numConcurrentOperations = 25
         const insertedItems = {}
 
-        const numOpenDatabases = 4
+        const numOpenDatabases = 6
 
         let changeHandlerCallCounts = []
         changeHandlerCallCounts.length = numOpenDatabases
@@ -1727,8 +1727,8 @@ describe('DB Correctness Tests', function () {
         expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
       })
 
-      it('26 concurrent Inserts trigger rate limit', async function () {
-        const numSuccessfulConcurrentOperations = 25
+      it('201 concurrent Inserts trigger rate limit', async function () {
+        const numSuccessfulConcurrentOperations = 200
         const insertedItems = {}
 
         let changeHandlerCallCount = 0
@@ -1775,7 +1775,6 @@ describe('DB Correctness Tests', function () {
               insertedItems[itemId].successResponse = true
 
             } catch (e) {
-
               expect(e.name, 'error name').to.be.equal('TooManyRequests')
               expect(e.message, 'error message').to.be.equal('Too many requests in a row. Please try again in 1 second.')
               expect(e.status, 'error status').to.be.equal(429)
@@ -1809,8 +1808,8 @@ describe('DB Correctness Tests', function () {
         expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
       })
 
-      it('26 concurrent Inserts trigger rate limit, then wait 1 second and insert', async function () {
-        const numSuccessfulConcurrentOperations = 25
+      it('201 concurrent Inserts trigger rate limit, then wait 1 second and insert', async function () {
+        const numSuccessfulConcurrentOperations = 200
         const insertedItems = {}
 
         let changeHandlerCallCount = 0
