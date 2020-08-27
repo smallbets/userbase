@@ -807,8 +807,8 @@ describe('DB Correctness Tests', function () {
         expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
       })
 
-      it('100 concurrent Inserts, then 100 concurrent Updates', async function () {
-        const numConcurrentOperations = 100
+      it('90 concurrent Inserts, then 90 concurrent Updates', async function () {
+        const numConcurrentOperations = 90
         expect(numConcurrentOperations % 2).to.be.equal(0)
 
         const accumulatedUpdatedItems = {}
@@ -898,8 +898,8 @@ describe('DB Correctness Tests', function () {
         }
       })
 
-      it('100 concurrent Inserts, then 100 concurrent Deletes', async function () {
-        const numConcurrentOperations = 100
+      it('90 concurrent Inserts, then 90 concurrent Deletes', async function () {
+        const numConcurrentOperations = 90
         expect(numConcurrentOperations % 2).to.be.equal(0)
 
         const accumulatedDeletedItems = {}
@@ -983,8 +983,8 @@ describe('DB Correctness Tests', function () {
         }
       })
 
-      it('100 concurrent Inserts, then concurrent 50 Updates & 50 Deletes', async function () {
-        const numConcurrentOperations = 100
+      it('90 concurrent Inserts, then concurrent 45 Updates & 45 Deletes', async function () {
+        const numConcurrentOperations = 90
         expect(numConcurrentOperations % 2).to.be.equal(0)
 
         const numUpdates = numConcurrentOperations / 2
