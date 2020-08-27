@@ -807,8 +807,8 @@ describe('DB Correctness Tests', function () {
         expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
       })
 
-      it('30 concurrent Inserts, then 30 concurrent Updates', async function () {
-        const numConcurrentOperations = 30
+      it('100 concurrent Inserts, then 100 concurrent Updates', async function () {
+        const numConcurrentOperations = 100
         expect(numConcurrentOperations % 2).to.be.equal(0)
 
         const accumulatedUpdatedItems = {}
@@ -820,6 +820,8 @@ describe('DB Correctness Tests', function () {
         let successfulyInsertedAllItems
 
         let latestState
+
+        const undefinedExpectations = []
 
         const changeHandler = function (items) {
           changeHandlerCallCount += 1
@@ -833,7 +835,8 @@ describe('DB Correctness Tests', function () {
               if (Number(item) === Number(itemId) + numConcurrentOperations) {
                 accumulatedUpdatedItems[itemId] = itemId
               } else {
-                expect(accumulatedUpdatedItems[itemId], 'Updated item should not have reverted to old state').to.be.undefined
+                // move expect() out of changeHandler so that cypress doesn't trigger userbase-js timeout painting DOM with expects
+                undefinedExpectations.push([accumulatedUpdatedItems[itemId], 'Updated item should not have reverted to old state'])
               }
             }
 
@@ -888,10 +891,15 @@ describe('DB Correctness Tests', function () {
         await wait(THREE_SECONDS)
         expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
         expect(accumulatorChecked, 'accumulator was checked at least once').to.be.true
+
+        for (let i = 0; i < undefinedExpectations.length; i++) {
+          const expectation = undefinedExpectations[i][0]
+          if (expectation !== undefined) expect(undefinedExpectations[i][0], undefinedExpectations[i][1]).to.be.undefined
+        }
       })
 
-      it('30 concurrent Inserts, then 30 concurrent Deletes', async function () {
-        const numConcurrentOperations = 30
+      it('100 concurrent Inserts, then 100 concurrent Deletes', async function () {
+        const numConcurrentOperations = 100
         expect(numConcurrentOperations % 2).to.be.equal(0)
 
         const accumulatedDeletedItems = {}
@@ -901,6 +909,8 @@ describe('DB Correctness Tests', function () {
         let successfulyInsertedAllItems
 
         let latestState
+
+        const undefinedExpectations = []
 
         const changeHandler = function (items) {
           changeHandlerCallCount += 1
@@ -917,7 +927,8 @@ describe('DB Correctness Tests', function () {
             for (let i = 0; i < items.length; i++) {
               const thisItem = items[i]
 
-              expect(accumulatedDeletedItems[thisItem.itemId], 'Deleted item should not have reverted to old state').to.be.undefined
+              // move expect() out of changeHandler so that cypress doesn't trigger userbase-js timeout painting DOM with expects
+              undefinedExpectations.push([accumulatedDeletedItems[thisItem.itemId], 'Deleted item should not have reverted to old state'])
               itemsDeletedInThisState[thisItem.itemId] = false
             }
 
@@ -963,10 +974,17 @@ describe('DB Correctness Tests', function () {
         await wait(THREE_SECONDS)
         expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
         expect(accumulatorChecked, 'accumulator was checked at least once').to.be.true
+
+        console.log(undefinedExpectations.length)
+
+        for (let i = 0; i < undefinedExpectations.length; i++) {
+          const expectation = undefinedExpectations[i][0]
+          if (expectation !== undefined) expect(undefinedExpectations[i][0], undefinedExpectations[i][1]).to.be.undefined
+        }
       })
 
-      it('30 concurrent Inserts, then concurrent 15 Updates & 15 Deletes', async function () {
-        const numConcurrentOperations = 30
+      it('100 concurrent Inserts, then concurrent 50 Updates & 50 Deletes', async function () {
+        const numConcurrentOperations = 100
         expect(numConcurrentOperations % 2).to.be.equal(0)
 
         const numUpdates = numConcurrentOperations / 2
@@ -981,6 +999,8 @@ describe('DB Correctness Tests', function () {
         let successfulyInsertedAllItems
 
         let latestState
+
+        const undefinedExpectations = []
 
         const changeHandler = function (items) {
           changeHandlerCallCount += 1
@@ -1001,11 +1021,11 @@ describe('DB Correctness Tests', function () {
               if (Number(item) === Number(itemId) + numConcurrentOperations) {
                 accumulatedUpdatedItems[itemId] = itemId
               } else {
-                expect(accumulatedUpdatedItems[itemId], 'Updated item should not have reverted to old state').to.be.undefined
+                undefinedExpectations.push([accumulatedUpdatedItems[itemId], 'Updated item should not have reverted to old state'])
               }
 
               if (Number(itemId) >= numUpdates) {
-                expect(accumulatedDeletedItems[itemId], 'Deleted item should not have reverted to old state').to.be.undefined
+                undefinedExpectations.push([accumulatedUpdatedItems[itemId], 'Deleted item should not have reverted to old state'])
                 itemsDeletedInThisState[itemId] = false
               }
             }
@@ -1075,6 +1095,12 @@ describe('DB Correctness Tests', function () {
         await wait(THREE_SECONDS)
         expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
         expect(accumulatorChecked, 'accumulator was checked at least once').to.be.true
+
+        console.log(undefinedExpectations.length)
+        for (let i = 0; i < undefinedExpectations.length; i++) {
+          const expectation = undefinedExpectations[i][0]
+          if (expectation !== undefined) expect(undefinedExpectations[i][0], undefinedExpectations[i][1]).to.be.undefined
+        }
       })
 
       it('100 concurrent Inserts with same Item ID', async function () {
@@ -1087,6 +1113,8 @@ describe('DB Correctness Tests', function () {
 
         let latestState
         let correctState
+
+        const successExpectations = []
 
         const changeHandler = function (items) {
           changeHandlerCallCount += 1
@@ -1103,7 +1131,11 @@ describe('DB Correctness Tests', function () {
             successful = true
             correctState = items
           } else if (successful) {
-            expect(latestState, 'after successful insert, state remains constant').to.deep.equal(correctState)
+            successExpectations.push([
+              JSON.parse(JSON.stringify(latestState)),
+              'after successful insert, state remains constant',
+              JSON.parse(JSON.stringify(correctState)),
+            ])
           }
         }
 
@@ -1142,10 +1174,15 @@ describe('DB Correctness Tests', function () {
         const THREE_SECONDS = 3 * 1000
         await wait(THREE_SECONDS)
         expect(latestState, 'successful state after waiting').to.deep.equal(correctState)
+
+        for (let i = 0; i < successExpectations.length; i++) {
+          const expectation = successExpectations[i]
+          expect(expecation[0], expectation[1]).to.deep.equal(expectation[2])
+        }
       })
 
       it('30 concurrent Inserts across 6 open databases', async function () {
-        const numConcurrentOperations = 25
+        const numConcurrentOperations = 30
         const insertedItems = {}
 
         const numOpenDatabases = 6
