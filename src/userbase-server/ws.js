@@ -280,6 +280,8 @@ class Connection {
           command: transaction['command'],
           key: transaction['key'],
           record: transaction['record'],
+          timestamp: transaction['creation-date'],
+          author: transaction['author'],
           fileMetadata: transaction['file-metadata'],
           fileId: transaction['file-id'],
           fileEncryptionKey: transaction['file-encryption-key'],

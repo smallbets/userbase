@@ -193,6 +193,8 @@ class Database {
         const record = await crypto.aesGcm.decryptJson(key, transaction.record)
         const itemId = record.id
         const item = record.item
+        const timestamp = transaction.timestamp
+        const author = transaction.author
 
         try {
           this.validateInsert(itemId)
@@ -200,13 +202,15 @@ class Database {
           return transactionCode
         }
 
-        return this.applyInsert(itemId, seqNo, item)
+        return this.applyInsert(itemId, seqNo, item, timestamp, author)
       }
 
       case 'Update': {
         const record = await crypto.aesGcm.decryptJson(key, transaction.record)
         const itemId = record.id
         const item = record.item
+        const timestamp = transaction.timestamp
+        const author = transaction.author
         const __v = record.__v
 
         try {
@@ -215,7 +219,7 @@ class Database {
           return transactionCode
         }
 
-        return this.applyUpdate(itemId, item, __v)
+        return this.applyUpdate(itemId, item, timestamp, author, __v)
       }
 
       case 'Delete': {
@@ -315,8 +319,9 @@ class Database {
     return objectHasOwnProperty(this.items, itemId)
   }
 
-  applyInsert(itemId, seqNo, record, operationIndex) {
-    const item = { seqNo }
+  applyInsert(itemId, seqNo, record, timestamp, author, operationIndex) {
+    const createdBy = { timestamp, author }
+    const item = { seqNo, createdBy }
     if (typeof operationIndex === 'number') item.operationIndex = operationIndex
 
     this.items[itemId] = {
@@ -328,8 +333,9 @@ class Database {
     return success
   }
 
-  applyUpdate(itemId, record, __v) {
+  applyUpdate(itemId, record, timestamp, author, __v) {
     this.items[itemId].record = record
+    this.items[itemId].updatedBy = { timestamp, author }
     this.items[itemId].__v = __v
     return success
   }
@@ -388,15 +394,17 @@ class Database {
 
       const itemId = records[i].id
       const item = records[i].item
+      const timestamp = records[i].timestamp
+      const author = records[i].author
       const __v = records[i].__v
 
       switch (operation.command) {
         case 'Insert':
-          this.applyInsert(itemId, seqNo, item, i)
+          this.applyInsert(itemId, seqNo, item, timestamp, author, i)
           break
 
         case 'Update':
-          this.applyUpdate(itemId, item, __v)
+          this.applyUpdate(itemId, item, timestamp, author, __v)
           break
 
         case 'Delete':
@@ -424,7 +432,11 @@ class Database {
     for (let i = 0; i < this.itemsIndex.array.length; i++) {
       const itemId = this.itemsIndex.array[i].itemId
       const record = this.items[itemId].record
-      const item = { itemId, item: record }
+      const createdBy = this.items[itemId].createdBy
+      const item = { itemId, item: record, createdBy }
+      if (this.items[itemId].updatedBy) {
+        item.updatedBy = this.items[itemId].updatedBy
+      }
       if (this.items[itemId].file) {
         const { fileId, fileName, fileSize } = this.items[itemId].file
         item.fileId = fileId

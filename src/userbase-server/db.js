@@ -560,6 +560,8 @@ const putTransaction = async function (transaction, userId, databaseId) {
 
   const ddbClient = connection.ddbClient()
 
+  transaction['author'] = userId
+
   try {
     if (!userDb) {
       throw {
