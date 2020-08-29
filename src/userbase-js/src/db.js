@@ -261,6 +261,8 @@ class Database {
         const fileMetadata = await crypto.aesGcm.decryptJson(fileEncryptionKey, transaction.fileMetadata)
 
         const itemId = fileMetadata.itemId
+        const timestamp = transaction.timestamp
+        const author = transaction.author
         const fileVersion = fileMetadata.__v
         const { fileName, fileSize, fileType } = fileMetadata
         const fileId = transaction.fileId
@@ -271,7 +273,7 @@ class Database {
           return transactionCode
         }
 
-        return this.applyUploadFile(itemId, fileVersion, fileEncryptionKey, fileEncryptionKeyString, fileName, fileId, fileSize, fileType)
+        return this.applyUploadFile(itemId, timestamp, author, fileVersion, fileEncryptionKey, fileEncryptionKeyString, fileName, fileId, fileSize, fileType)
       }
 
       case 'Rollback': {
@@ -340,10 +342,11 @@ class Database {
     return success
   }
 
-  applyUploadFile(itemId, __v, fileEncryptionKey, fileEncryptionKeyString, fileName, fileId, fileSize, fileType) {
+  applyUploadFile(itemId, timestamp, author, __v, fileEncryptionKey, fileEncryptionKeyString, fileName, fileId, fileSize, fileType) {
     const existingFile = this.items[itemId].file
     if (existingFile) delete this.fileIds[existingFile.fileId]
 
+    const fileUploadedBy = { timestamp, author }
     this.items[itemId].file = {
       fileName,
       fileId,
@@ -351,6 +354,7 @@ class Database {
       fileType,
       fileEncryptionKey,
       fileEncryptionKeyString,
+      fileUploadedBy,
       __v,
     }
     this.fileIds[fileId] = itemId
@@ -438,10 +442,11 @@ class Database {
         item.updatedBy = this.items[itemId].updatedBy
       }
       if (this.items[itemId].file) {
-        const { fileId, fileName, fileSize } = this.items[itemId].file
+        const { fileId, fileName, fileSize, fileUploadedBy } = this.items[itemId].file
         item.fileId = fileId
         item.fileName = fileName
         item.fileSize = fileSize
+        if (fileUploadedBy) item.fileUploadedBy = fileUploadedBy
       }
 
       result.push(item)
