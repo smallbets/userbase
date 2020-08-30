@@ -286,7 +286,7 @@ exports.getDatabases = async function (logChildObject, userId, nextPageToken, da
   try {
     let userDbsResponse
     if (!databaseId && !dbNameHash) {
-      userDbsResponse = await _queryUserDatabases(userId, nextPageToken, databaseId, dbNameHash)
+      userDbsResponse = await _queryUserDatabases(userId, nextPageToken)
     } else if (databaseId) {
       const userDb = await await _getUserDatabaseByUserIdAndDatabaseId(userId, databaseId)
       userDbsResponse = { Items: userDb ? [userDb] : [] }
@@ -300,6 +300,15 @@ exports.getDatabases = async function (logChildObject, userId, nextPageToken, da
       Promise.all(userDbs.map(userDb => findDatabaseByDatabaseId(userDb['database-id']))),
       Promise.all(userDbs.map(userDb => userDb['sender-id'] && userController.getUserByUserId(userDb['sender-id'])))
     ])
+
+    // used to make sure not returning databases with deleted owner
+    const owners = await Promise.all(databases.map(db => {
+      if (db['owner-id'] === userId) return { userId }
+
+      // if already found it when searching for senders, no need to query for it again
+      const owner = senders.find((sender) => sender && sender['user-id'] === db['owner-id'])
+      return owner || userController.getUserByUserId(db['owner-id'])
+    }))
 
     const finalResult = {
       databases: databases.map((db, i) => {
@@ -326,7 +335,7 @@ exports.getDatabases = async function (logChildObject, userId, nextPageToken, da
           ephemeralPublicKey: userDb['ephemeral-public-key'],
           signedEphemeralPublicKey: userDb['signed-ephemeral-public-key'],
         }
-      }),
+      }).filter((finalDb, i) => owners[i] && !owners[i].deleted), // do not return databases with deleted owner
       nextPageToken: userDbsResponse.LastEvaluatedKey && lastEvaluatedKeyToNextPageToken(userDbsResponse.LastEvaluatedKey)
     }
 
