@@ -11,8 +11,12 @@ const rememberMe = 'none'
 
 const assert = (actual, expected, errorMsg) => console.assert(actual === expected, { actual, expected, errorMsg })
 
-const completedTest = (testNum) => {
+const completedTest = (testNum, userbase) => {
   console.log(`%cCompleted test ${testNum}!`, 'color: green; font-size: large')
   location.hash = 'test' + (testNum + 1)
-  location.reload(true)
+  userbase.deleteUser()
+    .catch(() => { }) // swallow error - best effort
+    .finally(() => location.reload(true))
 }
+
+const CONCURRENCY = 150

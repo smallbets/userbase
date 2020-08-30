@@ -1,5 +1,18 @@
 
-import { getRandomString } from '../support/utils'
+import { getRandomString } from '../../support/utils'
+
+const beforeEachHook = function () {
+  cy.visit('./cypress/integration/index.html').then(async function (win) {
+    expect(win).to.have.property('userbase')
+    const userbase = win.userbase
+    this.currentTest.userbase = userbase
+    this.currentTest.win = win
+
+    const { appId, endpoint } = Cypress.env()
+    win._userbaseEndpoint = endpoint
+    userbase.init({ appId })
+  })
+}
 
 const signUp = async (userbase) => {
   const username = 'test-user-' + getRandomString()
@@ -16,6 +29,193 @@ const signUp = async (userbase) => {
 
 describe('DB Sharing Tests', function () {
   const databaseName = 'test-db'
+
+  describe('Get Verification Message', function () {
+
+    describe('Sucess Tests', function () {
+      beforeEach(function () { beforeEachHook() })
+
+      it('Default', async function () {
+        await signUp(this.test.userbase)
+
+        const result = await this.test.userbase.getVerificationMessage()
+
+        expect(result, 'keys').to.have.key('verificationMessage')
+        expect(result.verificationMessage, 'verification message').to.be.a.string
+
+        // clean up
+        await this.test.userbase.deleteUser()
+      })
+    })
+
+    describe('Failure Tests', function () {
+      beforeEach(function () { beforeEachHook() })
+
+      it('User not signed in', async function () {
+        try {
+          await this.test.userbase.getVerificationMessage()
+          throw new Error('Should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.be.equal('UserNotSignedIn')
+          expect(e.message, 'error message').to.be.equal('Not signed in.')
+          expect(e.status, 'error status').to.be.equal(400)
+        }
+      })
+    })
+
+  })
+
+  describe('Verify User', function () {
+
+    describe('Sucess Tests', function () {
+      beforeEach(function () { beforeEachHook() })
+
+      it('Default', async function () {
+        // sign up User A to be verified
+        const userA = await signUp(this.test.userbase)
+        const { verificationMessage } = await this.test.userbase.getVerificationMessage()
+        await this.test.userbase.signOut()
+
+        // sign up User B to verify User A
+        await signUp(this.test.userbase)
+        await this.test.userbase.verifyUser({ verificationMessage })
+
+        // clean up
+        await this.test.userbase.deleteUser()
+        await this.test.userbase.signIn({ username: userA.username, password: userA.password })
+        await this.test.userbase.deleteUser()
+      })
+
+      it('Concurrent with getDatabases()', async function () {
+        // sign up User A to be verified
+        const userA = await signUp(this.test.userbase)
+        const { verificationMessage } = await this.test.userbase.getVerificationMessage()
+        await this.test.userbase.signOut()
+
+        // sign up User B to verify User A
+        await signUp(this.test.userbase)
+
+        // User B verifies User A while concurrently calling getDatabases()
+        await Promise.all([
+          this.test.userbase.verifyUser({ verificationMessage }),
+          this.test.userbase.getDatabases(),
+        ])
+
+        // clean up
+        await this.test.userbase.deleteUser()
+        await this.test.userbase.signIn({ username: userA.username, password: userA.password })
+        await this.test.userbase.deleteUser()
+      })
+    })
+
+    describe('Failure Tests', function () {
+      beforeEach(function () { beforeEachHook() })
+
+      it('Params must be object', async function () {
+        try {
+          await this.test.userbase.verifyUser()
+          throw new Error('Should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.be.equal('ParamsMustBeObject')
+          expect(e.message, 'error message').to.be.equal('Parameters passed to function must be placed inside an object.')
+          expect(e.status, 'error status').to.be.equal(400)
+        }
+      })
+
+      it('Verification message missing', async function () {
+        await signUp(this.test.userbase)
+
+        try {
+          await this.test.userbase.verifyUser({})
+          throw new Error('Should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('VerificationMessageMissing')
+          expect(e.message, 'error message').to.equal('Verification message missing.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+
+        // clean up
+        await this.test.userbase.deleteUser()
+      })
+
+      it('Verification message must be string', async function () {
+        await signUp(this.test.userbase)
+
+        try {
+          await this.test.userbase.verifyUser({ verificationMessage: 1 })
+          throw new Error('Should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('VerificationMessageMustBeString')
+          expect(e.message, 'error message').to.equal('Verification message must be a string.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+
+        // clean up
+        await this.test.userbase.deleteUser()
+      })
+
+      it('Verification messasge cannot be blank', async function () {
+        await signUp(this.test.userbase)
+
+        try {
+          await this.test.userbase.verifyUser({ verificationMessage: '' })
+          throw new Error('Should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.be.equal('VerificationMessageCannotBeBlank')
+          expect(e.message, 'error message').to.be.equal('Verification message cannot be blank.')
+          expect(e.status, 'error status').to.be.equal(400)
+        }
+
+        // clean up
+        await this.test.userbase.deleteUser()
+      })
+
+      it('Verification message invalid', async function () {
+        await signUp(this.test.userbase)
+
+        try {
+          await this.test.userbase.verifyUser({ verificationMessage: 'abc' })
+          throw new Error('Should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.be.equal('VerificationMessageInvalid')
+          expect(e.message, 'error message').to.be.equal('Verification message invalid.')
+          expect(e.status, 'error status').to.be.equal(400)
+        }
+
+        // clean up
+        await this.test.userbase.deleteUser()
+      })
+
+      it('Verifying self not allowed', async function () {
+        await signUp(this.test.userbase)
+        const { verificationMessage } = await this.test.userbase.getVerificationMessage()
+
+        try {
+          await this.test.userbase.verifyUser({ verificationMessage })
+          throw new Error('Should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.be.equal('VerifyingSelfNotAllowed')
+          expect(e.message, 'error message').to.be.equal('Verifying self not allowed. Can only verify other users.')
+          expect(e.status, 'error status').to.be.equal(400)
+        }
+
+        // clean up
+        await this.test.userbase.deleteUser()
+      })
+
+      it('User not signed in', async function () {
+        try {
+          await this.test.userbase.verifyUser({ verificationMessage: '123' })
+          throw new Error('Should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.be.equal('UserNotSignedIn')
+          expect(e.message, 'error message').to.be.equal('Not signed in.')
+          expect(e.status, 'error status').to.be.equal(400)
+        }
+      })
+    })
+
+  })
 
   //**
   //

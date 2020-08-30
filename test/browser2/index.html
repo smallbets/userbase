@@ -33,7 +33,7 @@
             userbase.openDatabase({ databaseName, changeHandler: () => { } })
               .then(() => {
                 userbase.insertItem({ databaseName, item: 'Hello world!', itemId: 'test-id' })
-                  .then(() => completedTest(testNum))
+                  .then(() => completedTest(testNum, userbase))
               })
               .catch((e) => console.assert(false, e))
 
@@ -58,7 +58,7 @@
             userbase.openDatabase({ databaseName, changeHandler: () => { } })
               .then(() => {
                 userbase.insertItem({ databaseName, item: 'Hello world!', itemId: 'test-id' })
-                  .then(() => completedTest(testNum))
+                  .then(() => completedTest(testNum, userbase))
               })
               .catch((e) => console.assert(false, e))
 
@@ -68,9 +68,9 @@
   }
 
   const test3 = (testNum) => {
-    console.log(`%cTest ${testNum}: Browser 1 waits for Browser 2 to Insert 10 items concurrently`, 'font-size: large')
+    console.log(`%cTest ${testNum}: Browser 1 waits for Browser 2 to Insert ${CONCURRENCY} items concurrently`, 'font-size: large')
 
-    const NUM_INSERTS = 10
+    const NUM_INSERTS = CONCURRENCY
 
     const { username, password } = USERS[testNum - 1]
 
@@ -85,11 +85,12 @@
             userbase.openDatabase({ databaseName, changeHandler: () => { } })
               .then(() => {
 
+                const inserts = []
                 for (let i = 0; i < NUM_INSERTS; i++) {
-                  userbase.insertItem({ databaseName, item: 'item-' + i, itemId: i.toString() })
+                  inserts.push(userbase.insertItem({ databaseName, item: 'item-' + i, itemId: i.toString() }))
                 }
 
-                completedTest(testNum)
+                Promise.all(inserts).then(() => completedTest(testNum, userbase))
               })
               .catch((e) => console.assert(false, e))
 
@@ -99,9 +100,9 @@
   }
 
   const test4 = (testNum) => {
-    console.log(`%cTest ${testNum}: Browser 1 & Browser 2 each Insert 10 items concurrently`, 'font-size: large')
+    console.log(`%cTest ${testNum}: Browser 1 & Browser 2 each Insert ${CONCURRENCY} items concurrently`, 'font-size: large')
 
-    const NUM_INSERTS = 10
+    const NUM_INSERTS = CONCURRENCY
 
     const { username, password } = USERS[testNum - 1]
 
@@ -124,11 +125,12 @@
                   .then(() => {
                     console.log('Inserting all items at ' + new Date())
 
+                    const inserts = []
                     for (let i = 0; i < NUM_INSERTS; i++) {
-                      userbase.insertItem({ databaseName, item: 'item-' + (i + NUM_INSERTS), itemId: (i + NUM_INSERTS).toString() })
+                      inserts.push(userbase.insertItem({ databaseName, item: 'item-' + (i + NUM_INSERTS), itemId: (i + NUM_INSERTS).toString() }))
                     }
 
-                    completedTest(testNum)
+                    Promise.all(inserts).then(() => completedTest(testNum, userbase))
                   })
 
               })
@@ -140,9 +142,9 @@
   }
 
   const test5 = (testNum) => {
-    console.log(`%cTest ${testNum}: Browser 1 & Browser 2 each Insert the same batch of 20 items concurrently`, 'font-size: large')
+    console.log(`%cTest ${testNum}: Browser 1 & Browser 2 each Insert the same batch of ${CONCURRENCY} items concurrently`, 'font-size: large')
 
-    const NUM_INSERTS = 20
+    const NUM_INSERTS = CONCURRENCY
 
     userbase.init({ appId })
 
@@ -204,7 +206,7 @@
                         }
 
                         console.log("Final State after this browser's inserts completed: ", JSON.stringify(database))
-                        completedTest(testNum)
+                        completedTest(testNum, userbase)
                       })
                   })
               })
@@ -239,6 +241,7 @@
 
     case '#complete':
       console.log('%cTests complete!', 'color: green; font-size: large;')
+      location.hash = ''
       break
 
     default:

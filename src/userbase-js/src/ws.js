@@ -565,7 +565,7 @@ class Connection {
       this.requests[requestId].promiseResolve = resolve
       this.requests[requestId].promiseReject = reject
 
-      setTimeout(() => { reject(new Error('timeout')) }, 10000)
+      setTimeout(() => { reject(new Error('timeout')) }, 20000)
     })
 
     delete this.requests[requestId]
