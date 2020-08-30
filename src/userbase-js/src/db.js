@@ -333,16 +333,18 @@ class Database {
   }
 
   applyInsert(itemId, seqNo, record, timestamp, username, operationIndex) {
+    const item = { seqNo }
+    if (typeof operationIndex === 'number') item.operationIndex = operationIndex
+
     const createdBy = { timestamp, username }
     if (createdBy.username == null) {
       createdBy.userDeleted = true
     }
-    const item = { seqNo, createdBy }
-    if (typeof operationIndex === 'number') item.operationIndex = operationIndex
 
     this.items[itemId] = {
       ...item,
       record,
+      createdBy,
       __v: 0
     }
     this.itemsIndex.insert({ ...item, itemId })
