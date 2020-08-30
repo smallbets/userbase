@@ -186,18 +186,32 @@ class Connection {
 
               if (!database.dbKey) throw new Error('Missing db key')
 
+              const writerNames = message.writerNames
+
               if (message.bundle) {
                 const bundleSeqNo = message.bundleSeqNo
                 const base64Bundle = message.bundle
                 const compressedString = await crypto.aesGcm.decryptString(database.dbKey, base64Bundle)
                 const plaintextString = LZString.decompress(compressedString)
                 const bundle = JSON.parse(plaintextString)
+                for (const itemId in bundle.items) {
+                  const { createdBy, updatedBy, fileUploadedBy } = bundle.items[itemId]
+                  for (const attribution of [createdBy, updatedBy, fileUploadedBy]) {
+                    if (attribution) {
+                      if (writerNames[attribution.userId] != null) {
+                        attribution.username = writerNames[attribution.userId]
+                      } else {
+                        attribution.userDeleted = true
+                      }
+                      delete attribution.userId
+                    }
+                  }
+                }
 
                 await database.applyBundle(bundle, bundleSeqNo)
               }
 
               const newTransactions = message.transactionLog
-              const writerNames = message.writerNames
               await database.applyTransactions(newTransactions, writerNames)
 
               if (!database.init) {
@@ -583,9 +597,22 @@ class Connection {
     if (database.bundledAtSeqNo && database.bundledAtSeqNo >= lastSeqNo) return
     else database.bundledAtSeqNo = lastSeqNo
 
+    const serializableItems = {}
+    for (const key in database.items) {
+      const item = { ...database.items[key] }
+      serializableItems[key] = item
+      for (const prop of ['createdBy', 'updatedBy', 'fileUploadedBy']) {
+        if (item[prop]) {
+          item[prop] = {
+            userId: 'TODO',
+            timestamp: item[prop].timestamp,
+          }
+        }
+      }
+    }
+
     const bundle = {
-      // TODO make sure bundle has user ID's and no usernames
-      items: database.items,
+      items: serializableItems,
       itemsIndex: database.itemsIndex.array
     }
     const plaintextString = JSON.stringify(bundle)
