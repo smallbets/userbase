@@ -5,6 +5,7 @@ import db from './db'
 import logger from './logger'
 import { estimateSizeOfDdbItem } from './utils'
 import statusCodes from './statusCodes'
+import { getUserByUserId } from './user'
 
 const SECONDS_BEFORE_ROLLBACK_GAP_TRIGGERED = 1000 * 10 // 10s
 const TRANSACTION_SIZE_BUNDLE_TRIGGER = 1024 * 50 // 50 KB
@@ -89,6 +90,7 @@ class Connection {
       dbId: databaseId,
       dbNameHash: database.dbNameHash,
       isOwner: database.isOwner,
+      writerNames: {},
     }
 
     const reopeningDatabase = reopenAtSeqNo !== undefined
@@ -102,11 +104,14 @@ class Connection {
     let lastSeqNo = database.lastSeqNo
     const bundleSeqNo = database.bundleSeqNo
 
+    const writerUserIds = new Set()
+
     if (bundleSeqNo > 0 && database.lastSeqNo === 0) {
       const bundle = await db.getBundle(databaseId, bundleSeqNo)
       payload.bundleSeqNo = bundleSeqNo
       payload.bundle = bundle
       lastSeqNo = bundleSeqNo
+      // TODO add writers to writerUserIds
     }
 
     // get transactions from the last sequence number
@@ -164,6 +169,7 @@ class Connection {
               // add transaction to the result set if have not sent it to client yet
               if (transactionLogResponse.Items[i]['sequence-no'] > database.lastSeqNo) {
                 ddbTransactionLog.push(transactionLogResponse.Items[i])
+                writerUserIds.add(transactionLogResponse.Items[i]['user-id'])
               }
 
             }
@@ -178,6 +184,13 @@ class Connection {
       logger.warn(`Failed to push to ${databaseId} with ${e}`)
       throw new Error(e)
     }
+
+    await Promise.all([...writerUserIds].map(getUserByUserId))
+      .then(users => {
+        for (const { 'user-id': userId, username } of users) {
+          payload.writerNames[userId] = username
+        }
+      })
 
     if (openingDatabase && database.lastSeqNo !== 0) {
       logger
@@ -281,7 +294,8 @@ class Connection {
           key: transaction['key'],
           record: transaction['record'],
           timestamp: transaction['creation-date'],
-          author: transaction['author'],
+          userId: transaction['user-id'],
+          username: transaction['username'],
           fileMetadata: transaction['file-metadata'],
           fileId: transaction['file-id'],
           fileEncryptionKey: transaction['file-encryption-key'],

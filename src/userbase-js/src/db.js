@@ -39,6 +39,17 @@ const _parseGenericErrors = (e) => {
   }
 }
 
+const _usernameFromTransaction = (transaction, writerNames) => {
+  if (transaction.username != null) {
+    return transaction.username
+  }
+  if (transaction.userId != null) {
+    if (!writerNames) throw new Error('DB Writers Hash Null')
+    return writerNames[transaction.userId]
+  }
+  return null
+}
+
 class UnverifiedTransaction {
   constructor(startSeqNo) {
     this.startSeqNo = startSeqNo
@@ -129,7 +140,7 @@ class Database {
     this.applyTransactionsQueue = new Queue()
   }
 
-  async applyTransactions(transactions) {
+  async applyTransactions(transactions, writerNamesHash) {
     for (let i = 0; i < transactions.length; i++) {
       const transaction = transactions[i]
       const seqNo = transaction.seqNo
@@ -140,7 +151,7 @@ class Database {
         continue
       }
 
-      const transactionCode = await this.applyTransaction(this.dbKey, transaction)
+      const transactionCode = await this.applyTransaction(this.dbKey, transaction, writerNamesHash)
       this.lastSeqNo = seqNo
 
       for (let j = 0; j < this.unverifiedTransactions.length; j++) {
@@ -184,7 +195,7 @@ class Database {
     this.lastSeqNo = bundleSeqNo
   }
 
-  async applyTransaction(key, transaction) {
+  async applyTransaction(key, transaction, writerNamesHash) {
     const seqNo = transaction.seqNo
     const command = transaction.command
 
@@ -194,7 +205,7 @@ class Database {
         const itemId = record.id
         const item = record.item
         const timestamp = transaction.timestamp
-        const author = transaction.author
+        const username = _usernameFromTransaction(transaction, writerNamesHash)
 
         try {
           this.validateInsert(itemId)
@@ -202,7 +213,7 @@ class Database {
           return transactionCode
         }
 
-        return this.applyInsert(itemId, seqNo, item, timestamp, author)
+        return this.applyInsert(itemId, seqNo, item, timestamp, username)
       }
 
       case 'Update': {
@@ -210,7 +221,7 @@ class Database {
         const itemId = record.id
         const item = record.item
         const timestamp = transaction.timestamp
-        const author = transaction.author
+        const username = _usernameFromTransaction(transaction, writerNamesHash)
         const __v = record.__v
 
         try {
@@ -219,7 +230,7 @@ class Database {
           return transactionCode
         }
 
-        return this.applyUpdate(itemId, item, timestamp, author, __v)
+        return this.applyUpdate(itemId, item, timestamp, username, __v)
       }
 
       case 'Delete': {
@@ -262,7 +273,7 @@ class Database {
 
         const itemId = fileMetadata.itemId
         const timestamp = transaction.timestamp
-        const author = transaction.author
+        const username = _usernameFromTransaction(transaction, writerNamesHash)
         const fileVersion = fileMetadata.__v
         const { fileName, fileSize, fileType } = fileMetadata
         const fileId = transaction.fileId
@@ -273,7 +284,7 @@ class Database {
           return transactionCode
         }
 
-        return this.applyUploadFile(itemId, timestamp, author, fileVersion, fileEncryptionKey, fileEncryptionKeyString, fileName, fileId, fileSize, fileType)
+        return this.applyUploadFile(itemId, timestamp, username, fileVersion, fileEncryptionKey, fileEncryptionKeyString, fileName, fileId, fileSize, fileType)
       }
 
       case 'Rollback': {
@@ -321,8 +332,11 @@ class Database {
     return objectHasOwnProperty(this.items, itemId)
   }
 
-  applyInsert(itemId, seqNo, record, timestamp, author, operationIndex) {
-    const createdBy = { timestamp, author }
+  applyInsert(itemId, seqNo, record, timestamp, username, operationIndex) {
+    const createdBy = { timestamp, username }
+    if (createdBy.username == null) {
+      createdBy.userDeleted = true
+    }
     const item = { seqNo, createdBy }
     if (typeof operationIndex === 'number') item.operationIndex = operationIndex
 
@@ -335,18 +349,25 @@ class Database {
     return success
   }
 
-  applyUpdate(itemId, record, timestamp, author, __v) {
+  applyUpdate(itemId, record, timestamp, username, __v) {
+    const updatedBy = { timestamp, username }
+    if (updatedBy.username == null) {
+      updatedBy.userDeleted = true
+    }
     this.items[itemId].record = record
-    this.items[itemId].updatedBy = { timestamp, author }
+    this.items[itemId].updatedBy = updatedBy
     this.items[itemId].__v = __v
     return success
   }
 
-  applyUploadFile(itemId, timestamp, author, __v, fileEncryptionKey, fileEncryptionKeyString, fileName, fileId, fileSize, fileType) {
+  applyUploadFile(itemId, timestamp, username, __v, fileEncryptionKey, fileEncryptionKeyString, fileName, fileId, fileSize, fileType) {
     const existingFile = this.items[itemId].file
     if (existingFile) delete this.fileIds[existingFile.fileId]
 
-    const fileUploadedBy = { timestamp, author }
+    const fileUploadedBy = { timestamp, username }
+    if (fileUploadedBy.username == null) {
+      fileUploadedBy.userDeleted = true
+    }
     this.items[itemId].file = {
       fileName,
       fileId,
@@ -399,16 +420,16 @@ class Database {
       const itemId = records[i].id
       const item = records[i].item
       const timestamp = records[i].timestamp
-      const author = records[i].author
+      const username = records[i].username
       const __v = records[i].__v
 
       switch (operation.command) {
         case 'Insert':
-          this.applyInsert(itemId, seqNo, item, timestamp, author, i)
+          this.applyInsert(itemId, seqNo, item, timestamp, username, i)
           break
 
         case 'Update':
-          this.applyUpdate(itemId, item, timestamp, author, __v)
+          this.applyUpdate(itemId, item, timestamp, username, __v)
           break
 
         case 'Delete':

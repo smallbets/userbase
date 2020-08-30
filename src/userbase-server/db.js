@@ -552,6 +552,9 @@ const _incrementSeqNo = async function (transaction, databaseId) {
 }
 
 const putTransaction = async function (transaction, userId, databaseId) {
+  // can be determined now, but not needed until later
+  const userPromise = userController.getUserByUserId(userId)
+
   // make both requests async to keep the time for successful putTransaction low
   const [userDb] = await Promise.all([
     _getUserDatabaseByUserIdAndDatabaseId(userId, databaseId),
@@ -560,7 +563,7 @@ const putTransaction = async function (transaction, userId, databaseId) {
 
   const ddbClient = connection.ddbClient()
 
-  transaction['author'] = userId
+  transaction['user-id'] = userId
 
   try {
     if (!userDb) {
@@ -594,6 +597,10 @@ const putTransaction = async function (transaction, userId, databaseId) {
     if (e.status && e.error) throw e
     else throw new Error(`Failed to put transaction with ${e}.`)
   }
+
+  // username is put on the transaction for transmitting,
+  // but not for storing.
+  transaction['username'] = (await userPromise).username
 
   // notify all websocket connections that there's a database change
   connections.push(transaction, userId)
