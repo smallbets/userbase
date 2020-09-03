@@ -186,7 +186,11 @@ class Connection {
 
               if (!database.dbKey) throw new Error('Missing db key')
 
-              const writerNames = message.writerNames
+              for (const userId in message.writerNames) {
+                const username = message.writerNames[userId]
+                database.usernamesByUserId.set(userId, username)
+                database.userIdsByUsername.set(username, userId)
+              }
 
               if (message.bundle) {
                 const bundleSeqNo = message.bundleSeqNo
@@ -198,8 +202,8 @@ class Connection {
                   const { createdBy, updatedBy, fileUploadedBy } = bundle.items[itemId]
                   for (const attribution of [createdBy, updatedBy, fileUploadedBy]) {
                     if (attribution) {
-                      if (writerNames[attribution.userId] != null) {
-                        attribution.username = writerNames[attribution.userId]
+                      if (database.usernamesByUserId.get(attribution.userId)) {
+                        attribution.username = database.usernamesByUserId.get(attribution.userId)
                       } else {
                         attribution.userDeleted = true
                       }
@@ -212,7 +216,7 @@ class Connection {
               }
 
               const newTransactions = message.transactionLog
-              await database.applyTransactions(newTransactions, writerNames)
+              await database.applyTransactions(newTransactions)
 
               if (!database.init) {
                 database.dbId = dbId
@@ -604,7 +608,8 @@ class Connection {
       for (const prop of ['createdBy', 'updatedBy', 'fileUploadedBy']) {
         if (item[prop]) {
           item[prop] = {
-            userId: 'TODO',
+            // TODO this won't work for deleted users though! rethink this strategy.
+            userId: database.userIdsByUsername.get(item[prop].username),
             timestamp: item[prop].timestamp,
           }
         }

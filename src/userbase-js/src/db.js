@@ -39,13 +39,13 @@ const _parseGenericErrors = (e) => {
   }
 }
 
-const _usernameFromTransaction = (transaction, writerNames) => {
+const _usernameFromTransaction = (transaction, usernamesByUserId) => {
   if (transaction.username != null) {
     return transaction.username
   }
   if (transaction.userId != null) {
-    if (!writerNames) throw new Error('DB Writers Hash Null')
-    return writerNames[transaction.userId]
+    if (!usernamesByUserId) throw new Error('DB Writers Hash Null')
+    return usernamesByUserId.get(transaction.userId)
   }
   return null
 }
@@ -135,12 +135,14 @@ class Database {
     this.init = false
     this.dbKey = null
     this.receivedMessage = receivedMessage
+    this.usernamesByUserId = new Map()
+    this.userIdsByUsername = new Map()
 
     // Queue that ensures 'ApplyTransactions' executes one at a time
     this.applyTransactionsQueue = new Queue()
   }
 
-  async applyTransactions(transactions, writerNamesHash) {
+  async applyTransactions(transactions) {
     for (let i = 0; i < transactions.length; i++) {
       const transaction = transactions[i]
       const seqNo = transaction.seqNo
@@ -151,7 +153,7 @@ class Database {
         continue
       }
 
-      const transactionCode = await this.applyTransaction(this.dbKey, transaction, writerNamesHash)
+      const transactionCode = await this.applyTransaction(this.dbKey, transaction)
       this.lastSeqNo = seqNo
 
       for (let j = 0; j < this.unverifiedTransactions.length; j++) {
@@ -195,7 +197,7 @@ class Database {
     this.lastSeqNo = bundleSeqNo
   }
 
-  async applyTransaction(key, transaction, writerNamesHash) {
+  async applyTransaction(key, transaction) {
     const seqNo = transaction.seqNo
     const command = transaction.command
 
@@ -205,7 +207,7 @@ class Database {
         const itemId = record.id
         const item = record.item
         const timestamp = transaction.timestamp
-        const username = _usernameFromTransaction(transaction, writerNamesHash)
+        const username = _usernameFromTransaction(transaction, this.usernamesByUserId)
 
         try {
           this.validateInsert(itemId)
@@ -221,7 +223,7 @@ class Database {
         const itemId = record.id
         const item = record.item
         const timestamp = transaction.timestamp
-        const username = _usernameFromTransaction(transaction, writerNamesHash)
+        const username = _usernameFromTransaction(transaction, this.usernamesByUserId)
         const __v = record.__v
 
         try {
@@ -273,7 +275,7 @@ class Database {
 
         const itemId = fileMetadata.itemId
         const timestamp = transaction.timestamp
-        const username = _usernameFromTransaction(transaction, writerNamesHash)
+        const username = _usernameFromTransaction(transaction, this.usernamesByUserId)
         const fileVersion = fileMetadata.__v
         const { fileName, fileSize, fileType } = fileMetadata
         const fileId = transaction.fileId
