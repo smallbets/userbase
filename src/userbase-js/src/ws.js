@@ -186,8 +186,7 @@ class Connection {
 
               if (!database.dbKey) throw new Error('Missing db key')
 
-              for (const userId in message.writerNames) {
-                const username = message.writerNames[userId]
+              for (const { userId, username } of message.writers) {
                 database.usernamesByUserId.set(userId, username)
                 database.userIdsByUsername.set(username, userId)
               }

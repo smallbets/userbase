@@ -90,7 +90,7 @@ class Connection {
       dbId: databaseId,
       dbNameHash: database.dbNameHash,
       isOwner: database.isOwner,
-      writerNames: {},
+      writers: [],
     }
 
     const reopeningDatabase = reopenAtSeqNo !== undefined
@@ -191,7 +191,7 @@ class Connection {
     await Promise.all([...writerUserIds].map(getUserByUserId))
       .then(users => {
         for (const { 'user-id': userId, username } of users) {
-          payload.writerNames[userId] = username
+          payload.writers.push({ userId, username })
         }
       })
 
