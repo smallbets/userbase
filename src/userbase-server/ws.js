@@ -169,7 +169,10 @@ class Connection {
               // add transaction to the result set if have not sent it to client yet
               if (transactionLogResponse.Items[i]['sequence-no'] > database.lastSeqNo) {
                 ddbTransactionLog.push(transactionLogResponse.Items[i])
-                writerUserIds.add(transactionLogResponse.Items[i]['user-id'])
+                const userId = transactionLogResponse.Items[i]['user-id']
+                if (userId != null) {
+                  writerUserIds.add(userId)
+                }
               }
 
             }
