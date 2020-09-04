@@ -584,6 +584,7 @@ class Connection {
     else database.bundledAtSeqNo = lastSeqNo
 
     const bundle = {
+      // TODO make sure bundle has user ID's and no usernames
       items: database.items,
       itemsIndex: database.itemsIndex.array
     }
