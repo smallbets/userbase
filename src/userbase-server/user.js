@@ -5,7 +5,13 @@ import statusCodes from './statusCodes'
 import responseBuilder from './responseBuilder'
 import crypto from './crypto'
 import logger from './logger'
-import { validateEmail, trimReq, truncateSessionId, getTtl } from './utils'
+import {
+  validateEmail,
+  trimReq,
+  truncateSessionId,
+  getTtl,
+  ttlToDate
+} from './utils'
 import appController from './app'
 import adminController from './admin'
 import stripe from './stripe'
@@ -22,7 +28,6 @@ const UUID_STRING_LENGTH = 36
 const HOURS_IN_A_DAY = 24
 const SECONDS_IN_A_DAY = 60 * 60 * HOURS_IN_A_DAY
 const MS_IN_A_DAY = 1000 * SECONDS_IN_A_DAY
-const SESSION_LENGTH = MS_IN_A_DAY
 
 const MAX_USERNAME_CHAR_LENGTH = 100
 
@@ -560,8 +565,7 @@ const _validateSession = function (session) {
     const invalidated = session.invalidated
     if (invalidated) throw { invalidated }
 
-    const sessionStartDate = new Date(session['extended-date'] || session['creation-date'])
-    const expired = new Date() - sessionStartDate > SESSION_LENGTH
+    const expired = new Date() > ttlToDate(session['ttl'])
     if (expired) throw { expired }
 
     const isNotUserSession = expired || !session['user-id']
