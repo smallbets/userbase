@@ -200,21 +200,6 @@ class Connection {
                 const compressedString = await crypto.aesGcm.decryptString(database.dbKey, base64Bundle)
                 const plaintextString = LZString.decompress(compressedString)
                 const bundle = JSON.parse(plaintextString)
-                if (database.attributionEnabled) {
-                  for (const itemId in bundle.items) {
-                    const { createdBy, updatedBy, fileUploadedBy } = bundle.items[itemId]
-                    for (const attribution of [createdBy, updatedBy, fileUploadedBy]) {
-                      if (attribution) {
-                        if (database.usernamesByUserId.get(attribution.userId)) {
-                          attribution.username = database.usernamesByUserId.get(attribution.userId)
-                        } else {
-                          attribution.userDeleted = true
-                        }
-                        delete attribution.userId
-                      }
-                    }
-                  }
-                }
 
                 await database.applyBundle(bundle, bundleSeqNo)
               }
@@ -605,25 +590,8 @@ class Connection {
     if (database.bundledAtSeqNo && database.bundledAtSeqNo >= lastSeqNo) return
     else database.bundledAtSeqNo = lastSeqNo
 
-    const serializableItems = {}
-    for (const key in database.items) {
-      const item = { ...database.items[key] }
-      serializableItems[key] = item
-      if (database.attributionEnabled) {
-        for (const prop of ['createdBy', 'updatedBy', 'fileUploadedBy']) {
-          if (item[prop]) {
-            item[prop] = {
-              // TODO this won't work for deleted users though! rethink this strategy.
-              userId: database.userIdsByUsername.get(item[prop].username),
-              timestamp: item[prop].timestamp,
-            }
-          }
-        }
-      }
-    }
-
     const bundle = {
-      items: serializableItems,
+      items: database.items,
       itemsIndex: database.itemsIndex.array
     }
     const plaintextString = JSON.stringify(bundle)

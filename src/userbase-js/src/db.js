@@ -291,15 +291,10 @@ class Database {
 
   attributionFromTransaction(transaction) {
     if (!this.attributionEnabled) return undefined
-    const timestamp = transaction.timestamp
-    const attribution = { timestamp }
-    const username = this.usernamesByUserId.get(transaction.userId)
-    if (username == null) {
-      attribution.userDeleted = true
-    } else {
-      attribution.username = username
+    return {
+      timestamp: transaction.timestamp,
+      userId: transaction.userId,
     }
-    return attribution
   }
 
   validateInsert(itemId) {
@@ -367,9 +362,9 @@ class Database {
       fileType,
       fileEncryptionKey,
       fileEncryptionKeyString,
-      fileUploadedBy,
       __v,
     }
+    this.items[itemId].fileUploadedBy = fileUploadedBy
     this.fileIds[fileId] = itemId
     return success
   }
@@ -447,17 +442,25 @@ class Database {
     for (let i = 0; i < this.itemsIndex.array.length; i++) {
       const itemId = this.itemsIndex.array[i].itemId
       const record = this.items[itemId].record
-      const createdBy = this.items[itemId].createdBy
-      const item = { itemId, item: record, createdBy }
-      if (this.items[itemId].updatedBy) {
-        item.updatedBy = this.items[itemId].updatedBy
-      }
+      const item = { itemId, item: record }
       if (this.items[itemId].file) {
-        const { fileId, fileName, fileSize, fileUploadedBy } = this.items[itemId].file
+        const { fileId, fileName, fileSize } = this.items[itemId].file
         item.fileId = fileId
         item.fileName = fileName
         item.fileSize = fileSize
-        if (fileUploadedBy) item.fileUploadedBy = fileUploadedBy
+      }
+      for (const prop of ['createdBy', 'updatedBy', 'fileUploadedBy']) {
+        if (this.items[itemId][prop]) {
+          const { timestamp, userId } = this.items[itemId][prop]
+          const attribution = { timestamp }
+          const username = this.usernamesByUserId.get(userId)
+          if (username == null) {
+            attribution.userDeleted = true
+          } else {
+            attribution.username = username
+          }
+          item[prop] = attribution
+        }
       }
 
       result.push(item)
