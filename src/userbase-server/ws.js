@@ -200,7 +200,9 @@ class Connection {
     if (database.attribution) {
       await Promise.all([...writerUserIds].map(getUserByUserId))
         .then(users => {
-          for (const { 'user-id': userId, username } of users) {
+          for (const user of users) {
+            if (!user) continue
+            const { 'user-id': userId, username } = user
             payload.writers.push({ userId, username })
           }
         })
