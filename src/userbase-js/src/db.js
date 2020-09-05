@@ -126,6 +126,7 @@ class Database {
     this.receivedMessage = receivedMessage
     this.usernamesByUserId = new Map()
     this.userIdsByUsername = new Map()
+    this.attributionEnabled = false
 
     // Queue that ensures 'ApplyTransactions' executes one at a time
     this.applyTransactionsQueue = new Queue()
@@ -289,7 +290,7 @@ class Database {
   }
 
   attributionFromTransaction(transaction) {
-    if (this.attribution) return undefined // TODO is this right
+    if (!this.attributionEnabled) return undefined
     const timestamp = transaction.timestamp
     const attribution = { timestamp }
     const username = this.usernamesByUserId.get(transaction.userId)

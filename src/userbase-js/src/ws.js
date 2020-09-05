@@ -186,9 +186,12 @@ class Connection {
 
               if (!database.dbKey) throw new Error('Missing db key')
 
-              for (const { userId, username } of message.writers) {
-                database.usernamesByUserId.set(userId, username)
-                database.userIdsByUsername.set(username, userId)
+              if (message.writers) {
+                database.attributionEnabled = true
+                for (const { userId, username } of message.writers) {
+                  database.usernamesByUserId.set(userId, username)
+                  database.userIdsByUsername.set(username, userId)
+                }
               }
 
               if (message.bundle) {
@@ -197,16 +200,18 @@ class Connection {
                 const compressedString = await crypto.aesGcm.decryptString(database.dbKey, base64Bundle)
                 const plaintextString = LZString.decompress(compressedString)
                 const bundle = JSON.parse(plaintextString)
-                for (const itemId in bundle.items) {
-                  const { createdBy, updatedBy, fileUploadedBy } = bundle.items[itemId]
-                  for (const attribution of [createdBy, updatedBy, fileUploadedBy]) {
-                    if (attribution) {
-                      if (database.usernamesByUserId.get(attribution.userId)) {
-                        attribution.username = database.usernamesByUserId.get(attribution.userId)
-                      } else {
-                        attribution.userDeleted = true
+                if (database.attributionEnabled) {
+                  for (const itemId in bundle.items) {
+                    const { createdBy, updatedBy, fileUploadedBy } = bundle.items[itemId]
+                    for (const attribution of [createdBy, updatedBy, fileUploadedBy]) {
+                      if (attribution) {
+                        if (database.usernamesByUserId.get(attribution.userId)) {
+                          attribution.username = database.usernamesByUserId.get(attribution.userId)
+                        } else {
+                          attribution.userDeleted = true
+                        }
+                        delete attribution.userId
                       }
-                      delete attribution.userId
                     }
                   }
                 }
@@ -604,12 +609,14 @@ class Connection {
     for (const key in database.items) {
       const item = { ...database.items[key] }
       serializableItems[key] = item
-      for (const prop of ['createdBy', 'updatedBy', 'fileUploadedBy']) {
-        if (item[prop]) {
-          item[prop] = {
-            // TODO this won't work for deleted users though! rethink this strategy.
-            userId: database.userIdsByUsername.get(item[prop].username),
-            timestamp: item[prop].timestamp,
+      if (database.attributionEnabled) {
+        for (const prop of ['createdBy', 'updatedBy', 'fileUploadedBy']) {
+          if (item[prop]) {
+            item[prop] = {
+              // TODO this won't work for deleted users though! rethink this strategy.
+              userId: database.userIdsByUsername.get(item[prop].username),
+              timestamp: item[prop].timestamp,
+            }
           }
         }
       }
@@ -631,7 +638,9 @@ class Connection {
     const compressedString = LZString.compress(plaintextString)
     const base64Bundle = await crypto.aesGcm.encryptString(dbKey, compressedString)
 
-    const writers = Object.keys(this.userIdsByUsername).join(',')
+    const writers = database.attributionEnabled
+      ? Object.keys(this.userIdsByUsername).join(',')
+      : undefined
 
     const action = 'Bundle'
     const params = { dbId, seqNo: lastSeqNo, bundle: base64Bundle, keys: itemKeys, writers }
