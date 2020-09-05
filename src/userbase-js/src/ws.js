@@ -631,8 +631,10 @@ class Connection {
     const compressedString = LZString.compress(plaintextString)
     const base64Bundle = await crypto.aesGcm.encryptString(dbKey, compressedString)
 
+    const writers = Object.keys(this.userIdsByUsername).join(',')
+
     const action = 'Bundle'
-    const params = { dbId, seqNo: lastSeqNo, bundle: base64Bundle, keys: itemKeys }
+    const params = { dbId, seqNo: lastSeqNo, bundle: base64Bundle, keys: itemKeys, writers }
     this.request(action, params)
   }
 

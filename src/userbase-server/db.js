@@ -22,6 +22,7 @@ const SECONDS_IN_A_DAY = 60 * 60 * HOURS_IN_A_DAY
 const MS_IN_A_DAY = SECONDS_IN_A_DAY * 1000
 
 const getS3DbStateKey = (databaseId, bundleSeqNo) => `${databaseId}/${bundleSeqNo}`
+const getS3DbWritersKey = (databaseId, bundleSeqNo) => `${databaseId}/writers/${bundleSeqNo}`
 const getS3FileChunkKey = (databaseId, fileId, chunkNumber) => `${databaseId}/${fileId}/${chunkNumber}`
 
 const _buildUserDatabaseParams = (userId, dbNameHash, dbId, encryptedDbKey, readOnly, resharingAllowed) => {
@@ -741,7 +742,7 @@ exports.batchTransaction = async function (userId, connectionId, databaseId, ope
   }
 }
 
-exports.bundleTransactionLog = async function (userId, connectionId, databaseId, seqNo, bundle) {
+exports.bundleTransactionLog = async function (userId, connectionId, databaseId, seqNo, bundle, writersString) {
   const bundleSeqNo = Number(seqNo)
 
   if (!bundleSeqNo) {
@@ -761,15 +762,26 @@ exports.bundleTransactionLog = async function (userId, connectionId, databaseId,
       return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Bundle sequence no must be greater than current bundle')
     }
 
+    logger.info(`Uploading db ${databaseId}'s state to S3 at bundle seq no ${bundleSeqNo}...`)
+    const s3 = setup.s3()
+
     const dbStateParams = {
       Bucket: setup.getDbStatesBucketName(),
       Key: getS3DbStateKey(databaseId, bundleSeqNo),
       Body: bundle
     }
 
-    logger.info(`Uploading db ${databaseId}'s state to S3 at bundle seq no ${bundleSeqNo}...`)
-    const s3 = setup.s3()
     await s3.upload(dbStateParams).promise()
+
+    if (writersString) {
+      const dbWritersParams = {
+        Bucket: setup.getDbStatesBucketName(),
+        Key: getS3DbWritersKey(databaseId, bundleSeqNo),
+        Body: writersString
+      }
+
+      await s3.upload(dbWritersParams).promise()
+    }
 
     const bundleParams = {
       TableName: setup.databaseTableName,
@@ -808,11 +820,28 @@ exports.getBundle = async function (databaseId, bundleSeqNo) {
       Bucket: setup.getDbStatesBucketName(),
       Key: getS3DbStateKey(databaseId, bundleSeqNo)
     }
+    const writersParams = {
+      Bucket: setup.getDbStatesBucketName(),
+      Key: getS3DbWritersKey(databaseId, bundleSeqNo)
+    }
     const s3 = setup.s3()
 
     try {
-      const result = await s3.getObject(params).promise()
-      return result.Body.toString()
+      const bundleObject = await s3.getObject(params).promise()
+      const bundle = bundleObject.Body.toString()
+      let writers = ''
+      try {
+        const writersObject = await s3.getObject(writersParams).promise()
+        writers = writersObject.Body.toString()
+      } catch (e) {
+        if (e.code === 'NoSuchKey') {
+          // it's ok for the writers blob to be null. the bundle was probably
+          // built with a client SDK that didn't include the writers array yet.
+        } else {
+          throw e
+        }
+      }
+      return { bundle, writers }
     } catch (e) {
       const statusCode = e.statusCode
       const error = e.message

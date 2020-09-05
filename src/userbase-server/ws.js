@@ -107,11 +107,15 @@ class Connection {
     const writerUserIds = new Set()
 
     if (bundleSeqNo > 0 && database.lastSeqNo === 0) {
-      const bundle = await db.getBundle(databaseId, bundleSeqNo)
+      const { bundle, writers } = await db.getBundle(databaseId, bundleSeqNo)
       payload.bundleSeqNo = bundleSeqNo
       payload.bundle = bundle
       lastSeqNo = bundleSeqNo
-      // TODO add writers to writerUserIds
+      if (writers) {
+        for (const userId of writers.split(',')) {
+          writerUserIds.add(userId)
+        }
+      }
     }
 
     // get transactions from the last sequence number
@@ -298,7 +302,6 @@ class Connection {
           record: transaction['record'],
           timestamp: transaction['creation-date'],
           userId: transaction['user-id'],
-          username: transaction['username'],
           fileMetadata: transaction['file-metadata'],
           fileId: transaction['file-id'],
           fileEncryptionKey: transaction['file-encryption-key'],
@@ -426,6 +429,7 @@ export default class Connections {
             dbId,
             dbNameHash: database.dbNameHash,
             isOwner: database.isOwner,
+            writers: [{ userId: transaction['user-id'], username: transaction['username'] }]
           }
 
           conn.sendPayload(payload, [transaction], database)

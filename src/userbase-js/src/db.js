@@ -39,17 +39,6 @@ const _parseGenericErrors = (e) => {
   }
 }
 
-const _usernameFromTransaction = (transaction, usernamesByUserId) => {
-  if (transaction.username != null) {
-    return transaction.username
-  }
-  if (transaction.userId != null) {
-    if (!usernamesByUserId) throw new Error('DB Writers Hash Null')
-    return usernamesByUserId.get(transaction.userId)
-  }
-  return null
-}
-
 class UnverifiedTransaction {
   constructor(startSeqNo) {
     this.startSeqNo = startSeqNo
@@ -207,7 +196,7 @@ class Database {
         const itemId = record.id
         const item = record.item
         const timestamp = transaction.timestamp
-        const username = _usernameFromTransaction(transaction, this.usernamesByUserId)
+        const username = this.usernameFromTransaction(transaction)
 
         try {
           this.validateInsert(itemId)
@@ -223,7 +212,7 @@ class Database {
         const itemId = record.id
         const item = record.item
         const timestamp = transaction.timestamp
-        const username = _usernameFromTransaction(transaction, this.usernamesByUserId)
+        const username = this.usernameFromTransaction(transaction)
         const __v = record.__v
 
         try {
@@ -275,7 +264,7 @@ class Database {
 
         const itemId = fileMetadata.itemId
         const timestamp = transaction.timestamp
-        const username = _usernameFromTransaction(transaction, this.usernamesByUserId)
+        const username = this.usernameFromTransaction(transaction)
         const fileVersion = fileMetadata.__v
         const { fileName, fileSize, fileType } = fileMetadata
         const fileId = transaction.fileId
@@ -299,6 +288,13 @@ class Database {
         return
       }
     }
+  }
+
+  usernameFromTransaction(transaction) {
+    if (transaction.userId != null) {
+      return this.usernamesByUserId.get(transaction.userId)
+    }
+    return null
   }
 
   validateInsert(itemId) {
