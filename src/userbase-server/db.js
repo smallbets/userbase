@@ -249,11 +249,12 @@ exports.openDatabaseByDatabaseId = async function (user, app, admin, connectionI
     const dbNameHash = database['database-name-hash']
     const bundleSeqNo = database['bundle-seq-no']
     const dbKey = database['encrypted-db-key']
+    const attribution = database['attribution']
 
     // user must call getDatabases() first to set the db key
     if (!dbKey) return responseBuilder.errorResponse(statusCodes['Not Found'], 'Database key not found')
 
-    if (connections.openDatabase(userId, connectionId, databaseId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner)) {
+    if (connections.openDatabase(userId, connectionId, databaseId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner, attribution)) {
       return responseBuilder.successResponse('Success!')
     } else {
       throw new Error('Unable to open database')
