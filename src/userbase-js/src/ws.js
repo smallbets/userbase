@@ -607,7 +607,7 @@ class Connection {
     const base64Bundle = await crypto.aesGcm.encryptString(dbKey, compressedString)
 
     const writers = database.attributionEnabled
-      ? Object.keys(this.userIdsByUsername).join(',')
+      ? [...database.usernamesByUserId.keys()].join(',')
       : undefined
 
     const action = 'Bundle'
