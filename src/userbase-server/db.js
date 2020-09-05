@@ -758,6 +758,14 @@ exports.bundleTransactionLog = async function (userId, connectionId, databaseId,
       return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Database not open')
     }
 
+    const clientIncludedWriters = !!writersString
+    const databaseRequiresWriters = connections.sockets[userId][connectionId].databases[databaseId].attribution
+    if (clientIncludedWriters && !databaseRequiresWriters) {
+      return responseBuilder.errorResponse(statusCodes['Bad Request'], "This is an older database without attribution enabled, but the client sent writer data.")
+    } else if (!clientIncludedWriters && databaseRequiresWriters) {
+      return responseBuilder.errorResponse(statusCodes['Bad Request'], "This database has attribution enabled, but the client did not send writers data with its bundle. Maybe it's an older version?")
+    }
+
     const database = await findDatabaseByDatabaseId(databaseId)
     if (!database) return responseBuilder.errorResponse(statusCodes['Not Found'], 'Database not found')
 
@@ -777,7 +785,7 @@ exports.bundleTransactionLog = async function (userId, connectionId, databaseId,
 
     await s3.upload(dbStateParams).promise()
 
-    if (writersString) {
+    if (clientIncludedWriters) {
       const dbWritersParams = {
         Bucket: setup.getDbStatesBucketName(),
         Key: getS3DbWritersKey(databaseId, bundleSeqNo),
