@@ -43,7 +43,7 @@ const _buildUserDatabaseParams = (userId, dbNameHash, dbId, encryptedDbKey, read
   }
 }
 
-const createDatabase = async function (userId, dbNameHash, dbId, encryptedDbName, encryptedDbKey) {
+const createDatabase = async function (userId, dbNameHash, dbId, encryptedDbName, encryptedDbKey, attribution) {
   try {
     const user = await userController.getUserByUserId(userId)
     if (!user || user['deleted']) throw new Error('UserNotFound')
@@ -53,6 +53,8 @@ const createDatabase = async function (userId, dbNameHash, dbId, encryptedDbName
       'owner-id': userId,
       'database-name': encryptedDbName
     }
+
+    if (attribution) database['attribution'] = true
 
     const userDatabaseParams = _buildUserDatabaseParams(userId, dbNameHash, dbId, encryptedDbKey)
 
@@ -187,12 +189,12 @@ exports.openDatabase = async function (user, app, admin, connectionId, dbNameHas
       if (!database && !newDatabaseParams) return responseBuilder.errorResponse(statusCodes['Not Found'], 'Database not found')
       else if (!database) {
         // attempt to create new database
-        const { dbId, encryptedDbName, encryptedDbKey } = newDatabaseParams
+        const { dbId, encryptedDbName, encryptedDbKey, attribution } = newDatabaseParams
         if (!dbId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
         if (!encryptedDbName) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name')
         if (!encryptedDbKey) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database key')
 
-        database = await createDatabase(userId, dbNameHash, dbId, encryptedDbName, encryptedDbKey)
+        database = await createDatabase(userId, dbNameHash, dbId, encryptedDbName, encryptedDbKey, attribution)
       }
     } catch (e) {
       if (e.data === 'Database already exists' || e.data === 'Database already creating') {
@@ -207,9 +209,10 @@ exports.openDatabase = async function (user, app, admin, connectionId, dbNameHas
     const dbId = database['database-id']
     const bundleSeqNo = database['bundle-seq-no']
     const dbKey = database['encrypted-db-key']
+    const attribution = database['attribution']
 
     const isOwner = true
-    if (connections.openDatabase(userId, connectionId, dbId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner)) {
+    if (connections.openDatabase(userId, connectionId, dbId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner, attribution)) {
       return responseBuilder.successResponse('Success!')
     } else {
       throw new Error('Unable to open database')
@@ -829,7 +832,7 @@ exports.getBundle = async function (databaseId, bundleSeqNo) {
     try {
       const bundleObject = await s3.getObject(params).promise()
       const bundle = bundleObject.Body.toString()
-      let writers = ''
+      let writers = null
       try {
         const writersObject = await s3.getObject(writersParams).promise()
         writers = writersObject.Body.toString()

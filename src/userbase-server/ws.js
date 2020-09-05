@@ -65,7 +65,7 @@ class Connection {
     this.fileStorageRateLimiter = new TokenBucket(FILE_STORAGE_MAX_REQUESTS_PER_SECOND, FILE_STORAGE_TOKENS_REFILLED_PER_SECOND)
   }
 
-  openDatabase(databaseId, dbNameHash, bundleSeqNo, reopenAtSeqNo, isOwner) {
+  openDatabase(databaseId, dbNameHash, bundleSeqNo, reopenAtSeqNo, isOwner, attribution) {
     this.databases[databaseId] = {
       bundleSeqNo: bundleSeqNo > 0 ? bundleSeqNo : -1,
       lastSeqNo: reopenAtSeqNo || 0,
@@ -73,6 +73,7 @@ class Connection {
       init: reopenAtSeqNo !== undefined, // ensures server sends the dbNameHash & key on first ever push, not reopen
       dbNameHash,
       isOwner,
+      attribution,
     }
   }
 
@@ -90,7 +91,9 @@ class Connection {
       dbId: databaseId,
       dbNameHash: database.dbNameHash,
       isOwner: database.isOwner,
-      writers: [],
+      writers: database.attribution
+        ? []
+        : undefined,
     }
 
     const reopeningDatabase = reopenAtSeqNo !== undefined
@@ -115,6 +118,8 @@ class Connection {
         for (const userId of writers.split(',')) {
           writerUserIds.add(userId)
         }
+      } else if (database.attribution) {
+        throw new Error('Missing database bundle writers list')
       }
     }
 
@@ -192,12 +197,14 @@ class Connection {
       throw new Error(e)
     }
 
-    await Promise.all([...writerUserIds].map(getUserByUserId))
-      .then(users => {
-        for (const { 'user-id': userId, username } of users) {
-          payload.writers.push({ userId, username })
-        }
-      })
+    if (database.attribution) {
+      await Promise.all([...writerUserIds].map(getUserByUserId))
+        .then(users => {
+          for (const { 'user-id': userId, username } of users) {
+            payload.writers.push({ userId, username })
+          }
+        })
+    }
 
     if (openingDatabase && database.lastSeqNo !== 0) {
       logger
@@ -384,13 +391,13 @@ export default class Connections {
     return connection
   }
 
-  static openDatabase(userId, connectionId, databaseId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner) {
+  static openDatabase(userId, connectionId, databaseId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner, attribution) {
     if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId][connectionId]) return
 
     const conn = Connections.sockets[userId][connectionId]
 
     if (!conn.databases[databaseId]) {
-      conn.openDatabase(databaseId, dbNameHash, bundleSeqNo, reopenAtSeqNo, isOwner)
+      conn.openDatabase(databaseId, dbNameHash, bundleSeqNo, reopenAtSeqNo, isOwner, attribution)
       logger.child({ connectionId, databaseId, adminId: conn.adminId }).info('Database opened')
     }
 
@@ -429,7 +436,9 @@ export default class Connections {
             dbId,
             dbNameHash: database.dbNameHash,
             isOwner: database.isOwner,
-            writers: [{ userId: transaction['user-id'], username: transaction['username'] }]
+            writers: database['attribution']
+              ? [{ userId: transaction['user-id'], username: transaction['username'] }]
+              : undefined
           }
 
           conn.sendPayload(payload, [transaction], database)

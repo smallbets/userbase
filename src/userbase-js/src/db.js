@@ -195,8 +195,7 @@ class Database {
         const record = await crypto.aesGcm.decryptJson(key, transaction.record)
         const itemId = record.id
         const item = record.item
-        const timestamp = transaction.timestamp
-        const username = this.usernameFromTransaction(transaction)
+        const createdBy = this.attributionFromTransaction(transaction)
 
         try {
           this.validateInsert(itemId)
@@ -204,15 +203,14 @@ class Database {
           return transactionCode
         }
 
-        return this.applyInsert(itemId, seqNo, item, timestamp, username)
+        return this.applyInsert(itemId, seqNo, item, createdBy)
       }
 
       case 'Update': {
         const record = await crypto.aesGcm.decryptJson(key, transaction.record)
         const itemId = record.id
         const item = record.item
-        const timestamp = transaction.timestamp
-        const username = this.usernameFromTransaction(transaction)
+        const updatedBy = this.attributionFromTransaction(transaction)
         const __v = record.__v
 
         try {
@@ -221,7 +219,7 @@ class Database {
           return transactionCode
         }
 
-        return this.applyUpdate(itemId, item, timestamp, username, __v)
+        return this.applyUpdate(itemId, item, updatedBy, __v)
       }
 
       case 'Delete': {
@@ -240,6 +238,7 @@ class Database {
 
       case 'BatchTransaction': {
         const batch = transaction.operations
+        const attribution = this.attributionFromTransaction(transaction)
         const recordPromises = []
 
         for (const operation of batch) {
@@ -253,7 +252,7 @@ class Database {
           return transactionCode
         }
 
-        return this.applyBatchTransaction(seqNo, batch, records)
+        return this.applyBatchTransaction(seqNo, batch, records, attribution)
       }
 
       case 'UploadFile': {
@@ -263,11 +262,10 @@ class Database {
         const fileMetadata = await crypto.aesGcm.decryptJson(fileEncryptionKey, transaction.fileMetadata)
 
         const itemId = fileMetadata.itemId
-        const timestamp = transaction.timestamp
-        const username = this.usernameFromTransaction(transaction)
         const fileVersion = fileMetadata.__v
         const { fileName, fileSize, fileType } = fileMetadata
         const fileId = transaction.fileId
+        const fileUploadedBy = this.attributionFromTransaction(transaction)
 
         try {
           this.validateUploadFile(itemId, fileVersion)
@@ -275,7 +273,7 @@ class Database {
           return transactionCode
         }
 
-        return this.applyUploadFile(itemId, timestamp, username, fileVersion, fileEncryptionKey, fileEncryptionKeyString, fileName, fileId, fileSize, fileType)
+        return this.applyUploadFile(itemId, fileUploadedBy, fileVersion, fileEncryptionKey, fileEncryptionKeyString, fileName, fileId, fileSize, fileType)
       }
 
       case 'Rollback': {
@@ -290,11 +288,17 @@ class Database {
     }
   }
 
-  usernameFromTransaction(transaction) {
-    if (transaction.userId != null) {
-      return this.usernamesByUserId.get(transaction.userId)
+  attributionFromTransaction(transaction) {
+    if (this.attribution) return undefined // TODO is this right
+    const timestamp = transaction.timestamp
+    const attribution = { timestamp }
+    const username = this.usernamesByUserId.get(transaction.userId)
+    if (username == null) {
+      attribution.userDeleted = true
+    } else {
+      attribution.username = username
     }
-    return null
+    return attribution
   }
 
   validateInsert(itemId) {
@@ -330,14 +334,9 @@ class Database {
     return objectHasOwnProperty(this.items, itemId)
   }
 
-  applyInsert(itemId, seqNo, record, timestamp, username, operationIndex) {
+  applyInsert(itemId, seqNo, record, createdBy, operationIndex) {
     const item = { seqNo }
     if (typeof operationIndex === 'number') item.operationIndex = operationIndex
-
-    const createdBy = { timestamp, username }
-    if (createdBy.username == null) {
-      createdBy.userDeleted = true
-    }
 
     this.items[itemId] = {
       ...item,
@@ -349,25 +348,17 @@ class Database {
     return success
   }
 
-  applyUpdate(itemId, record, timestamp, username, __v) {
-    const updatedBy = { timestamp, username }
-    if (updatedBy.username == null) {
-      updatedBy.userDeleted = true
-    }
+  applyUpdate(itemId, record, updatedBy, __v) {
     this.items[itemId].record = record
     this.items[itemId].updatedBy = updatedBy
     this.items[itemId].__v = __v
     return success
   }
 
-  applyUploadFile(itemId, timestamp, username, __v, fileEncryptionKey, fileEncryptionKeyString, fileName, fileId, fileSize, fileType) {
+  applyUploadFile(itemId, fileUploadedBy, __v, fileEncryptionKey, fileEncryptionKeyString, fileName, fileId, fileSize, fileType) {
     const existingFile = this.items[itemId].file
     if (existingFile) delete this.fileIds[existingFile.fileId]
 
-    const fileUploadedBy = { timestamp, username }
-    if (fileUploadedBy.username == null) {
-      fileUploadedBy.userDeleted = true
-    }
     this.items[itemId].file = {
       fileName,
       fileId,
@@ -413,23 +404,21 @@ class Database {
     }
   }
 
-  applyBatchTransaction(seqNo, batch, records) {
+  applyBatchTransaction(seqNo, batch, records, attribution) {
     for (let i = 0; i < batch.length; i++) {
       const operation = batch[i]
 
       const itemId = records[i].id
       const item = records[i].item
-      const timestamp = records[i].timestamp
-      const username = records[i].username
       const __v = records[i].__v
 
       switch (operation.command) {
         case 'Insert':
-          this.applyInsert(itemId, seqNo, item, timestamp, username, i)
+          this.applyInsert(itemId, seqNo, item, attribution, i)
           break
 
         case 'Update':
-          this.applyUpdate(itemId, item, timestamp, username, __v)
+          this.applyUpdate(itemId, item, attribution, __v)
           break
 
         case 'Delete':
@@ -599,7 +588,8 @@ const _createDatabase = async (dbName) => {
   const newDatabaseParams = {
     dbId,
     encryptedDbKey,
-    encryptedDbName
+    encryptedDbName,
+    attribution: true,
   }
   return newDatabaseParams
 }
