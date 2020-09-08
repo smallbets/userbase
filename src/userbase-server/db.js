@@ -822,7 +822,7 @@ exports.bundleTransactionLog = async function (userId, connectionId, databaseId,
   }
 }
 
-exports.getBundle = async function (databaseId, bundleSeqNo) {
+exports.getBundle = async function (databaseId, bundleSeqNo, useAttribution) {
   if (!bundleSeqNo) {
     return responseBuilder.errorResponse(statusCodes['Bad Request'], `Missing bundle sequence number`)
   }
@@ -839,21 +839,19 @@ exports.getBundle = async function (databaseId, bundleSeqNo) {
     const s3 = setup.s3()
 
     try {
-      const bundleObject = await s3.getObject(params).promise()
-      const bundle = bundleObject.Body.toString()
-      let writers = null
-      try {
-        const writersObject = await s3.getObject(writersParams).promise()
-        writers = writersObject.Body.toString()
-      } catch (e) {
-        if (e.code === 'NoSuchKey') {
-          // it's ok for the writers blob to be null. the bundle was probably
-          // built with a client SDK that didn't include the writers array yet.
-        } else {
-          throw e
-        }
+      if (useAttribution) {
+        const [bundleObject, writersObject] = await Promise.all([
+          s3.getObject(params).promise(),
+          s3.getObject(writersParams).promise(),
+        ])
+        const bundle = bundleObject.Body.toString()
+        const writers = writersObject.Body.toString()
+        return { bundle, writers }
+      } else {
+        const bundleObject = await s3.getObject(params).promise()
+        const bundle = bundleObject.Body.toString()
+        return { bundle }
       }
-      return { bundle, writers }
     } catch (e) {
       const statusCode = e.statusCode
       const error = e.message

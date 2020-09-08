@@ -110,7 +110,7 @@ class Connection {
     const writerUserIds = new Set()
 
     if (bundleSeqNo > 0 && database.lastSeqNo === 0) {
-      const { bundle, writers } = await db.getBundle(databaseId, bundleSeqNo)
+      const { bundle, writers } = await db.getBundle(databaseId, bundleSeqNo, database.attribution)
       payload.bundleSeqNo = bundleSeqNo
       payload.bundle = bundle
       lastSeqNo = bundleSeqNo
