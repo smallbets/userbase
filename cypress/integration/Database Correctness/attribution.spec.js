@@ -347,7 +347,6 @@ describe('Attribution Tests', function () {
       let successful
 
       const changeHandler = function (items) {
-        console.log(items.map(i => i.createdBy.username))
         changeHandlerCallCount += 1
 
         expect(items, 'array passed to changeHandler').to.have.lengthOf(numItemsNeededToTriggerBundle + 1)
