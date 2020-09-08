@@ -202,6 +202,7 @@ class Connection {
         .then(users => {
           for (const user of users) {
             if (!user) continue
+            if (user['deleted']) continue
             const { 'user-id': userId, username } = user
             payload.writers.push({ userId, username })
           }
