@@ -776,6 +776,7 @@ exports.bundleTransactionLog = async function (userId, connectionId, databaseId,
 
     logger.info(`Uploading db ${databaseId}'s state to S3 at bundle seq no ${bundleSeqNo}...`)
     const s3 = setup.s3()
+    const promises = []
 
     const dbStateParams = {
       Bucket: setup.getDbStatesBucketName(),
@@ -783,7 +784,7 @@ exports.bundleTransactionLog = async function (userId, connectionId, databaseId,
       Body: bundle
     }
 
-    await s3.upload(dbStateParams).promise()
+    promises.push(s3.upload(dbStateParams).promise())
 
     if (clientIncludedWriters) {
       const dbWritersParams = {
@@ -792,8 +793,10 @@ exports.bundleTransactionLog = async function (userId, connectionId, databaseId,
         Body: writersString
       }
 
-      await s3.upload(dbWritersParams).promise()
+      promises.push(s3.upload(dbWritersParams).promise())
     }
+
+    await Promise.all(promises)
 
     const bundleParams = {
       TableName: setup.databaseTableName,
