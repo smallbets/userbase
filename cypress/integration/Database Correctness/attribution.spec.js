@@ -46,6 +46,8 @@ describe('Attribution Tests', function () {
         expect(items[0].createdBy.timestamp >= this.test.startTime).to.be.true
         expect(items[0].createdBy.timestamp <= new Date().toISOString()).to.be.true
         expect(items[0].createdBy.username).to.equal(creator.username)
+        expect('updatedBy' in items[0]).to.be.false
+        expect('fileUploadedBy' in items[0]).to.be.false
         expect(items[0].item).to.deep.equal(testItem)
         changeHandlerCallCount += 1
       }
@@ -59,56 +61,247 @@ describe('Attribution Tests', function () {
     })
 
     it('Correctly sets updatedBy', async function () {
+      const creator = await signUp(this.test.userbase)
+      const itemId = 'test-item'
+      const testItem = 'hello world!'
+      const updatedTestItem = 'see you later world!'
 
+      let changeHandlerCallCount = 0
+      const changeHandler = (items) => {
+        expect(items[0].createdBy.timestamp >= this.test.startTime).to.be.true
+        expect(items[0].createdBy.timestamp <= new Date().toISOString()).to.be.true
+        expect(items[0].createdBy.username).to.equal(creator.username)
+        if (changeHandlerCallCount > 0) {
+          expect(items[0].updatedBy.timestamp > items[0].createdBy.timestamp).to.be.true
+          expect(items[0].updatedBy.timestamp <= new Date().toISOString()).to.be.true
+          expect(items[0].updatedBy.username).to.equal(creator.username)
+        } else {
+          expect('updatedBy' in items[0]).to.be.false
+        }
+        expect('fileUploadedBy' in items[0]).to.be.false
+        changeHandlerCallCount += 1
+      }
+
+      await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+      await this.test.userbase.insertItem({ databaseName, itemId, item: testItem })
+
+      await this.test.userbase.openDatabase({ databaseName, changeHandler })
+
+      await wait(5) // to ensure that the updated item has a later timestamp
+
+      await this.test.userbase.updateItem({ databaseName, itemId, item: updatedTestItem })
+
+      expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
+
+      // clean up
+      await this.test.userbase.deleteUser()
     })
 
     it('Correctly sets fileUploadedBy', async function () {
+      const creator = await signUp(this.test.userbase)
+      const itemId = 'test-item'
+      const testItem = 'hello world!'
+      const testFileName = 'test-file-name.txt'
+      const testFileType = 'text/plain'
+      const testFile = new this.test.win.File([1], testFileName, { type: testFileType })
 
+      let changeHandlerCallCount = 0
+      const changeHandler = (items) => {
+        expect(items[0].createdBy.timestamp >= this.test.startTime).to.be.true
+        expect(items[0].createdBy.timestamp <= new Date().toISOString()).to.be.true
+        expect(items[0].createdBy.username).to.equal(creator.username)
+        if (changeHandlerCallCount > 0) {
+          expect(items[0].fileUploadedBy.timestamp > items[0].createdBy.timestamp).to.be.true
+          expect(items[0].fileUploadedBy.timestamp <= new Date().toISOString()).to.be.true
+          expect(items[0].fileUploadedBy.username).to.equal(creator.username)
+        } else {
+          expect('fileUploadedBy' in items[0]).to.be.false
+        }
+        expect('updatedBy' in items[0]).to.be.false
+        changeHandlerCallCount += 1
+      }
+
+      await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+      await this.test.userbase.insertItem({ databaseName, itemId, item: testItem })
+
+      await this.test.userbase.openDatabase({ databaseName, changeHandler })
+
+      await wait(5) // to ensure that the updated item has a later timestamp
+
+      await this.test.userbase.uploadFile({ databaseName, itemId, file: testFile })
+
+      expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
+
+      // clean up
+      await this.test.userbase.deleteUser()
     })
 
     it('Correctly sets attribution for multi-operation transactions', async function () {
+      const creator = await signUp(this.test.userbase)
+      const NUM_ITEMS = 5
+      const operations = []
+      for (let i = 0; i < NUM_ITEMS; i++) {
+        const item = i.toString()
+        const itemId = item
+        operations.push({ command: 'Insert', item, itemId })
+      }
 
+      let changeHandlerCallCount = 0
+      const changeHandler = (items) => {
+        for (let i = 0; i < NUM_ITEMS; ++i) {
+          expect(items[i].createdBy.timestamp >= this.test.startTime).to.be.true
+          expect(items[i].createdBy.timestamp <= new Date().toISOString()).to.be.true
+          expect(items[i].createdBy.timestamp).to.equal(items[0].createdBy.timestamp)
+          expect(items[i].createdBy.username).to.equal(creator.username)
+          expect('updatedBy' in items[i]).to.be.false
+          expect('fileUploadedBy' in items[i]).to.be.false
+        }
+        changeHandlerCallCount += 1
+      }
+
+      await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+      await this.test.userbase.putTransaction({ databaseName, operations })
+
+      await this.test.userbase.openDatabase({ databaseName, changeHandler })
+
+      expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+
+      // clean up
+      await this.test.userbase.deleteUser()
     })
   })
 
   describe('Documents others inserted', function () {
-    it('Correctly sets attribution on documents that were already here', async function () {
+    it('Attribution is correctly handled in multi-user environment', async function () {
+      const friend = await signUp(this.test.userbase)
+      const { verificationMessage } = await this.test.userbase.getVerificationMessage()
+      await this.test.userbase.signOut()
 
+      const creator = await signUp(this.test.userbase)
+      await this.test.userbase.verifyUser({ verificationMessage })
+      await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+      await this.test.userbase.shareDatabase({ databaseName, username: friend.username, readOnly: false })
+
+      // creator inserts an item
+      const item = 'hello world!'
+      await this.test.userbase.insertItem({ databaseName, item, itemId: '0' })
+      await this.test.userbase.signOut()
+
+      // friend does a few things:
+      // * inserts a second item
+      // * does a transaction which inserts a third item, and updates the first TWO items
+      // * changes usernames
+      await this.test.userbase.signIn({ username: friend.username, password: friend.password, rememberMe: 'none' })
+
+      const { databases: [{ databaseId }] } = await this.test.userbase.getDatabases()
+
+      await this.test.userbase.openDatabase({ databaseId, changeHandler: () => { } })
+
+      await this.test.userbase.insertItem({ databaseId, item, itemId: '1' })
+      await this.test.userbase.putTransaction({
+        databaseId, operations: [
+          { command: 'Insert', item, itemId: '2' },
+          { command: 'Update', item, itemId: '0' },
+          { command: 'Update', item, itemId: '1' },
+        ]
+      })
+
+      const updatedUsername = 'test-user-' + getRandomString()
+      await this.test.userbase.updateUser({ username: updatedUsername })
+
+      await this.test.userbase.signOut()
+
+      await this.test.userbase.signIn({ username: creator.username, password: creator.password, rememberMe: 'none' })
+
+      let changeHandlerCallCount = 0
+      const changeHandler = function (items) {
+        expect(items[0].createdBy.username).to.equal(creator.username)
+        expect(items[0].updatedBy.username).to.equal(updatedUsername)
+        expect(items[1].createdBy.username).to.equal(updatedUsername)
+        expect(items[1].updatedBy.username).to.equal(updatedUsername)
+        expect(items[2].createdBy.username).to.equal(updatedUsername)
+        expect('updatedBy' in items[2]).to.be.false
+
+        changeHandlerCallCount += 1
+      }
+
+      await this.test.userbase.openDatabase({ databaseName, changeHandler })
+
+      expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+
+      // clean up
+      await this.test.userbase.deleteUser()
+      await this.test.userbase.signIn({ username: updatedUsername, password: friend.password, rememberMe: 'none' })
+      await this.test.userbase.deleteUser()
     })
 
-    it('Correctly sets attribution on new documents I receive', async function () {
+    it('Sets userDeleted to true', async function () {
+      const friend = await signUp(this.test.userbase)
+      const { verificationMessage } = await this.test.userbase.getVerificationMessage()
+      await this.test.userbase.signOut()
 
-    })
+      const creator = await signUp(this.test.userbase)
+      await this.test.userbase.verifyUser({ verificationMessage })
+      await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
 
-    it('Only updates updatedBy, while leaving createdBy the same', async function () {
+      await this.test.userbase.shareDatabase({ databaseName, username: friend.username, readOnly: false })
 
-    })
+      // creator inserts an item
+      const item = 'hello world!'
+      await this.test.userbase.insertItem({ databaseName, item, itemId: '0' })
+      await this.test.userbase.signOut()
 
-    it('Updates fileUploadedBy', async function () {
+      // friend does a few things:
+      // * inserts a second item
+      // * does a transaction which inserts a third item, and updates the first TWO items
+      // * DELETES user
+      await this.test.userbase.signIn({ username: friend.username, password: friend.password, rememberMe: 'none' })
 
-    })
+      const { databases: [{ databaseId }] } = await this.test.userbase.getDatabases()
 
-    it('Shows userDeleted for documents from a deleted user', async function () {
+      await this.test.userbase.openDatabase({ databaseId, changeHandler: () => { } })
 
-    })
+      await this.test.userbase.insertItem({ databaseId, item, itemId: '1' })
+      await this.test.userbase.putTransaction({
+        databaseId, operations: [
+          { command: 'Insert', item, itemId: '2' },
+          { command: 'Update', item, itemId: '0' },
+          { command: 'Update', item, itemId: '1' },
+        ]
+      })
 
-    it('Shows updated username after attributed user updates their name', async function () {
+      await this.test.userbase.deleteUser()
 
-    })
-  })
+      await this.test.userbase.signIn({ username: creator.username, password: creator.password, rememberMe: 'none' })
 
-  // must check the server logs to verify bundling occurs
-  describe('Bundled documents', function () {
-    it('Retains attribution for bundled documents', async function () {
+      let changeHandlerCallCount = 0
+      const changeHandler = function (items) {
+        expect(items[0].createdBy.username).to.equal(creator.username)
+        expect('username' in items[0].updatedBy).to.be.false
+        expect(items[0].updatedBy.userDeleted).to.be.true
 
-    })
+        expect('username' in items[1].createdBy).to.be.false
+        expect(items[1].createdBy.userDeleted).to.be.true
+        expect('username' in items[1].updatedBy).to.be.false
+        expect(items[1].updatedBy.userDeleted).to.be.true
 
-    it('Bundled documents still have correct attribution after user changes their username', async function () {
+        expect('username' in items[2].createdBy).to.be.false
+        expect(items[2].createdBy.userDeleted).to.be.true
+        expect('updatedBy' in items[2]).to.be.false
 
-    })
+        changeHandlerCallCount += 1
+      }
 
-    it('Bundled documents still have correct attribution after user is deleted', async function () {
+      await this.test.userbase.openDatabase({ databaseName, changeHandler })
 
+      expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+
+      // clean up
+      await this.test.userbase.deleteUser()
     })
   })
 })
