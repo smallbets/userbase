@@ -184,7 +184,7 @@ describe('DB Sharing Tests', function () {
           expect(items, 'array passed to changeHandler').to.deep.equal([{
             itemId: testItemId,
             item: testItem,
-            createdBy: { username: recipient.username, timestamp: items[0].createdBy.timestamp }
+            createdBy: { userDeleted: true, timestamp: items[0].createdBy.timestamp }
           }])
 
           senderChangeHandlerCallCount += 1
