@@ -190,7 +190,6 @@ class Connection {
                 database.attributionEnabled = true
                 for (const { userId, username } of message.writers) {
                   database.usernamesByUserId.set(userId, username)
-                  database.userIdsByUsername.set(username, userId)
                 }
               }
 

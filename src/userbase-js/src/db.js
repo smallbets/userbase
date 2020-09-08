@@ -125,7 +125,6 @@ class Database {
     this.dbKey = null
     this.receivedMessage = receivedMessage
     this.usernamesByUserId = new Map()
-    this.userIdsByUsername = new Map()
     this.attributionEnabled = false
 
     // Queue that ensures 'ApplyTransactions' executes one at a time
