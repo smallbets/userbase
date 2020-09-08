@@ -178,8 +178,11 @@ class Connection {
               // add transaction to the result set if have not sent it to client yet
               if (transactionLogResponse.Items[i]['sequence-no'] > database.lastSeqNo) {
                 ddbTransactionLog.push(transactionLogResponse.Items[i])
-                const userId = transactionLogResponse.Items[i]['user-id']
-                if (userId != null) {
+                if (database.attribution) {
+                  const userId = transactionLogResponse.Items[i]['user-id']
+                  if (userId == null) {
+                    throw new Error('Database has attribution, but no user-id on transaction')
+                  }
                   writerUserIds.add(userId)
                 }
               }
