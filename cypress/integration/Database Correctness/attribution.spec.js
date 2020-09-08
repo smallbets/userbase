@@ -1,4 +1,4 @@
-import { getRandomString, getStringOfByteLength, wait, readBlobAsText } from '../../support/utils'
+import { getRandomString, getStringOfByteLength, wait } from '../../support/utils'
 
 const beforeEachHook = function () {
   cy.visit('./cypress/integration/index.html').then(async function (win) {
