@@ -265,7 +265,7 @@ async function start(express, app, userbaseConfig = {}) {
                 case 'Bundle': {
                   response = conn.rateLimiter.atCapacity()
                     ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
-                    : await db.bundleTransactionLog(userId, connectionId, params.dbId, params.seqNo, params.bundle)
+                    : await db.bundleTransactionLog(userId, connectionId, params.dbId, params.seqNo, params.bundle, params.writers)
                   break
                 }
                 case 'GenerateFileId': {

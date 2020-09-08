@@ -50,7 +50,7 @@ describe('DB Correctness Tests', function () {
             expect(items, 'items array to have correct length').to.have.lengthOf(1)
 
             const insertedItem = items[0]
-            expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
 
             const { item, itemId } = insertedItem
             expect(item, 'item in items array passed to changeHandler').to.deep.equal(itemToInsert)
@@ -84,7 +84,7 @@ describe('DB Correctness Tests', function () {
             expect(items, 'array passed to changeHandler').to.have.lengthOf(1)
 
             const insertedItem = items[0]
-            expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
 
             const { item, itemId } = insertedItem
             expect(item, 'item in items array passed to changeHandler').to.deep.equal(itemToInsert)
@@ -123,7 +123,7 @@ describe('DB Correctness Tests', function () {
             expect(items, 'array passed to changeHandler').to.have.lengthOf(1)
 
             const updatedItem = items[0]
-            expect(updatedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(updatedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy', 'updatedBy')
 
             const { item, itemId } = updatedItem
             expect(item, 'item in items array passed to changeHandler').to.deep.equal(itemToUpdate)
@@ -189,7 +189,7 @@ describe('DB Correctness Tests', function () {
             expect(items, 'array passed to changeHandler').to.have.lengthOf(1)
 
             const insertedItem = items[0]
-            expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
 
             const { item, itemId } = insertedItem
             expect(item, 'item in items array passed to changeHandler').to.deep.equal(itemToInsert)
@@ -311,7 +311,7 @@ describe('DB Correctness Tests', function () {
             expect(items, 'array passed to changeHandler').to.have.lengthOf(1)
 
             const insertedItem = items[0]
-            expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
 
             const { item, itemId } = insertedItem
             expect(item, 'item in items array passed to changeHandler').to.deep.equal(itemToInsert)
@@ -346,7 +346,7 @@ describe('DB Correctness Tests', function () {
 
             for (let i = 0; i < numSequentialOperations; i++) {
               const insertedItem = items[i]
-              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
 
               const { item, itemId } = insertedItem
               expect(item, 'item in items array passed to changeHandler').to.equal(i.toString())
@@ -359,7 +359,7 @@ describe('DB Correctness Tests', function () {
 
             for (let i = 0; i < numSequentialOperations; i++) {
               const insertedItem = items[i]
-              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy', 'updatedBy')
 
               const { item, itemId } = insertedItem
               expect(item, 'item in items array passed to changeHandler').to.equal((i + numSequentialOperations).toString())
@@ -409,7 +409,7 @@ describe('DB Correctness Tests', function () {
             expect(items, 'array passed to changeHandler').to.have.lengthOf(1)
 
             const insertedItem = items[0]
-            expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
 
             const { item, itemId } = insertedItem
             expect(item, 'item in items array passed to changeHandler').to.equal(largeString)
@@ -444,12 +444,12 @@ describe('DB Correctness Tests', function () {
             expect(items, 'array passed to changeHandler').to.have.lengthOf(2)
 
             const insertedLargeItem = items[0]
-            expect(insertedLargeItem, 'large item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(insertedLargeItem, 'large item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
             expect(insertedLargeItem.item, 'large item in items array passed to changeHandler').to.equal(largeString)
             expect(insertedLargeItem.itemId, 'item ID of large item in items array passed to changeHandler').to.be.a('string')
 
             const insertedSmallItem = items[1]
-            expect(insertedSmallItem, 'small item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(insertedSmallItem, 'small item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
             expect(insertedSmallItem.item, 'small item in items array passed to changeHandler').to.deep.equal(smallItem)
             expect(insertedSmallItem.itemId, 'item ID of small item in items array passed to changeHandler').to.be.a('string')
             successful = true
@@ -484,7 +484,7 @@ describe('DB Correctness Tests', function () {
             expect(items, 'array passed to changeHandler').to.have.lengthOf(1)
 
             const insertedItem = items[0]
-            expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
 
             const { item, itemId } = insertedItem
             expect(item, 'item in items array passed to changeHandler').to.deep.equal(itemToInsert)
@@ -522,7 +522,7 @@ describe('DB Correctness Tests', function () {
 
             for (let i = 0; i < NUM_ITEMS; i++) {
               const insertedItem = items[i]
-              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
 
               const { item, itemId } = insertedItem
               expect(item, 'item in items array passed to changeHandler').to.equal(i.toString())
@@ -568,7 +568,7 @@ describe('DB Correctness Tests', function () {
 
             for (let i = 0; i < NUM_ITEMS; i++) {
               const updatedItem = items[i]
-              expect(updatedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(updatedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy', 'updatedBy')
 
               const { item, itemId } = updatedItem
               expect(item, 'item in items array passed to changeHandler').to.equal((i + NUM_ITEMS).toString())
@@ -623,7 +623,7 @@ describe('DB Correctness Tests', function () {
 
             for (let i = 0; i < totalItemsExpected; i++) {
               const actualItem = items[i]
-              expect(actualItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(actualItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy', 'updatedBy')
 
               const { item, itemId } = actualItem
               expect(item, 'item in items array passed to changeHandler').to.equal((i + NUM_ITEMS + NUM_DELETES).toString())
@@ -679,12 +679,12 @@ describe('DB Correctness Tests', function () {
             expect(items, 'array passed to changeHandler').to.have.lengthOf(2)
 
             const item2 = items[0]
-            expect(item2, 'item 2 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(item2, 'item 2 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy', 'updatedBy')
             expect(item2.itemId, 'item ID of item 2 in items array passed to changeHandler').to.equal(itemId2)
             expect(item2.item, 'item 2 in items array passed to changeHandler').to.deep.equal(item2ToUpdate)
 
             const item3 = items[1]
-            expect(item3, 'item 3 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(item3, 'item 3 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
             expect(item3.itemId, 'item ID of item 3 in items array passed to changeHandler').to.equal(itemId3)
             expect(item3.item, 'item 3 in items array passed to changeHandler').to.deep.equal(item3ToInsert)
 
@@ -767,7 +767,7 @@ describe('DB Correctness Tests', function () {
           if (items.length === numConcurrentOperations && !successful) {
             for (let i = 0; i < numConcurrentOperations; i++) {
               const insertedItem = items[i]
-              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
 
               const { item, itemId } = insertedItem
               expect(item, 'item in items array passed to changeHandler').to.equal(itemId)
@@ -1122,7 +1122,7 @@ describe('DB Correctness Tests', function () {
 
           if (items.length === 1 && !successful) {
             const insertedItem = items[0]
-            expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
 
             const { item, itemId } = insertedItem
             expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(testItemId)
@@ -1284,7 +1284,7 @@ describe('DB Correctness Tests', function () {
             expect(items, 'array passed to changeHandler').to.have.lengthOf(1)
 
             const updatedItem = items[0]
-            expect(updatedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(updatedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy', 'updatedBy')
 
             const { item, itemId } = updatedItem
             expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(testItemId)
@@ -1356,7 +1356,7 @@ describe('DB Correctness Tests', function () {
             expect(items, 'array passed to changeHandler').to.have.lengthOf(1)
 
             const updatedItem = items[0]
-            expect(updatedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(updatedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy', 'updatedBy')
 
             const { item, itemId } = updatedItem
             expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(testItemId)
@@ -1472,7 +1472,7 @@ describe('DB Correctness Tests', function () {
 
             if (winningTransaction === 'Update') {
               const updatedItem = items[0]
-              expect(updatedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(updatedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy', 'updatedBy')
 
               const { item, itemId } = updatedItem
               expect(item, 'item in items array passed to changeHandler').to.deep.equal(update)
@@ -1540,8 +1540,8 @@ describe('DB Correctness Tests', function () {
             const item1 = items[0]
             const item2 = items[1]
 
-            expect(item1, 'item 1 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
-            expect(item2, 'item 2 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(item1, 'item 1 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
+            expect(item2, 'item 2 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
 
             if (item1.itemId === largeItemId) {
               expect(item1.item, 'item 1 in items array passed to changeHandler').to.deep.equal(largeItem)
@@ -1607,9 +1607,9 @@ describe('DB Correctness Tests', function () {
             const item2 = items[1]
             const item3 = items[2]
 
-            expect(item1, 'item 1 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
-            expect(item2, 'item 2 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
-            expect(item3, 'item 3 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(item1, 'item 1 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
+            expect(item2, 'item 2 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
+            expect(item3, 'item 3 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
 
             if (item1.itemId === insertItemId) {
               expect(item1.item, 'item 1 in items array passed to changeHandler').to.deep.equal(insertItem)

@@ -63,7 +63,8 @@ describe('DB Sharing Tests', function () {
           } else {
             expect(items, 'array passed to changeHandler').to.deep.equal([{
               itemId: testItemId,
-              item: testItem
+              item: testItem,
+              createdBy: { username: recipient.username, timestamp: items[0].createdBy.timestamp }
             }])
           }
 
@@ -89,7 +90,8 @@ describe('DB Sharing Tests', function () {
           expect(items, 'array passed to changeHandler').to.be.a('array')
           expect(items, 'array passed to changeHandler').to.deep.equal([{
             itemId: testItemId,
-            item: testItem
+            item: testItem,
+            createdBy: { userDeleted: true, timestamp: items[0].createdBy.timestamp }
           }])
 
           senderChangeHandlerCallCount += 1
@@ -174,7 +176,8 @@ describe('DB Sharing Tests', function () {
           expect(items, 'array passed to changeHandler').to.be.a('array')
           expect(items, 'array passed to changeHandler').to.deep.equal([{
             item: testItem,
-            itemId: testItemId
+            itemId: testItemId,
+            createdBy: { username: sender.username, timestamp: items[0].createdBy.timestamp }
           }])
 
           senderChangeHandlerCallCount += 1
@@ -229,7 +232,8 @@ describe('DB Sharing Tests', function () {
           expect(items, 'array passed to changeHandler').to.be.a('array')
           expect(items, 'array passed to changeHandler').to.deep.equal([{
             itemId: testItemId,
-            item: testItem
+            item: testItem,
+            createdBy: { username: sender.username, timestamp: items[0].createdBy.timestamp }
           }])
 
           changeHandlerCallCount += 1

@@ -38,7 +38,7 @@ const successfulInsertSingleItem = async function (itemToInsert, userbase, insid
       expect(items, 'items array to have correct length').to.have.lengthOf(1)
 
       const insertedItem = items[0]
-      expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+      expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
 
       const { item, itemId } = insertedItem
       expect(item, 'item in items array passed to changeHandler').to.deep.equal(itemToInsert)
@@ -76,7 +76,7 @@ const successfulUpdateSingleItem = async function (itemToUpdate, userbase, insid
       expect(items, 'items array to have correct length').to.have.lengthOf(1)
 
       const insertedItem = items[0]
-      expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+      expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy', 'updatedBy')
 
       const { item, itemId } = insertedItem
       expect(item, 'item in items array passed to changeHandler').to.deep.equal(itemToUpdate)

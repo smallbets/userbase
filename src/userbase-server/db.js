@@ -22,6 +22,7 @@ const SECONDS_IN_A_DAY = 60 * 60 * HOURS_IN_A_DAY
 const MS_IN_A_DAY = SECONDS_IN_A_DAY * 1000
 
 const getS3DbStateKey = (databaseId, bundleSeqNo) => `${databaseId}/${bundleSeqNo}`
+const getS3DbWritersKey = (databaseId, bundleSeqNo) => `${databaseId}/writers/${bundleSeqNo}`
 const getS3FileChunkKey = (databaseId, fileId, chunkNumber) => `${databaseId}/${fileId}/${chunkNumber}`
 
 const _buildUserDatabaseParams = (userId, dbNameHash, dbId, encryptedDbKey, readOnly, resharingAllowed) => {
@@ -42,7 +43,7 @@ const _buildUserDatabaseParams = (userId, dbNameHash, dbId, encryptedDbKey, read
   }
 }
 
-const createDatabase = async function (userId, dbNameHash, dbId, encryptedDbName, encryptedDbKey) {
+const createDatabase = async function (userId, dbNameHash, dbId, encryptedDbName, encryptedDbKey, attribution) {
   try {
     const user = await userController.getUserByUserId(userId)
     if (!user || user['deleted']) throw new Error('UserNotFound')
@@ -52,6 +53,8 @@ const createDatabase = async function (userId, dbNameHash, dbId, encryptedDbName
       'owner-id': userId,
       'database-name': encryptedDbName
     }
+
+    if (attribution) database['attribution'] = true
 
     const userDatabaseParams = _buildUserDatabaseParams(userId, dbNameHash, dbId, encryptedDbKey)
 
@@ -186,12 +189,12 @@ exports.openDatabase = async function (user, app, admin, connectionId, dbNameHas
       if (!database && !newDatabaseParams) return responseBuilder.errorResponse(statusCodes['Not Found'], 'Database not found')
       else if (!database) {
         // attempt to create new database
-        const { dbId, encryptedDbName, encryptedDbKey } = newDatabaseParams
+        const { dbId, encryptedDbName, encryptedDbKey, attribution } = newDatabaseParams
         if (!dbId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
         if (!encryptedDbName) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name')
         if (!encryptedDbKey) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database key')
 
-        database = await createDatabase(userId, dbNameHash, dbId, encryptedDbName, encryptedDbKey)
+        database = await createDatabase(userId, dbNameHash, dbId, encryptedDbName, encryptedDbKey, attribution)
       }
     } catch (e) {
       if (e.data === 'Database already exists' || e.data === 'Database already creating') {
@@ -206,9 +209,10 @@ exports.openDatabase = async function (user, app, admin, connectionId, dbNameHas
     const dbId = database['database-id']
     const bundleSeqNo = database['bundle-seq-no']
     const dbKey = database['encrypted-db-key']
+    const attribution = database['attribution']
 
     const isOwner = true
-    if (connections.openDatabase(userId, connectionId, dbId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner)) {
+    if (connections.openDatabase(userId, connectionId, dbId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner, attribution)) {
       return responseBuilder.successResponse('Success!')
     } else {
       throw new Error('Unable to open database')
@@ -245,11 +249,12 @@ exports.openDatabaseByDatabaseId = async function (user, app, admin, connectionI
     const dbNameHash = database['database-name-hash']
     const bundleSeqNo = database['bundle-seq-no']
     const dbKey = database['encrypted-db-key']
+    const attribution = database['attribution']
 
     // user must call getDatabases() first to set the db key
     if (!dbKey) return responseBuilder.errorResponse(statusCodes['Not Found'], 'Database key not found')
 
-    if (connections.openDatabase(userId, connectionId, databaseId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner)) {
+    if (connections.openDatabase(userId, connectionId, databaseId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner, attribution)) {
       return responseBuilder.successResponse('Success!')
     } else {
       throw new Error('Unable to open database')
@@ -552,6 +557,9 @@ const _incrementSeqNo = async function (transaction, databaseId) {
 }
 
 const putTransaction = async function (transaction, userId, databaseId) {
+  // can be determined now, but not needed until later
+  const userPromise = userController.getUserByUserId(userId)
+
   // make both requests async to keep the time for successful putTransaction low
   const [userDb] = await Promise.all([
     _getUserDatabaseByUserIdAndDatabaseId(userId, databaseId),
@@ -559,6 +567,8 @@ const putTransaction = async function (transaction, userId, databaseId) {
   ])
 
   const ddbClient = connection.ddbClient()
+
+  transaction['user-id'] = userId
 
   try {
     if (!userDb) {
@@ -592,6 +602,10 @@ const putTransaction = async function (transaction, userId, databaseId) {
     if (e.status && e.error) throw e
     else throw new Error(`Failed to put transaction with ${e}.`)
   }
+
+  // username is put on the transaction for transmitting,
+  // but not for storing.
+  transaction['username'] = (await userPromise).username
 
   // notify all websocket connections that there's a database change
   connections.push(transaction, userId)
@@ -732,7 +746,7 @@ exports.batchTransaction = async function (userId, connectionId, databaseId, ope
   }
 }
 
-exports.bundleTransactionLog = async function (userId, connectionId, databaseId, seqNo, bundle) {
+exports.bundleTransactionLog = async function (userId, connectionId, databaseId, seqNo, bundle, writersString) {
   const bundleSeqNo = Number(seqNo)
 
   if (!bundleSeqNo) {
@@ -744,6 +758,14 @@ exports.bundleTransactionLog = async function (userId, connectionId, databaseId,
       return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Database not open')
     }
 
+    const clientIncludedWriters = !!writersString
+    const databaseRequiresWriters = connections.sockets[userId][connectionId].databases[databaseId].attribution
+    if (clientIncludedWriters && !databaseRequiresWriters) {
+      return responseBuilder.errorResponse(statusCodes['Bad Request'], "This is an older database without attribution enabled, but the client sent writer data.")
+    } else if (!clientIncludedWriters && databaseRequiresWriters) {
+      return responseBuilder.errorResponse(statusCodes['Bad Request'], "This database has attribution enabled, but the client did not send writers data with its bundle. Maybe it's an older version?")
+    }
+
     const database = await findDatabaseByDatabaseId(databaseId)
     if (!database) return responseBuilder.errorResponse(statusCodes['Not Found'], 'Database not found')
 
@@ -752,15 +774,29 @@ exports.bundleTransactionLog = async function (userId, connectionId, databaseId,
       return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Bundle sequence no must be greater than current bundle')
     }
 
+    logger.info(`Uploading db ${databaseId}'s state to S3 at bundle seq no ${bundleSeqNo}...`)
+    const s3 = setup.s3()
+    const promises = []
+
     const dbStateParams = {
       Bucket: setup.getDbStatesBucketName(),
       Key: getS3DbStateKey(databaseId, bundleSeqNo),
       Body: bundle
     }
 
-    logger.info(`Uploading db ${databaseId}'s state to S3 at bundle seq no ${bundleSeqNo}...`)
-    const s3 = setup.s3()
-    await s3.upload(dbStateParams).promise()
+    promises.push(s3.upload(dbStateParams).promise())
+
+    if (clientIncludedWriters) {
+      const dbWritersParams = {
+        Bucket: setup.getDbStatesBucketName(),
+        Key: getS3DbWritersKey(databaseId, bundleSeqNo),
+        Body: writersString
+      }
+
+      promises.push(s3.upload(dbWritersParams).promise())
+    }
+
+    await Promise.all(promises)
 
     const bundleParams = {
       TableName: setup.databaseTableName,
@@ -789,7 +825,7 @@ exports.bundleTransactionLog = async function (userId, connectionId, databaseId,
   }
 }
 
-exports.getBundle = async function (databaseId, bundleSeqNo) {
+exports.getBundle = async function (databaseId, bundleSeqNo, useAttribution) {
   if (!bundleSeqNo) {
     return responseBuilder.errorResponse(statusCodes['Bad Request'], `Missing bundle sequence number`)
   }
@@ -799,11 +835,26 @@ exports.getBundle = async function (databaseId, bundleSeqNo) {
       Bucket: setup.getDbStatesBucketName(),
       Key: getS3DbStateKey(databaseId, bundleSeqNo)
     }
+    const writersParams = {
+      Bucket: setup.getDbStatesBucketName(),
+      Key: getS3DbWritersKey(databaseId, bundleSeqNo)
+    }
     const s3 = setup.s3()
 
     try {
-      const result = await s3.getObject(params).promise()
-      return result.Body.toString()
+      if (useAttribution) {
+        const [bundleObject, writersObject] = await Promise.all([
+          s3.getObject(params).promise(),
+          s3.getObject(writersParams).promise(),
+        ])
+        const bundle = bundleObject.Body.toString()
+        const writers = writersObject.Body.toString()
+        return { bundle, writers }
+      } else {
+        const bundleObject = await s3.getObject(params).promise()
+        const bundle = bundleObject.Body.toString()
+        return { bundle }
+      }
     } catch (e) {
       const statusCode = e.statusCode
       const error = e.message
