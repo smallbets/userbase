@@ -593,6 +593,10 @@ class Connection {
       items: database.items,
       itemsIndex: database.itemsIndex.array
     }
+    const writers = database.attributionEnabled
+      ? [...database.usernamesByUserId.keys()].join(',')
+      : undefined
+
     const plaintextString = JSON.stringify(bundle)
 
     const itemKeyPromises = []
@@ -604,10 +608,6 @@ class Connection {
 
     const compressedString = LZString.compress(plaintextString)
     const base64Bundle = await crypto.aesGcm.encryptString(dbKey, compressedString)
-
-    const writers = database.attributionEnabled
-      ? [...database.usernamesByUserId.keys()].join(',')
-      : undefined
 
     const action = 'Bundle'
     const params = { dbId, seqNo: lastSeqNo, bundle: base64Bundle, keys: itemKeys, writers }
