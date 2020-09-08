@@ -1,3 +1,7 @@
+## [2.2.0] - 2020-09-08
+### Added
+- openDatabase() changeHandler for newly created databases passes back attribution data on inserts, updates, and file uploads.
+
 ## [2.1.3] - 2020-08-22
 ### Fixed
 - getFile() throws FileNotFound when user attempts to get a file that has been overwritten, rather than ServiceUnavailable.

@@ -81,9 +81,18 @@ export interface DeleteOperation {
 export interface Item {
   itemId: string
   item: any
+  createdBy: Attribution
+  updatedBy?: Attribution
   fileId?: string
   fileName?: string
   fileSize?: number
+  fileUploadedBy?: Attribution
+}
+
+export interface Attribution {
+  timestamp: Date
+  username?: string
+  userDeleted?: boolean
 }
 
 export interface FileResult {
