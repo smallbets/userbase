@@ -186,6 +186,13 @@ class Connection {
 
               if (!database.dbKey) throw new Error('Missing db key')
 
+              if (message.writers) {
+                database.attributionEnabled = true
+                for (const { userId, username } of message.writers) {
+                  database.usernamesByUserId.set(userId, username)
+                }
+              }
+
               if (message.bundle) {
                 const bundleSeqNo = message.bundleSeqNo
                 const base64Bundle = message.bundle
@@ -586,6 +593,10 @@ class Connection {
       items: database.items,
       itemsIndex: database.itemsIndex.array
     }
+    const writers = database.attributionEnabled
+      ? [...database.usernamesByUserId.keys()].join(',')
+      : undefined
+
     const plaintextString = JSON.stringify(bundle)
 
     const itemKeyPromises = []
@@ -599,7 +610,7 @@ class Connection {
     const base64Bundle = await crypto.aesGcm.encryptString(dbKey, compressedString)
 
     const action = 'Bundle'
-    const params = { dbId, seqNo: lastSeqNo, bundle: base64Bundle, keys: itemKeys }
+    const params = { dbId, seqNo: lastSeqNo, bundle: base64Bundle, keys: itemKeys, writers }
     this.request(action, params)
   }
 

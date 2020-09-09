@@ -5,6 +5,7 @@ import db from './db'
 import logger from './logger'
 import { estimateSizeOfDdbItem } from './utils'
 import statusCodes from './statusCodes'
+import { getUserByUserId } from './user'
 
 const SECONDS_BEFORE_ROLLBACK_GAP_TRIGGERED = 1000 * 10 // 10s
 const TRANSACTION_SIZE_BUNDLE_TRIGGER = 1024 * 50 // 50 KB
@@ -64,7 +65,7 @@ class Connection {
     this.fileStorageRateLimiter = new TokenBucket(FILE_STORAGE_MAX_REQUESTS_PER_SECOND, FILE_STORAGE_TOKENS_REFILLED_PER_SECOND)
   }
 
-  openDatabase(databaseId, dbNameHash, bundleSeqNo, reopenAtSeqNo, isOwner) {
+  openDatabase(databaseId, dbNameHash, bundleSeqNo, reopenAtSeqNo, isOwner, attribution) {
     this.databases[databaseId] = {
       bundleSeqNo: bundleSeqNo > 0 ? bundleSeqNo : -1,
       lastSeqNo: reopenAtSeqNo || 0,
@@ -72,6 +73,7 @@ class Connection {
       init: reopenAtSeqNo !== undefined, // ensures server sends the dbNameHash & key on first ever push, not reopen
       dbNameHash,
       isOwner,
+      attribution,
     }
   }
 
@@ -89,6 +91,9 @@ class Connection {
       dbId: databaseId,
       dbNameHash: database.dbNameHash,
       isOwner: database.isOwner,
+      writers: database.attribution
+        ? []
+        : undefined,
     }
 
     const reopeningDatabase = reopenAtSeqNo !== undefined
@@ -102,11 +107,20 @@ class Connection {
     let lastSeqNo = database.lastSeqNo
     const bundleSeqNo = database.bundleSeqNo
 
+    const writerUserIds = new Set()
+
     if (bundleSeqNo > 0 && database.lastSeqNo === 0) {
-      const bundle = await db.getBundle(databaseId, bundleSeqNo)
+      const { bundle, writers } = await db.getBundle(databaseId, bundleSeqNo, database.attribution)
       payload.bundleSeqNo = bundleSeqNo
       payload.bundle = bundle
       lastSeqNo = bundleSeqNo
+      if (writers) {
+        for (const userId of writers.split(',')) {
+          writerUserIds.add(userId)
+        }
+      } else if (database.attribution) {
+        throw new Error('Missing database bundle writers list')
+      }
     }
 
     // get transactions from the last sequence number
@@ -164,6 +178,13 @@ class Connection {
               // add transaction to the result set if have not sent it to client yet
               if (transactionLogResponse.Items[i]['sequence-no'] > database.lastSeqNo) {
                 ddbTransactionLog.push(transactionLogResponse.Items[i])
+                if (database.attribution && transactionLogResponse.Items[i].command !== 'Rollback') {
+                  const userId = transactionLogResponse.Items[i]['user-id']
+                  if (userId == null) {
+                    throw new Error('Database has attribution, but no user-id on transaction')
+                  }
+                  writerUserIds.add(userId)
+                }
               }
 
             }
@@ -177,6 +198,18 @@ class Connection {
     } catch (e) {
       logger.warn(`Failed to push to ${databaseId} with ${e}`)
       throw new Error(e)
+    }
+
+    if (database.attribution) {
+      await Promise.all([...writerUserIds].map(getUserByUserId))
+        .then(users => {
+          for (const user of users) {
+            if (!user) continue
+            if (user['deleted']) continue
+            const { 'user-id': userId, username } = user
+            payload.writers.push({ userId, username })
+          }
+        })
     }
 
     if (openingDatabase && database.lastSeqNo !== 0) {
@@ -280,6 +313,8 @@ class Connection {
           command: transaction['command'],
           key: transaction['key'],
           record: transaction['record'],
+          timestamp: transaction['creation-date'],
+          userId: transaction['user-id'],
           fileMetadata: transaction['file-metadata'],
           fileId: transaction['file-id'],
           fileEncryptionKey: transaction['file-encryption-key'],
@@ -362,13 +397,13 @@ export default class Connections {
     return connection
   }
 
-  static openDatabase(userId, connectionId, databaseId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner) {
+  static openDatabase(userId, connectionId, databaseId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner, attribution) {
     if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId][connectionId]) return
 
     const conn = Connections.sockets[userId][connectionId]
 
     if (!conn.databases[databaseId]) {
-      conn.openDatabase(databaseId, dbNameHash, bundleSeqNo, reopenAtSeqNo, isOwner)
+      conn.openDatabase(databaseId, dbNameHash, bundleSeqNo, reopenAtSeqNo, isOwner, attribution)
       logger.child({ connectionId, databaseId, adminId: conn.adminId }).info('Database opened')
     }
 
@@ -407,6 +442,9 @@ export default class Connections {
             dbId,
             dbNameHash: database.dbNameHash,
             isOwner: database.isOwner,
+            writers: database['attribution']
+              ? [{ userId: transaction['user-id'], username: transaction['username'] }]
+              : undefined
           }
 
           conn.sendPayload(payload, [transaction], database)

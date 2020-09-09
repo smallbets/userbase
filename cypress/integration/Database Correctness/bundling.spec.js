@@ -58,7 +58,7 @@ describe('DB Correctness Tests', function () {
 
             for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
               const insertedItem = items[i]
-              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
 
               const { item, itemId } = insertedItem
               expect(item, 'item in items array passed to changeHandler').to.equal(largeString)
@@ -157,7 +157,7 @@ describe('DB Correctness Tests', function () {
 
             for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
               const insertedItem = items[i]
-              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
 
               const { item, itemId } = insertedItem
               expect(item, 'item in items array passed to changeHandler').to.equal(largeString)
@@ -331,15 +331,17 @@ describe('DB Correctness Tests', function () {
             // check item with the file
             const itemWithFile = items[0]
             expect(itemWithFile, 'item with file in items array passed to changeHandler').to.be.an('object').that.has.all.keys(
-              'item', 'itemId', 'fileName', 'fileSize', 'fileId'
+              'item', 'itemId', 'createdBy', 'fileName', 'fileSize', 'fileId', 'fileUploadedBy'
             )
 
             expect(itemWithFile, 'item in items array passed to changeHandler').to.deep.equal({
               item: testItem,
               itemId: testItemId,
+              createdBy: itemWithFile.createdBy,
               fileName: testFileName,
               fileSize: testFile.size,
-              fileId: itemWithFile.fileId
+              fileId: itemWithFile.fileId,
+              fileUploadedBy: itemWithFile.fileUploadedBy,
             })
             expect(itemWithFile.fileId, 'file id').to.be.a.string
             fileId = itemWithFile.fileId
@@ -347,7 +349,7 @@ describe('DB Correctness Tests', function () {
             // check the rest of the items
             for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
               const insertedItem = items[i + 1]
-              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
 
               const { item, itemId } = insertedItem
               expect(item, 'item in items array passed to changeHandler').to.equal(largeString)
@@ -394,7 +396,7 @@ describe('DB Correctness Tests', function () {
 
             for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
               const insertedItem = items[i]
-              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
 
               const { item, itemId } = insertedItem
               expect(item, 'item in items array passed to changeHandler').to.equal(largeString)
@@ -451,7 +453,7 @@ describe('DB Correctness Tests', function () {
 
             for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
               const insertedItem = items[i]
-              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
 
               const { item, itemId } = insertedItem
               expect(item, 'item in items array passed to changeHandler').to.equal(largeString)
@@ -494,7 +496,7 @@ describe('DB Correctness Tests', function () {
                 const itemIndex = (i * numItemsNeededToTriggerBundle) + j
 
                 const insertedItem = items[itemIndex]
-                expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+                expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
 
                 const { item, itemId } = insertedItem
                 expect(item, 'item in items array passed to changeHandler').to.equal(largeString)
@@ -565,7 +567,7 @@ describe('DB Correctness Tests', function () {
                 const itemIndex = (i * numItemsNeededToTriggerBundle) + j
 
                 const insertedItem = items[itemIndex]
-                expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+                expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
 
                 const { item, itemId } = insertedItem
                 expect(item, 'item in items array passed to changeHandler').to.equal(largeString)
@@ -741,8 +743,8 @@ describe('DB Correctness Tests', function () {
               const insertedItem1 = items[itemIndex1]
               const insertedItem2 = items[itemIndex2]
 
-              expect(insertedItem1, 'item 1 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
-              expect(insertedItem2, 'item 2 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(insertedItem1, 'item 1 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
+              expect(insertedItem2, 'item 2 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
 
               if (insertedItem1.itemId === itemIndex1.toString()) {
                 expect(insertedItem1.item, 'item 1 in items array passed to changeHandler').to.deep.equal(largeString)
@@ -827,8 +829,8 @@ describe('DB Correctness Tests', function () {
             const insertedItem1 = items[itemIndex1]
             const insertedItem2 = items[itemIndex2]
 
-            expect(insertedItem1, 'item 1 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
-            expect(insertedItem2, 'item 2 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+            expect(insertedItem1, 'item 1 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
+            expect(insertedItem2, 'item 2 in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
 
             if (insertedItem1.itemId === itemIndex1.toString()) {
               expect(insertedItem1.item, 'item 1 in items array passed to changeHandler').to.deep.equal(largeString)
@@ -880,7 +882,7 @@ describe('DB Correctness Tests', function () {
                 const itemIndex = (i * numItemsNeededToTriggerBundle) + j
 
                 const insertedItem = items[itemIndex]
-                expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+                expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
 
                 const { item, itemId } = insertedItem
                 expect(item, 'item in items array passed to changeHandler').to.equal(largeString)
@@ -963,7 +965,7 @@ describe('DB Correctness Tests', function () {
               const itemIndex = (i * numItemsNeededToTriggerBundle) + j
 
               const insertedItem = items[itemIndex]
-              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId')
+              expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
 
               const { item, itemId } = insertedItem
               expect(item, 'item in items array passed to changeHandler').to.equal(largeString)

@@ -56,15 +56,17 @@ describe('File Storage', function () {
 
             const insertedItem = items[0]
             expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys(
-              'item', 'itemId', 'fileName', 'fileSize', 'fileId'
+              'item', 'itemId', 'createdBy', 'fileName', 'fileSize', 'fileId', 'fileUploadedBy'
             )
 
             expect(insertedItem, 'item in items array passed to changeHandler').to.deep.equal({
               item: testItem,
               itemId: testItemId,
+              createdBy: insertedItem.createdBy,
               fileName: testFileName,
               fileSize: testFile.size,
-              fileId: insertedItem.fileId
+              fileId: insertedItem.fileId,
+              fileUploadedBy: insertedItem.fileUploadedBy,
             })
 
             expect(insertedItem.fileId, 'file id').to.be.a.string
@@ -105,15 +107,17 @@ describe('File Storage', function () {
 
             const insertedItem = items[0]
             expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys(
-              'item', 'itemId', 'fileName', 'fileSize', 'fileId'
+              'item', 'itemId', 'createdBy', 'fileName', 'fileSize', 'fileId', 'fileUploadedBy'
             )
 
             expect(insertedItem, 'item in items array passed to changeHandler').to.deep.equal({
               item: testItem,
               itemId: testItemId,
+              createdBy: insertedItem.createdBy,
               fileName: testFileName,
               fileSize: testFile.size,
-              fileId: insertedItem.fileId
+              fileId: insertedItem.fileId,
+              fileUploadedBy: insertedItem.fileUploadedBy,
             })
 
             expect(insertedItem.fileId, 'file id').to.be.a.string
@@ -154,15 +158,17 @@ describe('File Storage', function () {
 
             const insertedItem = items[0]
             expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys(
-              'item', 'itemId', 'fileName', 'fileSize', 'fileId'
+              'item', 'itemId', 'createdBy', 'fileName', 'fileSize', 'fileId', 'fileUploadedBy'
             )
 
             expect(insertedItem, 'item in items array passed to changeHandler').to.deep.equal({
               item: testItem,
               itemId: testItemId,
+              createdBy: insertedItem.createdBy,
               fileName: testFileName,
               fileSize: testFile.size,
-              fileId: insertedItem.fileId
+              fileId: insertedItem.fileId,
+              fileUploadedBy: insertedItem.fileUploadedBy,
             })
 
             expect(insertedItem.fileId, 'file id').to.be.a.string
@@ -203,15 +209,17 @@ describe('File Storage', function () {
 
             const insertedItem = items[0]
             expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys(
-              'item', 'itemId', 'fileName', 'fileSize', 'fileId'
+              'item', 'itemId', 'createdBy', 'fileName', 'fileSize', 'fileId', 'fileUploadedBy'
             )
 
             expect(insertedItem, 'item in items array passed to changeHandler').to.deep.equal({
               item: testItem,
               itemId: testItemId,
+              createdBy: insertedItem.createdBy,
               fileName: testFileName,
               fileSize: testFile.size,
-              fileId: insertedItem.fileId
+              fileId: insertedItem.fileId,
+              fileUploadedBy: insertedItem.fileUploadedBy,
             })
 
             expect(insertedItem.fileId, 'file id').to.be.a.string
@@ -259,15 +267,17 @@ describe('File Storage', function () {
 
             const insertedItem = items[0]
             expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys(
-              'item', 'itemId', 'fileName', 'fileSize', 'fileId'
+              'item', 'itemId', 'createdBy', 'fileName', 'fileSize', 'fileId', 'fileUploadedBy'
             )
 
             expect(insertedItem, 'item in items array passed to changeHandler').to.deep.equal({
               item: testItem,
               itemId: testItemId,
+              createdBy: insertedItem.createdBy,
               fileName: testFileName,
               fileSize: testFile.size,
-              fileId: insertedItem.fileId
+              fileId: insertedItem.fileId,
+              fileUploadedBy: insertedItem.fileUploadedBy,
             })
 
             expect(insertedItem.fileId, 'file id').to.be.a.string
@@ -306,15 +316,17 @@ describe('File Storage', function () {
 
             const insertedItem = items[0]
             expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys(
-              'item', 'itemId', 'fileName', 'fileSize', 'fileId'
+              'item', 'itemId', 'createdBy', 'fileName', 'fileSize', 'fileId', 'fileUploadedBy'
             )
 
             expect(insertedItem, 'item in items array passed to changeHandler').to.deep.equal({
               item: testItem,
               itemId: testItemId,
+              createdBy: insertedItem.createdBy,
               fileName: 2 + testFileName,
               fileSize: testFile2.size,
-              fileId: insertedItem.fileId
+              fileId: insertedItem.fileId,
+              fileUploadedBy: insertedItem.fileUploadedBy,
             })
 
             expect(insertedItem.fileId, 'file id').to.be.a.string
@@ -639,7 +651,7 @@ describe('File Storage', function () {
 
             const insertedItem = items[0]
             expect(insertedItem, 'item keys in items array passed to changeHandler').to.be.an('object').that.has.all.keys(
-              'item', 'itemId', 'fileName', 'fileSize', 'fileId'
+              'item', 'itemId', 'createdBy', 'fileName', 'fileSize', 'fileId', 'fileUploadedBy'
             )
 
             const fileName = insertedItem.fileName
@@ -648,9 +660,11 @@ describe('File Storage', function () {
             expect(insertedItem, 'item in items array passed to changeHandler').to.deep.equal({
               item: testItem,
               itemId: testItemId,
+              createdBy: insertedItem.createdBy,
               fileName: insertedItem.fileName,
               fileSize: testFile1.size,
-              fileId: insertedItem.fileId
+              fileId: insertedItem.fileId,
+              fileUploadedBy: insertedItem.fileUploadedBy,
             })
 
             expect(insertedItem.fileId, 'file id').to.be.a.string
