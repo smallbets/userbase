@@ -1,3 +1,7 @@
+## [2.2.1] - 2020-09-10
+### Fixed
+- shareDatabase() UserNotVerified error message should recommend seting requireVerified to false rather than true.
+
 ## [2.2.0] - 2020-09-08
 ### Added
 - openDatabase() changeHandler for newly created databases passes back attribution data on inserts, updates, and file uploads.

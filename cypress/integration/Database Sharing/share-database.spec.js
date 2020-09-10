@@ -573,7 +573,7 @@ describe('DB Sharing Tests', function () {
           throw new Error('Should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.be.equal('UserNotVerified')
-          expect(e.message, 'error message').to.be.equal('User not verified. Either verify user before sharing database, or set requireVerified to true.')
+          expect(e.message, 'error message').to.be.equal('User not verified. Either verify user before sharing database, or set requireVerified to false.')
           expect(e.status, 'error status').to.be.equal(403)
         }
 
