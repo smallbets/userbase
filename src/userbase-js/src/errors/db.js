@@ -605,7 +605,7 @@ class UserNotVerified extends Error {
     super(...params)
 
     this.name = 'UserNotVerified'
-    this.message = 'User not verified. Either verify user before sharing database, or set requireVerified to true.'
+    this.message = 'User not verified. Either verify user before sharing database, or set requireVerified to false.'
     this.status = statusCodes['Forbidden']
   }
 }
