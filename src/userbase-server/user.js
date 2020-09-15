@@ -2181,7 +2181,7 @@ const _createStripePaymentSession = async function (user, admin, subscriptionPla
 
   try {
     const session = await stripe.getClient(useTestClient).checkout.sessions.create({
-      customer_email: user['email'],
+      customer_email: customerId ? undefined : user['email'], // can't provide both customerId and customer_email
       customer: customerId,
       client_reference_id: user['user-id'],
       payment_method_types: ['card'],
