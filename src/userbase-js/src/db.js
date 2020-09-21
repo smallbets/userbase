@@ -726,7 +726,6 @@ const insertItem = async (params) => {
       case 'DatabaseIdCannotBeBlank':
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
-      case 'DatabaseIdNotAllowedForOwnDatabase':
       case 'DatabaseIsReadOnly':
       case 'ItemIdMustBeString':
       case 'ItemIdCannotBeBlank':
@@ -796,7 +795,6 @@ const updateItem = async (params) => {
       case 'DatabaseIdCannotBeBlank':
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
-      case 'DatabaseIdNotAllowedForOwnDatabase':
       case 'DatabaseIsReadOnly':
       case 'ItemIdMissing':
       case 'ItemIdMustBeString':
@@ -868,7 +866,6 @@ const deleteItem = async (params) => {
       case 'DatabaseIdCannotBeBlank':
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
-      case 'DatabaseIdNotAllowedForOwnDatabase':
       case 'DatabaseIsReadOnly':
       case 'ItemIdMissing':
       case 'ItemIdMustBeString':
@@ -972,7 +969,6 @@ const putTransaction = async (params) => {
       case 'DatabaseIdCannotBeBlank':
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
-      case 'DatabaseIdNotAllowedForOwnDatabase':
       case 'DatabaseIsReadOnly':
       case 'OperationsMissing':
       case 'OperationsMustBeArray':
@@ -1179,7 +1175,6 @@ const uploadFile = async (params) => {
       case 'DatabaseIdCannotBeBlank':
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
-      case 'DatabaseIdNotAllowedForOwnDatabase':
       case 'DatabaseIsReadOnly':
       case 'ItemIdMissing':
       case 'ItemIdMustBeString':
@@ -1335,7 +1330,6 @@ const getFile = async (params) => {
       case 'DatabaseIdCannotBeBlank':
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
-      case 'DatabaseIdNotAllowedForOwnDatabase':
       case 'DatabaseIsReadOnly':
       case 'FileIdMissing':
       case 'FileIdMustBeString':
@@ -1623,7 +1617,6 @@ const getDatabases = async (params) => {
       case 'DatabaseIdCannotBeBlank':
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
-      case 'DatabaseIdNotAllowedForOwnDatabase':
       case 'UserNotSignedIn':
       case 'ServiceUnavailable':
         throw e
@@ -1822,7 +1815,6 @@ const shareDatabase = async (params) => {
       case 'DatabaseIdCannotBeBlank':
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
-      case 'DatabaseIdNotAllowedForOwnDatabase':
       case 'DatabaseNotFound':
       case 'UsernameMissing':
       case 'UsernameCannotBeBlank':
@@ -1917,7 +1909,6 @@ const modifyDatabasePermissions = async (params) => {
       case 'DatabaseIdCannotBeBlank':
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
-      case 'DatabaseIdNotAllowedForOwnDatabase':
       case 'DatabaseNotFound':
       case 'UsernameMissing':
       case 'UsernameCannotBeBlank':
