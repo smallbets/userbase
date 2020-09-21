@@ -1202,6 +1202,7 @@ describe('DB Tests', function () {
         const database = databasesResult.databases[0]
         expect(database, 'database name').to.deep.equal({
           databaseName,
+          databaseId: database.databaseId,
           isOwner: true,
           readOnly: false,
           resharingAllowed: true,
@@ -1229,7 +1230,7 @@ describe('DB Tests', function () {
         for (let i = 0; i < numDatabases; i++) {
           const database = databasesResult.databases[i]
 
-          expect(database, 'database keys').to.have.keys(['databaseName', 'isOwner', 'readOnly', 'resharingAllowed', 'users'])
+          expect(database, 'database keys').to.have.keys(['databaseName', 'databaseId', 'isOwner', 'readOnly', 'resharingAllowed', 'users'])
           const { isOwner, readOnly, resharingAllowed, users } = database
           expect(isOwner, 'isOwner').to.be.true
           expect(readOnly, 'readOnly').to.be.false
@@ -1261,6 +1262,7 @@ describe('DB Tests', function () {
         const database = databasesResult.databases[0]
         expect(database, 'database name').to.deep.equal({
           databaseName,
+          databaseId: database.databaseId,
           isOwner: true,
           readOnly: false,
           resharingAllowed: true,
@@ -1322,6 +1324,34 @@ describe('DB Tests', function () {
         // clean up
         await this.test.userbase.deleteUser()
         await this.test.userbase.signIn({ username: usernameB, password: passwordB, rememberMe: 'none' })
+        await this.test.userbase.deleteUser()
+      })
+
+      it.only('Get 1 Database using database ID, for my own database', async function () {
+        await Promise.all([
+          this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } }),
+
+          // spice test up with an extra database
+          this.test.userbase.openDatabase({ databaseName: databaseName + '-1', changeHandler: () => { } }),
+        ])
+
+        const { databases: allDatabases } = await this.test.userbase.getDatabases()
+        const databaseId = allDatabases.find(db => db.databaseName === databaseName).databaseId
+
+        const databasesResult = await this.test.userbase.getDatabases({ databaseId })
+        expect(databasesResult, 'result structure').to.have.key('databases')
+        expect(databasesResult.databases, 'databases result').to.be.an('array').that.has.lengthOf(1)
+
+        const database = databasesResult.databases[0]
+        expect(database, 'database').to.deep.equal({
+          databaseName,
+          databaseId: database.databaseId,
+          isOwner: true,
+          readOnly: false,
+          resharingAllowed: true,
+          users: []
+        })
+
         await this.test.userbase.deleteUser()
       })
 
