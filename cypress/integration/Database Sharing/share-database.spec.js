@@ -402,6 +402,7 @@ describe('DB Sharing Tests', function () {
 
         expect(senderDatabase, 'sender databases').to.deep.equal({
           databaseName,
+          databaseId,
           isOwner: true,
           readOnly: false,
           resharingAllowed: true,
@@ -535,6 +536,7 @@ describe('DB Sharing Tests', function () {
         expect(senderDatabasesResult, 'sender databases').to.deep.equal({
           databases: [{
             databaseName,
+            databaseId,
             isOwner: true,
             readOnly: false,
             resharingAllowed: true,
@@ -1027,6 +1029,28 @@ describe('DB Sharing Tests', function () {
           expect(e.name, 'error name').to.be.equal('DatabaseIdInvalidLength')
           expect(e.message, 'error message').to.be.equal('Database id invalid length. Must be 36 characters.')
           expect(e.status, 'error status').to.be.equal(400)
+        }
+
+        // clean up
+        await this.test.userbase.deleteUser()
+      })
+
+      it("Database id cannot be used to open the user's own database", async function () {
+        await signUp(this.test.userbase)
+
+        await this.test.userbase.openDatabase({ databaseName: 'db1', changeHandler: () => { } })
+
+        const { databases } = await this.test.userbase.getDatabases()
+        const db = databases[0]
+        const { databaseId } = db
+
+        try {
+          await this.test.userbase.openDatabase({ databaseId, changeHandler: () => { } })
+          throw new Error('Should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('DatabaseIdNotAllowedForOwnDatabase')
+          expect(e.message, 'error message').to.match(/Tried to open the user's own database using its databaseId/)
+          expect(e.status, 'error status').to.be.equal(403)
         }
 
         // clean up
