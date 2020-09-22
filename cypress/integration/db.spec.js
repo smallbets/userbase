@@ -1327,7 +1327,7 @@ describe('DB Tests', function () {
         await this.test.userbase.deleteUser()
       })
 
-      it.only('Get 1 Database using database ID, for my own database', async function () {
+      it('Get 1 Database using database ID, for my own database', async function () {
         await Promise.all([
           this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } }),
 
