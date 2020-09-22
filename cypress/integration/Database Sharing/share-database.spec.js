@@ -82,6 +82,55 @@ describe('DB Sharing Tests', function () {
         await this.test.userbase.deleteUser()
       })
 
+      it('Share own database by databaseId', async function () {
+        const recipient = await signUp(this.test.userbase)
+        const { verificationMessage } = await this.test.userbase.getVerificationMessage()
+        await this.test.userbase.signOut()
+
+        const sender = await signUp(this.test.userbase)
+        await this.test.userbase.verifyUser({ verificationMessage })
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        // get database's id
+        const { databases: [{ databaseId }] } = await this.test.userbase.getDatabases()
+
+        // sender shares database with recipient
+        await this.test.userbase.shareDatabase({ databaseId, username: recipient.username })
+
+        // sender inserts item into database
+        const testItem = 'hello world!'
+        const testItemId = 'test-id'
+        await this.test.userbase.insertItem({ databaseName, item: testItem, itemId: testItemId })
+        await this.test.userbase.signOut()
+
+        // recipient signs in and checks if can read the database
+        await this.test.userbase.signIn({ username: recipient.username, password: recipient.password, rememberMe: 'none' })
+
+        // getDatabases() must be run before opening a database by its databaseId
+        await this.test.userbase.getDatabases()
+
+        let changeHandlerCallCount = 0
+        const changeHandler = function (items) {
+          expect(items, 'array passed to changeHandler').to.be.a('array')
+          expect(items, 'array passed to changeHandler').to.deep.equal([{
+            itemId: testItemId,
+            item: testItem,
+            createdBy: { username: sender.username, timestamp: items[0].createdBy.timestamp }
+          }])
+
+          changeHandlerCallCount += 1
+        }
+
+        await this.test.userbase.openDatabase({ databaseId, changeHandler })
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+
+        // clean up
+        await this.test.userbase.deleteUser()
+        await this.test.userbase.signIn({ username: sender.username, password: sender.password, rememberMe: 'none' })
+        await this.test.userbase.deleteUser()
+      })
+
       it('Default with requireVerified false', async function () {
         const recipient = await signUp(this.test.userbase)
         await this.test.userbase.signOut()
