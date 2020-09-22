@@ -318,7 +318,7 @@ describe('DB Sharing Tests', function () {
         await this.test.userbase.deleteUser()
       })
 
-      it.only('owner calls modifyDatabasePermissions with databaseId', async function () {
+      it('owner calls modifyDatabasePermissions with databaseId', async function () {
         const recipient = await signUp(this.test.userbase)
         await this.test.userbase.signOut()
 
