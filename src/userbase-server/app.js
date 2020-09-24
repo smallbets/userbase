@@ -6,6 +6,7 @@ import setup from './setup'
 import userController from './user'
 import stripe from './stripe'
 import adminController from './admin'
+import dbController from './db'
 import { trimReq, lastEvaluatedKeyToNextPageToken, nextPageTokenToLastEvaluatedKey } from './utils'
 
 const UUID_STRING_LENGTH = 36
@@ -387,6 +388,26 @@ const _getUsersQuery = async function (appId, lastEvaluatedKey) {
   return usersResponse
 }
 
+const _getUsersForDbQuery = async function (databaseId, lastEvaluatedKey) {
+  const params = {
+    TableName: setup.userDatabaseTableName,
+    IndexName: setup.userDatabaseIdIndex,
+    KeyConditionExpression: '#dbId = :dbId',
+    ExpressionAttributeNames: {
+      '#dbId': 'database-id',
+    },
+    ExpressionAttributeValues: {
+      ':dbId': databaseId,
+    },
+  }
+
+  if (lastEvaluatedKey) params.ExclusiveStartKey = lastEvaluatedKey
+
+  const ddbClient = connection.ddbClient()
+  const usersResponse = await ddbClient.query(params).promise()
+  return usersResponse
+}
+
 const _buildAppResult = (app) => {
   return {
     appName: app['app-name'],
@@ -404,6 +425,26 @@ const _buildAppResult = (app) => {
 const _buildUsersList = (usersResponse, app) => {
   const result = {
     users: usersResponse.Items.map(user => userController.buildUserResult(user, app)),
+  }
+
+  if (usersResponse.LastEvaluatedKey) {
+    result.nextPageToken = lastEvaluatedKeyToNextPageToken(usersResponse.LastEvaluatedKey)
+  }
+
+  return result
+}
+
+const _buildUsersForDbList = (usersResponse, ownerId) => {
+  const result = {
+    users: usersResponse.Items.map(user => {
+      const isOwner = user['user-id'] === ownerId
+      return {
+        userId: user['user-id'],
+        isOwner,
+        readOnly: isOwner ? false : user['read-only'],
+        resharingAllowed: isOwner ? true : user['resharing-allowed'],
+      }
+    }),
   }
 
   if (usersResponse.LastEvaluatedKey) {
@@ -445,6 +486,14 @@ const _validateAppId = (appId) => {
 
   // can be less than UUID length because of test app + default admin app
   if (appId.length > UUID_STRING_LENGTH) throw { status: statusCodes['Bad Request'], error: { message: 'App ID is incorrect length.' } }
+}
+
+const _validateDatabaseId = (databaseId) => {
+  if (!databaseId) throw { status: statusCodes['Bad Request'], error: { message: 'Database ID missing.' } }
+  if (typeof databaseId !== 'string') throw { status: statusCodes['Bad Request'], error: { message: 'Database ID must be a string.' } }
+
+  // can be less than UUID length because of test app + default admin app
+  if (databaseId.length > UUID_STRING_LENGTH) throw { status: statusCodes['Bad Request'], error: { message: 'Database ID is incorrect length.' } }
 }
 
 exports.getAppController = async function (req, res) {
@@ -514,6 +563,62 @@ exports.listUsersWithPagination = async function (req, res) {
     return res.status(statusCodes['Success']).send(result)
   } catch (e) {
     const message = 'Failed to list users.'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).info(message)
+      return res.status(e.status).send(e.error)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e, }).error(message)
+      return res.status(statusCode).send({ message })
+    }
+  }
+}
+
+exports.listUsersForDatabaseWithPagination = async function (req, res) {
+  let logChildObject
+  try {
+    const databaseId = req.params.databaseId
+    const nextPageToken = req.query.nextPageToken
+
+    logChildObject = { ...res.locals.logChildObject, databaseId, nextPageToken }
+    logger.child(logChildObject).info('Listing users from Admin API')
+
+    _validateDatabaseId(databaseId)
+
+    // get database stuff
+    const db = await dbController.findDatabaseByDatabaseId(databaseId)
+    if (!db) throw {
+      status: statusCodes['Not Found'],
+      error: { message: 'Database not found.' }
+    }
+    const ownerId = db['owner-id']
+
+    // get user stuff from db owner
+    const owner = await userController.getUserByUserId(ownerId)
+    const appId = owner['app-id']
+
+    const lastEvaluatedKey = nextPageTokenToLastEvaluatedKey(
+      nextPageToken,
+      (lastEvaluatedKey) => _validateListUsersLastEvaluatedKey(lastEvaluatedKey, appId)
+    )
+
+    const admin = res.locals.admin
+    const adminId = admin['admin-id']
+
+    const app = await getAppByAppId(appId)
+    _validateAppResponseToGetApp(app, adminId, logChildObject)
+
+    const usersResponse = await _getUsersForDbQuery(db['database-id'], lastEvaluatedKey)
+
+    const result = _buildUsersForDbList(usersResponse, ownerId)
+
+    logChildObject.statusCode = statusCodes['Success']
+    logger.child(logChildObject).info("Successfully listed one database's users from Admin API")
+
+    return res.status(statusCodes['Success']).send(result)
+  } catch (e) {
+    const message = 'Failed to list users for one database.'
 
     if (e.status && e.error) {
       logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).info(message)
