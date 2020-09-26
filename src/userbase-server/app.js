@@ -596,6 +596,10 @@ exports.listUsersForDatabaseWithPagination = async function (req, res) {
 
     // get user stuff from db owner
     const owner = await userController.getUserByUserId(ownerId)
+    if (!owner || owner.deleted) throw {
+      status: statusCodes['Not Found'],
+      error: { message: 'Database not found.' }
+    }
     const appId = owner['app-id']
 
     const lastEvaluatedKey = nextPageTokenToLastEvaluatedKey(
@@ -606,10 +610,22 @@ exports.listUsersForDatabaseWithPagination = async function (req, res) {
     const admin = res.locals.admin
     const adminId = admin['admin-id']
 
-    const app = await getAppByAppId(appId)
-    _validateAppResponseToGetApp(app, adminId, logChildObject)
+    const [app, usersResponse] = await Promise.all([
+      getAppByAppId(appId),
+      _getUsersForDbQuery(db['database-id'], lastEvaluatedKey),
+    ])
 
-    const usersResponse = await _getUsersForDbQuery(db['database-id'], lastEvaluatedKey)
+    try {
+      _validateAppResponseToGetApp(app, adminId, logChildObject)
+    } catch (err) {
+      if (err.error && err.error.message === 'App not found.') {
+        throw {
+          status: statusCodes['Not Found'],
+          error: { message: 'Database not found.' }
+        }
+      }
+      throw err
+    }
 
     const result = _buildUsersForDbList(usersResponse, ownerId)
 
