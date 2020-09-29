@@ -6,7 +6,6 @@ import setup from './setup'
 import userController from './user'
 import stripe from './stripe'
 import adminController from './admin'
-import dbController from './db'
 import { trimReq, lastEvaluatedKeyToNextPageToken, nextPageTokenToLastEvaluatedKey } from './utils'
 
 const UUID_STRING_LENGTH = 36
@@ -368,6 +367,8 @@ const _validateAppResponseToGetApp = function (app, adminId, logChildObject) {
   }
 }
 
+exports._validateAppResponseToGetApp = _validateAppResponseToGetApp
+
 const _getUsersQuery = async function (appId, lastEvaluatedKey) {
   const params = {
     TableName: setup.usersTableName,
@@ -379,26 +380,6 @@ const _getUsersQuery = async function (appId, lastEvaluatedKey) {
     ExpressionAttributeValues: {
       ':appId': appId
     }
-  }
-
-  if (lastEvaluatedKey) params.ExclusiveStartKey = lastEvaluatedKey
-
-  const ddbClient = connection.ddbClient()
-  const usersResponse = await ddbClient.query(params).promise()
-  return usersResponse
-}
-
-const _getUsersForDbQuery = async function (databaseId, lastEvaluatedKey) {
-  const params = {
-    TableName: setup.userDatabaseTableName,
-    IndexName: setup.userDatabaseIdIndex,
-    KeyConditionExpression: '#dbId = :dbId',
-    ExpressionAttributeNames: {
-      '#dbId': 'database-id',
-    },
-    ExpressionAttributeValues: {
-      ':dbId': databaseId,
-    },
   }
 
   if (lastEvaluatedKey) params.ExclusiveStartKey = lastEvaluatedKey
@@ -434,26 +415,6 @@ const _buildUsersList = (usersResponse, app) => {
   return result
 }
 
-const _buildUsersForDbList = (usersResponse, ownerId) => {
-  const result = {
-    users: usersResponse.Items.map(user => {
-      const isOwner = user['user-id'] === ownerId
-      return {
-        userId: user['user-id'],
-        isOwner,
-        readOnly: isOwner ? false : user['read-only'],
-        resharingAllowed: isOwner ? true : user['resharing-allowed'],
-      }
-    }),
-  }
-
-  if (usersResponse.LastEvaluatedKey) {
-    result.nextPageToken = lastEvaluatedKeyToNextPageToken(usersResponse.LastEvaluatedKey)
-  }
-
-  return result
-}
-
 const _buildAppsList = (appsResponse) => {
   const result = {
     apps: appsResponse.Items.map(app => _buildAppResult(app))
@@ -474,14 +435,6 @@ const _validateListUsersLastEvaluatedKey = (lastEvaluatedKey, appId) => {
   if (Object.keys(lastEvaluatedKey).length !== 2) throw 'Token must only have 2 keys'
 }
 
-const _validateListUsersForDatabaseLastEvaluatedKey = (lastEvaluatedKey, databaseId) => {
-  userController._validateUserId(lastEvaluatedKey['user-id'])
-  _validateDatabaseId(lastEvaluatedKey['database-id'])
-
-  if (databaseId !== lastEvaluatedKey['database-id']) throw 'Token database ID must match authenticated app ID'
-  if (Object.keys(lastEvaluatedKey).length !== 2) throw 'Token must only have 2 keys'
-}
-
 const _validateListAppsLastEvaluatedKey = (lastEvaluatedKey, adminId) => {
   if (adminId !== lastEvaluatedKey['admin-id']) throw 'Token admin ID must match authenticated admin ID'
   if (!lastEvaluatedKey['app-name']) throw 'Token missing app name'
@@ -494,14 +447,6 @@ const _validateAppId = (appId) => {
 
   // can be less than UUID length because of test app + default admin app
   if (appId.length > UUID_STRING_LENGTH) throw { status: statusCodes['Bad Request'], error: { message: 'App ID is incorrect length.' } }
-}
-
-const _validateDatabaseId = (databaseId) => {
-  if (!databaseId) throw { status: statusCodes['Bad Request'], error: { message: 'Database ID missing.' } }
-  if (typeof databaseId !== 'string') throw { status: statusCodes['Bad Request'], error: { message: 'Database ID must be a string.' } }
-
-  // can be less than UUID length because of test app + default admin app
-  if (databaseId.length > UUID_STRING_LENGTH) throw { status: statusCodes['Bad Request'], error: { message: 'Database ID is incorrect length.' } }
 }
 
 exports.getAppController = async function (req, res) {
@@ -571,78 +516,6 @@ exports.listUsersWithPagination = async function (req, res) {
     return res.status(statusCodes['Success']).send(result)
   } catch (e) {
     const message = 'Failed to list users.'
-
-    if (e.status && e.error) {
-      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).info(message)
-      return res.status(e.status).send(e.error)
-    } else {
-      const statusCode = statusCodes['Internal Server Error']
-      logger.child({ ...logChildObject, statusCode, err: e, }).error(message)
-      return res.status(statusCode).send({ message })
-    }
-  }
-}
-
-exports.listUsersForDatabaseWithPagination = async function (req, res) {
-  let logChildObject
-  try {
-    const databaseId = req.params.databaseId
-    const nextPageToken = req.query.nextPageToken
-
-    logChildObject = { ...res.locals.logChildObject, databaseId, nextPageToken }
-    logger.child(logChildObject).info('Listing users from Admin API')
-
-    _validateDatabaseId(databaseId)
-
-    // get database stuff
-    const db = await dbController.findDatabaseByDatabaseId(databaseId)
-    if (!db) throw {
-      status: statusCodes['Not Found'],
-      error: { message: 'Database not found.' }
-    }
-    const ownerId = db['owner-id']
-
-    // get user stuff from db owner
-    const owner = await userController.getUserByUserId(ownerId)
-    if (!owner || owner.deleted) throw {
-      status: statusCodes['Not Found'],
-      error: { message: 'Database not found.' }
-    }
-    const appId = owner['app-id']
-
-    const lastEvaluatedKey = nextPageTokenToLastEvaluatedKey(
-      nextPageToken,
-      (lastEvaluatedKey) => _validateListUsersForDatabaseLastEvaluatedKey(lastEvaluatedKey, databaseId)
-    )
-
-    const admin = res.locals.admin
-    const adminId = admin['admin-id']
-
-    const [app, usersResponse] = await Promise.all([
-      getAppByAppId(appId),
-      _getUsersForDbQuery(db['database-id'], lastEvaluatedKey),
-    ])
-
-    try {
-      _validateAppResponseToGetApp(app, adminId, logChildObject)
-    } catch (err) {
-      if (err.error && err.error.message === 'App not found.') {
-        throw {
-          status: statusCodes['Not Found'],
-          error: { message: 'Database not found.' }
-        }
-      }
-      throw err
-    }
-
-    const result = _buildUsersForDbList(usersResponse, ownerId)
-
-    logChildObject.statusCode = statusCodes['Success']
-    logger.child(logChildObject).info("Successfully listed one database's users from Admin API")
-
-    return res.status(statusCodes['Success']).send(result)
-  } catch (e) {
-    const message = 'Failed to list users for one database.'
 
     if (e.status && e.error) {
       logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).info(message)
