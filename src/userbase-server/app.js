@@ -474,6 +474,14 @@ const _validateListUsersLastEvaluatedKey = (lastEvaluatedKey, appId) => {
   if (Object.keys(lastEvaluatedKey).length !== 2) throw 'Token must only have 2 keys'
 }
 
+const _validateListUsersForDatabaseLastEvaluatedKey = (lastEvaluatedKey, databaseId) => {
+  userController._validateUserId(lastEvaluatedKey['user-id'])
+  _validateDatabaseId(lastEvaluatedKey['database-id'])
+
+  if (databaseId !== lastEvaluatedKey['database-id']) throw 'Token database ID must match authenticated app ID'
+  if (Object.keys(lastEvaluatedKey).length !== 2) throw 'Token must only have 2 keys'
+}
+
 const _validateListAppsLastEvaluatedKey = (lastEvaluatedKey, adminId) => {
   if (adminId !== lastEvaluatedKey['admin-id']) throw 'Token admin ID must match authenticated admin ID'
   if (!lastEvaluatedKey['app-name']) throw 'Token missing app name'
@@ -604,7 +612,7 @@ exports.listUsersForDatabaseWithPagination = async function (req, res) {
 
     const lastEvaluatedKey = nextPageTokenToLastEvaluatedKey(
       nextPageToken,
-      (lastEvaluatedKey) => _validateListUsersLastEvaluatedKey(lastEvaluatedKey, appId)
+      (lastEvaluatedKey) => _validateListUsersForDatabaseLastEvaluatedKey(lastEvaluatedKey, databaseId)
     )
 
     const admin = res.locals.admin
