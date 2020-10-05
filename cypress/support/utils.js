@@ -40,3 +40,10 @@ export const readBlobAsArrayBuffer = async (blob) => {
     reader.readAsArrayBuffer(blob)
   })
 }
+
+// constructs the next page token same way the server does
+export const constructNextPageToken = (object) => {
+  const lastEvaluatedKeyString = JSON.stringify(object)
+  const nextPageToken = Buffer.from(lastEvaluatedKeyString).toString('base64')
+  return nextPageToken
+}
