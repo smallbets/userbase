@@ -1273,7 +1273,8 @@ const _validateListUsersForDatabaseLastEvaluatedKey = (lastEvaluatedKey, databas
   _validateDatabaseId(lastEvaluatedKey['database-id'])
 
   if (databaseId !== lastEvaluatedKey['database-id']) throw 'Token database ID must match authenticated app ID'
-  if (Object.keys(lastEvaluatedKey).length !== 2) throw 'Token must only have 2 keys'
+  if (!lastEvaluatedKey['database-name-hash']) throw 'Token database name hash invalid'
+  if (Object.keys(lastEvaluatedKey).length !== 3) throw 'Token must only have 3 keys'
 }
 
 const _getUsersForDbQuery = async function (databaseId, lastEvaluatedKey) {
