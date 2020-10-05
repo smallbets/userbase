@@ -1875,6 +1875,8 @@ const _validateUserId = (userId) => {
   if (userId.length !== UUID_STRING_LENGTH) throw { status: statusCodes['Bad Request'], error: { message: 'User ID is incorrect length.' } }
 }
 
+exports._validateUserId = _validateUserId
+
 exports.updateProtectedProfile = async function (req, res) {
   const logChildObject = res.locals.logChildObject
 
