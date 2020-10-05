@@ -549,6 +549,8 @@ const _openDatabase = async (changeHandler, params) => {
 
         if (data === 'Database already creating') {
           throw new errors.DatabaseAlreadyOpening
+        } else if (data === 'Database is owned by user') {
+          throw new errors.DatabaseIdNotAllowedForOwnDatabase
         } else if (data === 'Database key not found') {
           throw new errors.DatabaseNotFound
         }
@@ -668,6 +670,7 @@ const openDatabase = async (params) => {
       case 'DatabaseIdCannotBeBlank':
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
+      case 'DatabaseIdNotAllowedForOwnDatabase':
       case 'DatabaseNotFound':
       case 'ChangeHandlerMissing':
       case 'ChangeHandlerMustBeFunction':
@@ -1563,10 +1566,7 @@ const _buildDatabaseResult = async (db, encryptionKey, ecdhPrivateKey, verifiedU
   if (isOwner || _databaseHasOwner(users)) result.users = users
   else return null
 
-  // if user owns the database, developer has no use for the databaseId. Not allowing developers to use
-  // databaseId's to interact with databases owned by the user keeps the current concurrency model safe.
-  if (isOwner) delete result.databaseId
-  else if (senderUsername) result.receivedFromUsername = senderUsername
+  if (!isOwner && senderUsername) result.receivedFromUsername = senderUsername
 
   return result
 }

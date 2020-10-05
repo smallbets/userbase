@@ -246,6 +246,7 @@ exports.openDatabaseByDatabaseId = async function (user, app, admin, connectionI
 
     if (!db || !userDb) return responseBuilder.errorResponse(statusCodes['Not Found'], 'Database not found')
 
+    // Not allowing developers to use databaseId's to interact with databases owned by the user keeps the current concurrency model safe.
     const isOwner = db['owner-id'] === userId
     if (isOwner) return responseBuilder.errorResponse(statusCodes['Forbidden'], 'Database is owned by user')
 
