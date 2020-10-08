@@ -1,3 +1,10 @@
+## [2.2.2] - 2020-10-08
+### Added
+- getDatabases() returns a `databaseId` for all databases, instead of only returning it for databases shared with the user.
+
+### Changed
+- shareDatabase() and modifyDatabasePermissions() now accept a `databaseId` even if the user owns the database.
+
 ## [2.2.1] - 2020-09-10
 ### Fixed
 - shareDatabase() UserNotVerified error message should recommend seting requireVerified to false rather than true.
