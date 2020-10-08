@@ -42,7 +42,7 @@ export type DatabasesResult = {
 
 export interface Database {
   databaseName: string
-  databaseId?: string
+  databaseId: string
   isOwner: boolean
   receivedFromUsername?: string
   readOnly: boolean

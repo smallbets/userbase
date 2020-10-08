@@ -318,6 +318,59 @@ describe('DB Sharing Tests', function () {
         await this.test.userbase.deleteUser()
       })
 
+      it('owner calls modifyDatabasePermissions with databaseId', async function () {
+        const recipient = await signUp(this.test.userbase)
+        await this.test.userbase.signOut()
+
+        const sender = await signUp(this.test.userbase)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        // get database's id
+        const { databases: [{ databaseId }] } = await this.test.userbase.getDatabases()
+
+        // sender shares database with recipient with readOnly true, then modifies to readOnly false
+        await this.test.userbase.shareDatabase({ databaseName, username: recipient.username, requireVerified: false, readOnly: true })
+        await this.test.userbase.modifyDatabasePermissions({ databaseId, username: recipient.username, readOnly: false })
+        await this.test.userbase.signOut()
+
+        // recipient signs in and checks if can insert into the database
+        await this.test.userbase.signIn({ username: recipient.username, password: recipient.password, rememberMe: 'none' })
+
+        // getDatabases() must be run before opening a database by its databaseId
+        await this.test.userbase.getDatabases()
+
+        let recipientChangeHandlerCallCount = 0
+        const recipientChangeHandler = function (items) {
+          expect(items, 'array passed to changeHandler').to.be.a('array')
+
+          if (recipientChangeHandlerCallCount === 0) {
+            expect(items, 'array passed to changeHandler').to.deep.equal([])
+          } else {
+            expect(items, 'array passed to changeHandler').to.deep.equal([{
+              itemId: testItemId,
+              item: testItem,
+              createdBy: { username: recipient.username, timestamp: items[0].createdBy.timestamp }
+            }])
+          }
+
+          recipientChangeHandlerCallCount += 1
+        }
+
+        await this.test.userbase.openDatabase({ databaseId, changeHandler: recipientChangeHandler })
+
+        // recipient inserts item into database
+        const testItem = 'hello world!'
+        const testItemId = 'test-id'
+        await this.test.userbase.insertItem({ databaseId, item: testItem, itemId: testItemId })
+
+        expect(recipientChangeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
+
+        // clean up
+        await this.test.userbase.deleteUser()
+        await this.test.userbase.signIn({ username: sender.username, password: sender.password, rememberMe: 'none' })
+        await this.test.userbase.deleteUser()
+      })
+
     })
 
     describe('Failure Tests', function () {

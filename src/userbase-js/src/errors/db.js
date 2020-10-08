@@ -140,6 +140,16 @@ class DatabaseIdNotAllowed extends Error {
   }
 }
 
+class DatabaseIdNotAllowedForOwnDatabase extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'DatabaseIdNotAllowedForOwnDatabase'
+    this.message = "Tried to open the user's own database using its databaseId rather than its databaseName. The databaseId should only be used to open databases shared from other users."
+    this.status = statusCodes['Forbidden']
+  }
+}
+
 class DatabaseIdInvalidLength extends Error {
   constructor(length, ...params) {
     super(length, ...params)
@@ -692,6 +702,7 @@ export default {
   DatabaseIdMustBeString,
   DatabaseIdCannotBeBlank,
   DatabaseIdNotAllowed,
+  DatabaseIdNotAllowedForOwnDatabase,
   DatabaseIdInvalidLength,
   ReadOnlyMustBeBoolean,
   ReadOnlyParamNotAllowed,

@@ -367,6 +367,8 @@ const _validateAppResponseToGetApp = function (app, adminId, logChildObject) {
   }
 }
 
+exports._validateAppResponseToGetApp = _validateAppResponseToGetApp
+
 const _getUsersQuery = async function (appId, lastEvaluatedKey) {
   const params = {
     TableName: setup.usersTableName,

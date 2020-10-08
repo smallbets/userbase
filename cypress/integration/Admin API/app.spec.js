@@ -1,11 +1,4 @@
-import { getRandomString } from '../../support/utils'
-
-// constructs the next page token same way the server does
-function constructNextPageToken(object) {
-  const lastEvaluatedKeyString = JSON.stringify(object)
-  const nextPageToken = Buffer.from(lastEvaluatedKeyString).toString('base64')
-  return nextPageToken
-}
+import { getRandomString, constructNextPageToken } from '../../support/utils'
 
 function signUp(testReference, email, profile) {
   return cy.visit('./cypress/integration/index.html').then(function (win) {
