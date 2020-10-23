@@ -345,6 +345,62 @@ describe('File Storage', function () {
         await this.test.userbase.deleteUser()
       })
 
+      it("Progress Handler", async function () {
+        const testItem = "test-item"
+        const testItemId = "test-id"
+
+        const testFileName = "test-file-name.txt"
+        const testFileType = "text/plain"
+        const testArray = []
+        testArray.length = 1024 * 1024 // 1mb
+        testArray.fill(1)
+
+        const TOTAL_MB = 10
+        const testArrays = []
+        for (let i = 0; i < TOTAL_MB; i++) {
+          testArrays.push(new Uint8Array(testArray.slice()))
+        }
+
+        const testFile = new this.test.win.File(testArrays, testFileName, { type: testFileType })
+        expect(testFile.size, "test file size").to.equal(testArray.length * TOTAL_MB)
+
+        let progressHandlerCallCount = 0
+        let totalBytes = 0
+        let changeHandlerCallCount = 0
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (changeHandlerCallCount === 3) {
+            expect(items, "items array to have correct length").to.have.lengthOf(1)
+          }
+        }
+
+        const progressHandler = function ({ bytesTransferred }) {
+          progressHandlerCallCount += 1
+          totalBytes = bytesTransferred
+          expect(progressHandlerCallCount * 1024 * 512, "Should upload in 512 kB chunks").to.equal(
+            bytesTransferred
+          )
+        }
+
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+        await this.test.userbase.insertItem({ databaseName, itemId: testItemId, item: testItem })
+
+        await this.test.userbase.uploadFile({
+          databaseName,
+          itemId: testItemId,
+          file: testFile,
+          progressHandler
+        })
+
+        expect(progressHandlerCallCount, "Progress handler call count").to.equal(20)
+        expect(totalBytes, "Progress handler total transferred bytes size").to.equal(
+          1024 * 1024 * 10
+        )
+
+        await this.test.userbase.deleteUser()
+      })
     })
 
     describe('Failure Tests', function () {

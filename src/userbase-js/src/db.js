@@ -1148,6 +1148,7 @@ const uploadFile = async (params) => {
 
         chunkNumber += 1
         position += FILE_CHUNK_SIZE
+        params.progressHandler({ bytesTransferred: position })
       }
 
       await Promise.all(batch)
