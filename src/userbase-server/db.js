@@ -446,7 +446,9 @@ exports.getDatabaseUsers = async function (logChildObject, userId, databaseId, d
     const { otherDatabaseUsers, otherUserDatabases } = otherDatabaseUsersResult
 
     const usersByUserId = {}
-    otherDatabaseUsers.forEach(user => usersByUserId[user['user-id']] = user)
+    otherDatabaseUsers.forEach(user => {
+      if (user) usersByUserId[user['user-id']] = user
+    })
 
     const finalResult = {
       users: otherDatabaseUsers.map((user, i) => {
