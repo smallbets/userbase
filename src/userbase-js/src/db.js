@@ -1055,7 +1055,13 @@ const _readBlob = async (blob) => {
   })
 }
 
-const _uploadChunk = async (batch, chunk, dbId, fileId, fileEncryptionKey, chunkNumber) => {
+const _uploadChunkRequest = async (request, bytesTransferredObject, progressHandler) => {
+  await request
+  bytesTransferredObject.bytesTransferred += FILE_CHUNK_SIZE;
+  if (progressHandler) progressHandler({ ...bytesTransferredObject })
+}
+
+const _uploadChunk = async (batch, chunk, dbId, fileId, fileEncryptionKey, chunkNumber, bytesTransferredObject, progressHandler) => {
   const plaintextChunk = await _readBlob(chunk)
 
   // encrypt each chunk with new encryption key to maintain lower usage of file encryption key
@@ -1075,7 +1081,10 @@ const _uploadChunk = async (batch, chunk, dbId, fileId, fileEncryptionKey, chunk
 
   // queue UploadFileChunk request into batch of requests
   const action = 'UploadFileChunk'
-  batch.push(ws.request(action, uploadChunkParams))
+  
+  const uploadChunkRequest = _uploadChunkRequest(ws.request(action, uploadChunkParams), bytesTransferredObject, progressHandler)
+
+  batch.push(uploadChunkRequest)
 
   // wait for batch of UploadFileChunk requests to finish before moving on to upload the next batch of chunks
   if (batch.length === FILE_CHUNKS_PER_BATCH) {
@@ -1140,18 +1149,17 @@ const uploadFile = async (params) => {
       let position = 0
       let chunkNumber = 0
       let batch = [] // will use this to send chunks to server in batches of FILE_CHUNKS_PER_BATCH
+      const bytesTransferredObject = {
+        bytesTransferred: 0
+      }
 
       while (position < file.size) {
         // read a chunk at a time to keep memory overhead low
         const chunk = file.slice(position, position + FILE_CHUNK_SIZE)
-        await _uploadChunk(batch, chunk, dbId, fileId, fileEncryptionKey, chunkNumber)
+        await _uploadChunk(batch, chunk, dbId, fileId, fileEncryptionKey, chunkNumber, bytesTransferredObject, params.progressHandler)
 
         chunkNumber += 1
         position += FILE_CHUNK_SIZE
-
-        if (params.progressHandler) {
-          params.progressHandler({ bytesTransferred: position })
-        }
       }
 
       await Promise.all(batch)
