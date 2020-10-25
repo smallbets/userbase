@@ -1055,7 +1055,13 @@ const _readBlob = async (blob) => {
   })
 }
 
-const _uploadChunk = async (batch, chunk, dbId, fileId, fileEncryptionKey, chunkNumber) => {
+const _uploadChunkRequest = async (request, bytesTransferredObject, progressHandler, chunkSize) => {
+  await request
+  bytesTransferredObject.bytesTransferred += chunkSize
+  if (progressHandler) progressHandler({ ...bytesTransferredObject })
+}
+
+const _uploadChunk = async (batch, chunk, dbId, fileId, fileEncryptionKey, chunkNumber, bytesTransferredObject, progressHandler) => {
   const plaintextChunk = await _readBlob(chunk)
 
   // encrypt each chunk with new encryption key to maintain lower usage of file encryption key
@@ -1075,7 +1081,10 @@ const _uploadChunk = async (batch, chunk, dbId, fileId, fileEncryptionKey, chunk
 
   // queue UploadFileChunk request into batch of requests
   const action = 'UploadFileChunk'
-  batch.push(ws.request(action, uploadChunkParams))
+
+  const uploadChunkRequest = _uploadChunkRequest(ws.request(action, uploadChunkParams), bytesTransferredObject, progressHandler, chunk.size)
+
+  batch.push(uploadChunkRequest)
 
   // wait for batch of UploadFileChunk requests to finish before moving on to upload the next batch of chunks
   if (batch.length === FILE_CHUNKS_PER_BATCH) {
@@ -1118,9 +1127,16 @@ const _generateAndEncryptKeyEncryptionKey = async (key) => {
   return [keyEncryptionKey, encryptedKeyEncryptionKey]
 }
 
+const _validateUploadFile = (params) => {
+  _validateDbInput(params)
+  if (objectHasOwnProperty(params, 'progressHandler') && typeof params.progressHandler !== 'function') {
+    throw new errors.ProgressHandlerMustBeFunction
+  }
+}
+
 const uploadFile = async (params) => {
   try {
-    _validateDbInput(params)
+    _validateUploadFile(params)
 
     const database = getOpenDb(params.databaseName, params.databaseId)
     const { dbId } = database
@@ -1140,11 +1156,14 @@ const uploadFile = async (params) => {
       let position = 0
       let chunkNumber = 0
       let batch = [] // will use this to send chunks to server in batches of FILE_CHUNKS_PER_BATCH
+      const bytesTransferredObject = {
+        bytesTransferred: 0
+      }
 
       while (position < file.size) {
         // read a chunk at a time to keep memory overhead low
         const chunk = file.slice(position, position + FILE_CHUNK_SIZE)
-        await _uploadChunk(batch, chunk, dbId, fileId, fileEncryptionKey, chunkNumber)
+        await _uploadChunk(batch, chunk, dbId, fileId, fileEncryptionKey, chunkNumber, bytesTransferredObject, params.progressHandler)
 
         chunkNumber += 1
         position += FILE_CHUNK_SIZE
@@ -1185,6 +1204,7 @@ const uploadFile = async (params) => {
       case 'FileCannotBeEmpty':
       case 'FileMissing':
       case 'FileUploadConflict':
+      case 'ProgressHandlerMustBeFunction':
       case 'UserNotSignedIn':
       case 'TooManyRequests':
       case 'ServiceUnavailable':

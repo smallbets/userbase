@@ -181,6 +181,9 @@ putTransaction({ databaseName: 'tdb', operations: [{ command: 'Delete' }] })
 // $ExpectType Promise<void>
 uploadFile({ databaseName: 'tdb', itemId: 'tid', file: new File(['tbp' as BlobPart], 'tf.txt') })
 
+// $ExpectType Promise<void>
+uploadFile({ databaseName: 'tdb', itemId: 'tid', file: new File(['tbp' as BlobPart], 'tf.txt'), progressHandler: ({ bytesTransferred }) => { } })
+
 // $ExpectError
 uploadFile({ databaseName: 'tdb', itemId: 'tid' })
 
