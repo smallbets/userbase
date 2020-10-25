@@ -690,6 +690,16 @@ class VerifyingSelfNotAllowed extends Error {
   }
 }
 
+class ProgressHandlerMustBeFunction extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'ProgressHandlerMustBeFunction'
+    this.message = 'Progress handler must be a function.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
 export default {
   DatabaseNameMissing,
   DatabaseNameCannotBeBlank,
@@ -760,4 +770,5 @@ export default {
   VerificationMessageCannotBeBlank,
   VerificationMessageInvalid,
   VerifyingSelfNotAllowed,
+  ProgressHandlerMustBeFunction,
 }

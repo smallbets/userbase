@@ -379,8 +379,8 @@ describe('File Storage', function () {
         const progressHandler = function ({ bytesTransferred }) {
           progressHandlerCallCount += 1
           totalBytes = bytesTransferred
-          expect(progressHandlerCallCount * 1024 * 512, "Should upload in 512 kB chunks").to.equal(
-            bytesTransferred
+          expect(bytesTransferred, "Should upload in 512 kB chunks").to.equal(
+            progressHandlerCallCount * 1024 * 512
           )
         }
 
@@ -396,8 +396,116 @@ describe('File Storage', function () {
 
         expect(progressHandlerCallCount, "Progress handler call count").to.equal(20)
         expect(totalBytes, "Progress handler total transferred bytes size").to.equal(
-          1024 * 1024 * 10
+          1024 * 1024 * TOTAL_MB
         )
+
+        await this.test.userbase.deleteUser()
+      })
+
+      it("Progress Handler - small file", async function () {
+        const testItem = "test-item"
+        const testItemId = "test-id"
+
+        const testFileName = "test-file-name.txt"
+        const testFileType = "text/plain"
+        const testArray = [1]
+
+        const testFile = new this.test.win.File(testArray, testFileName, { type: testFileType })
+        expect(testFile.size, "test file size").to.equal(testArray.length)
+
+        let progressHandlerCallCount = 0
+        let totalBytes = 0
+        let changeHandlerCallCount = 0
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (changeHandlerCallCount === 3) {
+            expect(items, "items array to have correct length").to.have.lengthOf(1)
+          }
+        }
+
+        const progressHandler = function ({ bytesTransferred }) {
+          progressHandlerCallCount += 1
+          totalBytes = bytesTransferred
+          expect(bytesTransferred, "Should upload correct size chunk").to.equal(progressHandlerCallCount * 1)
+        }
+
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+        await this.test.userbase.insertItem({ databaseName, itemId: testItemId, item: testItem })
+
+        await this.test.userbase.uploadFile({
+          databaseName,
+          itemId: testItemId,
+          file: testFile,
+          progressHandler
+        })
+
+        expect(progressHandlerCallCount, "Progress handler call count").to.equal(1)
+        expect(totalBytes, "Progress handler total transferred bytes size").to.equal(1)
+
+        await this.test.userbase.deleteUser()
+      })
+
+      it("Progress Handler - 5.000001 MB file", async function () {
+        const testItem = "test-item"
+        const testItemId = "test-id"
+
+        const testFileName = "test-file-name.txt"
+        const testFileType = "text/plain"
+        const testArray = []
+        testArray.length = 1024 * 1024 // 1mb
+        testArray.fill(1)
+
+        const TOTAL_MB = 5
+        const testArrays = []
+        for (let i = 0; i < TOTAL_MB; i++) {
+          testArrays.push(new Uint8Array(testArray.slice()))
+        }
+
+        // add 1 byte
+        testArrays.push(new Uint8Array([1]))
+
+        const testFile = new this.test.win.File(testArrays, testFileName, { type: testFileType })
+        expect(testFile.size, "test file size").to.equal((testArray.length * TOTAL_MB) + 1)
+
+        let progressHandlerCallCount = 0
+        let totalBytes = 0
+        let changeHandlerCallCount = 0
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (changeHandlerCallCount === 3) {
+            expect(items, "items array to have correct length").to.have.lengthOf(1)
+          }
+        }
+
+        const progressHandler = function ({ bytesTransferred }) {
+          progressHandlerCallCount += 1
+          totalBytes = bytesTransferred
+
+          const isFinalChunk = progressHandlerCallCount === (TOTAL_MB * 2) + 1
+
+          const expectedBytesTransferred = isFinalChunk
+            ? (progressHandlerCallCount - 1) * 1024 * 512 + 1
+            : progressHandlerCallCount * 1024 * 512
+
+          expect(bytesTransferred, 'correct bytes transferred').to.equal(expectedBytesTransferred)
+        }
+
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+        await this.test.userbase.insertItem({ databaseName, itemId: testItemId, item: testItem })
+
+        await this.test.userbase.uploadFile({
+          databaseName,
+          itemId: testItemId,
+          file: testFile,
+          progressHandler
+        })
+
+        expect(progressHandlerCallCount, "Progress handler call count").to.equal((TOTAL_MB * 2) + 1)
+        expect(totalBytes, "Progress handler total transferred bytes size").to.equal((1024 * 1024 * TOTAL_MB) + 1)
 
         await this.test.userbase.deleteUser()
       })
@@ -756,6 +864,27 @@ describe('File Storage', function () {
         await this.test.userbase.deleteUser()
       })
 
+      it('Progress handler as string', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        const itemId = 'test-id'
+        await this.test.userbase.insertItem({ databaseName, item: 'test-item', itemId })
+
+        try {
+          const testFileName = 'test-file-name.txt'
+          const testFileType = 'text/plain'
+          const testFile = new this.test.win.File([1], testFileName, { type: testFileType })
+
+          await this.test.userbase.uploadFile({ databaseName, itemId, file: testFile, progressHandler: 'fake-handler' })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ProgressHandlerMustBeFunction')
+          expect(e.message, 'error message').to.equal('Progress handler must be a function.')
+          expect(e.status, 'error status').to.equal(400)
+        }
+
+        await this.test.userbase.deleteUser()
+      })
     })
 
   })

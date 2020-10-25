@@ -1057,7 +1057,7 @@ const _readBlob = async (blob) => {
 
 const _uploadChunkRequest = async (request, bytesTransferredObject, progressHandler, chunkSize) => {
   await request
-  bytesTransferredObject.bytesTransferred += chunkSize;
+  bytesTransferredObject.bytesTransferred += chunkSize
   if (progressHandler) progressHandler({ ...bytesTransferredObject })
 }
 
@@ -1081,7 +1081,7 @@ const _uploadChunk = async (batch, chunk, dbId, fileId, fileEncryptionKey, chunk
 
   // queue UploadFileChunk request into batch of requests
   const action = 'UploadFileChunk'
-  
+
   const uploadChunkRequest = _uploadChunkRequest(ws.request(action, uploadChunkParams), bytesTransferredObject, progressHandler, chunk.size)
 
   batch.push(uploadChunkRequest)
@@ -1127,9 +1127,16 @@ const _generateAndEncryptKeyEncryptionKey = async (key) => {
   return [keyEncryptionKey, encryptedKeyEncryptionKey]
 }
 
+const _validateUploadFile = (params) => {
+  _validateDbInput(params)
+  if (objectHasOwnProperty(params, 'progressHandler') && typeof params.progressHandler !== 'function') {
+    throw new errors.ProgressHandlerMustBeFunction
+  }
+}
+
 const uploadFile = async (params) => {
   try {
-    _validateDbInput(params)
+    _validateUploadFile(params)
 
     const database = getOpenDb(params.databaseName, params.databaseId)
     const { dbId } = database
@@ -1197,6 +1204,7 @@ const uploadFile = async (params) => {
       case 'FileCannotBeEmpty':
       case 'FileMissing':
       case 'FileUploadConflict':
+      case 'ProgressHandlerMustBeFunction':
       case 'UserNotSignedIn':
       case 'TooManyRequests':
       case 'ServiceUnavailable':
