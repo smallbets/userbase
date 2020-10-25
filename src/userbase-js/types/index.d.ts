@@ -99,6 +99,8 @@ export interface FileResult {
   file: File
 }
 
+export type FileUploadProgressHandler = (uploadProgress: { bytesTransferred: number }) => void
+
 export interface CancelSubscriptionResult {
   cancelSubscriptionAt: Date
 }
@@ -130,7 +132,7 @@ export interface Userbase {
 
   putTransaction(params: { databaseName?: string, databaseId?: string, operations: DatabaseOperation[] }): Promise<void>
 
-  uploadFile(params: { databaseName?: string, databaseId?: string, itemId: string, file: File }): Promise<void>
+  uploadFile(params: { databaseName?: string, databaseId?: string, itemId: string, file: File, progressHandler?: FileUploadProgressHandler }): Promise<void>
 
   getFile(params: { databaseName?: string, databaseId?: string, fileId: string, range?: { start: number, end: number } }): Promise<FileResult>
 
