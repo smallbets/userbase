@@ -1055,9 +1055,9 @@ const _readBlob = async (blob) => {
   })
 }
 
-const _uploadChunkRequest = async (request, bytesTransferredObject, progressHandler) => {
+const _uploadChunkRequest = async (request, bytesTransferredObject, progressHandler, chunkSize) => {
   await request
-  bytesTransferredObject.bytesTransferred += FILE_CHUNK_SIZE;
+  bytesTransferredObject.bytesTransferred += chunkSize;
   if (progressHandler) progressHandler({ ...bytesTransferredObject })
 }
 
@@ -1082,7 +1082,7 @@ const _uploadChunk = async (batch, chunk, dbId, fileId, fileEncryptionKey, chunk
   // queue UploadFileChunk request into batch of requests
   const action = 'UploadFileChunk'
   
-  const uploadChunkRequest = _uploadChunkRequest(ws.request(action, uploadChunkParams), bytesTransferredObject, progressHandler)
+  const uploadChunkRequest = _uploadChunkRequest(ws.request(action, uploadChunkParams), bytesTransferredObject, progressHandler, chunk.size)
 
   batch.push(uploadChunkRequest)
 
