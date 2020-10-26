@@ -2085,7 +2085,7 @@ exports.forgotPassword = async function (logChildObject, forgotPasswordToken, us
     const body = `Hello, ${user['username']}!`
       + '<br />'
       + '<br />'
-      + `Someone has requested you forgot your password to ${app['app-name']}!`
+      + `Looks like you requested to reset your password to ${app['app-name']}!`
       + '<br />'
       + '<br />'
       + 'If you did not make this request, you can safely ignore this email.'

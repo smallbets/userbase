@@ -1,3 +1,15 @@
+## [2.3.0] - 2020-10-26
+### Added
+- uploadFile() now accepts an optional `progressHandler` callback, which passes total `bytesTransferred` back to the caller every 512 KB uploaded.
+
+### Changed
+- `databaseName` can now be up to 100 characters, rather than 50 characters.
+- forgotPassword() gives a more user-friendly error message if the user attempts to call it from a device that does not have their key saved.
+- signIn() gives a more user-friendly error message if the user attempts to sign in using a temporary password from a device that does not ahve their key saved.
+
+### Fixed
+- typescript file's getDatabases() returns correct object type.
+
 ## [2.2.2] - 2020-10-08
 ### Added
 - getDatabases() returns a `databaseId` for all databases, instead of only returning it for databases shared with the user.

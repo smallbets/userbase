@@ -429,7 +429,7 @@ const signIn = async (params) => {
 
     let seedStringFromBackup
     if (!savedSeedString && usedTempPassword) {
-      throw new errors.KeyNotFound("Your key was not found. You can only sign in with a temporary password from a device you've signed in from before.")
+      throw new errors.KeyNotFound("Device not recognized. You can only sign in with a temporary password from a device you've signed in from before.")
     } else if (!savedSeedString) {
       seedStringFromBackup = await _getSeedStringFromPasswordBasedBackup(passwordHkdfKey, passwordBasedBackup)
       localData.saveSeedString(rememberMe, appId, username, seedStringFromBackup)
@@ -749,7 +749,7 @@ const forgotPassword = async (params) => {
     const appId = config.getAppId()
 
     const seedString = localData.getSeedString(appId, username)
-    const keyNotFoundMessage = "Your key was not found. Forgot password only works from a device you've signed in from before."
+    const keyNotFoundMessage = "Device not recognized. Forgot password only works from a device you've signed in from before."
     if (!seedString) throw new errors.KeyNotFound(keyNotFoundMessage)
     const seed = base64.decode(seedString)
     const masterKey = await crypto.hkdf.importHkdfKey(seed)

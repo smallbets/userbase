@@ -551,7 +551,7 @@ exports.forgotPassword = async function (req, res) {
     const body = `Hello, ${email}!`
       + '<br />'
       + '<br />'
-      + 'Someone has requested you forgot your password to your Userbase admin account!'
+      + 'Looks like you requested to reset your password to your Userbase admin account!'
       + '<br />'
       + '<br />'
       + 'If you did not make this request, you can safely ignore this email.'

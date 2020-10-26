@@ -11,7 +11,7 @@ import api from './api'
 
 const success = 'Success'
 
-const MAX_DB_NAME_CHAR_LENGTH = 50
+const MAX_DB_NAME_CHAR_LENGTH = 100
 const MAX_ITEM_ID_CHAR_LENGTH = 100
 
 const MAX_ITEM_KB = 10
