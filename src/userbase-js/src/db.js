@@ -133,6 +133,8 @@ class Database {
 
   async applyTransactions(transactions) {
     for (let i = 0; i < transactions.length; i++) {
+      const oldItems = this.getItems();
+
       const transaction = transactions[i]
       const seqNo = transaction.seqNo
 
@@ -153,7 +155,12 @@ class Database {
       }
 
       if (this.init && transactionCode === 'Success') {
-        this.onChange(this.getItems())
+        const items = this.getItems()
+        const changedItems = items.filter(item => {
+          return !oldItems.find((oldItem) => JSON.stringify(oldItem) === JSON.stringify(item));
+        })
+
+        this.onChange(items, changedItems)
       }
     }
 
@@ -489,7 +496,7 @@ const _idempotentOpenDatabase = (database, changeHandler, receivedMessage) => {
 
   // database is already open, can return successfully
   if (database.init) {
-    changeHandler(database.getItems())
+    changeHandler(database.getItems(), [])
     database.receivedMessage()
     return true
   }

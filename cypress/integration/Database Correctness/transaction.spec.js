@@ -43,11 +43,12 @@ describe('DB Correctness Tests', function () {
         let successful
         let changeHandlerCallCount = 0
 
-        const changeHandler = function (items) {
+        const changeHandler = function (items, changedItems) {
           changeHandlerCallCount += 1
 
           if (changeHandlerCallCount === 2) {
             expect(items, 'items array to have correct length').to.have.lengthOf(1)
+            expect(changedItems, 'changedItems is same as items').to.deep.equal(items)
 
             const insertedItem = items[0]
             expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
