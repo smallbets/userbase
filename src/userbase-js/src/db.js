@@ -165,7 +165,7 @@ class Database {
     }
 
     if (!this.init) {
-      this.onChange(this.getItems())
+      this.onChange(this.getItems(), [])
     }
   }
 

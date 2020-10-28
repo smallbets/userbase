@@ -66,6 +66,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
       it('Insert 1 Item with Item ID provided', async function () {
@@ -100,6 +102,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
       it('Update 1 Item', async function () {
@@ -117,14 +121,16 @@ describe('DB Correctness Tests', function () {
         let successful
         let changeHandlerCallCount = 0
 
-        const changeHandler = function (items) {
+        const changeHandler = function (items, changedItems) {
           changeHandlerCallCount += 1
 
           if (changeHandlerCallCount === 3) {
             expect(items, 'array passed to changeHandler').to.have.lengthOf(1)
+            expect(changedItems, 'changedItems array passed to changeHandler').to.have.lengthOf(1)
 
             const updatedItem = items[0]
             expect(updatedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy', 'updatedBy')
+            expect(changedItems[0], 'changed item to equal the item').to.be.an('object').that.deep.equals(updatedItem)
 
             const { item, itemId } = updatedItem
             expect(item, 'item in items array passed to changeHandler').to.deep.equal(itemToUpdate)
@@ -140,6 +146,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(3)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
       it('Delete 1 Item', async function () {
@@ -152,11 +160,12 @@ describe('DB Correctness Tests', function () {
         let successful
         let changeHandlerCallCount = 0
 
-        const changeHandler = function (items) {
+        const changeHandler = function (items, changedItems) {
           changeHandlerCallCount += 1
 
           if (changeHandlerCallCount === 3) {
             expect(items, 'array passed to changeHandler').to.be.empty
+            expect(changedItems, "changedItems to be an empty array").to.eql([]);
             successful = true
           }
         }
@@ -167,6 +176,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(3)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
       it('Inserting a duplicate item should fail', async function () {
@@ -214,6 +225,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
       it('Updating & Deleting a non-existent item should fail', async function () {
@@ -250,6 +263,8 @@ describe('DB Correctness Tests', function () {
         }
 
         expect(changeHandlerCallCount, 'changeHandler is not called if item does not exist').to.equal(1)
+
+        await this.test.userbase.deleteUser()
       })
 
       it('Updating & Deleting a deleted item should fail', async function () {
@@ -293,6 +308,8 @@ describe('DB Correctness Tests', function () {
         }
 
         expect(changeHandlerCallCount, 'changeHandler is not called if item does not exist').to.equal(3)
+
+        await this.test.userbase.deleteUser()
       })
 
       it('Insert the same item after deleting the item', async function () {
@@ -329,6 +346,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(4)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
       it('3 sequential Inserts, then 3 sequential Updates, then 3 sequential Deletes', async function () {
@@ -394,6 +413,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1 + (numSequentialOperations * 3))
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
       it('Insert large item', async function () {
@@ -425,6 +446,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
       it('Insert large item, then insert small item', async function () {
@@ -463,6 +486,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(3)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
       it('Insert 1 Item in a transaction', async function () {
@@ -500,6 +525,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
       it('Insert 10 Items in a transaction', async function () {
@@ -515,11 +542,12 @@ describe('DB Correctness Tests', function () {
         let changeHandlerCallCount = 0
         let successful
 
-        const changeHandler = function (items) {
+        const changeHandler = function (items, changedItems) {
           changeHandlerCallCount += 1
 
           if (changeHandlerCallCount === 2) {
             expect(items, 'array passed to changeHandler').to.have.lengthOf(NUM_ITEMS)
+            expect(changedItems, 'changedItems array passed to changeHandler').to.have.length(NUM_ITEMS)
 
             for (let i = 0; i < NUM_ITEMS; i++) {
               const insertedItem = items[i]
@@ -539,6 +567,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
       it('Update 10 Items in a transaction', async function () {
@@ -561,11 +591,12 @@ describe('DB Correctness Tests', function () {
         let changeHandlerCallCount = 0
         let successful
 
-        const changeHandler = function (items) {
+        const changeHandler = function (items, changedItems) {
           changeHandlerCallCount += 1
 
           if (changeHandlerCallCount === 3) {
             expect(items, 'array passed to changeHandler').to.have.lengthOf(NUM_ITEMS)
+            expect(changedItems, "changedItems array passed to changeHandler").to.have.length(NUM_ITEMS)
 
             for (let i = 0; i < NUM_ITEMS; i++) {
               const updatedItem = items[i]
@@ -585,6 +616,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(3)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
       it('10 Inserts in a transaction, then 10 Updates in a transaction, then 5 Deletes in a transaction', async function () {
@@ -643,6 +676,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(4)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
       it('2 sequential Inserts, then transaction with 1 Insert, 1 Update, and 1 Delete', async function () {
@@ -701,6 +736,8 @@ describe('DB Correctness Tests', function () {
 
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(4)
         expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
       })
 
       it('Multiple inserts combined with multiple calls to open database with the same name', async function () {
@@ -744,6 +781,8 @@ describe('DB Correctness Tests', function () {
         expect(changeHandler1CallCount, 'changeHandler 1 called correct number of times').to.equal(2)
         expect(changeHandler2CallCount, 'changeHandler 2 called correct number of times').to.equal(2)
         expect(success, 'database reached successful state').to.be.true
+        
+        await this.test.userbase.deleteUser()
       })
 
     })
