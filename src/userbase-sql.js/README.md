@@ -28,19 +28,39 @@ A single user can create as many of their own individual end-to-end encrypted sq
 
 ### Installation
 
-First, you need to [create a free Userbase admin account](https://v1.userbase.com/#create-admin).
+#### Create an admin account
 
-*Note: you can create 3 users with a free admin account, but will need a subscription to create an unlimited number of users ($49 per year). See pricing [here](https://userbase.com/pricing/).*
+First, you need to [create a free Userbase admin account](https://v1.userbase.com/#create-admin). No credit card required.
 
-In your admin account, you will find a Trial app. Get its App ID, and then in your browser code, initialize the userbase-sql.js SDK with it.
+#### Install userbase-sql.js
+
+Then, you need to include userbase-sql.js in your web app.
+
+You can either use the npm package:
 
 ```
-userbaseSqlJs.init({ appId: 'YOUR_APP_ID' })
+npm install userbase-sql.js
 ```
+
+Or, you can include it with a `<script>` tag:
+
+```
+<script type="text/javascript" src="https://sql.userbase.com/0/userbase-sql.js"></script>
+```
+
+#### Set the App ID
+
+In your admin account, you will find a Trial app. Get its App ID, and then in your browser code, initialize userbase-sql.js with it.
+
+```
+await userbaseSqlJs.init({ appId: 'YOUR_APP_ID' })
+```
+
+And you're now ready to use userbase-sql.js.
 
 ### Creating a user
 
-Then you'll need to create a user.
+You'll need to create a user to store data.
 
 ```
 await userbaseSqlJs.signUp({ username: 'my_first_user', password: '1A$dHz9@leupyCns' })
@@ -76,14 +96,15 @@ await userbaseSqlJs.execSql({ databaseName: 'my_secret_db', sql: sql1 })
 await userbaseSqlJs.execSql({ databaseName: 'my_secret_db', sql: sql2 })
 
 // each client decrypts the statement, applies it to an in-memory sql.js database in the order set by the server,
-// then calls the changeHandler with the sql.js database
+// then calls the changeHandler with the updated sql.js database
 await userbaseSqlJs.execSql({ databaseName: 'my_secret_db', sql: sql3 })
 ```
 
 And read the result:
 
 ```
-const res = sqlJsDb.exec("SELECT * FROM hello");
+// read the global sql.js database updated by the changeHandler
+const res = sqlJsDb.exec("SELECT * FROM hello")
 /*
 [
   {columns:['a','b'], values:[[0,'hello'],[1,'world']]}
@@ -96,13 +117,13 @@ Every time the database grows a fixed amount, the client compresses and encrypts
 ### Bind values
 
 ```
-const sql = 'INSERT INTO hello VALUES (?, ?);"
+const sql = "INSERT INTO hello VALUES (?, ?);"
 const bindValues = [2, '"foo"']
 await userbaseSqlJs.execSql({ databaseName: 'my_secret_db', sql, bindValues })
 ```
 
 ```
-const sql = 'INSERT INTO hello VALUES ($a, $b);"
+const sql = "INSERT INTO hello VALUES ($a, $b);"
 const bindValues = { $a: 3, $b: '"bar"' }
 await userbaseSqlJs.execSql({ databaseName: 'my_secret_db', sql, bindValues })
 ```
@@ -113,18 +134,18 @@ See more on bind values [here](https://sql.js.org/documentation/Statement.html#%
 
 ```
 const sqlStatements = [
-  { sql: 'INSERT INTO hello VALUES (?, ?);", bindValues: [4, 'duplicate'] },
-  { sql: 'INSERT INTO hello VALUES (?, ?);", bindValues: [4, 'duplicate'] }
+  { sql: "INSERT INTO hello VALUES (?, ?);", bindValues: [4, 'duplicate'] },
+  { sql: "INSERT INTO hello VALUES (?, ?);", bindValues: [4, 'duplicate'] }
 ]
 
 try {
-  // executes SQL statements in sequential order all-or-nothing
+  // executes sqlStatements in sequential order, all-or-nothing inside a single transaction
   await userbaseSqlJs.execSql({ databaseName: 'my_secret_db', sqlStatements })
 } catch (e) {
   // Error: UNIQUE constraint failed: hello.a
 }
 
-// excludes both of the above SQL statements
+// sql.js database excludes both of the above SQL statements
 const res = sqlJsDb.exec("SELECT * FROM hello");
 ```
 
