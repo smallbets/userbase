@@ -65,7 +65,7 @@ await userbaseSqlJs.openSqlJsDatabase({
 Execute some sql:
 
 ```
-const sql1 = "CREATE TABLE hello (a int, b char);"
+const sql1 = "CREATE TABLE hello (a int PRIMARY KEY, b char);"
 const sql2 = "INSERT INTO hello VALUES (0, 'hello');"
 const sql3 = "INSERT INTO hello VALUES (1, 'world');"
 
@@ -75,7 +75,8 @@ await userbaseSqlJs.execSql({ databaseName: 'my_secret_db', sql: sql1 })
 // the server then broadcasts the encrypted statement to all the user's connected clients
 await userbaseSqlJs.execSql({ databaseName: 'my_secret_db', sql: sql2 })
 
-// each client decrypts the statement, applies it to an in-memory sql.js database in the order set by the server, then calls the changeHandler with the sql.js database
+// each client decrypts the statement, applies it to an in-memory sql.js database in the order set by the server,
+// then calls the changeHandler with the sql.js database
 await userbaseSqlJs.execSql({ databaseName: 'my_secret_db', sql: sql3 })
 ```
 
@@ -120,7 +121,7 @@ try {
   // executes SQL statements in sequential order all-or-nothing
   await userbaseSqlJs.execSql({ databaseName: 'my_secret_db', sqlStatements })
 } catch (e) {
-  // fails with duplicate key error
+  // Error: UNIQUE constraint failed: hello.a
 }
 
 // excludes both of the above SQL statements
@@ -133,7 +134,8 @@ const res = sqlJsDb.exec("SELECT * FROM hello");
 - [sql.js website](https://sql.js.org/#/)
 - [sql.js demo SQL interpreter](https://sql.js.org/examples/GUI/index.html)
 - [sql.js API](https://sql.js.org/documentation/Database.html)
-- [Sample application built with userbase-sql.js](https://github.com/j-berman/prinvoice)
+- [Simple todo app built with userbase-sql.js](./demo/index.html)
+- [Advanced invoicing app built with userbase-sql.js](https://github.com/j-berman/prinvoice)
 
 ## License
 

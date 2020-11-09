@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Ugliest To-Do</title>
+  <script type="text/javascript" src="https://s3.amazonaws.com/userbase.com/userbase-sql.js/0/userbase-sql.js"></script>
+</head>
+
+<body>
+  <!-- Loading View -->
+  <div id="loading-view">Loading...</div>
+
+  <!-- Auth View -->
+  <div id="auth-view">
+    <h1>Login</h1>
+    <form id="login-form">
+      <input id="login-username" type="text" required placeholder="Username">
+      <input id="login-password" type="password" required placeholder="Password">
+      <input type="submit" value="Sign in">
+    </form>
+    <div id="login-error"></div>
+
+    <h1>Create an account</h1>
+    <form id="signup-form">
+      <input id="signup-username" type="text" required placeholder="Username">
+      <input id="signup-password" type="password" required placeholder="Password">
+      <input type="submit" value="Create an account">
+    </form>
+    <div id="signup-error"></div>
+  </div>
+
+  <!-- To-dos View -->
+  <div id="todo-view">
+    <div id="username"></div>
+    <input type="button" value="Logout" id="logout-button">
+    <div id="logout-error"></div>
+
+    <h1>To-Do List</h1>
+    <div id="todos"></div>
+    <div id="db-loading">Loading to-dos...</div>
+    <div id="db-error"></div>
+
+    <form id="add-todo-form">
+      <input id="add-todo" type="text" required placeholder="To-Do">
+      <input type="submit" value="Add">
+    </form>
+    <div id="add-todo-error"></div>
+  </div>
+
+  <!-- application code -->
+  <script type="text/javascript">
+    userbaseSqlJs.init({ appId: '8637fc5e-4eb9-4cbf-b10d-ef52b9790e3b' })
+      .then((session) => session.user ? showTodos(session.user) : showAuth())
+      .catch(() => showAuth())
+      .finally(() => document.getElementById('loading-view').style.display = 'none')
+
+    function handleLogin(e) {
+      e.preventDefault()
+
+      const username = document.getElementById('login-username').value
+      const password = document.getElementById('login-password').value
+
+      userbaseSqlJs.signIn({ username, password, rememberMe: 'local' })
+        .then((user) => showTodos(user))
+        .catch((e) => document.getElementById('login-error').innerHTML = e)
+    }
+
+    function handleSignUp(e) {
+      e.preventDefault()
+
+      const username = document.getElementById('signup-username').value
+      const password = document.getElementById('signup-password').value
+
+      userbaseSqlJs.signUp({ username, password, rememberMe: 'local' })
+        .then((user) => showTodos(user))
+        .catch((e) => document.getElementById('signup-error').innerHTML = e)
+    }
+
+    function handleLogout() {
+      userbaseSqlJs.signOut()
+        .then(() => showAuth())
+        .catch((e) => document.getElementById('logout-error').innerText = e)
+    }
+
+    function showTodos(user) {
+      document.getElementById('auth-view').style.display = 'none'
+      document.getElementById('todo-view').style.display = 'block'
+
+      // reset the todos view
+      document.getElementById('username').innerHTML = user.username
+      document.getElementById('todos').innerText = ''
+      document.getElementById('db-loading').style.display = 'block'
+      document.getElementById('db-error').innerText = ''
+
+      // will create todos table if it does not exist
+      let todoTableDoesNotExist
+      const wrappedChangeHandler = ({ db }) => {
+        // check if todos table exists
+        const todosTable = db.exec(`SELECT name FROM sqlite_master WHERE name='todos'`)
+
+        if (!todosTable.length) {
+          todoTableDoesNotExist = true
+          changeHandler([])
+        } else {
+          const todos = db.exec('SELECT * FROM todos;')
+
+          if (!todos.length) {
+            changeHandler([])
+          } else {
+            const items = []
+            for (const todo of todos[0].values) {
+              items.push({
+                itemId: todo[0],
+                item: {
+                  todo: todo[1],
+                  completed: todo[2] ? true : false
+                }
+              })
+            }
+            changeHandler(items)
+          }
+        }
+      }
+
+      userbaseSqlJs.openSqlJsDatabase({ databaseName: 'todos', changeHandler: wrappedChangeHandler })
+        .then(() => {
+          console.log(todoTableDoesNotExist)
+
+          // create todos table if it does not exist
+          if (todoTableDoesNotExist) {
+            userbaseSqlJs.execSql({ databaseName: 'todos', sql: 'CREATE TABLE todos (id PRIMARY KEY, todo TEXT, completed BOOLEAN);' })
+              .catch((e) => document.getElementById('db-error').innerText = e)
+          }
+        })
+        .catch((e) => document.getElementById('db-error').innerText = e)
+    }
+
+    function showAuth() {
+      document.getElementById('todo-view').style.display = 'none'
+      document.getElementById('auth-view').style.display = 'block'
+      document.getElementById('login-username').value = ''
+      document.getElementById('login-password').value = ''
+      document.getElementById('login-error').innerText = ''
+      document.getElementById('signup-username').value = ''
+      document.getElementById('signup-password').value = ''
+      document.getElementById('signup-error').innerText = ''
+    }
+
+    function changeHandler(items) {
+      document.getElementById('db-loading').style.display = 'none'
+
+      const todosList = document.getElementById('todos')
+
+      if (items.length === 0) {
+        todosList.innerText = 'Empty'
+      } else {
+        // clear the list
+        todosList.innerHTML = ''
+
+        // render all the to-do items
+        for (let i = 0; i < items.length; i++) {
+
+          // build the todo delete button
+          const todoDelete = document.createElement('button')
+          todoDelete.innerHTML = 'X'
+          todoDelete.style.display = 'inline-block'
+          todoDelete.onclick = () => {
+            userbaseSqlJs.execSql({ databaseName: 'todos', sql: 'DELETE FROM todos WHERE id=?', bindValues: [items[i].itemId] })
+              .catch((e) => document.getElementById('add-todo-error').innerHTML = e)
+          }
+
+          // build the todo checkbox
+          const todoBox = document.createElement('input')
+          todoBox.type = 'checkbox'
+          todoBox.id = items[i].itemId
+          todoBox.checked = items[i].item.completed ? true : false
+          todoBox.onclick = (e) => {
+            e.preventDefault()
+            userbaseSqlJs.execSql({
+              databaseName: 'todos',
+              sql: 'UPDATE todos SET completed=? WHERE id=?;',
+              bindValues: [!items[i].item.completed, items[i].itemId]
+            })
+              .catch((e) => document.getElementById('add-todo-error').innerHTML = e)
+          }
+
+          // build the todo label
+          const todoLabel = document.createElement('label')
+          todoLabel.innerHTML = items[i].item.todo
+          todoLabel.style.textDecoration = items[i].item.completed ? 'line-through' : 'none'
+
+          // append the todo item to the list
+          const todoItem = document.createElement('div')
+          todoItem.appendChild(todoDelete)
+          todoItem.appendChild(todoBox)
+          todoItem.appendChild(todoLabel)
+          todosList.appendChild(todoItem)
+        }
+      }
+    }
+
+    function addTodoHandler(e) {
+      e.preventDefault()
+
+      const id = Math.random().toString().substring(2) + Math.random().toString().substring(2)
+      const todo = document.getElementById('add-todo').value
+      const completed = false
+
+      userbaseSqlJs.execSql({ databaseName: 'todos', sql: 'INSERT INTO todos VALUES (?, ?, ?)', bindValues: [id, todo, completed] })
+        .then(() => document.getElementById('add-todo').value = '')
+        .catch((e) => document.getElementById('add-todo-error').innerHTML = e)
+    }
+
+    document.getElementById('login-form').addEventListener('submit', handleLogin)
+    document.getElementById('signup-form').addEventListener('submit', handleSignUp)
+    document.getElementById('add-todo-form').addEventListener('submit', addTodoHandler)
+    document.getElementById('logout-button').addEventListener('click', handleLogout)
+
+    document.getElementById('todo-view').style.display = 'none'
+    document.getElementById('auth-view').style.display = 'none'
+
+  </script>
+</body>
+
+</html>
