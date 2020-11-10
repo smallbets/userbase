@@ -249,7 +249,7 @@ describe('DB Tests', function () {
         await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
 
         try {
-          await this.test.userbase.insertItem({ databaseName: 'a'.repeat(51), item: 'test-item' })
+          await this.test.userbase.insertItem({ databaseName: 'a'.repeat(101), item: 'test-item' })
           throw new Error('should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.equal('DatabaseNameTooLong')
@@ -506,7 +506,7 @@ describe('DB Tests', function () {
 
       it('Database name too long', async function () {
         try {
-          await this.test.userbase.updateItem({ databaseName: 'a'.repeat(51), item: 'test-item', itemId: 'fake-id' })
+          await this.test.userbase.updateItem({ databaseName: 'a'.repeat(101), item: 'test-item', itemId: 'fake-id' })
           throw new Error('should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.equal('DatabaseNameTooLong')
@@ -838,7 +838,7 @@ describe('DB Tests', function () {
 
       it('Database name too long', async function () {
         try {
-          await this.test.userbase.putTransaction({ databaseName: 'a'.repeat(51), operations: [{ command: 'Insert', item: 'test-item', itemId: 'fake-id' }] })
+          await this.test.userbase.putTransaction({ databaseName: 'a'.repeat(101), operations: [{ command: 'Insert', item: 'test-item', itemId: 'fake-id' }] })
           throw new Error('should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.equal('DatabaseNameTooLong')
@@ -1425,7 +1425,7 @@ describe('DB Tests', function () {
 
       it('Database name too long', async function () {
         try {
-          await this.test.userbase.getDatabases({ databaseName: 'a'.repeat(51) })
+          await this.test.userbase.getDatabases({ databaseName: 'a'.repeat(101) })
           throw new Error('should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.equal('DatabaseNameTooLong')

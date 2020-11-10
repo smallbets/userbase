@@ -990,7 +990,7 @@ describe('DB Sharing Tests', function () {
         await signUp(this.test.userbase)
 
         try {
-          await this.test.userbase.shareDatabase({ databaseName: 'a'.repeat(51), username: 'fake-user' })
+          await this.test.userbase.shareDatabase({ databaseName: 'a'.repeat(101), username: 'fake-user' })
           throw new Error('Should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.equal('DatabaseNameTooLong')
