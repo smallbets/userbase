@@ -132,13 +132,13 @@ openDatabase({ databaseName: 'tdb', changeHandler: (items) => { } })
 // $ExpectError
 openDatabase({ databaseName: 'tdb' })
 
-// $ExpectType Promise<void>
+// $ExpectType Promise<DatabasesResult>
 getDatabases()
 
-// $ExpectType Promise<void>
+// $ExpectType Promise<DatabasesResult>
 getDatabases({ databaseName: 'tdb' })
 
-// $ExpectType Promise<void>
+// $ExpectType Promise<DatabasesResult>
 getDatabases({ databaseId: 'tid' })
 
 // $ExpectType Promise<void>
@@ -205,7 +205,7 @@ getFile({ databaseName: 'tdb', fileId: 'tfid', range: { start: 0 } })
 // $ExpectError
 getFile({ databaseName: 'tdb', fileId: 'tfid', range: { start: false, end: 1 } })
 
-// $ExpectType Promise<void>
+// $ExpectType Promise<{ verificationMessage: string; }>
 getVerificationMessage()
 
 // $ExpectType Promise<void>
