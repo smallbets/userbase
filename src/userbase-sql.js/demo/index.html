@@ -125,8 +125,6 @@
 
       userbaseSqlJs.openSqlJsDatabase({ databaseName: 'todos', changeHandler: wrappedChangeHandler })
         .then(() => {
-          console.log(todoTableDoesNotExist)
-
           // create todos table if it does not exist
           if (todoTableDoesNotExist) {
             userbaseSqlJs.execSql({ databaseName: 'todos', sql: 'CREATE TABLE todos (id PRIMARY KEY, todo TEXT, completed BOOLEAN);' })

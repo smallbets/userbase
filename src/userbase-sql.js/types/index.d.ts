@@ -36,7 +36,10 @@ export interface UserResult {
 
 export type DatabaseChangeHandler = (items: Item[]) => void
 
-export type DatabasesResult = {
+// https://sql.js.org/documentation/Database.html
+export type SqlJsDatabaseChangeHandler = (sqlJsDatabase: { db: any }) => void
+
+export interface DatabasesResult {
   databases: Database[]
 }
 
@@ -59,7 +62,8 @@ export interface DatabaseUsers {
   verified?: boolean
 }
 
-export type BindValues = Array<string> | Object
+// https://sql.js.org/documentation/Statement.html#%5B%22bind%22%5D
+export type BindValues = string[] | {}
 
 export interface SqlStatement {
   sql: string,
@@ -129,7 +133,7 @@ export interface UserbaseSqlJs {
 
   openDatabase(params: { databaseName?: string, databaseId?: string, changeHandler: DatabaseChangeHandler }): Promise<void>
 
-  openSqlJsDatabase(params: { databaseName: string, changeHandler: DatabaseChangeHandler }): Promise<void>
+  openSqlJsDatabase(params: { databaseName: string, changeHandler: SqlJsDatabaseChangeHandler }): Promise<void>
 
   execSql(params: { databaseName: string, sql?: string, bindValues?: BindValues, sqlStatements?: SqlStatement[] }): Promise<void>
 

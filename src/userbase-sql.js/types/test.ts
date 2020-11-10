@@ -135,7 +135,7 @@ openDatabase({ databaseName: 'tdb', changeHandler: (items) => { } })
 openDatabase({ databaseName: 'tdb' })
 
 // $ExpectType Promise<void>
-openSqlJsDatabase({ databaseName: 'tdb', changeHandler: (items) => { } })
+openSqlJsDatabase({ databaseName: 'tdb', changeHandler: ({ db }) => { } })
 
 // $ExpectError
 openSqlJsDatabase({ databaseName: 'tdb' })
@@ -144,7 +144,7 @@ openSqlJsDatabase({ databaseName: 'tdb' })
 execSql({ databaseName: 'tdb', sql: 'CREATE TABLE tbl;' })
 
 // $ExpectType Promise<void>
-execSql({ databaseName: 'tdb', sql: 'INSERT INTO TABLE tbl VALUES ($tcol);', bindValues: { '$tcol': 'tval' } })
+execSql({ databaseName: 'tdb', sql: 'INSERT INTO TABLE tbl VALUES ($tcol);', bindValues: { $tcol: 'tval' } })
 
 // $ExpectType Promise<void>
 execSql({ databaseName: 'tdb', sql: 'INSERT INTO TABLE tbl VALUES (?);', bindValues: ['tval'] })
@@ -158,13 +158,13 @@ execSql({ databaseName: 'tdb', sql: 1 })
 // $ExpectError
 execSql({ databaseName: 'tdb', sqlStatements: [{ bindValues: ['tval'] }] })
 
-// $ExpectType Promise<void>
+// $ExpectType Promise<DatabasesResult>
 getDatabases()
 
-// $ExpectType Promise<void>
+// $ExpectType Promise<DatabasesResult>
 getDatabases({ databaseName: 'tdb' })
 
-// $ExpectType Promise<void>
+// $ExpectType Promise<DatabasesResult>
 getDatabases({ databaseId: 'tid' })
 
 // $ExpectType Promise<void>
@@ -228,7 +228,7 @@ getFile({ databaseName: 'tdb', fileId: 'tfid', range: { start: 0 } })
 // $ExpectError
 getFile({ databaseName: 'tdb', fileId: 'tfid', range: { start: false, end: 1 } })
 
-// $ExpectType Promise<void>
+// $ExpectType Promise<{ verificationMessage: string; }>
 getVerificationMessage()
 
 // $ExpectType Promise<void>
