@@ -36,7 +36,7 @@ export interface UserResult {
 
 export type DatabaseChangeHandler = (items: Item[]) => void
 
-export type DatabasesResult = {
+export interface DatabasesResult {
   databases: Database[]
 }
 
