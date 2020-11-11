@@ -132,6 +132,9 @@ openDatabase({ databaseName: 'tdb', changeHandler: (items) => { } })
 // $ExpectError
 openDatabase({ databaseName: 'tdb' })
 
+// $ExpectError
+openDatabase({})
+
 // $ExpectType Promise<DatabasesResult>
 getDatabases()
 
@@ -140,6 +143,9 @@ getDatabases({ databaseName: 'tdb' })
 
 // $ExpectType Promise<DatabasesResult>
 getDatabases({ databaseId: 'tid' })
+
+// $ExpectError
+getDatabases({});
 
 // $ExpectType Promise<void>
 insertItem({ databaseName: 'tdb', item: { name: 'tname' } })
@@ -150,11 +156,17 @@ insertItem({ databaseName: 'tdb', item: { name: 'tname' }, itemId: 'tid' })
 // $ExpectError
 insertItem({ databaseName: 'tdb', item: { name: 'tname' }, itemId: 1 })
 
+// $ExpectError
+insertItem({ item: { name: 'tname' } })
+
 // $ExpectType Promise<void>
 updateItem({ databaseName: 'tdb', item: { name: 'tname' }, itemId: 'tid' })
 
 // $ExpectError
 updateItem({ databaseName: 'tdb', item: { name: 'tname' } })
+
+// $ExpectError
+updateItem({ item: { name: 'tname' }, itemId: 'tid' })
 
 // $ExpectType Promise<void>
 putTransaction({
@@ -178,6 +190,15 @@ putTransaction({ databaseName: 'tdb', operations: [{ command: 'Update', item: { 
 // $ExpectError
 putTransaction({ databaseName: 'tdb', operations: [{ command: 'Delete' }] })
 
+// $ExpectError
+putTransaction({
+  operations: [
+    { command: 'Insert', item: { name: 'tname' } },
+    { command: 'Update', item: { name: 'tname' }, itemId: 'tid' },
+    { command: 'Delete', itemId: 'tid' }
+  ]
+})
+
 // $ExpectType Promise<void>
 uploadFile({ databaseName: 'tdb', itemId: 'tid', file: new File(['tbp' as BlobPart], 'tf.txt') })
 
@@ -186,6 +207,9 @@ uploadFile({ databaseName: 'tdb', itemId: 'tid', file: new File(['tbp' as BlobPa
 
 // $ExpectError
 uploadFile({ databaseName: 'tdb', itemId: 'tid' })
+
+// $ExpectError
+uploadFile({ itemId: 'tid', file: new File(['tbp' as BlobPart], 'tf.txt') })
 
 // $ExpectType Promise<FileResult>
 getFile({ databaseName: 'tdb', fileId: 'tfid' })
@@ -204,6 +228,9 @@ getFile({ databaseName: 'tdb', fileId: 'tfid', range: { start: 0 } })
 
 // $ExpectError
 getFile({ databaseName: 'tdb', fileId: 'tfid', range: { start: false, end: 1 } })
+
+// $ExpectError
+getFile({ fileId: 'tfid' })
 
 // $ExpectType Promise<{ verificationMessage: string; }>
 getVerificationMessage()
@@ -226,6 +253,9 @@ shareDatabase({ databaseId: 'tid', username: 'tuser', requireVerified: true, rea
 // $ExpectError
 shareDatabase({ databaseId: 'tid' })
 
+// $ExpectError
+shareDatabase({ username: 'tuser' })
+
 // $ExpectType Promise<void>
 modifyDatabasePermissions({ databaseName: 'tdb', username: 'tuser' })
 
@@ -237,6 +267,9 @@ modifyDatabasePermissions({ databaseId: 'tid', username: 'tuser', revoke: true }
 
 // $ExpectError
 modifyDatabasePermissions({ databaseId: 'tid' })
+
+// $ExpectError
+modifyDatabasePermissions({ username: 'tuser' })
 
 // $ExpectType Promise<void>
 purchaseSubscription({ successUrl: 'turl', cancelUrl: 'turl' })
