@@ -12,6 +12,7 @@ const {
   getDatabases,
   insertItem,
   updateItem,
+  deleteItem,
   putTransaction,
   uploadFile,
   getFile,
@@ -167,6 +168,18 @@ updateItem({ databaseName: 'tdb', item: { name: 'tname' } })
 
 // $ExpectError
 updateItem({ item: { name: 'tname' }, itemId: 'tid' })
+
+// $ExpectType Promise<void>
+deleteItem({ databaseName: 'tdb', itemId: 'tid' })
+
+// $ExpectType Promise<void>
+deleteItem({ databaseId: 'tid', itemId: 'tid' })
+
+// $ExpectError
+deleteItem({ databaseName: 'tdb', itemId: 1 })
+
+// $ExpectError
+deleteItem({ itemId: 'tid' })
 
 // $ExpectType Promise<void>
 putTransaction({
