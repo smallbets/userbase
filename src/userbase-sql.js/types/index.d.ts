@@ -1,5 +1,5 @@
-// Expose as userbase when loaded in an IIFE environment
-export as namespace userbase
+// Expose as userbaseSqlJs when loaded in an IIFE environment
+export as namespace userbaseSqlJs
 
 export type UpdateUserHandler = (updatedUser: { user: UserResult }) => void
 
@@ -36,6 +36,9 @@ export interface UserResult {
 
 export type DatabaseChangeHandler = (items: Item[]) => void
 
+// https://sql.js.org/documentation/Database.html
+export type SqlJsDatabaseChangeHandler = (sqlJsDatabase: { db: any }) => void
+
 export interface DatabasesResult {
   databases: Database[]
 }
@@ -57,6 +60,14 @@ export interface DatabaseUsers {
   readOnly: boolean
   resharingAllowed: boolean
   verified?: boolean
+}
+
+// https://sql.js.org/documentation/Statement.html#%5B%22bind%22%5D
+export type BindValues = string[] | {}
+
+export interface SqlStatement {
+  sql: string,
+  bindValues?: BindValues
 }
 
 export type DatabaseOperation = InsertOperation | UpdateOperation | DeleteOperation
@@ -105,9 +116,7 @@ export interface CancelSubscriptionResult {
   cancelSubscriptionAt: Date
 }
 
-export type databaseNameXorId = ({ databaseId: string, databaseName?: never } | { databaseName: string, databaseId?: never });
-
-export interface Userbase {
+export interface UserbaseSqlJs {
   init(params: { appId: string, updateUserHandler?: UpdateUserHandler, sessionLength?: number }): Promise<Session>
 
   signUp(params: { username: string, password: string, email?: string, profile?: UserProfile, rememberMe?: RememberMeOption, sessionLength?: number }): Promise<UserResult>
@@ -122,29 +131,33 @@ export interface Userbase {
 
   forgotPassword(params: { username: string }): Promise<void>
 
-  openDatabase(params: databaseNameXorId & { changeHandler: DatabaseChangeHandler }): Promise<void>
+  openDatabase(params: { databaseName?: string, databaseId?: string, changeHandler: DatabaseChangeHandler }): Promise<void>
+
+  openSqlJsDatabase(params: { databaseName: string, changeHandler: SqlJsDatabaseChangeHandler }): Promise<void>
+
+  execSql(params: { databaseName: string, sql?: string, bindValues?: BindValues, sqlStatements?: SqlStatement[] }): Promise<void>
 
   getDatabases(params?: { databaseName?: string, databaseId?: string }): Promise<DatabasesResult>
 
-  insertItem(params: databaseNameXorId & { item: any, itemId?: string }): Promise<void>
+  insertItem(params: { databaseName?: string, databaseId?: string, item: any, itemId?: string }): Promise<void>
 
-  updateItem(params: databaseNameXorId & { item: any, itemId: string }): Promise<void>
+  updateItem(params: { databaseName?: string, databaseId?: string, item: any, itemId: string }): Promise<void>
 
-  deleteItem(params: databaseNameXorId & { itemId: string }): Promise<void>
+  deleteItem(params: { databaseName?: string, databaseId?: string, itemId: string }): Promise<void>
 
-  putTransaction(params: databaseNameXorId & { operations: DatabaseOperation[] }): Promise<void>
+  putTransaction(params: { databaseName?: string, databaseId?: string, operations: DatabaseOperation[] }): Promise<void>
 
-  uploadFile(params: databaseNameXorId & { itemId: string, file: File, progressHandler?: FileUploadProgressHandler }): Promise<void>
+  uploadFile(params: { databaseName?: string, databaseId?: string, itemId: string, file: File, progressHandler?: FileUploadProgressHandler }): Promise<void>
 
-  getFile(params: databaseNameXorId & { fileId: string, range?: { start: number, end: number } }): Promise<FileResult>
+  getFile(params: { databaseName?: string, databaseId?: string, fileId: string, range?: { start: number, end: number } }): Promise<FileResult>
 
   getVerificationMessage(): Promise<{ verificationMessage: string }>
 
   verifyUser(params: { verificationMessage: string }): Promise<void>
 
-  shareDatabase(params: databaseNameXorId & { username: string, requireVerified?: boolean, readOnly?: boolean, resharingAllowed?: boolean }): Promise<void>
+  shareDatabase(params: { databaseName?: string, databaseId?: string, username: string, requireVerified?: boolean, readOnly?: boolean, resharingAllowed?: boolean }): Promise<void>
 
-  modifyDatabasePermissions(params: databaseNameXorId & { username: string, readOnly?: boolean, resharingAllowed?: boolean, revoke?: boolean }): Promise<void>
+  modifyDatabasePermissions(params: { databaseName?: string, databaseId?: string, username: string, readOnly?: boolean, resharingAllowed?: boolean, revoke?: boolean }): Promise<void>
 
   purchaseSubscription(params: { successUrl: string, cancelUrl: string }): Promise<void>
 
@@ -155,6 +168,6 @@ export interface Userbase {
   updatePaymentMethod(params: { successUrl: string, cancelUrl: string }): Promise<void>
 }
 
-declare let userbase: Userbase
+declare let userbaseSqlJs: UserbaseSqlJs
 
-export default userbase
+export default userbaseSqlJs

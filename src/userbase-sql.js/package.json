@@ -4,36 +4,39 @@
   },
   "dependencies": {
     "@babel/runtime": "^7.9.2",
-    "base64-arraybuffer": "^0.2.0",
-    "diffie-hellman": "^5.0.3",
     "lz-string": "^1.4.4",
-    "scrypt-js": "^3.0.0",
-    "sorted-array": "^2.0.4",
-    "uuid": "^3.4.0"
+    "sql.js": "^1.3.0",
+    "userbase-js": "^2.3.0",
+    "uuid": "^8.3.0"
   },
   "deprecated": false,
-  "description": "Userbase JS browser SDK",
+  "description": "sql.js wrapper for Userbase JS SDK",
   "homepage": "https://github.com/encrypted-dev/userbase",
   "keywords": [
     "database",
     "userbase",
     "userbase SDK",
+    "userbase sql.js",
+    "userbase SQL",
     "encryption",
     "end-to-end encryption",
+    "end-to-end encrypted",
     "js client",
-    "authentication"
+    "authentication",
+    "sql",
+    "sql.js"
   ],
   "license": "MIT",
-  "main": "dist/userbase.cjs.js",
+  "main": "dist/userbase-sql.cjs.js",
   "module": "lib/index.js",
   "typings": "./types/index.d.ts",
-  "name": "userbase-js",
+  "name": "userbase-sql.js",
   "sideEffects": false,
   "repository": {
     "type": "git",
     "url": "git+https://github.com/encrypted-dev/userbase.git"
   },
-  "version": "2.3.0",
+  "version": "0.0.0",
   "scripts": {
     "prepublishOnly": "npm run build",
     "build": "npm run build:esm && npm run build:cjs && npm run build:umd",
@@ -48,7 +51,7 @@
   "size-limit": [
     {
       "name": "umd",
-      "path": "dist/userbase.js",
+      "path": "dist/userbase-sql.js",
       "webpack": false
     },
     {

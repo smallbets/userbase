@@ -1,4 +1,4 @@
-import userbase from 'userbase-js'
+import userbaseSqlJs from 'userbase-sql.js'
 
 const {
   init,
@@ -9,6 +9,8 @@ const {
   deleteUser,
   forgotPassword,
   openDatabase,
+  openSqlJsDatabase,
+  execSql,
   getDatabases,
   insertItem,
   updateItem,
@@ -23,7 +25,7 @@ const {
   cancelSubscription,
   resumeSubscription,
   updatePaymentMethod,
-} = userbase
+} = userbaseSqlJs
 
 // TypeScript Version: 2.1
 
@@ -132,6 +134,30 @@ openDatabase({ databaseName: 'tdb', changeHandler: (items) => { } })
 // $ExpectError
 openDatabase({ databaseName: 'tdb' })
 
+// $ExpectType Promise<void>
+openSqlJsDatabase({ databaseName: 'tdb', changeHandler: ({ db }) => { } })
+
+// $ExpectError
+openSqlJsDatabase({ databaseName: 'tdb' })
+
+// $ExpectType Promise<void>
+execSql({ databaseName: 'tdb', sql: 'CREATE TABLE tbl;' })
+
+// $ExpectType Promise<void>
+execSql({ databaseName: 'tdb', sql: 'INSERT INTO TABLE tbl VALUES ($tcol);', bindValues: { $tcol: 'tval' } })
+
+// $ExpectType Promise<void>
+execSql({ databaseName: 'tdb', sql: 'INSERT INTO TABLE tbl VALUES (?);', bindValues: ['tval'] })
+
+// $ExpectType Promise<void>
+execSql({ databaseName: 'tdb', sqlStatements: [{ sql: 'INSERT INTO TABLE tbl VALUES (?);', bindValues: ['tval'] }] })
+
+// $ExpectError
+execSql({ databaseName: 'tdb', sql: 1 })
+
+// $ExpectError
+execSql({ databaseName: 'tdb', sqlStatements: [{ bindValues: ['tval'] }] })
+
 // $ExpectType Promise<DatabasesResult>
 getDatabases()
 
@@ -180,9 +206,6 @@ putTransaction({ databaseName: 'tdb', operations: [{ command: 'Delete' }] })
 
 // $ExpectType Promise<void>
 uploadFile({ databaseName: 'tdb', itemId: 'tid', file: new File(['tbp' as BlobPart], 'tf.txt') })
-
-// $ExpectType Promise<void>
-uploadFile({ databaseName: 'tdb', itemId: 'tid', file: new File(['tbp' as BlobPart], 'tf.txt'), progressHandler: ({ bytesTransferred }) => { } })
 
 // $ExpectError
 uploadFile({ databaseName: 'tdb', itemId: 'tid' })

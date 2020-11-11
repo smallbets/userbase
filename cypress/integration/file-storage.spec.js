@@ -640,7 +640,7 @@ describe('File Storage', function () {
         const testFile = new this.test.win.File([1], testFileName, { type: testFileType })
 
         try {
-          await this.test.userbase.uploadFile({ databaseName: 'a'.repeat(51), itemId: testItemId, file: testFile })
+          await this.test.userbase.uploadFile({ databaseName: 'a'.repeat(101), itemId: testItemId, file: testFile })
           throw new Error('should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.equal('DatabaseNameTooLong')
@@ -1291,7 +1291,7 @@ describe('File Storage', function () {
         const testFile = new this.test.win.File([1], testFileName, { type: testFileType })
 
         try {
-          await this.test.userbase.uploadFile({ databaseName: 'a'.repeat(51), itemId: testItemId, file: testFile })
+          await this.test.userbase.uploadFile({ databaseName: 'a'.repeat(101), itemId: testItemId, file: testFile })
           throw new Error('should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.equal('DatabaseNameTooLong')
