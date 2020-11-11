@@ -124,7 +124,7 @@ export interface Userbase {
 
   openDatabase(params: databaseNameXorId & { changeHandler: DatabaseChangeHandler }): Promise<void>
 
-  getDatabases(params?: { databaseName?: string, databaseId?: string }): Promise<DatabasesResult>
+  getDatabases(params?: databaseNameXorId): Promise<DatabasesResult>
 
   insertItem(params: databaseNameXorId & { item: any, itemId?: string }): Promise<void>
 
