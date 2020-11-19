@@ -16,6 +16,7 @@ import {
   stringToArrayBuffer,
   arrayBufferToString,
 } from './utils'
+import crypto from './crypto'
 
 const UUID_STRING_LENGTH = 36
 
@@ -38,7 +39,8 @@ const _buildUserDatabaseParams = (userId, dbNameHash, dbId, encryptedDbKey, read
       'database-id': dbId,
       'encrypted-db-key': encryptedDbKey,
       'read-only': readOnly,
-      'resharing-allowed': resharingAllowed
+      'resharing-allowed': resharingAllowed,
+      'creation-date': new Date().toISOString(),
     },
     ConditionExpression: 'attribute_not_exists(#userId)',
     ExpressionAttributeNames: {
@@ -47,7 +49,7 @@ const _buildUserDatabaseParams = (userId, dbNameHash, dbId, encryptedDbKey, read
   }
 }
 
-const createDatabase = async function (userId, dbNameHash, dbId, encryptedDbName, encryptedDbKey, attribution) {
+const createDatabase = async function (userId, dbNameHash, dbId, encryptedDbName, encryptedDbKey, attribution, plaintextDbKey, fingerprint) {
   try {
     const user = await userController.getUserByUserId(userId)
     if (!user || user['deleted']) throw new Error('UserNotFound')
@@ -55,10 +57,13 @@ const createDatabase = async function (userId, dbNameHash, dbId, encryptedDbName
     const database = {
       'database-id': dbId,
       'owner-id': userId,
-      'database-name': encryptedDbName
+      'owner-fingerprint': fingerprint, // if owner changes key, this lets server know the database should no longer be accessible
+      'database-name': encryptedDbName,
+      'creation-date': new Date().toISOString(),
     }
 
     if (attribution) database['attribution'] = true
+    if (plaintextDbKey) database['plaintext-db-key'] = plaintextDbKey
 
     const userDatabaseParams = _buildUserDatabaseParams(userId, dbNameHash, dbId, encryptedDbKey)
 
@@ -193,12 +198,12 @@ exports.openDatabase = async function (user, app, admin, connectionId, dbNameHas
       if (!database && !newDatabaseParams) return responseBuilder.errorResponse(statusCodes['Not Found'], 'Database not found')
       else if (!database) {
         // attempt to create new database
-        const { dbId, encryptedDbName, encryptedDbKey, attribution } = newDatabaseParams
+        const { dbId, encryptedDbName, encryptedDbKey, attribution, plaintextDbKey, fingerprint } = newDatabaseParams
         if (!dbId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
         if (!encryptedDbName) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name')
         if (!encryptedDbKey) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database key')
 
-        database = await createDatabase(userId, dbNameHash, dbId, encryptedDbName, encryptedDbKey, attribution)
+        database = await createDatabase(userId, dbNameHash, dbId, encryptedDbName, encryptedDbKey, attribution, plaintextDbKey, fingerprint)
       }
     } catch (e) {
       if (e.data === 'Database already exists' || e.data === 'Database already creating') {
@@ -214,9 +219,10 @@ exports.openDatabase = async function (user, app, admin, connectionId, dbNameHas
     const bundleSeqNo = database['bundle-seq-no']
     const dbKey = database['encrypted-db-key']
     const attribution = database['attribution']
+    const plaintextDbKey = database['plaintext-db-key']
 
     const isOwner = true
-    if (connections.openDatabase(userId, connectionId, dbId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner, attribution)) {
+    if (connections.openDatabase(userId, connectionId, dbId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner, attribution, plaintextDbKey)) {
       return responseBuilder.successResponse('Success!')
     } else {
       throw new Error('Unable to open database')
@@ -227,46 +233,59 @@ exports.openDatabase = async function (user, app, admin, connectionId, dbNameHas
   }
 }
 
-exports.openDatabaseByDatabaseId = async function (user, app, admin, connectionId, databaseId, reopenAtSeqNo) {
-  if (!databaseId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database ID')
-  if (reopenAtSeqNo && typeof reopenAtSeqNo !== 'number') return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Reopen at seq no must be number')
-  const userId = user['user-id']
-
+exports.openDatabaseByDatabaseId = async function (userAtSignIn, app, admin, connectionId, databaseId, reopenAtSeqNo) {
+  let userId
   try {
-    try {
-      userController.validatePayment(user, app, admin)
-    } catch (e) {
-      return responseBuilder.errorResponse(e.status, e.error)
-    }
+    if (!databaseId) throw { status: statusCodes['Bad Request'], error: 'Missing database ID' }
+    if (reopenAtSeqNo && typeof reopenAtSeqNo !== 'number') throw { status: statusCodes['Bad Request'], error: 'Reopen at seq no must be number' }
+    userId = userAtSignIn['user-id']
 
-    const [db, userDb] = await Promise.all([
+    userController.validatePayment(userAtSignIn, app, admin)
+
+    const [db, userDb, user] = await Promise.all([
       findDatabaseByDatabaseId(databaseId),
-      _getUserDatabaseByUserIdAndDatabaseId(userId, databaseId)
+      _getUserDatabaseByUserIdAndDatabaseId(userId, databaseId),
+      userController.getUserByUserId(userId),
     ])
 
-    if (!db || !userDb) return responseBuilder.errorResponse(statusCodes['Not Found'], 'Database not found')
+    if (!db || !userDb || !user) throw { status: statusCodes['Not Found'], error: 'Database not found' }
 
     // Not allowing developers to use databaseId's to interact with databases owned by the user keeps the current concurrency model safe.
     const isOwner = db['owner-id'] === userId
-    if (isOwner) return responseBuilder.errorResponse(statusCodes['Forbidden'], 'Database is owned by user')
+    if (isOwner) throw { status: statusCodes['Forbidden'], error: 'Database is owned by user' }
 
     const database = { ...db, ...userDb }
     const dbNameHash = database['database-name-hash']
     const bundleSeqNo = database['bundle-seq-no']
     const dbKey = database['encrypted-db-key']
     const attribution = database['attribution']
+    const plaintextDbKey = database['plaintext-db-key']
 
     // user must call getDatabases() first to set the db key
-    if (!dbKey) return responseBuilder.errorResponse(statusCodes['Not Found'], 'Database key not found')
+    if (!dbKey && !plaintextDbKey) throw { status: statusCodes['Not Found'], error: 'Database key not found' }
 
-    if (connections.openDatabase(userId, connectionId, databaseId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner, attribution)) {
+    // user must have the correct public key saved to access database
+    if (!plaintextDbKey && database['recipient-ecdsa-public-key'] !== user['ecdsa-public-key']) throw {
+      status: statusCodes['Not Found'], error: 'Database not found'
+    }
+
+    if (connections.openDatabase(userId, connectionId, databaseId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner, attribution, plaintextDbKey)) {
       return responseBuilder.successResponse('Success!')
     } else {
       throw new Error('Unable to open database')
     }
   } catch (e) {
-    logger.error(`Failed to open database by database ID for user ${userId} with ${e}`)
-    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to open database by database ID')
+    const message = 'Failed to open database by database ID'
+    const logChildObject = { userId, databaseId, connectionId, appId: app['app-id'], admin: admin['admin-id'] }
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).info(message)
+      return responseBuilder.errorResponse(e.status, e.error)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).warn(message)
+      return responseBuilder.errorResponse(statusCode, message)
+    }
   }
 }
 
@@ -292,18 +311,75 @@ const _queryUserDatabases = async (userId, nextPageToken) => {
   return userDbsResponse
 }
 
+const _getFinalResultForGetDatabases = (databases, userId, userDbs, owners, user, senders) => {
+  return databases.map((db, i) => {
+    const isOwner = db['owner-id'] === userId
+    const userDb = userDbs[i]
+
+    const owner = owners[i]
+    if (!owner || owner.deleted) {
+      // do not return database with a deleted owner
+      return null
+    } else if (!db['plaintext-db-key'] && (owner['rotated-keys'] || user['rotated-keys'])) {
+      // databases stored with plaintext db key should always be accessible, but if either owner or user has rotated keys,
+      // need to make sure only returning databases user should be able to access
+
+      // do not return database if owner has rotated their keys since creating database
+      const ownerFingerprint = crypto.sha256.hash(Buffer.from(owner['ecdsa-public-key'], 'base64')).toString('base64')
+      if (db['owner-fingerprint'] !== ownerFingerprint) {
+        return null
+      }
+
+      // do not return database if user has rotated their keys since receiving access to database
+      if (!isOwner && userDb['recipient-ecdsa-public-key'] !== user['ecdsa-public-key']) {
+        return null
+      }
+    }
+
+    return {
+      databaseName: db['database-name'],
+      databaseId: db['database-id'],
+
+      isOwner,
+      readOnly: isOwner ? false : userDb['read-only'],
+      resharingAllowed: isOwner ? true : userDb['resharing-allowed'],
+      databaseNameHash: userDb['database-name-hash'],
+      senderUsername: (senders[i] && !senders[i].deleted) ? senders[i].username : undefined,
+      senderEcdsaPublicKey: userDb['sender-ecdsa-public-key'],
+      plaintextDbKey: db['plaintext-db-key'],
+
+      // if already has access to database
+      encryptedDbKey: userDb['encrypted-db-key'],
+
+      // if still does not have access to database
+      sharedEncryptedDbKey: userDb['shared-encrypted-db-key'],
+      wrappedDbKey: userDb['wrapped-db-key'],
+      ephemeralPublicKey: userDb['ephemeral-public-key'],
+      signedEphemeralPublicKey: userDb['signed-ephemeral-public-key'],
+    }
+  })
+}
+
+const _getUserDbsForGetDatabases = async (userId, nextPageToken, databaseId, dbNameHash) => {
+  let userDbsResponse
+  if (!databaseId && !dbNameHash) {
+    userDbsResponse = await _queryUserDatabases(userId, nextPageToken)
+  } else if (databaseId) {
+    const userDb = await _getUserDatabaseByUserIdAndDatabaseId(userId, databaseId)
+    userDbsResponse = { Items: userDb ? [userDb] : [] }
+  } else {
+    const userDb = await _getUserDatabase(userId, dbNameHash)
+    userDbsResponse = { Items: userDb ? [userDb] : [] }
+  }
+  return userDbsResponse
+}
+
 exports.getDatabases = async function (logChildObject, userId, nextPageToken, databaseId, dbNameHash) {
   try {
-    let userDbsResponse
-    if (!databaseId && !dbNameHash) {
-      userDbsResponse = await _queryUserDatabases(userId, nextPageToken)
-    } else if (databaseId) {
-      const userDb = await await _getUserDatabaseByUserIdAndDatabaseId(userId, databaseId)
-      userDbsResponse = { Items: userDb ? [userDb] : [] }
-    } else {
-      const userDb = await _getUserDatabase(userId, dbNameHash)
-      userDbsResponse = { Items: userDb ? [userDb] : [] }
-    }
+    const [userDbsResponse, user] = await Promise.all([
+      _getUserDbsForGetDatabases(userId, nextPageToken, databaseId, dbNameHash),
+      userController.getUserByUserId(userId),
+    ])
     const userDbs = userDbsResponse.Items
 
     const [databases, senders] = await Promise.all([
@@ -313,7 +389,7 @@ exports.getDatabases = async function (logChildObject, userId, nextPageToken, da
 
     // used to make sure not returning databases with deleted owner
     const owners = await Promise.all(databases.map(db => {
-      if (db['owner-id'] === userId) return { userId }
+      if (db['owner-id'] === userId) return user
 
       // if already found it when searching for senders, no need to query for it again
       const owner = senders.find((sender) => sender && sender['user-id'] === db['owner-id'])
@@ -321,31 +397,7 @@ exports.getDatabases = async function (logChildObject, userId, nextPageToken, da
     }))
 
     const finalResult = {
-      databases: databases.map((db, i) => {
-        const isOwner = db['owner-id'] === userId
-        const userDb = userDbs[i]
-
-        return {
-          databaseName: db['database-name'],
-          databaseId: db['database-id'],
-
-          isOwner,
-          readOnly: isOwner ? false : userDb['read-only'],
-          resharingAllowed: isOwner ? true : userDb['resharing-allowed'],
-          databaseNameHash: userDb['database-name-hash'],
-          senderUsername: (senders[i] && !senders[i].deleted) ? senders[i].username : undefined,
-          senderEcdsaPublicKey: userDb['sender-ecdsa-public-key'],
-
-          // if already has access to database
-          encryptedDbKey: userDb['encrypted-db-key'],
-
-          // if still does not have access to database
-          sharedEncryptedDbKey: userDb['shared-encrypted-db-key'],
-          wrappedDbKey: userDb['wrapped-db-key'],
-          ephemeralPublicKey: userDb['ephemeral-public-key'],
-          signedEphemeralPublicKey: userDb['signed-ephemeral-public-key'],
-        }
-      }).filter((finalDb, i) => owners[i] && !owners[i].deleted), // do not return databases with deleted owner
+      databases: _getFinalResultForGetDatabases(databases, userId, userDbs, owners, user, senders).filter(finalDb => finalDb !== null),
       nextPageToken: userDbsResponse.LastEvaluatedKey && lastEvaluatedKeyToNextPageToken(userDbsResponse.LastEvaluatedKey)
     }
 
@@ -454,8 +506,14 @@ exports.getDatabaseUsers = async function (logChildObject, userId, databaseId, d
       users: otherDatabaseUsers.map((user, i) => {
         if (!user || user.deleted) return null
 
-        const isOwner = database['owner-id'] === user['user-id']
         const otherUserDb = otherUserDatabases[i]
+        const isOwner = database['owner-id'] === user['user-id']
+
+        // make sure user still has access to database. No need to check if owner still does since already checked in .getDatabases()
+        if (!database['plaintext-db-key'] && !isOwner && otherUserDb['recipient-ecdsa-public-key'] !== user['ecdsa-public-key']) {
+          return null
+        }
+
         const isChild = userId === otherUserDb['sender-id'] // user sent database to this user
         const isParent = userDatabase['sender-id'] === otherUserDb['user-id'] // user received database from this user
         const senderId = otherUserDb['sender-id']
@@ -511,7 +569,8 @@ const _getUserDatabaseOverWebSocket = async function (logChildObject, userDbDdbQ
     return responseBuilder.successResponse({
       encryptedDbKey: userDb['encrypted-db-key'],
       dbId: userDb['database-id'],
-      dbNameHash: userDb['database-name-hash']
+      dbNameHash: userDb['database-name-hash'],
+
     })
   } catch (e) {
     logChildObject.err = e
@@ -1055,15 +1114,13 @@ const _validateShareDatabase = async function (sender, dbId, dbNameHash, recipie
     error: { message: 'ResharingWithWriteAccessNotAllowed' }
   }
 
-  const recipientUserDb = await _getUserDatabaseByUserIdAndDatabaseId(recipient['user-id'], senderUserDb['database-id'])
-
-  return { recipient, database, recipientUserDb }
+  return { database, senderUserDb, recipient }
 }
 
 const _buildSharedUserDatabaseParams = (userId, dbId, readOnly, resharingAllowed, senderId, sharedEncryptedDbKey, wrappedDbKey,
   ephemeralPublicKey, signedEphemeralPublicKey, ecdsaPublicKey, sentSignature, recipientEcdsaPublicKey) => {
   // user will only be able to open the database using database ID. Only requirement is that this value is unique
-  const placeholderDbNameHash = '__userbase_shared_database_' + uuidv4()
+  const placeholderDbNameHash = '__userbase_shared_database_' + dbId
 
   // user must get the database within 24 hours or it will be deleted
   const expirationDate = Date.now() + MS_IN_A_DAY
@@ -1086,9 +1143,13 @@ const _buildSharedUserDatabaseParams = (userId, dbId, readOnly, resharingAllowed
       'recipient-ecdsa-public-key': recipientEcdsaPublicKey,
       ttl: getTtl(expirationDate),
     },
-    ConditionExpression: 'attribute_not_exists(#userId)',
+    ConditionExpression: 'attribute_not_exists(#userId) or #recipientPublicKey <> :recipientPublicKey',
     ExpressionAttributeNames: {
       '#userId': 'user-id',
+      '#recipientPublicKey': 'recipient-ecdsa-public-key',
+    },
+    ExpressionAttributeValues: {
+      ':recipientPublicKey': recipientEcdsaPublicKey,
     }
   }
 }
@@ -1112,18 +1173,21 @@ exports.shareDatabase = async function (logChildObject, sender, dbId, dbNameHash
       error: { message: 'ResharingAllowedMustBeBoolean' }
     }
 
-    const { recipient, database, recipientUserDb } = await _validateShareDatabase(sender, dbId, dbNameHash, recipientUsername, readOnly)
-
-    if (recipientUserDb) throw {
-      status: statusCodes['Conflict'],
-      error: { message: 'DatabaseAlreadyShared' }
-    }
+    const { recipient, database } = await _validateShareDatabase(sender, dbId, dbNameHash, recipientUsername, readOnly)
 
     const recipientUserDbParams = _buildSharedUserDatabaseParams(recipient['user-id'], database['database-id'], readOnly, resharingAllowed, sender['user-id'],
       sharedEncryptedDbKey, wrappedDbKey, ephemeralPublicKey, signedEphemeralPublicKey, sender['ecdsa-public-key'], sentSignature, recipientEcdsaPublicKey)
 
-    const ddbClient = connection.ddbClient()
-    await ddbClient.put(recipientUserDbParams).promise()
+    try {
+      const ddbClient = connection.ddbClient()
+      await ddbClient.put(recipientUserDbParams).promise()
+    } catch (e) {
+      if (e.name === 'ConditionalCheckFailedException') throw {
+        status: statusCodes['Conflict'],
+        error: { message: 'DatabaseAlreadyShared' }
+      }
+      throw e
+    }
 
     return responseBuilder.successResponse('Success!')
   } catch (e) {
@@ -1178,7 +1242,8 @@ exports.saveDatabase = async function (logChildObject, user, dbNameHash, encrypt
 
 exports.modifyDatabasePermissions = async function (logChildObject, sender, dbId, dbNameHash, recipientUsername, readOnly, resharingAllowed, revoke) {
   try {
-    const { recipientUserDb, database } = await _validateShareDatabase(sender, dbId, dbNameHash, recipientUsername, readOnly)
+    const { database, senderUserDb, recipient } = await _validateShareDatabase(sender, dbId, dbNameHash, recipientUsername, readOnly)
+    const recipientUserDb = await _getUserDatabaseByUserIdAndDatabaseId(recipient['user-id'], senderUserDb['database-id'])
 
     if (recipientUserDb && recipientUserDb['user-id'] === database['owner-id']) throw {
       status: statusCodes['Forbidden'],

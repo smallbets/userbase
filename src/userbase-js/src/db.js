@@ -25,6 +25,17 @@ const FILE_CHUNKS_PER_BATCH = 10
 
 const VERIFIED_USERS_DATABASE_NAME = '__userbase_verified_users'
 
+const ENCRYPTION_MODE_OPTIONS = {
+  'end-to-end': true,
+  'server-side': true
+}
+
+const _checkSignedInState = () => {
+  if (ws.reconnecting) throw new errors.Reconnecting
+  if (!ws.keys.init && ws.changePassword) throw new errors.UserMustChangePassword
+  if (!ws.keys.init) throw new errors.UserNotSignedIn
+}
+
 const _parseGenericErrors = (e) => {
   if (e.response) {
     if (e.response.data === 'UserNotFound') {
@@ -551,7 +562,7 @@ const _openDatabase = async (changeHandler, params) => {
           throw new errors.DatabaseAlreadyOpening
         } else if (data === 'Database is owned by user') {
           throw new errors.DatabaseIdNotAllowedForOwnDatabase
-        } else if (data === 'Database key not found') {
+        } else if (data === 'Database key not found' || data === 'Database not found') {
           throw new errors.DatabaseNotFound
         }
 
@@ -579,7 +590,7 @@ const _openDatabase = async (changeHandler, params) => {
   }
 }
 
-const _createDatabase = async (dbName) => {
+const _createDatabase = async (dbName, encryptionMode) => {
   const dbId = uuidv4()
 
   const dbKey = await crypto.aesGcm.generateKey()
@@ -596,6 +607,12 @@ const _createDatabase = async (dbName) => {
     encryptedDbName,
     attribution: true,
   }
+
+  if (encryptionMode === 'server-side') newDatabaseParams.plaintextDbKey = dbKeyString
+
+  // tie database to user's fingerprint at time of creation
+  newDatabaseParams.fingerprint = await _getMyFingerprint()
+
   return newDatabaseParams
 }
 
@@ -631,8 +648,11 @@ const _validateDbInput = (params) => {
     throw new errors.DatabaseNameMissing
   }
 
-  if (ws.reconnecting) throw new errors.Reconnecting
-  if (!ws.keys.init) throw new errors.UserNotSignedIn
+  if (objectHasOwnProperty(params, 'encryptionMode') && !ENCRYPTION_MODE_OPTIONS[params.encryptionMode]) {
+    throw new errors.EncryptionModeNotValid(ENCRYPTION_MODE_OPTIONS)
+  }
+
+  _checkSignedInState()
 }
 
 const openDatabase = async (params) => {
@@ -640,15 +660,18 @@ const openDatabase = async (params) => {
     _validateDbInput(params)
     if (!objectHasOwnProperty(params, 'changeHandler')) throw new errors.ChangeHandlerMissing
 
-    const { databaseName, databaseId, changeHandler } = params
+    const { databaseName, databaseId, changeHandler, encryptionMode = 'end-to-end' } = params
 
     if (typeof changeHandler !== 'function') throw new errors.ChangeHandlerMustBeFunction
 
     if (databaseName) {
-      const dbNameHash = ws.state.dbNameToHash[databaseName] || await crypto.hmac.signString(ws.keys.hmacKey, databaseName)
-      ws.state.dbNameToHash[databaseName] = dbNameHash // eslint-disable-line require-atomic-updates
+      const dbNameHash = encryptionMode === 'end-to-end'
+        ? (ws.state.dbNameToHash[databaseName] || await crypto.hmac.signString(ws.keys.hmacKey, databaseName))
+        : databaseName // Hashing is meant to keep it secret, no need to hash if encryption mode is server-side
 
-      const newDatabaseParams = await _createDatabase(databaseName)
+      if (encryptionMode === 'end-to-end') ws.state.dbNameToHash[databaseName] = dbNameHash // eslint-disable-line require-atomic-updates
+
+      const newDatabaseParams = await _createDatabase(databaseName, encryptionMode)
 
       const openByDbNameHashParams = { dbNameHash, newDatabaseParams }
       await _openDatabase(changeHandler, openByDbNameHashParams)
@@ -674,6 +697,8 @@ const openDatabase = async (params) => {
       case 'DatabaseNotFound':
       case 'ChangeHandlerMissing':
       case 'ChangeHandlerMustBeFunction':
+      case 'EncryptionModeNotValid':
+      case 'UserMustChangePassword':
       case 'UserNotSignedIn':
       case 'UserNotFound':
       case 'SubscriptionPlanNotSet':
@@ -691,8 +716,8 @@ const openDatabase = async (params) => {
   }
 }
 
-const getOpenDb = (dbName, databaseId) => {
-  const dbNameHash = ws.state.dbNameToHash[dbName]
+const getOpenDb = (dbName, databaseId, encryptionMode = 'end-to-end') => {
+  const dbNameHash = encryptionMode === 'server-side' ? dbName : ws.state.dbNameToHash[dbName]
   const database = dbName
     ? ws.state.databases[dbNameHash]
     : ws.state.databasesByDbId[databaseId]
@@ -705,7 +730,7 @@ const insertItem = async (params) => {
   try {
     _validateDbInput(params)
 
-    const database = getOpenDb(params.databaseName, params.databaseId)
+    const database = getOpenDb(params.databaseName, params.databaseId, params.encryptionMode)
 
     const action = 'Insert'
     const insertParams = await _buildInsertParams(database, params)
@@ -727,6 +752,7 @@ const insertItem = async (params) => {
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
       case 'DatabaseIsReadOnly':
+      case 'EncryptionModeNotValid':
       case 'ItemIdMustBeString':
       case 'ItemIdCannotBeBlank':
       case 'ItemIdTooLong':
@@ -734,6 +760,7 @@ const insertItem = async (params) => {
       case 'ItemInvalid':
       case 'ItemTooLarge':
       case 'ItemAlreadyExists':
+      case 'UserMustChangePassword':
       case 'UserNotSignedIn':
       case 'UserNotFound':
       case 'TooManyRequests':
@@ -775,7 +802,7 @@ const updateItem = async (params) => {
   try {
     _validateDbInput(params)
 
-    const database = getOpenDb(params.databaseName, params.databaseId)
+    const database = getOpenDb(params.databaseName, params.databaseId, params.encryptionMode)
 
     const action = 'Update'
     const updateParams = await _buildUpdateParams(database, params)
@@ -796,6 +823,7 @@ const updateItem = async (params) => {
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
       case 'DatabaseIsReadOnly':
+      case 'EncryptionModeNotValid':
       case 'ItemIdMissing':
       case 'ItemIdMustBeString':
       case 'ItemIdCannotBeBlank':
@@ -805,6 +833,7 @@ const updateItem = async (params) => {
       case 'ItemTooLarge':
       case 'ItemDoesNotExist':
       case 'ItemUpdateConflict':
+      case 'UserMustChangePassword':
       case 'UserNotSignedIn':
       case 'UserNotFound':
       case 'TooManyRequests':
@@ -846,7 +875,7 @@ const deleteItem = async (params) => {
   try {
     _validateDbInput(params)
 
-    const database = getOpenDb(params.databaseName, params.databaseId)
+    const database = getOpenDb(params.databaseName, params.databaseId, params.encryptionMode)
 
     const action = 'Delete'
     const deleteParams = await _buildDeleteParams(database, params)
@@ -867,12 +896,14 @@ const deleteItem = async (params) => {
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
       case 'DatabaseIsReadOnly':
+      case 'EncryptionModeNotValid':
       case 'ItemIdMissing':
       case 'ItemIdMustBeString':
       case 'ItemIdCannotBeBlank':
       case 'ItemIdTooLong':
       case 'ItemDoesNotExist':
       case 'ItemUpdateConflict':
+      case 'UserMustChangePassword':
       case 'UserNotSignedIn':
       case 'UserNotFound':
       case 'TooManyRequests':
@@ -910,11 +941,11 @@ const putTransaction = async (params) => {
     _validateDbInput(params)
     if (!objectHasOwnProperty(params, 'operations')) throw new errors.OperationsMissing
 
-    const { databaseName, databaseId, operations } = params
+    const { databaseName, databaseId, operations, encryptionMode = 'end-to-end' } = params
 
     if (!Array.isArray(operations)) throw new errors.OperationsMustBeArray
 
-    const database = getOpenDb(databaseName, databaseId)
+    const database = getOpenDb(databaseName, databaseId, encryptionMode)
 
     const action = 'BatchTransaction'
 
@@ -970,6 +1001,7 @@ const putTransaction = async (params) => {
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
       case 'DatabaseIsReadOnly':
+      case 'EncryptionModeNotValid':
       case 'OperationsMissing':
       case 'OperationsMustBeArray':
       case 'OperationsConflict':
@@ -985,6 +1017,7 @@ const putTransaction = async (params) => {
       case 'ItemAlreadyExists':
       case 'ItemDoesNotExist':
       case 'ItemUpdateConflict':
+      case 'UserMustChangePassword':
       case 'UserNotSignedIn':
       case 'UserNotFound':
       case 'TooManyRequests':
@@ -1138,7 +1171,7 @@ const uploadFile = async (params) => {
   try {
     _validateUploadFile(params)
 
-    const database = getOpenDb(params.databaseName, params.databaseId)
+    const database = getOpenDb(params.databaseName, params.databaseId, params.encryptionMode)
     const { dbId } = database
 
     try {
@@ -1195,6 +1228,7 @@ const uploadFile = async (params) => {
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
       case 'DatabaseIsReadOnly':
+      case 'EncryptionModeNotValid':
       case 'ItemIdMissing':
       case 'ItemIdMustBeString':
       case 'ItemIdCannotBeBlank':
@@ -1205,6 +1239,7 @@ const uploadFile = async (params) => {
       case 'FileMissing':
       case 'FileUploadConflict':
       case 'ProgressHandlerMustBeFunction':
+      case 'UserMustChangePassword':
       case 'UserNotSignedIn':
       case 'TooManyRequests':
       case 'ServiceUnavailable':
@@ -1316,7 +1351,7 @@ const getFile = async (params) => {
   try {
     _validateGetFileParams(params)
 
-    const database = getOpenDb(params.databaseName, params.databaseId)
+    const database = getOpenDb(params.databaseName, params.databaseId, params.encryptionMode)
     const { dbId } = database
     const { fileId, range } = params
 
@@ -1351,6 +1386,7 @@ const getFile = async (params) => {
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
       case 'DatabaseIsReadOnly':
+      case 'EncryptionModeNotValid':
       case 'FileIdMissing':
       case 'FileIdMustBeString':
       case 'FileIdCannotBeBlank':
@@ -1364,6 +1400,7 @@ const getFile = async (params) => {
       case 'RangeStartMustBeGreaterThanZero':
       case 'RangeEndMustBeGreaterThanRangeStart':
       case 'RangeEndMustBeLessThanFileSize':
+      case 'UserMustChangePassword':
       case 'UserNotSignedIn':
       case 'UserNotFound':
       case 'TooManyRequests':
@@ -1521,9 +1558,9 @@ const _buildDatabaseResult = async (db, encryptionKey, ecdhPrivateKey, verifiedU
   const { databaseId, databaseNameHash, isOwner, readOnly, resharingAllowed, senderUsername } = db
 
   let dbKey, databaseName
-  if (db.encryptedDbKey) {
+  if (db.encryptedDbKey || db.plaintextDbKey) {
     // user must already have access to database
-    const dbKeyString = await crypto.aesGcm.decryptString(encryptionKey, db.encryptedDbKey)
+    const dbKeyString = db.plaintextDbKey || await crypto.aesGcm.decryptString(encryptionKey, db.encryptedDbKey)
     dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
     databaseName = await crypto.aesGcm.decryptString(dbKey, db.databaseName)
 
@@ -1578,6 +1615,7 @@ const _buildDatabaseResult = async (db, encryptionKey, ecdhPrivateKey, verifiedU
     isOwner,
     readOnly,
     resharingAllowed,
+    encryptionMode: db.plaintextDbKey ? 'server-side' : 'end-to-end',
   }
 
   const users = await _getDatabaseUsers(databaseId, databaseNameHash, dbKey, verifiedUsers, username, senderUsername)
@@ -1594,8 +1632,7 @@ const _buildDatabaseResult = async (db, encryptionKey, ecdhPrivateKey, verifiedU
 const getDatabases = async (params) => {
   try {
     if (params !== undefined) _validateDbInput(params)
-    if (ws.reconnecting) throw new errors.Reconnecting
-    if (!ws.keys.init) throw new errors.UserNotSignedIn
+    _checkSignedInState()
 
     const { encryptionKey, ecdhPrivateKey } = ws.keys
     const username = ws.session.username
@@ -1605,7 +1642,9 @@ const getDatabases = async (params) => {
       const action = 'GetDatabases'
       const requestParams = params && {
         databaseId: params.databaseId,
-        dbNameHash: params.databaseName && await crypto.hmac.signString(ws.keys.hmacKey, params.databaseName)
+        dbNameHash: params.encryptionMode === 'server-side'
+          ? params.databaseName
+          : params.databaseName && await crypto.hmac.signString(ws.keys.hmacKey, params.databaseName)
       }
 
       let [databasesResponse, verifiedUsers] = await Promise.all([ws.request(action, requestParams), _openVerifiedUsersDatabase()])
@@ -1637,6 +1676,8 @@ const getDatabases = async (params) => {
       case 'DatabaseIdCannotBeBlank':
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
+      case 'EncryptionModeNotValid':
+      case 'UserMustChangePassword':
       case 'UserNotSignedIn':
       case 'ServiceUnavailable':
         throw e
@@ -1647,18 +1688,27 @@ const getDatabases = async (params) => {
   }
 }
 
-const _getDatabase = async (databaseName, databaseId) => {
+const _getDatabase = async (databaseName, databaseId, encryptionMode = 'end-to-end') => {
   let database
   try {
     // check if database is already open in memory
-    database = getOpenDb(databaseName, databaseId)
+    database = getOpenDb(databaseName, databaseId, encryptionMode)
   } catch {
     // if not already open in memory, it's ok. Just get the values we need from backend
-    const databaseResponse = await (databaseName
-      ? ws.request('GetUserDatabaseByDatabaseNameHash', { dbNameHash: await crypto.hmac.signString(ws.keys.hmacKey, databaseName) })
-      : ws.request('GetUserDatabaseByDatabaseId', { databaseId })
-    )
-    database = databaseResponse.data
+    const action = 'GetDatabases'
+    const requestParams = databaseName
+      ? { dbNameHash: encryptionMode === 'server-side' ? databaseName : await crypto.hmac.signString(ws.keys.hmacKey, databaseName) }
+      : { databaseId }
+
+    const databaseResponse = await ws.request(action, requestParams)
+
+    const databases = databaseResponse.data.databases
+    if (!databases || !databases.length) throw new errors.DatabaseNotFound
+    database = databases[0]
+
+    // type conversion :/
+    database.dbNameHash = database.databaseNameHash
+    database.dbId = database.databaseId
   }
   return database
 }
@@ -1730,7 +1780,7 @@ const shareDatabase = async (params) => {
     _validateDbInput(params)
     _validateDbSharingInput(params)
 
-    const { databaseName, databaseId } = params
+    const { databaseName, databaseId, encryptionMode = 'end-to-end' } = params
     const username = params.username.toLowerCase()
     const readOnly = objectHasOwnProperty(params, 'readOnly') ? params.readOnly : true
     const resharingAllowed = objectHasOwnProperty(params, 'resharingAllowed') ? params.resharingAllowed : false
@@ -1772,10 +1822,10 @@ const shareDatabase = async (params) => {
       const sharedKeyEncryptionKey = await crypto.ecdh.computeSharedKeyEncryptionKey(recipientEcdhPublicKey, ephemeralEcdhKeyPair.privateKey)
 
       // get the database encryption key
-      const database = await _getDatabase(databaseName, databaseId)
+      const database = await _getDatabase(databaseName, databaseId, encryptionMode)
       let dbKeyString
       if (!database.dbKey) {
-        dbKeyString = await crypto.aesGcm.decryptString(ws.keys.encryptionKey, database.encryptedDbKey)
+        dbKeyString = database.plaintextDbKey || await crypto.aesGcm.decryptString(ws.keys.encryptionKey, database.encryptedDbKey)
         database.dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
       } else {
         dbKeyString = await crypto.aesGcm.getKeyStringFromKey(database.dbKey)
@@ -1836,6 +1886,7 @@ const shareDatabase = async (params) => {
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
       case 'DatabaseNotFound':
+      case 'EncryptionModeNotValid':
       case 'UsernameMissing':
       case 'UsernameCannotBeBlank':
       case 'UsernameMustBeString':
@@ -1845,6 +1896,7 @@ const shareDatabase = async (params) => {
       case 'ResharingWithWriteAccessNotAllowed':
       case 'RequireVerifiedMustBeBoolean':
       case 'SharingWithSelfNotAllowed':
+      case 'UserMustChangePassword':
       case 'UserNotSignedIn':
       case 'UserUnableToReceiveDatabase':
       case 'UserNotFound':
@@ -1876,11 +1928,11 @@ const modifyDatabasePermissions = async (params) => {
       throw new errors.ParamsMissing
     }
 
-    const { databaseName, databaseId, readOnly, resharingAllowed, revoke } = params
+    const { databaseName, databaseId, readOnly, resharingAllowed, revoke, encryptionMode = 'end-to-end' } = params
     const username = params.username.toLowerCase()
 
     try {
-      const database = await _getDatabase(databaseName, databaseId)
+      const database = await _getDatabase(databaseName, databaseId, encryptionMode)
 
       const action = 'ModifyDatabasePermissions'
       const requestParams = {
@@ -1930,6 +1982,7 @@ const modifyDatabasePermissions = async (params) => {
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
       case 'DatabaseNotFound':
+      case 'EncryptionModeNotValid':
       case 'UsernameMissing':
       case 'UsernameCannotBeBlank':
       case 'UsernameMustBeString':
@@ -1942,6 +1995,7 @@ const modifyDatabasePermissions = async (params) => {
       case 'ModifyingOwnerPermissionsNotAllowed':
       case 'ModifyingPermissionsNotAllowed':
       case 'GrantingWriteAccessNotAllowed':
+      case 'UserMustChangePassword':
       case 'UserNotSignedIn':
       case 'UserNotFound':
       case 'ServiceUnavailable':
@@ -1985,8 +2039,7 @@ const _getMyFingerprint = async () => {
 
 const getVerificationMessage = async () => {
   try {
-    if (ws.reconnecting) throw new errors.Reconnecting
-    if (!ws.keys.init) throw new errors.UserNotSignedIn
+    _checkSignedInState()
 
     const username = ws.session.username
     const fingerprint = await _getMyFingerprint()
@@ -1996,6 +2049,7 @@ const getVerificationMessage = async () => {
   } catch (e) {
 
     switch (e.name) {
+      case 'UserMustChangePassword':
       case 'UserNotSignedIn':
       case 'ServiceUnavailable':
         throw e
@@ -2019,9 +2073,7 @@ const _openVerifiedUsersDatabase = async () => {
 const verifyUser = async (params) => {
   try {
     if (typeof params !== 'object') throw new errors.ParamsMustBeObject
-
-    if (ws.reconnecting) throw new errors.Reconnecting
-    if (!ws.keys.init) throw new errors.UserNotSignedIn
+    _checkSignedInState()
 
     if (!objectHasOwnProperty(params, 'verificationMessage')) throw new errors.VerificationMessageMissing
     const { verificationMessage } = params
@@ -2054,6 +2106,7 @@ const verifyUser = async (params) => {
       case 'VerificationMessageCannotBeBlank':
       case 'VerificationMessageInvalid':
       case 'VerifyingSelfNotAllowed':
+      case 'UserMustChangePassword':
       case 'UserNotSignedIn':
       case 'ServiceUnavailable':
         throw e

@@ -43,7 +43,7 @@ const MIN_SESSION_LENGTH = 1000 * 60 * 5 // 5 minutes
 const MAX_SESSION_LENGTH = 1000 * 60 * 60 * 24 * 365 // 2 years
 const DEFAULT_SESSION_LENGTH = MS_IN_A_DAY // 24 hours
 
-const createSession = async function (userId, appId, sessionLength = DEFAULT_SESSION_LENGTH) {
+const createSession = async function (userId, appId, sessionLength = DEFAULT_SESSION_LENGTH, changePassword) {
   // sessionId is used to authenticate that a user is signed in. The sessionId allows
   // the user to sign in without their password and open a WebSocket connection to the server
   const sessionId = crypto
@@ -67,6 +67,8 @@ const createSession = async function (userId, appId, sessionLength = DEFAULT_SES
     'creation-date': creationDate,
     ttl: getTtl(expirationDate),
   }
+
+  if (changePassword) session['change-password'] = true
 
   const params = {
     TableName: setup.sessionsTableName,
@@ -668,6 +670,7 @@ exports.authenticateUser = async function (req, res, next) {
     res.locals.admin = admin
     res.locals.app = app
     res.locals.authToken = session['auth-token']
+    res.locals.changePassword = session['change-password']
 
     logger.child(logChildObject).info('User authenticated')
 
@@ -1247,11 +1250,13 @@ exports.signIn = async function (req, res) {
       }
     }
 
-    const session = await createSession(user['user-id'], appId, sessionLength)
+    const changePassword = usedTempPassword && user['delete-end-to-end-encrypted-data'] // user signed in with temp password to delete private data, should change password
+    const session = await createSession(user['user-id'], appId, sessionLength, changePassword)
 
     const result = { session, userId: user['user-id'] }
 
     if (usedTempPassword) result.usedTempPassword = true
+    if (changePassword) result.changePassword = true
     if (user['email']) result.email = user['email']
     if (user['profile']) result.profile = user['profile']
     if (!usedTempPassword && user['password-based-encryption-key-salt'] && user['password-encrypted-seed']) {
@@ -1262,6 +1267,9 @@ exports.signIn = async function (req, res) {
     }
     if (user['protected-profile']) result.protectedProfile = user['protected-profile']
 
+    logChildObject.sessionId = truncateSessionId(session.sessionId)
+    logChildObject.usedTempPassword = usedTempPassword
+    logChildObject.changePassword = changePassword
     logger.child(logChildObject).info('User signed in')
 
     return res.send(result)
@@ -1578,8 +1586,8 @@ const pushAndBroadcastUpdatedUser = (updatedUser, connectionId) => {
   }
 }
 
-const _updateUserExcludingUsernameUpdate = async (user, userId, passwordToken, passwordSalts,
-  email, profile, passwordBasedBackup) => {
+const _updateUserExcludingUsernameUpdate = async (user, userId, passwordToken, passwordSalts, passwordBasedBackup, newKeyData,
+  email, profile) => {
   const updateUserParams = conditionCheckUserExists(user['username'], user['app-id'], userId)
 
   let UpdateExpression = ''
@@ -1606,6 +1614,63 @@ const _updateUserExcludingUsernameUpdate = async (user, userId, passwordToken, p
 
       updateUserParams.ExpressionAttributeValues[':passwordBasedEncryptionKeySalt'] = passwordBasedBackup.passwordBasedEncryptionKeySalt
       updateUserParams.ExpressionAttributeValues[':passwordEncryptedSeed'] = passwordBasedBackup.passwordEncryptedSeed
+
+      if (newKeyData) {
+        const { keySalts, ecKeyData } = newKeyData
+
+        const {
+          encryptionKeySalt,
+          hmacKeySalt,
+        } = keySalts
+
+        const { ecdsaKeyData, ecdhKeyData } = ecKeyData
+
+        const {
+          ecdsaPublicKey,
+          encryptedEcdsaPrivateKey,
+          ecdsaKeyEncryptionKeySalt,
+        } = ecdsaKeyData
+
+        const {
+          ecdhPublicKey,
+          signedEcdhPublicKey,
+          encryptedEcdhPrivateKey,
+          ecdhKeyEncryptionKeySalt,
+        } = ecdhKeyData
+
+        UpdateExpression += ', #rotatedKeys = :rotatedKeys, ' +
+          '#encryptionKeySalt = :encryptionKeySalt, ' +
+          '#hmacKeySalt = :hmacKeySalt, ' +
+          '#ecdsaPublicKey = :ecdsaPublicKey, ' +
+          '#ecdhPublicKey = :ecdhPublicKey, ' +
+          '#signedEcdhPublicKey = :signedEcdhPublicKey,' +
+          '#encryptedEcdsaPrivateKey = :encryptedEcdsaPrivateKey, ' +
+          '#encryptedEcdhPrivateKey = :encryptedEcdhPrivateKey, ' +
+          '#ecdsaKeyEncryptionKeySalt = :ecdsaKeyEncryptionKeySalt, ' +
+          '#ecdhKeyEncryptionKeySalt = :ecdhKeyEncryptionKeySalt'
+
+        updateUserParams.ExpressionAttributeNames['#rotatedKeys'] = 'rotated-keys'
+        updateUserParams.ExpressionAttributeNames['#encryptionKeySalt'] = 'encryption-key-salt'
+        updateUserParams.ExpressionAttributeNames['#hmacKeySalt'] = 'hmac-key-salt'
+        updateUserParams.ExpressionAttributeNames['#ecdsaPublicKey'] = 'ecdsa-public-key'
+        updateUserParams.ExpressionAttributeNames['#ecdhPublicKey'] = 'ecdh-public-key'
+        updateUserParams.ExpressionAttributeNames['#signedEcdhPublicKey'] = 'signed-ecdh-public-key'
+        updateUserParams.ExpressionAttributeNames['#encryptedEcdsaPrivateKey'] = 'encrypted-ecdsa-private-key'
+        updateUserParams.ExpressionAttributeNames['#encryptedEcdhPrivateKey'] = 'encrypted-ecdh-private-key'
+        updateUserParams.ExpressionAttributeNames['#ecdsaKeyEncryptionKeySalt'] = 'ecdsa-key-encryption-key-salt'
+        updateUserParams.ExpressionAttributeNames['#ecdhKeyEncryptionKeySalt'] = 'ecdh-key-encryption-key-salt'
+
+        updateUserParams.ExpressionAttributeValues[':rotatedKeys'] = new Date().toISOString()
+        updateUserParams.ExpressionAttributeValues[':encryptionKeySalt'] = encryptionKeySalt
+        updateUserParams.ExpressionAttributeValues[':hmacKeySalt'] = hmacKeySalt
+        updateUserParams.ExpressionAttributeValues[':ecdsaPublicKey'] = ecdsaPublicKey
+        updateUserParams.ExpressionAttributeValues[':ecdhPublicKey'] = ecdhPublicKey
+        updateUserParams.ExpressionAttributeValues[':signedEcdhPublicKey'] = signedEcdhPublicKey
+        updateUserParams.ExpressionAttributeValues[':encryptedEcdsaPrivateKey'] = encryptedEcdsaPrivateKey
+        updateUserParams.ExpressionAttributeValues[':encryptedEcdhPrivateKey'] = encryptedEcdhPrivateKey
+        updateUserParams.ExpressionAttributeValues[':ecdsaKeyEncryptionKeySalt'] = ecdsaKeyEncryptionKeySalt
+        updateUserParams.ExpressionAttributeValues[':ecdhKeyEncryptionKeySalt'] = ecdhKeyEncryptionKeySalt
+      }
     }
 
     if (email) {
@@ -1647,8 +1712,8 @@ const _updateUserExcludingUsernameUpdate = async (user, userId, passwordToken, p
   }
 }
 
-const _updateUserIncludingUsernameUpdate = async (oldUser, userId, passwordToken,
-  passwordSalts, email, profile, passwordBasedBackup, username) => {
+const _updateUserIncludingUsernameUpdate = async (oldUser, userId, passwordToken, passwordSalts, passwordBasedBackup, newKeyData,
+  email, profile, username) => {
 
   // if updating username, need to Delete existing DDB item and Put new one because username is partition key
   const deleteUserParams = conditionCheckUserExists(oldUser['username'], oldUser['app-id'], userId)
@@ -1658,6 +1723,18 @@ const _updateUserIncludingUsernameUpdate = async (oldUser, userId, passwordToken
     username: username.toLowerCase()
   }
 
+  const updateUserParams = {
+    TableName: setup.usersTableName,
+    Item: updatedUser,
+    // if username does not exist, insert
+    // if it already exists and user hasn't saved seed yet, overwrite
+    // if it already exists and user has saved seed, fail with ConditionalCheckFailedException
+    ConditionExpression: '(attribute_not_exists(username) or attribute_exists(#seedNotSavedYet))',
+    ExpressionAttributeNames: {
+      '#seedNotSavedYet': 'seed-not-saved-yet'
+    }
+  }
+
   if (passwordToken) {
     updatedUser['password-token'] = crypto.sha256.hash(passwordToken)
     updatedUser['password-salt'] = passwordSalts.passwordSalt
@@ -1665,6 +1742,43 @@ const _updateUserIncludingUsernameUpdate = async (oldUser, userId, passwordToken
 
     updatedUser['password-based-encryption-key-salt'] = passwordBasedBackup.passwordBasedEncryptionKeySalt
     updatedUser['password-encrypted-seed'] = passwordBasedBackup.passwordEncryptedSeed
+
+    if (newKeyData) {
+      updatedUser['rotated-keys'] = new Date().toISOString()
+
+      const { keySalts, ecKeyData } = newKeyData
+
+      const {
+        encryptionKeySalt,
+        hmacKeySalt,
+      } = keySalts
+
+      updatedUser['encryption-key-salt'] = encryptionKeySalt
+      updatedUser['hmac-key-salt'] = hmacKeySalt
+
+      const { ecdsaKeyData, ecdhKeyData } = ecKeyData
+
+      const {
+        ecdsaPublicKey,
+        encryptedEcdsaPrivateKey,
+        ecdsaKeyEncryptionKeySalt,
+      } = ecdsaKeyData
+
+      const {
+        ecdhPublicKey,
+        signedEcdhPublicKey,
+        encryptedEcdhPrivateKey,
+        ecdhKeyEncryptionKeySalt,
+      } = ecdhKeyData
+
+      updatedUser['ecdsa-public-key'] = ecdsaPublicKey
+      updatedUser['ecdh-public-key'] = ecdhPublicKey
+      updatedUser['signed-ecdh-public-key'] = signedEcdhPublicKey
+      updatedUser['encrypted-ecdsa-private-key'] = encryptedEcdsaPrivateKey
+      updatedUser['encrypted-ecdh-private-key'] = encryptedEcdhPrivateKey
+      updatedUser['ecdsa-key-encryption-key-salt'] = ecdsaKeyEncryptionKeySalt
+      updatedUser['ecdh-key-encryption-key-salt'] = ecdhKeyEncryptionKeySalt
+    }
   }
 
   if (email) updatedUser.email = email.toLowerCase()
@@ -1672,18 +1786,6 @@ const _updateUserIncludingUsernameUpdate = async (oldUser, userId, passwordToken
 
   if (profile) updatedUser.profile = profile
   else if (profile === false) delete updatedUser.profile
-
-  const updateUserParams = {
-    TableName: setup.usersTableName,
-    Item: updatedUser,
-    // if username does not exist, insert
-    // if it already exists and user hasn't saved seed yet, overwrite
-    // if it already exists and user has saved seed, fail with ConditionalCheckFailedException
-    ConditionExpression: 'attribute_not_exists(username) or attribute_exists(#seedNotSavedYet)',
-    ExpressionAttributeNames: {
-      '#seedNotSavedYet': 'seed-not-saved-yet'
-    }
-  }
 
   const params = {
     TransactItems: [
@@ -1706,26 +1808,26 @@ const _updateUserIncludingUsernameUpdate = async (oldUser, userId, passwordToken
   }
 }
 
-const updateUser = async function (user, userId, passwordToken, passwordSalts, email, profile, passwordBasedBackup, username) {
+const updateUser = async function (user, userId, passwordToken, passwordSalts, passwordBasedBackup, newKeyData, email, profile, username) {
   let updatedUser = user
   if (username && username.toLowerCase() !== user['username']) {
 
     updatedUser = await _updateUserIncludingUsernameUpdate(
-      user, userId, passwordToken, passwordSalts, email, profile, passwordBasedBackup, username
+      user, userId, passwordToken, passwordSalts, passwordBasedBackup, newKeyData, email, profile, username
     )
 
   } else if (passwordToken || (email || email === false) || (profile || profile === false)) {
 
     updatedUser = _updateUserExcludingUsernameUpdate(
-      user, userId, passwordToken, passwordSalts, email, profile, passwordBasedBackup
+      user, userId, passwordToken, passwordSalts, passwordBasedBackup, newKeyData, email, profile
     )
 
   }
   return updatedUser
 }
 
-exports.updateUser = async function (connectionId, adminId, userId, username, currentPasswordToken, passwordToken, passwordSalts,
-  email, profile, passwordBasedBackup) {
+exports.updateUser = async function (connectionId, conn, adminId, userId, username, currentPasswordToken, passwordToken, passwordSalts, passwordBasedBackup,
+  newKeyData, email, profile) {
   if (!username && !currentPasswordToken && !passwordToken && !email && !profile && email !== false && profile !== false) {
     return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing all params')
   }
@@ -1758,9 +1860,10 @@ exports.updateUser = async function (connectionId, adminId, userId, username, cu
     const user = await getUserByUserId(userId)
     if (!user || user['deleted']) throw new Error('UserNotFound')
 
+    let rotateKeys
     if (passwordToken) {
       try {
-        _validatePassword(currentPasswordToken, user)
+        rotateKeys = _validatePassword(currentPasswordToken, user) && user['delete-end-to-end-encrypted-data']
       } catch (e) {
         if (e.error === 'PasswordAttemptLimitExceeded') {
           return responseBuilder.errorResponse(statusCodes['Unauthorized'], e)
@@ -1771,10 +1874,13 @@ exports.updateUser = async function (connectionId, adminId, userId, username, cu
     }
 
     const [updatedUser, app, admin] = await Promise.all([
-      updateUser(user, userId, passwordToken, passwordSalts, email, profile, passwordBasedBackup, username),
+      updateUser(user, userId, passwordToken, passwordSalts, passwordBasedBackup, rotateKeys && newKeyData, email, profile, username),
       appController.getAppByAppId(user['app-id']),
       adminController.findAdminByAdminId(adminId),
     ])
+
+    const rotatedKeys = rotateKeys && newKeyData // must have rotated successfully
+    if (rotatedKeys) conn.validateKey()
 
     const updatedUserResult = {
       ...buildUserResult(updatedUser, app),
@@ -1947,7 +2053,7 @@ const getUser = async function (appId, username) {
 }
 exports.getUser = getUser
 
-const _precheckGenerateForgotPasswordToken = async function (appId, username) {
+const _precheckForgotPassword = async function (appId, username) {
   if (!appId || !username) {
     throw { status: statusCodes['Bad Request'], error: { message: 'Missing required items' } }
   }
@@ -1985,7 +2091,7 @@ exports.generateForgotPasswordToken = async function (logChildObject, appId, use
   try {
     logger.child(logChildObject).info('Generating forgot password token')
 
-    const { user, app, admin } = await _precheckGenerateForgotPasswordToken(appId, username)
+    const { user, app, admin } = await _precheckForgotPassword(appId, username)
     logChildObject.userId = user['user-id']
     logChildObject.adminId = admin['admin-id']
 
@@ -2027,7 +2133,7 @@ exports.generateForgotPasswordToken = async function (logChildObject, appId, use
   }
 }
 
-const _setTempPasswordToken = async (username, appId, userId, tempPasswordToken) => {
+const _setTempPasswordToken = async (username, appId, userId, tempPasswordToken, deleteEndToEndEncryptedData) => {
   const params = conditionCheckUserExists(username, appId, userId)
 
   params.UpdateExpression = 'set #tempPasswordToken = :tempPasswordToken, #tempPasswordCreationDate = :tempPasswordCreationDate'
@@ -2044,6 +2150,10 @@ const _setTempPasswordToken = async (username, appId, userId, tempPasswordToken)
     ':tempPasswordCreationDate': new Date().toISOString()
   }
 
+  params.UpdateExpression += ', #deleteEndToEndEncryptedData = :deleteEndToEndEncryptedData'
+  params.ExpressionAttributeNames['#deleteEndToEndEncryptedData'] = 'delete-end-to-end-encrypted-data'
+  params.ExpressionAttributeValues[':deleteEndToEndEncryptedData'] = deleteEndToEndEncryptedData ? true : false
+
   const ddbClient = connection.ddbClient()
   await ddbClient.update(params).promise()
 }
@@ -2055,10 +2165,36 @@ const _generateTempPasswordToken = async (tempPassword, passwordSalt, passwordTo
   return tempPasswordToken
 }
 
-exports.forgotPassword = async function (logChildObject, forgotPasswordToken, userProvidedForgotPasswordToken, user, app) {
+const _generateSetAndSendTempPassword = async (user, app, deleteEndToEndEncryptedData) => {
   const userId = user['user-id']
   const appId = app['app-id']
 
+  const tempPassword = crypto
+    .randomBytes(ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID)
+    .toString('base64')
+
+  const tempPasswordToken = await _generateTempPasswordToken(tempPassword, user['password-salt'], user['password-token-salt'])
+  await _setTempPasswordToken(user['username'], appId, userId, tempPasswordToken, deleteEndToEndEncryptedData)
+
+  const subject = `Forgot password - ${app['app-name']}`
+  const body = `Hello, ${user['username']}!`
+    + '<br />'
+    + '<br />'
+    + `Looks like you requested to reset your password to ${app['app-name']}!`
+    + '<br />'
+    + '<br />'
+    + 'If you did not make this request, you can safely ignore this email.'
+    + '<br />'
+    + '<br />'
+    + `Here is your temporary password you can use to sign in and change your password: ${tempPassword}`
+    + '<br />'
+    + '<br />'
+    + `This password will expire in ${HOURS_IN_A_DAY} hours.`
+
+  await setup.sendEmail(user['email'], subject, body)
+}
+
+exports.forgotPassword = async function (logChildObject, forgotPasswordToken, userProvidedForgotPasswordToken, user, app) {
   try {
     logger.child(logChildObject).info('User forgot password')
 
@@ -2074,29 +2210,7 @@ exports.forgotPassword = async function (logChildObject, forgotPasswordToken, us
       }
     }
 
-    const tempPassword = crypto
-      .randomBytes(ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID)
-      .toString('base64')
-
-    const tempPasswordToken = await _generateTempPasswordToken(tempPassword, user['password-salt'], user['password-token-salt'])
-    await _setTempPasswordToken(user['username'], appId, userId, tempPasswordToken)
-
-    const subject = `Forgot password - ${app['app-name']}`
-    const body = `Hello, ${user['username']}!`
-      + '<br />'
-      + '<br />'
-      + `Looks like you requested to reset your password to ${app['app-name']}!`
-      + '<br />'
-      + '<br />'
-      + 'If you did not make this request, you can safely ignore this email.'
-      + '<br />'
-      + '<br />'
-      + `Here is your temporary password you can use to log in and change your password with: ${tempPassword}`
-      + '<br />'
-      + '<br />'
-      + `This password will expire in ${HOURS_IN_A_DAY} hours.`
-
-    await setup.sendEmail(user['email'], subject, body)
+    await _generateSetAndSendTempPassword(user, app)
 
     logger.child(logChildObject).info('Successfully forgot password')
     return responseBuilder.successResponse()
@@ -2110,6 +2224,38 @@ exports.forgotPassword = async function (logChildObject, forgotPasswordToken, us
       const statusCode = statusCodes['Internal Server Error']
       logger.child({ ...logChildObject, statusCode, err: e }).error(message)
       return responseBuilder.errorResponse(statusCode, message)
+    }
+  }
+}
+
+exports.forgotPasswordDeleteEndToEndEncryptedData = async function (req, res) {
+  let logChildObject
+  try {
+    const appId = req.query.appId
+    const username = req.query.username
+
+    logChildObject = { appId, username, req: trimReq(req) }
+    logger.child(logChildObject).info('User forgot password (delete private data)')
+
+    const { user, app, admin } = await _precheckForgotPassword(appId, username)
+    logChildObject.userId = user['user-id']
+    logChildObject.adminId = admin['admin-id']
+
+    const deleteEndToEndEncryptedData = true
+    await _generateSetAndSendTempPassword(user, app, deleteEndToEndEncryptedData)
+
+    logger.child(logChildObject).info('Successfully forgot password (delete private data)')
+    return res.end()
+  } catch (e) {
+    const message = 'Failed to forget password (delete private data)'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
+      return res.status(e.status).send(e.error)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return res.status(statusCode).send(e.error.message)
     }
   }
 }
@@ -2721,6 +2867,7 @@ exports.sendConnection = function (connectionLogObject, ws, user) {
         encryptedEcdhPrivateKey: user['encrypted-ecdh-private-key']
       }
     } else {
+      // wrapped key data is for deprecated userbase-js v2.0.0
       connectionLogObject.usingEncryptedEcKeys = false
 
       keySalts.ecdsaKeyWrapperSalt = user['ecdsa-key-wrapper-salt']

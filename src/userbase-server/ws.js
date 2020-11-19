@@ -81,7 +81,7 @@ class Connection {
     this.keyValidated = true
   }
 
-  async push(databaseId, dbNameHash, dbKey, reopenAtSeqNo) {
+  async push(databaseId, dbNameHash, dbKey, reopenAtSeqNo, plaintextDbKey) {
     const database = this.databases[databaseId]
     if (!database) return
 
@@ -98,10 +98,11 @@ class Connection {
 
     const reopeningDatabase = reopenAtSeqNo !== undefined
 
-    const openingDatabase = dbNameHash && dbKey && !reopeningDatabase
+    const openingDatabase = dbNameHash && !reopeningDatabase && (dbKey || plaintextDbKey)
     if (openingDatabase) {
       payload.dbNameHash = dbNameHash
       payload.dbKey = dbKey
+      payload.plaintextDbKey = plaintextDbKey
     }
 
     let lastSeqNo = database.lastSeqNo
@@ -397,7 +398,7 @@ export default class Connections {
     return connection
   }
 
-  static openDatabase(userId, connectionId, databaseId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner, attribution) {
+  static openDatabase(userId, connectionId, databaseId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner, attribution, plaintextDbKey) {
     if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId][connectionId]) return
 
     const conn = Connections.sockets[userId][connectionId]
@@ -407,7 +408,7 @@ export default class Connections {
       logger.child({ connectionId, databaseId, adminId: conn.adminId }).info('Database opened')
     }
 
-    conn.push(databaseId, dbNameHash, dbKey, reopenAtSeqNo)
+    conn.push(databaseId, dbNameHash, dbKey, reopenAtSeqNo, plaintextDbKey)
 
     if (!Connections.sockets[databaseId]) Connections.sockets[databaseId] = { numConnections: 0 }
     Connections.sockets[databaseId][connectionId] = userId

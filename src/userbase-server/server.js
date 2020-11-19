@@ -85,6 +85,7 @@ async function start(express, app, userbaseConfig = {}) {
       const userId = res.locals.user['user-id']
       const adminId = res.locals.admin['admin-id']
       const appId = res.locals.app['app-id']
+      const changePassword = res.locals.changePassword
 
       const clientId = req.query.clientId
       const userbaseJsVersion = req.query.userbaseJsVersion
@@ -94,7 +95,7 @@ async function start(express, app, userbaseConfig = {}) {
       if (conn) {
         const connectionId = conn.id
 
-        const connectionLogObject = { userId, connectionId, adminId, appId, userbaseJsVersion, sessionId, route: 'Connection' }
+        const connectionLogObject = { userId, connectionId, adminId, appId, userbaseJsVersion, sessionId, changePassword: changePassword ? true : undefined, route: 'Connection' }
         const validationMessage = userController.sendConnection(connectionLogObject, ws, res.locals.user)
 
         ws.on('close', () => connections.close(conn))
@@ -132,6 +133,31 @@ async function start(express, app, userbaseConfig = {}) {
 
             if (action === 'SignOut') {
               response = await userController.signOut(params.sessionId)
+            } else if ((action === 'UpdateUser' || action === 'GetPasswordSalts') && (conn.keyValidated || changePassword)) {
+              // can only get here if key is validated or if session is supposed to be used to change password
+              switch (action) {
+                case 'UpdateUser': {
+                  response = await userController.updateUser(
+                    connectionId,
+                    conn,
+                    adminId,
+                    userId,
+                    params.username,
+                    params.currentPasswordToken,
+                    params.passwordToken,
+                    params.passwordSalts,
+                    params.passwordBasedBackup,
+                    params.newKeyData,
+                    params.email,
+                    params.profile,
+                  )
+                  break
+                }
+                case 'GetPasswordSalts': {
+                  response = await userController.getPasswordSaltsByUserId(userId)
+                  break
+                }
+              }
             } else if (!conn.keyValidated) {
 
               switch (action) {
@@ -157,21 +183,6 @@ async function start(express, app, userbaseConfig = {}) {
               switch (action) {
                 case 'ValidateKey': {
                   response = responseBuilder.errorResponse(statusCodes['Bad Request'], 'Already validated key')
-                  break
-                }
-                case 'UpdateUser': {
-                  response = await userController.updateUser(
-                    connectionId,
-                    adminId,
-                    userId,
-                    params.username,
-                    params.currentPasswordToken,
-                    params.passwordToken,
-                    params.passwordSalts,
-                    params.email,
-                    params.profile,
-                    params.passwordBasedBackup
-                  )
                   break
                 }
                 case 'DeleteUser': {
@@ -225,6 +236,7 @@ async function start(express, app, userbaseConfig = {}) {
                   )
                   break
                 }
+                // stopped using in userbase-js v2.4.0
                 case 'GetUserDatabaseByDatabaseNameHash': {
                   response = await db.getUserDatabaseByDbNameHash(
                     logChildObject,
@@ -233,6 +245,7 @@ async function start(express, app, userbaseConfig = {}) {
                   )
                   break
                 }
+                // stopped using in userbase-js v2.4.0
                 case 'GetUserDatabaseByDatabaseId': {
                   response = await db.getUserDatabaseByDatabaseId(
                     logChildObject,
@@ -311,10 +324,6 @@ async function start(express, app, userbaseConfig = {}) {
                       params.fileId,
                       params.chunkNumber,
                     )
-                  break
-                }
-                case 'GetPasswordSalts': {
-                  response = await userController.getPasswordSaltsByUserId(userId)
                   break
                 }
                 case 'PurchaseSubscription': {
@@ -589,6 +598,7 @@ async function start(express, app, userbaseConfig = {}) {
         ? res.ws(socket => wss.emit('forgot-password', socket, req, res))
         : res.send('Not a websocket!')
     )
+    v1Api.post('/auth/forgot-password-delete-end-to-end-encrypted-data', userController.forgotPasswordDeleteEndToEndEncryptedData)
     v1Api.get('/public-key', userController.getPublicKey)
 
     // Userbase admin API

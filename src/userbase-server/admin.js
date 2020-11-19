@@ -557,7 +557,7 @@ exports.forgotPassword = async function (req, res) {
       + 'If you did not make this request, you can safely ignore this email.'
       + '<br />'
       + '<br />'
-      + `Here is your temporary password you can use to log in: ${tempPassword}`
+      + `Here is your temporary password you can use to sign in: ${tempPassword}`
       + '<br />'
       + '<br />'
       + `This password will expire in ${HOURS_IN_A_DAY} hours.`
