@@ -59,6 +59,7 @@ class Connection {
       username: session && session.username,
       sessionId: session && session.sessionId,
       creationDate: session && session.creationDate,
+      expirationDate: session && session.expirationDate,
       userId: session && session.userId,
       authToken: session && session.authToken,
     }
@@ -150,10 +151,14 @@ class Connection {
                 // still only have a DH key
                 if (encryptedValidationMessage) this.encryptedValidationMessage = new Uint8Array(encryptedValidationMessage.data)
 
-                await this.setKeys(this.seedString)
-
-                const userData = await this.validateKey()
-                this.userData = userData
+                try {
+                  await this.setKeys(this.seedString)
+                  const userData = await this.validateKey()
+                  this.userData = userData
+                } catch (e) {
+                  if ((e && e.name === 'OperationError') || e instanceof DOMException) throw new Error('Invalid seed')
+                  else throw e
+                }
 
                 this.keys.init = true
               }

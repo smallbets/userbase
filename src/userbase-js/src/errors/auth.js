@@ -216,7 +216,7 @@ class UserMustChangePassword extends Error {
     super(...params)
 
     this.name = 'UserMustChangePassword'
-    this.message = 'User must change password.'
+    this.message = 'Must change password first.'
     this.status = statusCodes['Forbidden']
   }
 }

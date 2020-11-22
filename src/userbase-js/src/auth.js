@@ -450,17 +450,23 @@ const signIn = async (params) => {
       let seedStringFromBackup
       if (!savedSeedString && usedTempPassword) {
         throw new errors.KeyNotFound("Device not recognized. This temporary password can only be used to sign in from a device you've signed in from before.")
-      } else if (!savedSeedString) {
+      } else {
+        // always use seed from backup in case it's changed and local copy is out of date
         seedStringFromBackup = await _getSeedStringFromPasswordBasedBackup(passwordHkdfKey, passwordBasedBackup)
         localData.saveSeedString(rememberMe, appId, username, seedStringFromBackup)
       }
 
-      seedString = savedSeedString || seedStringFromBackup
+      seedString = seedStringFromBackup || savedSeedString
     }
 
     localData.signInSession(rememberMe, username, session.sessionId, session.creationDate, session.expirationDate)
 
-    await _connectWebSocket(session, seedString, rememberMe, changePassword)
+    try {
+      await _connectWebSocket(session, seedString, rememberMe, changePassword)
+    } catch (e) {
+      if (usedTempPassword && e.message === 'Invalid seed') throw new errors.KeyNotFound("Device not recognized. This temporary password can only be used to sign in from a device you've signed in from before.")
+      throw e
+    }
 
     return ws.buildUserResult({
       username, userId, authToken: session.authToken, email,
@@ -548,15 +554,17 @@ const init = async (params) => {
 }
 
 const signInWithSession = async (appId, sessionLength) => {
+  let lastUsedUsername
   try {
     const currentSession = localData.getCurrentSession()
     if (!currentSession) return {}
 
     const { signedIn, sessionId, creationDate, expirationDate, rememberMe } = currentSession
-    const savedSeedString = localData.getSeedString(appId, currentSession.username)
+    lastUsedUsername = currentSession.username
+    const savedSeedString = localData.getSeedString(appId, lastUsedUsername)
 
     if (!signedIn || !savedSeedString || new Date() > new Date(expirationDate)) {
-      return { lastUsedUsername: currentSession.username }
+      return { lastUsedUsername }
     }
 
     let apiSignInWithSessionResult
@@ -567,7 +575,7 @@ const signInWithSession = async (appId, sessionLength) => {
       _parseSessionLengthError(e)
 
       if (e.response && e.response.data === 'Session invalid') {
-        return { lastUsedUsername: currentSession.username }
+        return { lastUsedUsername }
       }
 
       throw e
@@ -575,9 +583,9 @@ const signInWithSession = async (appId, sessionLength) => {
     const { userId, authToken, username, email, profile, protectedProfile } = apiSignInWithSessionResult
 
     // overwrite local data if username has been changed on server
-    if (username !== currentSession.username) {
+    if (username !== lastUsedUsername) {
       localData.saveSeedString(rememberMe, appId, username, savedSeedString)
-      localData.removeSeedString(appId, currentSession.username)
+      localData.removeSeedString(appId, lastUsedUsername)
     }
 
     // expirationDate should have been extended
@@ -597,6 +605,7 @@ const signInWithSession = async (appId, sessionLength) => {
 
     return { user: ws.buildUserResult({ username, userId, authToken, email, profile, protectedProfile, userData: ws.userData }) }
   } catch (e) {
+    if (e.message === 'Invalid seed') return { lastUsedUsername }
     _parseGenericErrors(e)
     throw e
   }
@@ -668,7 +677,7 @@ const updateUser = async (params) => {
     if (!ws.connectionResolved) throw new errors.UserNotSignedIn
     const startingUserId = ws.session.userId
 
-    // need to generate new seed to rotate keys if user signed in with temp password to delete private data,
+    // need to generate new seed to rotate keys if user signed in with temp password to delete private data
     const newSeed = params.newPassword && !ws.keys.init && ws.changePassword && await crypto.generateSeed()
 
     const action = 'UpdateUser'
@@ -694,6 +703,9 @@ const updateUser = async (params) => {
         const newSeedString = base64.encode(newSeed)
         await ws.rotateKeys(newSeedString, finalParams.newKeyData)
         localData.saveSeedString(ws.rememberMe, config.getAppId(), updatedUser.username, newSeedString)
+
+        const { sessionId, creationDate, expirationDate } = ws.session
+        localData.signInSession(ws.rememberMe, updatedUser.username, sessionId, creationDate, expirationDate)
       }
     } catch (e) {
       _parseUserResponseError(e, finalParams.username)
