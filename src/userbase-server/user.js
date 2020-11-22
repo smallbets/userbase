@@ -1860,10 +1860,9 @@ exports.updateUser = async function (connectionId, conn, adminId, userId, userna
     const user = await getUserByUserId(userId)
     if (!user || user['deleted']) throw new Error('UserNotFound')
 
-    let rotateKeys
     if (passwordToken) {
       try {
-        rotateKeys = _validatePassword(currentPasswordToken, user) && user['delete-end-to-end-encrypted-data']
+        _validatePassword(currentPasswordToken, user)
       } catch (e) {
         if (e.error === 'PasswordAttemptLimitExceeded') {
           return responseBuilder.errorResponse(statusCodes['Unauthorized'], e)
@@ -1874,13 +1873,12 @@ exports.updateUser = async function (connectionId, conn, adminId, userId, userna
     }
 
     const [updatedUser, app, admin] = await Promise.all([
-      updateUser(user, userId, passwordToken, passwordSalts, passwordBasedBackup, rotateKeys && newKeyData, email, profile, username),
+      updateUser(user, userId, passwordToken, passwordSalts, passwordBasedBackup, newKeyData, email, profile, username),
       appController.getAppByAppId(user['app-id']),
       adminController.findAdminByAdminId(adminId),
     ])
 
-    const rotatedKeys = rotateKeys && newKeyData // must have rotated successfully
-    if (rotatedKeys) conn.validateKey()
+    if (newKeyData) conn.validateKey() // must have rotated keys successfully
 
     const updatedUserResult = {
       ...buildUserResult(updatedUser, app),
