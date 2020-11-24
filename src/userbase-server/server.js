@@ -461,18 +461,19 @@ async function start(express, app, userbaseConfig = {}) {
 
       const appId = req.query.appId
       const username = req.query.username
+      const deleteEndToEndEncryptedData = req.query.deleteEndToEndEncryptedData
+      const userbaseJsVersion = req.query.userbaseJsVersion
 
-      const logChildObject = { appId, username, req: trimReq(req) }
+      const logChildObject = { appId, username, deleteEndToEndEncryptedData, userbaseJsVersion, req: trimReq(req) }
       logger.child(logChildObject).info('Opened forgot-password WebSocket')
 
-      const forgotPasswordTokenResult = await userController.generateForgotPasswordToken(logChildObject, appId, username)
-
-      if (forgotPasswordTokenResult.status !== statusCodes['Success']) {
+      const initForgotPassword = await userController.initForgotPassword(logChildObject, appId, username, deleteEndToEndEncryptedData)
+      if (initForgotPassword.status !== statusCodes['Success']) {
 
         ws.send(JSON.stringify({
           route: 'Error',
-          status: forgotPasswordTokenResult.status,
-          data: forgotPasswordTokenResult.data
+          status: initForgotPassword.status,
+          data: initForgotPassword.data
         }))
         ws.terminate()
 
@@ -482,78 +483,89 @@ async function start(express, app, userbaseConfig = {}) {
           user,
           app,
           forgotPasswordToken,
-          encryptedForgotPasswordToken
-        } = forgotPasswordTokenResult.data
+          encryptedForgotPasswordToken,
+          sentTempPasswordToDeleteEndToEndEncryptedData,
+        } = initForgotPassword.data
 
-        if (user['ecdsa-public-key']) {
+        if (sentTempPasswordToDeleteEndToEndEncryptedData) {
           ws.send(JSON.stringify({
-            route: 'ReceiveToken',
-            ecdsaKeyEncryptionKeySalt: user['ecdsa-key-encryption-key-salt'],
-            encryptedEcdsaPrivateKey: user['encrypted-ecdsa-private-key'],
-            ecdsaKeyWrapperSalt: user['ecdsa-key-wrapper-salt'],
-            wrappedEcdsaPrivateKey: user['wrapped-ecdsa-private-key'],
-            forgotPasswordToken,
+            route: 'SuccessfullyForgotPassword',
+            response: responseBuilder.successResponse(),
           }))
+          ws.terminate()
         } else {
-          ws.send(JSON.stringify({
-            route: 'ReceiveEncryptedToken',
-            dhKeySalt: user['diffie-hellman-key-salt'],
-            encryptedForgotPasswordToken
-          }))
-        }
 
-        ws.on('message', async (msg) => {
-          try {
-            if (msg.length > FIVE_KB || msg.byteLength > FIVE_KB) {
-              logger.child({ ...logChildObject, size: msg.length }).warn('Received large message over forgot-password')
-              return ws.send('Message is too large')
-            }
-
-            const request = JSON.parse(msg)
-            const { action, params } = request
-
-            if (action === 'ForgotPassword') {
-              const forgotPasswordResponse = await userController.forgotPassword(
-                logChildObject,
-                forgotPasswordToken,
-                params.signedForgotPasswordToken || params.forgotPasswordToken,
-                user,
-                app
-              )
-
-              if (forgotPasswordResponse.status !== statusCodes['Success']) {
-
-                ws.send(JSON.stringify({
-                  route: 'Error',
-                  status: forgotPasswordResponse.status,
-                  data: forgotPasswordResponse.data
-                }))
-                ws.terminate()
-
-              } else {
-                const responseMsg = JSON.stringify({ route: 'SuccessfullyForgotPassword', response: forgotPasswordResponse })
-
-                logger
-                  .child({
-                    ...logChildObject,
-                    route: action,
-                    statusCode: forgotPasswordResponse.status,
-                    size: responseMsg.length,
-                    responseTime: Date.now() - start
-                  })
-                  .info('Forgot password finished')
-
-                ws.send(responseMsg)
-                ws.terminate()
-              }
-            } else {
-              throw new Error('Received unknown message')
-            }
-
-          } catch (e) {
-            logger.child({ ...logChildObject, err: e, msg }).error('Error in forgot-password Websocket')
+          // not deleting end-to-end encrypted data, user must prove access to private key
+          if (user['ecdsa-public-key']) {
+            ws.send(JSON.stringify({
+              route: 'ReceiveToken',
+              ecdsaKeyEncryptionKeySalt: user['ecdsa-key-encryption-key-salt'],
+              encryptedEcdsaPrivateKey: user['encrypted-ecdsa-private-key'],
+              ecdsaKeyWrapperSalt: user['ecdsa-key-wrapper-salt'],
+              wrappedEcdsaPrivateKey: user['wrapped-ecdsa-private-key'],
+              forgotPasswordToken,
+            }))
+          } else {
+            ws.send(JSON.stringify({
+              route: 'ReceiveEncryptedToken',
+              dhKeySalt: user['diffie-hellman-key-salt'],
+              encryptedForgotPasswordToken
+            }))
           }
-        })
+
+          ws.on('message', async (msg) => {
+            try {
+              if (msg.length > FIVE_KB || msg.byteLength > FIVE_KB) {
+                logger.child({ ...logChildObject, size: msg.length }).warn('Received large message over forgot-password')
+                return ws.send('Message is too large')
+              }
+
+              const request = JSON.parse(msg)
+              const { action, params } = request
+
+              if (action === 'ForgotPassword') {
+                const forgotPasswordResponse = await userController.forgotPassword(
+                  logChildObject,
+                  forgotPasswordToken,
+                  params.signedForgotPasswordToken || params.forgotPasswordToken,
+                  user,
+                  app
+                )
+
+                if (forgotPasswordResponse.status !== statusCodes['Success']) {
+
+                  ws.send(JSON.stringify({
+                    route: 'Error',
+                    status: forgotPasswordResponse.status,
+                    data: forgotPasswordResponse.data
+                  }))
+                  ws.terminate()
+
+                } else {
+                  const responseMsg = JSON.stringify({ route: 'SuccessfullyForgotPassword', response: forgotPasswordResponse })
+
+                  logger
+                    .child({
+                      ...logChildObject,
+                      route: action,
+                      statusCode: forgotPasswordResponse.status,
+                      size: responseMsg.length,
+                      responseTime: Date.now() - start
+                    })
+                    .info('Forgot password finished')
+
+                  ws.send(responseMsg)
+                  ws.terminate()
+                }
+              } else {
+                throw new Error('Received unknown message')
+              }
+
+            } catch (e) {
+              logger.child({ ...logChildObject, err: e, msg }).error('Error in forgot-password Websocket')
+            }
+          })
+        }
       }
     })
 
@@ -598,7 +610,6 @@ async function start(express, app, userbaseConfig = {}) {
         ? res.ws(socket => wss.emit('forgot-password', socket, req, res))
         : res.send('Not a websocket!')
     )
-    v1Api.post('/auth/forgot-password-delete-end-to-end-encrypted-data', userController.forgotPasswordDeleteEndToEndEncryptedData)
     v1Api.get('/public-key', userController.getPublicKey)
 
     // Userbase admin API

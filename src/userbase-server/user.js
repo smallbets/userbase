@@ -2085,40 +2085,57 @@ const _precheckForgotPassword = async function (appId, username) {
   return { user, app, admin }
 }
 
-exports.generateForgotPasswordToken = async function (logChildObject, appId, username) {
+exports.initForgotPassword = async function (logChildObject, appId, username, deleteEndToEndEncryptedData) {
   try {
-    logger.child(logChildObject).info('Generating forgot password token')
+    logger.child(logChildObject).info('Initiating forgot password')
+
+    const deleteEndToEndEncryptedDataValue = deleteEndToEndEncryptedData !== undefined ? JSON.parse(deleteEndToEndEncryptedData) : undefined
 
     const { user, app, admin } = await _precheckForgotPassword(appId, username)
     logChildObject.userId = user['user-id']
     logChildObject.adminId = admin['admin-id']
 
-    let validationMessage = crypto.randomBytes(VALIDATION_MESSAGE_LENGTH)
-    let encryptedValidationMessage
-    if (user['ecdsa-public-key']) {
-      logChildObject.usingDhKey = false
-      logChildObject.usingEncryptedEcKeys = !!user['encrypted-ecdsa-private-key']
+    if ((deleteEndToEndEncryptedDataValue !== undefined && deleteEndToEndEncryptedDataValue) ||
+      (app['encryption-mode'] === 'server-side' && deleteEndToEndEncryptedDataValue === undefined)) {
 
-      // user is expected to sign this message with ECDSA private key
-      validationMessage = validationMessage.toString('base64')
+      logger.child(logChildObject).info('Sending temp password to delete end-to-end encrypted data')
+      await _generateSetAndSendTempPassword(user, app, true)
+
+      logger
+        .child({ ...logChildObject, statusCode: statusCodes['Success'] })
+        .info('Successfully sent temp password to delete end-to-end encrypted data')
+      return responseBuilder.successResponse({ sentTempPasswordToDeleteEndToEndEncryptedData: true })
+
     } else {
-      const dhPublicKey = user['public-key']
-      logChildObject.usingDhKey = true
+      logger.child(logChildObject).info('Generating forgot password token')
 
-      // user is expected to decrypt this message with DH private key
-      encryptedValidationMessage = _getEncryptedValidationMessage(validationMessage, dhPublicKey)
+      let validationMessage = crypto.randomBytes(VALIDATION_MESSAGE_LENGTH)
+      let encryptedValidationMessage
+      if (user['ecdsa-public-key']) {
+        logChildObject.usingDhKey = false
+        logChildObject.usingEncryptedEcKeys = !!user['encrypted-ecdsa-private-key']
+
+        // user is expected to sign this message with ECDSA private key
+        validationMessage = validationMessage.toString('base64')
+      } else {
+        const dhPublicKey = user['public-key']
+        logChildObject.usingDhKey = true
+
+        // user is expected to decrypt this message with DH private key
+        encryptedValidationMessage = _getEncryptedValidationMessage(validationMessage, dhPublicKey)
+      }
+
+      logger
+        .child({ ...logChildObject, statusCode: statusCodes['Success'] })
+        .info('Successfully generated forgot password token')
+
+      const forgotPasswordToken = validationMessage
+      const encryptedForgotPasswordToken = encryptedValidationMessage
+
+      return responseBuilder.successResponse({ user, app, admin, forgotPasswordToken, encryptedForgotPasswordToken })
     }
-
-    logger
-      .child({ ...logChildObject, statusCode: statusCodes['Success'] })
-      .info('Successfully generated forgot password token')
-
-    const forgotPasswordToken = validationMessage
-    const encryptedForgotPasswordToken = encryptedValidationMessage
-
-    return responseBuilder.successResponse({ user, app, admin, forgotPasswordToken, encryptedForgotPasswordToken })
   } catch (e) {
-    const message = 'Failed to generate forgot password token.'
+    const message = 'Failed to initiate forgot password'
 
     if (e.status && e.error) {
       logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
@@ -2222,38 +2239,6 @@ exports.forgotPassword = async function (logChildObject, forgotPasswordToken, us
       const statusCode = statusCodes['Internal Server Error']
       logger.child({ ...logChildObject, statusCode, err: e }).error(message)
       return responseBuilder.errorResponse(statusCode, message)
-    }
-  }
-}
-
-exports.forgotPasswordDeleteEndToEndEncryptedData = async function (req, res) {
-  let logChildObject
-  try {
-    const appId = req.query.appId
-    const username = req.query.username
-
-    logChildObject = { appId, username, req: trimReq(req) }
-    logger.child(logChildObject).info('User forgot password (delete private data)')
-
-    const { user, app, admin } = await _precheckForgotPassword(appId, username)
-    logChildObject.userId = user['user-id']
-    logChildObject.adminId = admin['admin-id']
-
-    const deleteEndToEndEncryptedData = true
-    await _generateSetAndSendTempPassword(user, app, deleteEndToEndEncryptedData)
-
-    logger.child(logChildObject).info('Successfully forgot password (delete private data)')
-    return res.end()
-  } catch (e) {
-    const message = 'Failed to forget password (delete private data)'
-
-    if (e.status && e.error) {
-      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
-      return res.status(e.status).send(e.error)
-    } else {
-      const statusCode = statusCodes['Internal Server Error']
-      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
-      return res.status(statusCode).send(e.error.message)
     }
   }
 }

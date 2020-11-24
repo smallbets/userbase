@@ -155,20 +155,6 @@ const getPublicKey = (username) => {
   })
 }
 
-const forgotPasswordDeleteEndToEndEncryptedData = (username) => {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest()
-
-    const method = 'POST'
-    const url = `${config.getEndpoint()}/api/auth/forgot-password-delete-end-to-end-encrypted-data?appId=${config.getAppId()}&username=${encodeURIComponent(username)}&userbaseJsVersion=${config.USERBASE_JS_VERSION}`
-
-    xhr.open(method, url)
-    xhr.send()
-
-    processXhr(xhr, resolve, reject)
-  })
-}
-
 export default {
   signUp,
   getPasswordSalts,
@@ -176,5 +162,4 @@ export default {
   signInWithSession,
   getServerPublicKey,
   getPublicKey,
-  forgotPasswordDeleteEndToEndEncryptedData,
 }

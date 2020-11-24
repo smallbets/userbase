@@ -17,6 +17,9 @@ const REMEMBER_ME_OPTIONS = {
   none: true
 }
 
+const KEY_NOT_FOUND_ON_SIGN_IN = "Device not recognized. This temporary password can only be used to sign in from a device you've signed in from before."
+const KEY_NOT_FOUND_ON_FORGOT_PASSWORD = "Device not recognized. Forgot password only works from a device you've signed in from before."
+
 const _checkSignedInState = () => {
   if (ws.reconnecting) throw new errors.Reconnecting
   if (!ws.keys.init && ws.changePassword) throw new errors.UserMustChangePassword
@@ -449,7 +452,7 @@ const signIn = async (params) => {
 
       let seedStringFromBackup
       if (!savedSeedString && usedTempPassword) {
-        throw new errors.KeyNotFound("Device not recognized. This temporary password can only be used to sign in from a device you've signed in from before.")
+        throw new errors.KeyNotFound(KEY_NOT_FOUND_ON_SIGN_IN)
       } else {
         // always use seed from backup in case it's changed and local copy is out of date
         seedStringFromBackup = await _getSeedStringFromPasswordBasedBackup(passwordHkdfKey, passwordBasedBackup)
@@ -464,7 +467,7 @@ const signIn = async (params) => {
     try {
       await _connectWebSocket(session, seedString, rememberMe, changePassword)
     } catch (e) {
-      if (usedTempPassword && e.message === 'Invalid seed') throw new errors.KeyNotFound("Device not recognized. This temporary password can only be used to sign in from a device you've signed in from before.")
+      if (usedTempPassword && e.message === 'Invalid seed') throw new errors.KeyNotFound(KEY_NOT_FOUND_ON_SIGN_IN)
       throw e
     }
 
@@ -784,152 +787,136 @@ const deleteUser = async () => {
   }
 }
 
-const _forgotPasswordDeleteEndToEndEncryptedData = async (username) => {
-  try {
-    await api.auth.forgotPasswordDeleteEndToEndEncryptedData(username)
-  } catch (e) {
-    _parseGenericErrors(e)
-
-    const data = e.response && e.response.data
-
-    switch (data.name) {
-      case 'UsernameTooLong': throw new errors.UsernameTooLong(data.maxLen)
-      case 'AppIdNotValid': throw new errors.AppIdNotValid
-      case 'UserNotFound': throw new errors.UserNotFound
-      case 'UserEmailNotFound': throw new errors.UserEmailNotFound
-      default: throw e
-    }
-  }
-}
-
-const _forgotPasswordKeepPrivateData = async (username) => {
-  const appId = config.getAppId()
+const _getMasterKeyAndKeyNotFoundMessage = async (appId, username) => {
   const seedString = localData.getSeedString(appId, username)
-  const keyNotFoundMessage = "Device not recognized. Forgot password only works from a device you've signed in from before."
-  if (!seedString) throw new errors.KeyNotFound(keyNotFoundMessage)
+  if (!seedString) throw new errors.KeyNotFound(KEY_NOT_FOUND_ON_FORGOT_PASSWORD)
   const seed = base64.decode(seedString)
   const masterKey = await crypto.hkdf.importHkdfKey(seed)
-
-  // client makes 2 trips to server to first prove it has the correct key and then trigger the temp password email
-  const forgotPasswordWs = new WebSocket(`${getWsUrl(config.getEndpoint())}/api/auth/forgot-password?appId=${appId}&username=${username}`)
-
-  await new Promise((resolve, reject) => {
-    setTimeout(() => reject(new errors.Timeout), 15000)
-
-    forgotPasswordWs.onerror = () => reject(new errors.ServiceUnavailable)
-
-    forgotPasswordWs.onmessage = async (e) => {
-      try {
-        const message = JSON.parse(e.data)
-
-        switch (message.route) {
-
-          // users created with userbase-js < v2.0.0 that have not signed in yet will need to prove access to DH key by decrypting token
-          case 'ReceiveEncryptedToken': {
-            // if client decrypts encrypted token successfully, proves to server it has the user's key
-            const encryptedForgotPasswordToken = new Uint8Array(message.encryptedForgotPasswordToken.data)
-
-            const dhPrivateKey = await crypto.diffieHellman.importKeyFromMaster(masterKey, base64.decode(message.dhKeySalt))
-            const sharedKey = await crypto.diffieHellman.getSharedKeyWithServer(dhPrivateKey)
-
-            let forgotPasswordToken
-            try {
-              // if it fails to decrypt, it's almost certainly because key is incorrect
-              forgotPasswordToken = base64.encode(await crypto.aesGcm.decrypt(sharedKey, encryptedForgotPasswordToken))
-            } catch {
-              throw new errors.KeyNotFound(keyNotFoundMessage)
-            }
-
-            forgotPasswordWs.send(JSON.stringify({
-              action: 'ForgotPassword',
-              params: { forgotPasswordToken }
-            }))
-
-            break
-          }
-
-          // users signed in with userbase-js >= v2.0.1 will need to prove access to ECDSA key by signing token
-          case 'ReceiveToken': {
-            const {
-              ecdsaKeyEncryptionKeySalt,
-              encryptedEcdsaPrivateKey,
-              forgotPasswordToken,
-            } = message
-
-            const ecdsaKeyEncryptionKey = await crypto.ecdsa.importEcdsaKeyEncryptionKeyFromMaster(masterKey, base64.decode(ecdsaKeyEncryptionKeySalt))
-
-            let ecdsaPrivateKey
-            try {
-              // if it fails to decrypt, it's almost certainly because key is incorrect
-              const rawEcdsaPrivateKey = await crypto.aesGcm.decrypt(ecdsaKeyEncryptionKey, base64.decode(encryptedEcdsaPrivateKey))
-              ecdsaPrivateKey = await crypto.ecdsa.getPrivateKeyFromRawPrivateKey(rawEcdsaPrivateKey)
-            } catch {
-              throw new errors.KeyNotFound(keyNotFoundMessage)
-            }
-
-            const signedForgotPasswordToken = base64.encode(await crypto.ecdsa.sign(ecdsaPrivateKey, base64.decode(forgotPasswordToken)))
-
-            forgotPasswordWs.send(JSON.stringify({
-              action: 'ForgotPassword',
-              params: { signedForgotPasswordToken }
-            }))
-
-            break
-          }
-
-          case 'SuccessfullyForgotPassword': {
-            // server has sent the email
-            resolve()
-            break
-          }
-
-          case 'Error': {
-            const data = message.data
-
-            switch (data.name) {
-              case 'UsernameTooLong': throw new errors.UsernameTooLong(data.maxLen)
-              case 'AppIdNotValid': throw new errors.AppIdNotValid
-              case 'UserNotFound': throw new errors.UserNotFound
-              case 'UserEmailNotFound': throw new errors.UserEmailNotFound
-
-              default: {
-                if (message.status === statusCodes['Internal Server Error']) throw new errors.ServiceUnavailable
-                else throw new errors.UnknownServiceUnavailable(data)
-              }
-            }
-          }
-
-          case 'Ping': {
-            // ignore -- websocket connection should only exist for the life of the forgot password request
-            break
-          }
-
-          default:
-            reject(new Error(`Received unknown message from userbase-server: ${e.data}`))
-        }
-      } catch (e) {
-        reject(e)
-      }
-    }
-  })
-
-  forgotPasswordWs.close()
+  return masterKey
 }
 
 const forgotPassword = async (params) => {
   try {
     if (typeof params !== 'object') throw new errors.ParamsMustBeObject
+    if (objectHasOwnProperty(params, 'deleteEndToEndEncryptedData') && typeof params.deleteEndToEndEncryptedData !== 'boolean') {
+      throw new errors.DeleteEndToEndEncryptedDataMustBeBoolean
+    }
     if (!objectHasOwnProperty(params, 'username')) throw new errors.UsernameMissing
 
     _validateUsername(params.username)
     const username = params.username.toLowerCase()
 
-    if (params.deleteEndToEndEncryptedData) {
-      if (typeof params.deleteEndToEndEncryptedData !== 'boolean') throw new errors.DeleteEndToEndEncryptedDataMustBeBoolean
-      await _forgotPasswordDeleteEndToEndEncryptedData(username)
-    } else {
-      await _forgotPasswordKeepPrivateData(username)
-    }
+    const appId = config.getAppId()
+
+    const url = `${getWsUrl(config.getEndpoint())}/api/auth/forgot-password?appId=${appId}&username=${encodeURIComponent(username)}&userbaseJsVersion=${config.USERBASE_JS_VERSION}`
+    const forgotPasswordWs = new WebSocket(url + (objectHasOwnProperty(params, 'deleteEndToEndEncryptedData')
+      ? `&deleteEndToEndEncryptedData=${params.deleteEndToEndEncryptedData}` : ''))
+
+    await new Promise((resolve, reject) => {
+      setTimeout(() => reject(new errors.Timeout), 15000)
+
+      forgotPasswordWs.onerror = () => reject(new errors.ServiceUnavailable)
+
+      forgotPasswordWs.onmessage = async (e) => {
+        try {
+          const message = JSON.parse(e.data)
+
+          switch (message.route) {
+
+            // users created with userbase-js < v2.0.0 that have not signed in yet will need to prove access to DH key by decrypting token
+            case 'ReceiveEncryptedToken': {
+              const masterKey = await _getMasterKeyAndKeyNotFoundMessage(appId, username)
+
+              // if client decrypts encrypted token successfully, proves to server it has the user's key
+              const encryptedForgotPasswordToken = new Uint8Array(message.encryptedForgotPasswordToken.data)
+
+              const dhPrivateKey = await crypto.diffieHellman.importKeyFromMaster(masterKey, base64.decode(message.dhKeySalt))
+              const sharedKey = await crypto.diffieHellman.getSharedKeyWithServer(dhPrivateKey)
+
+              let forgotPasswordToken
+              try {
+                // if it fails to decrypt, it's almost certainly because key is incorrect
+                forgotPasswordToken = base64.encode(await crypto.aesGcm.decrypt(sharedKey, encryptedForgotPasswordToken))
+              } catch {
+                throw new errors.KeyNotFound(KEY_NOT_FOUND_ON_FORGOT_PASSWORD)
+              }
+
+              forgotPasswordWs.send(JSON.stringify({
+                action: 'ForgotPassword',
+                params: { forgotPasswordToken }
+              }))
+
+              break
+            }
+
+            // users signed in with userbase-js >= v2.0.1 will need to prove access to ECDSA key by signing token
+            case 'ReceiveToken': {
+              const masterKey = await _getMasterKeyAndKeyNotFoundMessage(appId, username)
+
+              const {
+                ecdsaKeyEncryptionKeySalt,
+                encryptedEcdsaPrivateKey,
+                forgotPasswordToken,
+              } = message
+
+              const ecdsaKeyEncryptionKey = await crypto.ecdsa.importEcdsaKeyEncryptionKeyFromMaster(masterKey, base64.decode(ecdsaKeyEncryptionKeySalt))
+
+              let ecdsaPrivateKey
+              try {
+                // if it fails to decrypt, it's almost certainly because key is incorrect
+                const rawEcdsaPrivateKey = await crypto.aesGcm.decrypt(ecdsaKeyEncryptionKey, base64.decode(encryptedEcdsaPrivateKey))
+                ecdsaPrivateKey = await crypto.ecdsa.getPrivateKeyFromRawPrivateKey(rawEcdsaPrivateKey)
+              } catch {
+                throw new errors.KeyNotFound(KEY_NOT_FOUND_ON_FORGOT_PASSWORD)
+              }
+
+              const signedForgotPasswordToken = base64.encode(await crypto.ecdsa.sign(ecdsaPrivateKey, base64.decode(forgotPasswordToken)))
+
+              forgotPasswordWs.send(JSON.stringify({
+                action: 'ForgotPassword',
+                params: { signedForgotPasswordToken }
+              }))
+
+              break
+            }
+
+            case 'SuccessfullyForgotPassword': {
+              // server has sent the email
+              resolve()
+              break
+            }
+
+            case 'Error': {
+              const data = message.data
+
+              switch (data.name) {
+                case 'UsernameTooLong': throw new errors.UsernameTooLong(data.maxLen)
+                case 'AppIdNotValid': throw new errors.AppIdNotValid
+                case 'UserNotFound': throw new errors.UserNotFound
+                case 'UserEmailNotFound': throw new errors.UserEmailNotFound
+
+                default: {
+                  if (message.status === statusCodes['Internal Server Error']) throw new errors.ServiceUnavailable
+                  else throw new errors.UnknownServiceUnavailable(data)
+                }
+              }
+            }
+
+            case 'Ping': {
+              // ignore -- websocket connection should only exist for the life of the forgot password request
+              break
+            }
+
+            default:
+              reject(new Error(`Received unknown message from userbase-server: ${e.data}`))
+          }
+        } catch (e) {
+          reject(e)
+        }
+      }
+    })
+
+    forgotPasswordWs.close()
   } catch (e) {
 
     switch (e.name) {
