@@ -41,7 +41,7 @@ class Connection {
     this.init()
   }
 
-  init(resolveConnection, rejectConnection, session, seedString, rememberMe, changePassword, state) {
+  init(resolveConnection, rejectConnection, session, seedString, rememberMe, changePassword, state, encryptionMode) {
     if (this.pingTimeout) clearTimeout(this.pingTimeout)
 
     for (const property of Object.keys(this)) {
@@ -84,6 +84,8 @@ class Connection {
       databases: {}, // used when openDatabase is called with databaseName
       databasesByDbId: {} // used when openDatabase is called with databaseId
     }
+
+    this.encryptionMode = encryptionMode
   }
 
   connect(session, seedString = null, rememberMe, changePassword, reconnectDelay, state) {
@@ -128,7 +130,8 @@ class Connection {
             }
 
             case 'Connection': {
-              this.init(resolve, reject, session, seedString, rememberMe, changePassword, state)
+              const { encryptionMode } = message
+              this.init(resolve, reject, session, seedString, rememberMe, changePassword, state, encryptionMode)
               this.ws = ws
               this.heartbeat()
               this.connected = true

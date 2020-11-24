@@ -33,7 +33,7 @@ const ENCRYPTION_MODE_OPTIONS = {
 const _checkSignedInState = () => {
   if (ws.reconnecting) throw new errors.Reconnecting
   if (!ws.keys.init && ws.changePassword) throw new errors.UserMustChangePassword
-  if (!ws.keys.init) throw new errors.UserNotSignedIn
+  if (!ws.keys.init || !ENCRYPTION_MODE_OPTIONS[ws.encryptionMode]) throw new errors.UserNotSignedIn
 }
 
 const _parseGenericErrors = (e) => {
@@ -660,14 +660,14 @@ const openDatabase = async (params) => {
     _validateDbInput(params)
     if (!objectHasOwnProperty(params, 'changeHandler')) throw new errors.ChangeHandlerMissing
 
-    const { databaseName, databaseId, changeHandler, encryptionMode = 'end-to-end' } = params
+    const { databaseName, databaseId, changeHandler, encryptionMode = ws.encryptionMode } = params
 
     if (typeof changeHandler !== 'function') throw new errors.ChangeHandlerMustBeFunction
 
     if (databaseName) {
-      const dbNameHash = encryptionMode === 'end-to-end'
-        ? (ws.state.dbNameToHash[databaseName] || await crypto.hmac.signString(ws.keys.hmacKey, databaseName))
-        : databaseName // Hashing is meant to keep it secret, no need to hash if encryption mode is server-side
+      const dbNameHash = encryptionMode === 'server-side'
+        ? databaseName // Hashing is meant to keep it secret, no need to hash if encryption mode is server-side
+        : (ws.state.dbNameToHash[databaseName] || await crypto.hmac.signString(ws.keys.hmacKey, databaseName))
 
       if (encryptionMode === 'end-to-end') ws.state.dbNameToHash[databaseName] = dbNameHash // eslint-disable-line require-atomic-updates
 
@@ -730,7 +730,7 @@ const insertItem = async (params) => {
   try {
     _validateDbInput(params)
 
-    const database = getOpenDb(params.databaseName, params.databaseId, params.encryptionMode)
+    const database = getOpenDb(params.databaseName, params.databaseId, params.encryptionMode || ws.encryptionMode)
 
     const action = 'Insert'
     const insertParams = await _buildInsertParams(database, params)
@@ -802,7 +802,7 @@ const updateItem = async (params) => {
   try {
     _validateDbInput(params)
 
-    const database = getOpenDb(params.databaseName, params.databaseId, params.encryptionMode)
+    const database = getOpenDb(params.databaseName, params.databaseId, params.encryptionMode || ws.encryptionMode)
 
     const action = 'Update'
     const updateParams = await _buildUpdateParams(database, params)
@@ -875,7 +875,7 @@ const deleteItem = async (params) => {
   try {
     _validateDbInput(params)
 
-    const database = getOpenDb(params.databaseName, params.databaseId, params.encryptionMode)
+    const database = getOpenDb(params.databaseName, params.databaseId, params.encryptionMode || ws.encryptionMode)
 
     const action = 'Delete'
     const deleteParams = await _buildDeleteParams(database, params)
@@ -941,7 +941,7 @@ const putTransaction = async (params) => {
     _validateDbInput(params)
     if (!objectHasOwnProperty(params, 'operations')) throw new errors.OperationsMissing
 
-    const { databaseName, databaseId, operations, encryptionMode = 'end-to-end' } = params
+    const { databaseName, databaseId, operations, encryptionMode = ws.encryptionMode } = params
 
     if (!Array.isArray(operations)) throw new errors.OperationsMustBeArray
 
@@ -1171,7 +1171,7 @@ const uploadFile = async (params) => {
   try {
     _validateUploadFile(params)
 
-    const database = getOpenDb(params.databaseName, params.databaseId, params.encryptionMode)
+    const database = getOpenDb(params.databaseName, params.databaseId, params.encryptionMode || ws.encryptionMode)
     const { dbId } = database
 
     try {
@@ -1351,7 +1351,7 @@ const getFile = async (params) => {
   try {
     _validateGetFileParams(params)
 
-    const database = getOpenDb(params.databaseName, params.databaseId, params.encryptionMode)
+    const database = getOpenDb(params.databaseName, params.databaseId, params.encryptionMode || ws.encryptionMode)
     const { dbId } = database
     const { fileId, range } = params
 
@@ -1637,12 +1637,14 @@ const getDatabases = async (params) => {
     const { encryptionKey, ecdhPrivateKey } = ws.keys
     const username = ws.session.username
 
+    const encryptionMode = (params && params.encryptionMode) || ws.encryptionMode
+
     try {
       const databases = []
       const action = 'GetDatabases'
       const requestParams = params && {
         databaseId: params.databaseId,
-        dbNameHash: params.encryptionMode === 'server-side'
+        dbNameHash: encryptionMode === 'server-side'
           ? params.databaseName
           : params.databaseName && await crypto.hmac.signString(ws.keys.hmacKey, params.databaseName)
       }
@@ -1780,7 +1782,7 @@ const shareDatabase = async (params) => {
     _validateDbInput(params)
     _validateDbSharingInput(params)
 
-    const { databaseName, databaseId, encryptionMode = 'end-to-end' } = params
+    const { databaseName, databaseId, encryptionMode = ws.encryptionMode } = params
     const username = params.username.toLowerCase()
     const readOnly = objectHasOwnProperty(params, 'readOnly') ? params.readOnly : true
     const resharingAllowed = objectHasOwnProperty(params, 'resharingAllowed') ? params.resharingAllowed : false
@@ -1928,7 +1930,7 @@ const modifyDatabasePermissions = async (params) => {
       throw new errors.ParamsMissing
     }
 
-    const { databaseName, databaseId, readOnly, resharingAllowed, revoke, encryptionMode = 'end-to-end' } = params
+    const { databaseName, databaseId, readOnly, resharingAllowed, revoke, encryptionMode = ws.encryptionMode } = params
     const username = params.username.toLowerCase()
 
     try {
@@ -2064,7 +2066,8 @@ const _openVerifiedUsersDatabase = async () => {
   const databaseName = VERIFIED_USERS_DATABASE_NAME
   const changeHandler = () => { } // not used
   const allowVerifiedUsersDatabase = true
-  await openDatabase({ databaseName, changeHandler, allowVerifiedUsersDatabase })
+  const encryptionMode = 'end-to-end' // if server has access, opens attack vector because can withold and/or replace verified users
+  await openDatabase({ databaseName, changeHandler, allowVerifiedUsersDatabase, encryptionMode })
   const dbNameHash = ws.state.dbNameToHash[databaseName]
   const verifiedUsers = ws.state.databases[dbNameHash].items
   return verifiedUsers

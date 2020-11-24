@@ -2835,7 +2835,7 @@ exports.updatePaymentMethod = async function (logChildObject, app, admin, user, 
   }
 }
 
-exports.sendConnection = function (connectionLogObject, ws, user) {
+exports.sendConnection = function (connectionLogObject, ws, user, app) {
   const validationMessage = crypto.randomBytes(VALIDATION_MESSAGE_LENGTH)
 
   const keySalts = {
@@ -2846,6 +2846,7 @@ exports.sendConnection = function (connectionLogObject, ws, user) {
   const webSocketMessage = {
     route: 'Connection',
     keySalts,
+    encryptionMode: app['encryption-mode'] || 'end-to-end',
   }
 
   if (user['ecdsa-public-key']) {

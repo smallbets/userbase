@@ -96,7 +96,7 @@ async function start(express, app, userbaseConfig = {}) {
         const connectionId = conn.id
 
         const connectionLogObject = { userId, connectionId, adminId, appId, userbaseJsVersion, sessionId, changePassword: changePassword ? true : undefined, route: 'Connection' }
-        const validationMessage = userController.sendConnection(connectionLogObject, ws, res.locals.user)
+        const validationMessage = userController.sendConnection(connectionLogObject, ws, res.locals.user, res.locals.app)
 
         ws.on('close', () => connections.close(conn))
 
