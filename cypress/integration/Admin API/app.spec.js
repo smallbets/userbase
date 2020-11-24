@@ -663,7 +663,7 @@ describe('ListApps', function () {
             expect(app.appId, 'app appId').to.eq(appId)
             expect(app.appName, 'app name').to.eq('Trial')
             expect(app.paymentsMode, 'paymentsMode').to.eq('disabled')
-            expect(response.body.encryptionMode, 'encryptionMode').to.eq('end-to-end')
+            expect(app.encryptionMode, 'encryptionMode').to.eq('end-to-end')
 
             cy.request({ method: 'POST', url: DELETE_ADMIN_ENDPOINT })
           })
@@ -698,7 +698,7 @@ describe('ListApps', function () {
             expect(app.appId, 'app appId').to.eq(appId)
             expect(app.appName, 'app name').to.eq('Trial')
             expect(app.paymentsMode, 'paymentsMode').to.eq('disabled')
-            expect(response.body.encryptionMode, 'encryptionMode').to.eq('end-to-end')
+            expect(app.encryptionMode, 'encryptionMode').to.eq('end-to-end')
 
             const nextPageToken = constructNextPageToken({ 'admin-id': adminId, 'app-name': 'Trial' })
 
