@@ -18,7 +18,7 @@ const beforeHook = function (setAppId) {
 
 describe('Forgot Password Tests', function () {
 
-  describe('Correct app initialization', function () {
+  describe('Correct app initialization (end-to-end encryption mode)', function () {
     beforeEach(function () {
       beforeHook(function (userbase, that) {
         const { appId } = Cypress.env()
@@ -37,6 +37,37 @@ describe('Forgot Password Tests', function () {
       })
 
       await this.test.userbase.forgotPassword({ username })
+    })
+
+    it('deleteEndToEndEncryptedData=true, rememberMe=none', async function () {
+      const username = getRandomString()
+
+      await this.test.userbase.signUp({
+        username,
+        password: getRandomString(),
+        email: `${getRandomString()}@random.com`,
+        rememberMe: 'none'
+      })
+
+      await this.test.userbase.forgotPassword({ username, deleteEndToEndEncryptedData: true })
+    })
+
+    it('deleteEndToEndEncryptedData=false, rememberMe=none', async function () {
+      const username = getRandomString()
+
+      await this.test.userbase.signUp({
+        username,
+        password: getRandomString(),
+        email: `${getRandomString()}@random.com`,
+        rememberMe: 'none'
+      })
+
+      try {
+        await this.test.userbase.forgotPassword({ username, deleteEndToEndEncryptedData: false })
+        throw new Error('should have failed')
+      } catch (e) {
+        expect(e.name, 'correct error name').to.equal('KeyNotFound')
+      }
     })
 
     it('rememberMe=session', async function () {
@@ -90,7 +121,7 @@ describe('Forgot Password Tests', function () {
         await this.test.userbase.forgotPassword({ username })
         throw new Error('should have failed')
       } catch (e) {
-        expect(e.name, 'correct error name').to.equal('KeyNotFound')
+        expect(e.name, 'correct error name').to.equal('UserNotFound')
       }
     })
 
@@ -254,6 +285,235 @@ describe('Forgot Password Tests', function () {
         throw new Error('should have failed')
       } catch (e) {
         expect(e.name, 'correct error name').to.equal('AppIdNotValid')
+      }
+    })
+  })
+
+  describe('Correct app initialization (server-side encryption mode)', function () {
+    beforeEach(function () {
+      beforeHook(function (userbase, that) {
+        const { serverSideEncryptionModeAppId } = Cypress.env()
+        userbase.init({ appId: serverSideEncryptionModeAppId })
+        that.currentTest.appId = serverSideEncryptionModeAppId
+      })
+    })
+
+    it('Default behavior', async function () {
+      const username = getRandomString()
+
+      await this.test.userbase.signUp({
+        username,
+        password: getRandomString(),
+        email: `${getRandomString()}@random.com`
+      })
+
+      await this.test.userbase.forgotPassword({ username })
+    })
+
+    it('deleteEndToEndEncryptedData=true, rememberMe=none', async function () {
+      const username = getRandomString()
+
+      await this.test.userbase.signUp({
+        username,
+        password: getRandomString(),
+        email: `${getRandomString()}@random.com`,
+        rememberMe: 'none'
+      })
+
+      await this.test.userbase.forgotPassword({ username, deleteEndToEndEncryptedData: true })
+    })
+
+    it('deleteEndToEndEncryptedData=false, rememberMe=none', async function () {
+      const username = getRandomString()
+
+      await this.test.userbase.signUp({
+        username,
+        password: getRandomString(),
+        email: `${getRandomString()}@random.com`,
+        rememberMe: 'none'
+      })
+
+      try {
+        await this.test.userbase.forgotPassword({ username, deleteEndToEndEncryptedData: false })
+        throw new Error('should have failed')
+      } catch (e) {
+        expect(e.name, 'correct error name').to.equal('KeyNotFound')
+      }
+    })
+
+    it('rememberMe=session', async function () {
+      const username = getRandomString()
+
+      await this.test.userbase.signUp({
+        username,
+        password: getRandomString(),
+        email: `${getRandomString()}@random.com`,
+        rememberMe: 'session'
+      })
+
+      await this.test.userbase.forgotPassword({ username })
+    })
+
+    it('rememberMe=local', async function () {
+      const username = getRandomString()
+
+      await this.test.userbase.signUp({
+        username,
+        password: getRandomString(),
+        email: `${getRandomString()}@random.com`,
+        rememberMe: 'local'
+      })
+
+      await this.test.userbase.forgotPassword({ username })
+    })
+
+    it('rememberMe=none', async function () {
+      const username = getRandomString()
+
+      await this.test.userbase.signUp({
+        username,
+        password: getRandomString(),
+        email: `${getRandomString()}@random.com`,
+        rememberMe: 'none'
+      })
+
+      await this.test.userbase.forgotPassword({ username })
+    })
+
+    it('Unknown user', async function () {
+      const username = getRandomString()
+
+      try {
+        await this.test.userbase.forgotPassword({ username })
+        throw new Error('should have failed')
+      } catch (e) {
+        expect(e.name, 'correct error name').to.equal('UserNotFound')
+      }
+    })
+
+    it('Deleted user', async function () {
+      const username = getRandomString()
+
+      await this.test.userbase.signUp({
+        username,
+        password: getRandomString(),
+        email: `${getRandomString()}@random.com`
+      })
+
+      await this.test.userbase.deleteUser()
+
+      localStorage.setItem(`userbaseSeed.${this.test.appId}.${username}`, 'fakekey')
+
+      try {
+        await this.test.userbase.forgotPassword({ username })
+        throw new Error('should have failed')
+      } catch (e) {
+        expect(e.name, 'correct error name').to.equal('UserNotFound')
+      }
+    })
+
+    it('No email provided', async function () {
+      const username = getRandomString()
+
+      await this.test.userbase.signUp({
+        username,
+        password: getRandomString()
+      })
+
+      try {
+        await this.test.userbase.forgotPassword({ username })
+        throw new Error('should have failed')
+      } catch (e) {
+        expect(e.name, 'correct error name').to.equal('UserEmailNotFound')
+      }
+    })
+
+    it('Missing params object', async function () {
+      try {
+        await this.test.userbase.forgotPassword()
+        throw new Error('should have failed')
+      } catch (e) {
+        expect(e.name, 'correct error name').to.equal('ParamsMustBeObject')
+      }
+    })
+
+    it('Incorrect params type', async function () {
+      try {
+        await this.test.userbase.forgotPassword(false)
+        throw new Error('should have failed')
+      } catch (e) {
+        expect(e.name, 'correct error name').to.equal('ParamsMustBeObject')
+      }
+    })
+
+    it('Missing username', async function () {
+      try {
+        await this.test.userbase.forgotPassword({})
+        throw new Error('should have failed')
+      } catch (e) {
+        expect(e.name, 'correct error name').to.equal('UsernameMissing')
+      }
+    })
+
+    it('Blank username', async function () {
+      try {
+        await this.test.userbase.forgotPassword({ username: '' })
+        throw new Error('should have failed')
+      } catch (e) {
+        expect(e.name, 'correct error name').to.equal('UsernameCannotBeBlank')
+      }
+    })
+
+    it('Incorrect username type', async function () {
+      try {
+        await this.test.userbase.forgotPassword({ username: {} })
+        throw new Error('should have failed')
+      } catch (e) {
+        expect(e.name, 'correct error name').to.equal('UsernameMustBeString')
+      }
+    })
+
+    it('Non-existent user with fake key in local storage', async function () {
+      const username = getRandomString()
+
+      localStorage.setItem(`userbaseSeed.${this.test.appId}.${username}`, 'fakekey')
+
+      try {
+        await this.test.userbase.forgotPassword({ username })
+        throw new Error('should have failed')
+      } catch (e) {
+        expect(e.name, 'correct error name').to.equal('UserNotFound')
+      }
+    })
+
+    it('Incorrect key', async function () {
+      const username = getRandomString()
+
+      await this.test.userbase.signUp({
+        username,
+        password: getRandomString(),
+        email: `${getRandomString()}@random.com`
+      })
+
+      sessionStorage.setItem(`userbaseSeed.${this.test.appId}.${username}`, 'ZkeHqIBL5TdW/YpCC323EzdoSLEnudRu20xpyx6GUzY=')
+
+      try {
+        await this.test.userbase.forgotPassword({ username })
+      } catch (e) {
+        expect(e.name, 'correct error name').to.equal('KeyNotFound')
+      }
+    })
+
+    it('Username too long', async function () {
+      const username = 'a'.repeat(101)
+
+      localStorage.setItem(`userbaseSeed.${this.test.appId}.${username}`, 'fakekey')
+
+      try {
+        await this.test.userbase.forgotPassword({ username })
+        throw new Error('should have failed')
+      } catch (e) {
+        expect(e.name, 'correct error name').to.equal('UsernameTooLong')
       }
     })
   })
