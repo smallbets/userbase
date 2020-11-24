@@ -1,6 +1,6 @@
 import errors from './errors'
 
-const USERBASE_JS_VERSION = '2.3.0'
+const USERBASE_JS_VERSION = '2.4.0'
 
 const VERSION = '/v1'
 const DEFAULT_ENDPOINT = 'https://v1.userbase.com' + VERSION
@@ -10,12 +10,6 @@ const STRIPE_TEST_PUBLISHABLE_KEY = 'pk_test_rYANrLdNfdJXJ2d808wW4pqY'
 
 let userbaseAppId = null
 let userbaseUpdateUserHandler = null
-
-const REMEMBER_ME_OPTIONS = {
-  local: true,
-  session: true,
-  none: true
-}
 
 const getAppId = () => {
   if (!userbaseAppId) throw new errors.AppIdNotSet
@@ -42,7 +36,6 @@ const getStripePublishableKey = (isProduction) => {
 
 export default {
   USERBASE_JS_VERSION,
-  REMEMBER_ME_OPTIONS,
   getAppId,
   getUpdateUserHandler,
   getEndpoint,

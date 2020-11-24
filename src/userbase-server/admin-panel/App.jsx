@@ -198,7 +198,7 @@ export default class App extends Component {
 
     return (
       <div>
-        <header className='sm:sticky top-0 bg-white z-50 shadow-md mb-0 sm:mb-8'>
+        <header className='sm:sticky top-0 bg-white z-40 shadow-md mb-0 sm:mb-8'>
           <div className='sm:flex sm:justify-between sm:items-center py-2 px-4'>
             <div className='flex items-center justify-between h-10'>
               <div className='flex-shrink-0'>

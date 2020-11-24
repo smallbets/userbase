@@ -434,6 +434,7 @@ describe('DB Sharing Tests', function () {
           receivedFromUsername: sender.username,
           readOnly: true,
           resharingAllowed: false,
+          encryptionMode: 'end-to-end',
           users: [{
             username: sender.username,
             isOwner: true,
@@ -455,6 +456,7 @@ describe('DB Sharing Tests', function () {
           isOwner: true,
           readOnly: false,
           resharingAllowed: true,
+          encryptionMode: 'end-to-end',
           users: [{
             username: recipient.username,
             receivedFromUsername: sender.username,
@@ -530,6 +532,7 @@ describe('DB Sharing Tests', function () {
             isOwner: false,
             readOnly: true,
             resharingAllowed: false,
+            encryptionMode: 'end-to-end',
             users: [{
               username: sender.username,
               isOwner: true,
@@ -589,6 +592,7 @@ describe('DB Sharing Tests', function () {
             isOwner: true,
             readOnly: false,
             resharingAllowed: true,
+            encryptionMode: 'end-to-end',
             users: [{
               username: secondRecipient.username,
               verified: true,
@@ -994,7 +998,7 @@ describe('DB Sharing Tests', function () {
           throw new Error('Should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.equal('DatabaseNameTooLong')
-          expect(e.message, 'error message').to.equal('Database name cannot be more than 50 characters.')
+          expect(e.message, 'error message').to.equal('Database name cannot be more than 100 characters.')
           expect(e.status, 'error status').to.equal(400)
         }
 

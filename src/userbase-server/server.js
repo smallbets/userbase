@@ -85,6 +85,7 @@ async function start(express, app, userbaseConfig = {}) {
       const userId = res.locals.user['user-id']
       const adminId = res.locals.admin['admin-id']
       const appId = res.locals.app['app-id']
+      const changePassword = res.locals.changePassword
 
       const clientId = req.query.clientId
       const userbaseJsVersion = req.query.userbaseJsVersion
@@ -94,8 +95,8 @@ async function start(express, app, userbaseConfig = {}) {
       if (conn) {
         const connectionId = conn.id
 
-        const connectionLogObject = { userId, connectionId, adminId, appId, userbaseJsVersion, sessionId, route: 'Connection' }
-        const validationMessage = userController.sendConnection(connectionLogObject, ws, res.locals.user)
+        const connectionLogObject = { userId, connectionId, adminId, appId, userbaseJsVersion, sessionId, changePassword: changePassword ? true : undefined, route: 'Connection' }
+        const validationMessage = userController.sendConnection(connectionLogObject, ws, res.locals.user, res.locals.app)
 
         ws.on('close', () => connections.close(conn))
 
@@ -132,6 +133,31 @@ async function start(express, app, userbaseConfig = {}) {
 
             if (action === 'SignOut') {
               response = await userController.signOut(params.sessionId)
+            } else if ((action === 'UpdateUser' || action === 'GetPasswordSalts') && (conn.keyValidated || changePassword)) {
+              // can only get here if key is validated or if session is supposed to be used to change password
+              switch (action) {
+                case 'UpdateUser': {
+                  response = await userController.updateUser(
+                    connectionId,
+                    conn,
+                    adminId,
+                    userId,
+                    params.username,
+                    params.currentPasswordToken,
+                    params.passwordToken,
+                    params.passwordSalts,
+                    params.passwordBasedBackup,
+                    params.newKeyData,
+                    params.email,
+                    params.profile,
+                  )
+                  break
+                }
+                case 'GetPasswordSalts': {
+                  response = await userController.getPasswordSaltsByUserId(userId)
+                  break
+                }
+              }
             } else if (!conn.keyValidated) {
 
               switch (action) {
@@ -157,21 +183,6 @@ async function start(express, app, userbaseConfig = {}) {
               switch (action) {
                 case 'ValidateKey': {
                   response = responseBuilder.errorResponse(statusCodes['Bad Request'], 'Already validated key')
-                  break
-                }
-                case 'UpdateUser': {
-                  response = await userController.updateUser(
-                    connectionId,
-                    adminId,
-                    userId,
-                    params.username,
-                    params.currentPasswordToken,
-                    params.passwordToken,
-                    params.passwordSalts,
-                    params.email,
-                    params.profile,
-                    params.passwordBasedBackup
-                  )
                   break
                 }
                 case 'DeleteUser': {
@@ -225,6 +236,7 @@ async function start(express, app, userbaseConfig = {}) {
                   )
                   break
                 }
+                // stopped using in userbase-js v2.4.0
                 case 'GetUserDatabaseByDatabaseNameHash': {
                   response = await db.getUserDatabaseByDbNameHash(
                     logChildObject,
@@ -233,6 +245,7 @@ async function start(express, app, userbaseConfig = {}) {
                   )
                   break
                 }
+                // stopped using in userbase-js v2.4.0
                 case 'GetUserDatabaseByDatabaseId': {
                   response = await db.getUserDatabaseByDatabaseId(
                     logChildObject,
@@ -311,10 +324,6 @@ async function start(express, app, userbaseConfig = {}) {
                       params.fileId,
                       params.chunkNumber,
                     )
-                  break
-                }
-                case 'GetPasswordSalts': {
-                  response = await userController.getPasswordSaltsByUserId(userId)
                   break
                 }
                 case 'PurchaseSubscription': {
@@ -452,18 +461,19 @@ async function start(express, app, userbaseConfig = {}) {
 
       const appId = req.query.appId
       const username = req.query.username
+      const deleteEndToEndEncryptedData = req.query.deleteEndToEndEncryptedData
+      const userbaseJsVersion = req.query.userbaseJsVersion
 
-      const logChildObject = { appId, username, req: trimReq(req) }
+      const logChildObject = { appId, username, deleteEndToEndEncryptedData, userbaseJsVersion, req: trimReq(req) }
       logger.child(logChildObject).info('Opened forgot-password WebSocket')
 
-      const forgotPasswordTokenResult = await userController.generateForgotPasswordToken(logChildObject, appId, username)
-
-      if (forgotPasswordTokenResult.status !== statusCodes['Success']) {
+      const initForgotPassword = await userController.initForgotPassword(logChildObject, appId, username, deleteEndToEndEncryptedData)
+      if (initForgotPassword.status !== statusCodes['Success']) {
 
         ws.send(JSON.stringify({
           route: 'Error',
-          status: forgotPasswordTokenResult.status,
-          data: forgotPasswordTokenResult.data
+          status: initForgotPassword.status,
+          data: initForgotPassword.data
         }))
         ws.terminate()
 
@@ -473,78 +483,89 @@ async function start(express, app, userbaseConfig = {}) {
           user,
           app,
           forgotPasswordToken,
-          encryptedForgotPasswordToken
-        } = forgotPasswordTokenResult.data
+          encryptedForgotPasswordToken,
+          sentTempPasswordToDeleteEndToEndEncryptedData,
+        } = initForgotPassword.data
 
-        if (user['ecdsa-public-key']) {
+        if (sentTempPasswordToDeleteEndToEndEncryptedData) {
           ws.send(JSON.stringify({
-            route: 'ReceiveToken',
-            ecdsaKeyEncryptionKeySalt: user['ecdsa-key-encryption-key-salt'],
-            encryptedEcdsaPrivateKey: user['encrypted-ecdsa-private-key'],
-            ecdsaKeyWrapperSalt: user['ecdsa-key-wrapper-salt'],
-            wrappedEcdsaPrivateKey: user['wrapped-ecdsa-private-key'],
-            forgotPasswordToken,
+            route: 'SuccessfullyForgotPassword',
+            response: responseBuilder.successResponse(),
           }))
+          ws.terminate()
         } else {
-          ws.send(JSON.stringify({
-            route: 'ReceiveEncryptedToken',
-            dhKeySalt: user['diffie-hellman-key-salt'],
-            encryptedForgotPasswordToken
-          }))
-        }
 
-        ws.on('message', async (msg) => {
-          try {
-            if (msg.length > FIVE_KB || msg.byteLength > FIVE_KB) {
-              logger.child({ ...logChildObject, size: msg.length }).warn('Received large message over forgot-password')
-              return ws.send('Message is too large')
-            }
-
-            const request = JSON.parse(msg)
-            const { action, params } = request
-
-            if (action === 'ForgotPassword') {
-              const forgotPasswordResponse = await userController.forgotPassword(
-                logChildObject,
-                forgotPasswordToken,
-                params.signedForgotPasswordToken || params.forgotPasswordToken,
-                user,
-                app
-              )
-
-              if (forgotPasswordResponse.status !== statusCodes['Success']) {
-
-                ws.send(JSON.stringify({
-                  route: 'Error',
-                  status: forgotPasswordResponse.status,
-                  data: forgotPasswordResponse.data
-                }))
-                ws.terminate()
-
-              } else {
-                const responseMsg = JSON.stringify({ route: 'SuccessfullyForgotPassword', response: forgotPasswordResponse })
-
-                logger
-                  .child({
-                    ...logChildObject,
-                    route: action,
-                    statusCode: forgotPasswordResponse.status,
-                    size: responseMsg.length,
-                    responseTime: Date.now() - start
-                  })
-                  .info('Forgot password finished')
-
-                ws.send(responseMsg)
-                ws.terminate()
-              }
-            } else {
-              throw new Error('Received unknown message')
-            }
-
-          } catch (e) {
-            logger.child({ ...logChildObject, err: e, msg }).error('Error in forgot-password Websocket')
+          // not deleting end-to-end encrypted data, user must prove access to private key
+          if (user['ecdsa-public-key']) {
+            ws.send(JSON.stringify({
+              route: 'ReceiveToken',
+              ecdsaKeyEncryptionKeySalt: user['ecdsa-key-encryption-key-salt'],
+              encryptedEcdsaPrivateKey: user['encrypted-ecdsa-private-key'],
+              ecdsaKeyWrapperSalt: user['ecdsa-key-wrapper-salt'],
+              wrappedEcdsaPrivateKey: user['wrapped-ecdsa-private-key'],
+              forgotPasswordToken,
+            }))
+          } else {
+            ws.send(JSON.stringify({
+              route: 'ReceiveEncryptedToken',
+              dhKeySalt: user['diffie-hellman-key-salt'],
+              encryptedForgotPasswordToken
+            }))
           }
-        })
+
+          ws.on('message', async (msg) => {
+            try {
+              if (msg.length > FIVE_KB || msg.byteLength > FIVE_KB) {
+                logger.child({ ...logChildObject, size: msg.length }).warn('Received large message over forgot-password')
+                return ws.send('Message is too large')
+              }
+
+              const request = JSON.parse(msg)
+              const { action, params } = request
+
+              if (action === 'ForgotPassword') {
+                const forgotPasswordResponse = await userController.forgotPassword(
+                  logChildObject,
+                  forgotPasswordToken,
+                  params.signedForgotPasswordToken || params.forgotPasswordToken,
+                  user,
+                  app
+                )
+
+                if (forgotPasswordResponse.status !== statusCodes['Success']) {
+
+                  ws.send(JSON.stringify({
+                    route: 'Error',
+                    status: forgotPasswordResponse.status,
+                    data: forgotPasswordResponse.data
+                  }))
+                  ws.terminate()
+
+                } else {
+                  const responseMsg = JSON.stringify({ route: 'SuccessfullyForgotPassword', response: forgotPasswordResponse })
+
+                  logger
+                    .child({
+                      ...logChildObject,
+                      route: action,
+                      statusCode: forgotPasswordResponse.status,
+                      size: responseMsg.length,
+                      responseTime: Date.now() - start
+                    })
+                    .info('Forgot password finished')
+
+                  ws.send(responseMsg)
+                  ws.terminate()
+                }
+              } else {
+                throw new Error('Received unknown message')
+              }
+
+            } catch (e) {
+              logger.child({ ...logChildObject, err: e, msg }).error('Error in forgot-password Websocket')
+            }
+          })
+        }
       }
     })
 
@@ -623,6 +644,7 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.post('/access-token', admin.authenticateAdmin, admin.generateAccessToken)
     v1Admin.delete('/access-token', admin.authenticateAdmin, admin.deleteAccessToken)
     v1Admin.get('/account', admin.authenticateAdmin, admin.getAdminAccount)
+    v1Admin.post('/apps/:appId/encryption-mode', admin.authenticateAdmin, appController.modifyEncryptionMode)
 
     // endpoints for admin to manage their own account's payments to Userbase
     v1Admin.post('/stripe/create-saas-payment-session', admin.authenticateAdmin, admin.createSaasPaymentSession)
@@ -713,8 +735,8 @@ function createAdmin({ email, password, fullName, adminId, receiveEmailUpdates, 
   return admin.createAdmin(email, password, fullName, adminId, receiveEmailUpdates, storePasswordInSecretsManager)
 }
 
-function createApp({ appName, adminId, appId }) {
-  return appController.createApp(appName, adminId, appId)
+function createApp({ appName, adminId, encryptionMode, appId }) {
+  return appController.createApp(appName, adminId, encryptionMode, appId)
 }
 
 export default {

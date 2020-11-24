@@ -10,7 +10,14 @@ import { trimReq, lastEvaluatedKeyToNextPageToken, nextPageTokenToLastEvaluatedK
 
 const UUID_STRING_LENGTH = 36
 
-async function createApp(appName, adminId, appId = uuidv4()) {
+const _validateEncryptionMode = (encryptionMode) => {
+  if (encryptionMode !== 'end-to-end' && encryptionMode !== 'server-side') throw {
+    status: statusCodes['Bad Request'],
+    data: "Encryption mode must either be 'end-to-end' or 'server-side'"
+  }
+}
+
+async function createApp(appName, adminId, encryptionMode = 'end-to-end', appId = uuidv4()) {
   if (!appName || !adminId) throw {
     status: statusCodes['Bad Request'],
     data: 'Missing required items'
@@ -23,10 +30,13 @@ async function createApp(appName, adminId, appId = uuidv4()) {
       data: 'App name cannot be blank'
     }
 
+    _validateEncryptionMode(encryptionMode)
+
     const app = {
       'admin-id': adminId,
       'app-name': trimmedAppName,
       'app-id': appId,
+      'encryption-mode': encryptionMode,
       'creation-date': new Date().toISOString(),
     }
 
@@ -44,6 +54,7 @@ async function createApp(appName, adminId, appId = uuidv4()) {
     return app
   } catch (e) {
     if (e.data === 'App name cannot be blank') throw e
+    if (e.data === "Encryption mode must either be 'end-to-end' or 'server-side'") throw e
     if (e.name === 'ConditionalCheckFailedException') {
       throw {
         status: statusCodes['Conflict'],
@@ -62,6 +73,7 @@ exports.createApp = createApp
 
 exports.createAppController = async function (req, res) {
   const appName = req.body.appName
+  const encryptionMode = req.body.encryptionMode
 
   const admin = res.locals.admin
   const adminId = admin['admin-id']
@@ -71,7 +83,7 @@ exports.createAppController = async function (req, res) {
     .send('Pay subscription fee to create an app.')
 
   try {
-    const app = await createApp(appName, adminId)
+    const app = await createApp(appName, adminId, encryptionMode)
     return res.send(app)
   } catch (e) {
     return res
@@ -395,6 +407,7 @@ const _buildAppResult = (app) => {
     appId: app['app-id'],
     deleted: app['deleted'],
     creationDate: app['creation-date'],
+    encryptionMode: app['encryption-mode'] || 'end-to-end',
     paymentsMode: app['payments-mode'] || 'disabled',
     testSubscriptionPlanId: app['test-subscription-plan-id'],
     testTrialPeriodDays: app['test-trial-period-days'],
@@ -952,4 +965,63 @@ exports.disablePayments = function (req, res) {
   const log2 = 'Successfully disabled payments'
   const log3 = 'Failed to disable payments'
   return _setPaymentsMode(req, res, paymentsMode, log1, log2, log3)
+}
+
+exports.modifyEncryptionMode = async function (req, res) {
+  let logChildObject
+  try {
+    const admin = res.locals.admin
+    const adminId = admin['admin-id']
+    const appId = req.params.appId
+    const appName = req.query.appName
+    const encryptionMode = req.query.encryptionMode
+
+    logChildObject = { adminId, appId, req: trimReq(req) }
+    logger.child(logChildObject).info('Modifying encryption mode')
+
+    if (admin['deleted']) throw {
+      status: statusCodes['Not Found'],
+      error: { message: 'Admin not found.' }
+    }
+
+    _validateEncryptionMode(encryptionMode)
+
+    const params = {
+      TableName: setup.appsTableName,
+      Key: {
+        'admin-id': adminId,
+        'app-name': appName
+      },
+      UpdateExpression: 'SET #encryptionMode = :encryptionMode',
+      ConditionExpression: '#appId = :appId and attribute_not_exists(deleted)',
+      ExpressionAttributeValues: {
+        ':appId': appId,
+        ':encryptionMode': encryptionMode
+      },
+      ExpressionAttributeNames: {
+        '#appId': 'app-id',
+        '#encryptionMode': 'encryption-mode'
+      }
+    }
+
+    const ddbClient = connection.ddbClient()
+    await ddbClient.update(params).promise()
+
+    logger
+      .child({ ...logChildObject, statusCode: statusCodes['Success'] })
+      .info('Successfully modified encryption mode')
+
+    return res.end()
+  } catch (e) {
+    const message = 'Failed to modify encryption mode'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
+      return res.status(e.status).send(e.error.message)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return res.status(statusCode).send(message)
+    }
+  }
 }

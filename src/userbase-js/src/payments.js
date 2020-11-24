@@ -4,6 +4,12 @@ import statusCodes from './statusCodes'
 import { objectHasOwnProperty, getProtocolFromEndpoint } from './utils'
 import config from './config'
 
+const _checkSignedInState = () => {
+  if (ws.reconnecting) throw new errors.Reconnecting
+  if (!ws.keys.init && ws.changePassword) throw new errors.UserMustChangePassword
+  if (!ws.keys.init) throw new errors.UserNotSignedIn
+}
+
 const _parseGenericErrors = (e) => {
   if (e.response) {
     if (e.response.status === statusCodes['Internal Server Error']) {
@@ -11,14 +17,13 @@ const _parseGenericErrors = (e) => {
     } else if (e.response.status === statusCodes['Gateway Timeout']) {
       throw new errors.Timeout
     }
-  } else if (e.message && e.message.includes('timeout')) {
+  } else if (e.message && e.message.indexOf('timeout') !== -1) {
     throw new errors.Timeout
   }
 }
 
 const _validatePurchaseOrUpdate = (params) => {
-  if (ws.reconnecting) throw new errors.Reconnecting
-  if (!ws.keys.init) throw new errors.UserNotSignedIn
+  _checkSignedInState()
 
   const stripeData = ws.userData.stripeData
   if (!stripeData.stripeAccountId) throw new errors.StripeAccountNotConnected
@@ -102,6 +107,7 @@ const purchaseSubscription = async (params) => {
       case 'SubscriptionPlanAlreadyPurchased':
       case 'StripeAccountNotConnected':
       case 'PaymentsDisabled':
+      case 'UserMustChangePassword':
       case 'UserNotSignedIn':
       case 'TooManyRequests':
       case 'ServiceUnavailable':
@@ -114,8 +120,7 @@ const purchaseSubscription = async (params) => {
 }
 
 const _validateModifySubscriptionConditions = () => {
-  if (ws.reconnecting) throw new errors.Reconnecting
-  if (!ws.keys.init) throw new errors.UserNotSignedIn
+  _checkSignedInState()
 
   const stripeData = ws.userData.stripeData
   if (!stripeData.stripeAccountId) throw new errors.StripeAccountNotConnected
@@ -152,6 +157,7 @@ const cancelSubscription = async () => {
       case 'StripeAccountNotConnected':
       case 'PaymentsDisabled':
       case 'SubscriptionAlreadyCanceled':
+      case 'UserMustChangePassword':
       case 'UserNotSignedIn':
       case 'TooManyRequests':
       case 'ServiceUnavailable':
@@ -189,6 +195,7 @@ const resumeSubscription = async () => {
       case 'StripeAccountNotConnected':
       case 'PaymentsDisabled':
       case 'SubscriptionAlreadyCanceled':
+      case 'UserMustChangePassword':
       case 'UserNotSignedIn':
       case 'TooManyRequests':
       case 'ServiceUnavailable':
@@ -248,6 +255,7 @@ const updatePaymentMethod = async (params) => {
       case 'SubscriptionNotPurchased':
       case 'StripeAccountNotConnected':
       case 'PaymentsDisabled':
+      case 'UserMustChangePassword':
       case 'UserNotSignedIn':
       case 'TooManyRequests':
       case 'ServiceUnavailable':

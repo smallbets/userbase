@@ -211,6 +211,16 @@ class UserEmailNotFound extends Error {
   }
 }
 
+class UserMustChangePassword extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'UserMustChangePassword'
+    this.message = 'Must change password first.'
+    this.status = statusCodes['Forbidden']
+  }
+}
+
 class EmailNotValid extends Error {
   constructor(...params) {
     super(...params)
@@ -357,6 +367,16 @@ class KeyNotFound extends Error {
   }
 }
 
+class DeleteEndToEndEncryptedDataMustBeBoolean extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'DeleteEndToEndEncryptedDataMustBeBoolean'
+    this.message = 'Delete end-to-end encrypted data value must be a boolean.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
 export default {
   UsernameAlreadyExists,
   UsernameMissing,
@@ -379,6 +399,7 @@ export default {
   UserNotSignedIn,
   UserNotFound,
   UserEmailNotFound,
+  UserMustChangePassword,
   EmailNotValid,
   ProfileMustBeObject,
   ProfileCannotBeEmpty,
@@ -393,4 +414,5 @@ export default {
   CurrentPasswordMissing,
   CurrentPasswordIncorrect,
   KeyNotFound,
+  DeleteEndToEndEncryptedDataMustBeBoolean,
 }

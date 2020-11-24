@@ -109,10 +109,11 @@ describe('GetApp', function () {
           .then(function (response) {
             expect(response.status, 'status').to.eq(200)
 
-            expect(response.body, 'app keys').to.have.keys(['appId', 'appName', 'creationDate', 'paymentsMode'])
+            expect(response.body, 'app keys').to.have.keys(['appId', 'appName', 'creationDate', 'paymentsMode', 'encryptionMode'])
             expect(response.body.appId, 'app appId').to.eq(appId)
             expect(response.body.appName, 'app name').to.eq('Trial')
             expect(response.body.paymentsMode, 'paymentsMode').to.eq('disabled')
+            expect(response.body.encryptionMode, 'encryptionMode').to.eq('end-to-end')
 
             cy.request({ method: 'POST', url: DELETE_ADMIN_ENDPOINT })
           })
@@ -657,11 +658,12 @@ describe('ListApps', function () {
 
             const app = response.body.apps[0]
 
-            expect(app, 'app keys').to.have.keys(['appId', 'appName', 'creationDate', 'paymentsMode'])
+            expect(app, 'app keys').to.have.keys(['appId', 'appName', 'creationDate', 'paymentsMode', 'encryptionMode'])
 
             expect(app.appId, 'app appId').to.eq(appId)
             expect(app.appName, 'app name').to.eq('Trial')
             expect(app.paymentsMode, 'paymentsMode').to.eq('disabled')
+            expect(app.encryptionMode, 'encryptionMode').to.eq('end-to-end')
 
             cy.request({ method: 'POST', url: DELETE_ADMIN_ENDPOINT })
           })
@@ -692,10 +694,11 @@ describe('ListApps', function () {
 
             const app = response.body.apps[0]
 
-            expect(app, 'app keys').to.have.keys(['appId', 'appName', 'creationDate', 'paymentsMode'])
+            expect(app, 'app keys').to.have.keys(['appId', 'appName', 'creationDate', 'paymentsMode', 'encryptionMode'])
             expect(app.appId, 'app appId').to.eq(appId)
             expect(app.appName, 'app name').to.eq('Trial')
             expect(app.paymentsMode, 'paymentsMode').to.eq('disabled')
+            expect(app.encryptionMode, 'encryptionMode').to.eq('end-to-end')
 
             const nextPageToken = constructNextPageToken({ 'admin-id': adminId, 'app-name': 'Trial' })
 

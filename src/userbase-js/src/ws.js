@@ -41,7 +41,7 @@ class Connection {
     this.init()
   }
 
-  init(resolveConnection, rejectConnection, session, seedString, rememberMe, state) {
+  init(resolveConnection, rejectConnection, session, seedString, rememberMe, changePassword, state, encryptionMode) {
     if (this.pingTimeout) clearTimeout(this.pingTimeout)
 
     for (const property of Object.keys(this)) {
@@ -59,11 +59,13 @@ class Connection {
       username: session && session.username,
       sessionId: session && session.sessionId,
       creationDate: session && session.creationDate,
+      expirationDate: session && session.expirationDate,
       userId: session && session.userId,
       authToken: session && session.authToken,
     }
 
     this.seedString = seedString
+    this.changePassword = changePassword
     this.keys = {
       init: false,
       salts: {}
@@ -82,9 +84,11 @@ class Connection {
       databases: {}, // used when openDatabase is called with databaseName
       databasesByDbId: {} // used when openDatabase is called with databaseId
     }
+
+    this.encryptionMode = encryptionMode
   }
 
-  connect(session, seedString = null, rememberMe, reconnectDelay, state) {
+  connect(session, seedString = null, rememberMe, changePassword, reconnectDelay, state) {
     if (this.connected) throw new WebSocketError(wsAlreadyConnected, this.session.username)
 
     return new Promise((resolve, reject) => {
@@ -126,29 +130,44 @@ class Connection {
             }
 
             case 'Connection': {
-              this.init(resolve, reject, session, seedString, rememberMe, state)
+              const { encryptionMode } = message
+              this.init(resolve, reject, session, seedString, rememberMe, changePassword, state, encryptionMode)
               this.ws = ws
               this.heartbeat()
               this.connected = true
 
-              const {
-                keySalts,
-                validationMessage,
-                ecKeyData,
-                encryptedValidationMessage,
-              } = message
+              // seedString not present on initial connection when still need to change password
+              if (seedString) {
+                const {
+                  keySalts,
+                  validationMessage,
+                  ecKeyData,
+                  encryptedValidationMessage,
+                } = message
 
-              this.keys.salts = keySalts
+                this.keys.salts = keySalts
 
-              this.validationMessage = validationMessage
-              this.ecKeyData = ecKeyData
+                this.validationMessage = validationMessage
+                this.ecKeyData = ecKeyData
 
-              // provided by userbase-server for users who have not yet generated their ECDSA key and
-              // still only have a DH key
-              if (encryptedValidationMessage) this.encryptedValidationMessage = new Uint8Array(encryptedValidationMessage.data)
+                // provided by userbase-server for users who have not yet generated their ECDSA key and
+                // still only have a DH key
+                if (encryptedValidationMessage) this.encryptedValidationMessage = new Uint8Array(encryptedValidationMessage.data)
 
-              await this.setKeys(this.seedString)
+                try {
+                  await this.setKeys(this.seedString)
+                  const userData = await this.validateKey()
+                  this.userData = userData
+                } catch (e) {
+                  if ((e && e.name === 'OperationError') || e instanceof DOMException) throw new Error('Invalid seed')
+                  else throw e
+                }
 
+                this.keys.init = true
+              }
+
+              this.resolveConnection()
+              this.connectionResolved = true
               break
             }
 
@@ -156,7 +175,7 @@ class Connection {
               const dbId = message.dbId
               const dbNameHash = message.dbNameHash
 
-              // if owner, must have opened the database via dbNameHash
+              // if owner, must have opened the database via databaseName
               const database = message.isOwner
                 ? this.state.databases[dbNameHash]
                 : this.state.databasesByDbId[dbId]
@@ -177,9 +196,9 @@ class Connection {
                 })
               }
 
-              const openingDatabase = message.dbNameHash && message.dbKey
+              const openingDatabase = message.dbNameHash && (message.dbKey || message.plaintextDbKey)
               if (openingDatabase) {
-                const dbKeyString = await crypto.aesGcm.decryptString(this.keys.encryptionKey, message.dbKey)
+                const dbKeyString = message.plaintextDbKey || await crypto.aesGcm.decryptString(this.keys.encryptionKey, message.dbKey)
                 database.dbKeyString = dbKeyString
                 database.dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
               }
@@ -238,8 +257,6 @@ class Connection {
             case 'CreateDatabase':
             case 'OpenDatabase':
             case 'OpenDatabaseByDatabaseId':
-            case 'GetUserDatabaseByDatabaseNameHash':
-            case 'GetUserDatabaseByDatabaseId':
             case 'GetDatabases':
             case 'GetDatabaseUsers':
             case 'Insert':
@@ -306,7 +323,7 @@ class Connection {
             : (reconnectDelay ? reconnectDelay + BACKOFF_RETRY_DELAY : 1000)
 
           this.reconnecting = true
-          await this.reconnect(resolve, reject, session, seedString, rememberMe, delay, !this.reconnected && state)
+          await this.reconnect(resolve, reject, session, this.seedString || seedString, rememberMe, changePassword, delay, !this.reconnected && state)
         } else if (e.code === statusCodes['Client Already Connected']) {
           reject(new WebSocketError(wsAlreadyConnected, session.username))
         } else {
@@ -316,7 +333,7 @@ class Connection {
     })
   }
 
-  async reconnect(resolveConnection, rejectConnection, session, seedString, rememberMe, reconnectDelay, currentState) {
+  async reconnect(resolveConnection, rejectConnection, session, seedString, rememberMe, changePassword, reconnectDelay, currentState) {
     try {
       const retryDelay = Math.min(reconnectDelay, MAX_RETRY_DELAY)
       console.log(`Connection to server lost. Attempting to reconnect in ${retryDelay / 1000} second${retryDelay !== 1000 ? 's' : ''}...`)
@@ -349,7 +366,7 @@ class Connection {
             this.init()
             this.reconnecting = true
 
-            const result = await this.connect(session, seedString, rememberMe, reconnectDelay, state)
+            const result = await this.connect(session, seedString, rememberMe, changePassword, reconnectDelay, state)
 
             this.reconnected = true
 
@@ -484,7 +501,6 @@ class Connection {
       this.keys.dhPrivateKey = await crypto.diffieHellman.importKeyFromMaster(masterKey, base64.decode(salts.dhKeySalt))
     }
 
-    let ecKeyData
     if (salts.dhKeySalt || salts.ecdsaKeyWrapperSalt) {
 
       // must be an old user created with userbase-js <= v2.0.0. Update EC key data for future logins
@@ -497,22 +513,14 @@ class Connection {
       delete ecdsaKeyData.ecdsaPrivateKey
       delete ecdhKeyData.ecdhPrivateKey
 
-      ecKeyData = {
+      this.newEcKeyData = {
         ecdsaKeyData,
         ecdhKeyData,
       }
     }
-
-    const userData = await this.validateKey(ecKeyData)
-    this.userData = userData
-
-    this.keys.init = true
-
-    this.resolveConnection()
-    this.connectionResolved = true
   }
 
-  async validateKey(ecKeyData) {
+  async validateKey() {
     let validationMessage
     if (this.keys.ecdsaPrivateKey && !this.keys.dhPrivateKey) {
 
@@ -531,7 +539,7 @@ class Connection {
     const action = 'ValidateKey'
     const params = {
       validationMessage: base64.encode(validationMessage),
-      ecKeyData
+      ecKeyData: this.newEcKeyData
     }
 
     const response = await this.request(action, params)
@@ -614,13 +622,14 @@ class Connection {
     this.request(action, params)
   }
 
-  buildUserResult({ username, userId, authToken, email, profile, protectedProfile, usedTempPassword, passwordChanged, userData }) {
+  buildUserResult({ username, userId, authToken, email, profile, protectedProfile, usedTempPassword, changePassword, passwordChanged, userData }) {
     const result = { username, userId, authToken }
 
     if (email) result.email = email
     if (profile) result.profile = profile
     if (protectedProfile) result.protectedProfile = protectedProfile
     if (usedTempPassword) result.usedTempPassword = usedTempPassword
+    if (changePassword) result.changePassword = changePassword
     if (passwordChanged) result.passwordChanged = passwordChanged
 
     if (userData) {
@@ -651,6 +660,21 @@ class Connection {
         updateUserHandler({ user: this.buildUserResult({ authToken: this.session.authToken, ...updatedUser }) })
       }
     }
+  }
+
+  async rotateKeys(newSeedString, newKeyData) {
+    // re-arrange object to fit expected structure for setKeys() function
+    const { keySalts, ecKeyData } = newKeyData
+    const { ecdsaKeyData, ecdhKeyData } = ecKeyData
+    keySalts.ecdsaKeyEncryptionKeySalt = ecdsaKeyData.ecdsaKeyEncryptionKeySalt
+    keySalts.ecdhKeyEncryptionKeySalt = ecdhKeyData.ecdhKeyEncryptionKeySalt
+
+    this.keys.salts = keySalts
+    this.ecKeyData = { ...ecdsaKeyData, ...ecdhKeyData }
+
+    await this.setKeys(newSeedString)
+
+    this.keys.init = true
   }
 }
 

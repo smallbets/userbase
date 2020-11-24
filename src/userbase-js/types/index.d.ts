@@ -18,6 +18,8 @@ export type PaymentsMode = 'disabled' | 'test' | 'prod'
 
 export type SubscriptionStatus = 'active' | 'trialing' | 'incomplete' | 'incomplete_expired' | 'past_due' | 'canceled' | 'unpaid'
 
+export type EncryptionMode = 'end-to-end' | 'server-side'
+
 export interface UserResult {
   username: string
   userId: string
@@ -32,6 +34,7 @@ export interface UserResult {
   protectedProfile?: UserProfile
   usedTempPassword?: boolean
   passwordChanged?: boolean
+  changePassword?: boolean
 }
 
 export type DatabaseChangeHandler = (items: Item[]) => void
@@ -47,6 +50,7 @@ export interface Database {
   receivedFromUsername?: string
   readOnly: boolean
   resharingAllowed: boolean
+  encryptionMode: EncryptionMode
   users: DatabaseUsers[]
 }
 

@@ -48,7 +48,7 @@ jobs:
           npm run ci:install
           npm run build:userbase-js:script
       - name: Run Browser Tests
-        uses: cypress-io/github-action@v1
+        uses: cypress-io/github-action@v2
         env:
           CYPRESS_RECORD_KEY: ${{ secrets.CYPRESS_RECORD_KEY }}
         with:

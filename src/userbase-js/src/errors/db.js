@@ -80,6 +80,16 @@ class ChangeHandlerMustBeFunction extends Error {
   }
 }
 
+class EncryptionModeNotValid extends Error {
+  constructor(options, ...params) {
+    super(options, ...params)
+
+    this.name = 'EncryptionModeNotValid'
+    this.message = `Encryption mode must be one of ${JSON.stringify(Object.keys(options))}.`
+    this.status = statusCodes['Bad Request']
+  }
+}
+
 class DatabaseNotOpen extends Error {
   constructor(...params) {
     super(...params)
@@ -729,6 +739,7 @@ export default {
   RevokeMustBeBoolean,
   ChangeHandlerMissing,
   ChangeHandlerMustBeFunction,
+  EncryptionModeNotValid,
   DatabaseNotOpen,
   ItemMissing,
   ItemInvalid,
