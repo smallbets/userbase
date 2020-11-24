@@ -5,6 +5,7 @@
     "key": "CKLjtFyavUQkr5lCevkvpCggVoaoo0tTuCAG8h99dGo=",
     "endpoint": "http://localhost:8080/v1",
     "appId": "test-id",
-    "dbName": "test"
+    "dbName": "test",
+    "serverSideEncryptionModeAppId": "server-side-app-id"
   }
 }

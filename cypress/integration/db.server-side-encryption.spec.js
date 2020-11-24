@@ -8,9 +8,9 @@ const beforeEachHook = function () {
     const userbase = win.userbase
     this.currentTest.userbase = userbase
 
-    const { appId, endpoint } = Cypress.env()
+    const { serverSideEncryptionModeAppId, endpoint } = Cypress.env()
     win._userbaseEndpoint = endpoint
-    userbase.init({ appId })
+    userbase.init({ appId: serverSideEncryptionModeAppId })
 
     const randomUser = 'test-user-' + getRandomString()
     const password = getRandomString()
@@ -253,7 +253,7 @@ describe('DB Tests', function () {
           throw new Error('should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.equal('DatabaseNameTooLong')
-          expect(e.message, 'error message').to.equal('Database name cannot be more than 50 characters.')
+          expect(e.message, 'error message').to.equal('Database name cannot be more than 100 characters.')
           expect(e.status, 'error status').to.equal(400)
         }
       })
@@ -510,7 +510,7 @@ describe('DB Tests', function () {
           throw new Error('should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.equal('DatabaseNameTooLong')
-          expect(e.message, 'error message').to.equal('Database name cannot be more than 50 characters.')
+          expect(e.message, 'error message').to.equal('Database name cannot be more than 100 characters.')
           expect(e.status, 'error status').to.equal(400)
         }
       })
@@ -842,7 +842,7 @@ describe('DB Tests', function () {
           throw new Error('should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.equal('DatabaseNameTooLong')
-          expect(e.message, 'error message').to.equal('Database name cannot be more than 50 characters.')
+          expect(e.message, 'error message').to.equal('Database name cannot be more than 100 characters.')
           expect(e.status, 'error status').to.equal(400)
         }
       })
@@ -1206,7 +1206,7 @@ describe('DB Tests', function () {
           isOwner: true,
           readOnly: false,
           resharingAllowed: true,
-          encryptionMode: 'end-to-end',
+          encryptionMode: 'server-side',
           users: []
         })
 
@@ -1237,7 +1237,7 @@ describe('DB Tests', function () {
           expect(readOnly, 'readOnly').to.be.false
           expect(resharingAllowed, 'resharingAllowed').to.be.true
           expect(users, 'users').to.deep.equal([])
-          expect(encryptionMode, 'encryptionMode').to.equal('end-to-end')
+          expect(encryptionMode, 'encryptionMode').to.equal('server-side')
 
           const databaseName = database.databaseName
 
@@ -1268,7 +1268,7 @@ describe('DB Tests', function () {
           isOwner: true,
           readOnly: false,
           resharingAllowed: true,
-          encryptionMode: 'end-to-end',
+          encryptionMode: 'server-side',
           users: []
         })
 
@@ -1315,7 +1315,7 @@ describe('DB Tests', function () {
           isOwner: false,
           readOnly: true,
           resharingAllowed: false,
-          encryptionMode: 'end-to-end',
+          encryptionMode: 'server-side',
           receivedFromUsername: usernameB,
           users: [{
             username: usernameB,
@@ -1353,7 +1353,7 @@ describe('DB Tests', function () {
           isOwner: true,
           readOnly: false,
           resharingAllowed: true,
-          encryptionMode: 'end-to-end',
+          encryptionMode: 'server-side',
           users: []
         })
 
@@ -1434,7 +1434,7 @@ describe('DB Tests', function () {
           throw new Error('should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.equal('DatabaseNameTooLong')
-          expect(e.message, 'error message').to.equal('Database name cannot be more than 50 characters.')
+          expect(e.message, 'error message').to.equal('Database name cannot be more than 100 characters.')
           expect(e.status, 'error status').to.equal(400)
         }
       })
