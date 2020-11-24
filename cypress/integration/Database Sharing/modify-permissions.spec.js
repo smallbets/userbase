@@ -634,7 +634,7 @@ describe('DB Sharing Tests', function () {
           throw new Error('Should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.equal('DatabaseNameTooLong')
-          expect(e.message, 'error message').to.equal('Database name cannot be more than 50 characters.')
+          expect(e.message, 'error message').to.equal('Database name cannot be more than 100 characters.')
           expect(e.status, 'error status').to.equal(400)
         }
 

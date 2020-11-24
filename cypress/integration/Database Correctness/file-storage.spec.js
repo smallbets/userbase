@@ -1,5 +1,5 @@
 
-import { getRandomString, wait, readBlobAsText, readBlobAsArrayBuffer } from '../support/utils'
+import { getRandomString, wait, readBlobAsText, readBlobAsArrayBuffer } from '../../support/utils'
 
 const databaseName = 'test-db'
 
@@ -644,7 +644,7 @@ describe('File Storage', function () {
           throw new Error('should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.equal('DatabaseNameTooLong')
-          expect(e.message, 'error message').to.equal('Database name cannot be more than 50 characters.')
+          expect(e.message, 'error message').to.equal('Database name cannot be more than 100 characters.')
           expect(e.status, 'error status').to.equal(400)
         }
 
@@ -1295,7 +1295,7 @@ describe('File Storage', function () {
           throw new Error('should have failed')
         } catch (e) {
           expect(e.name, 'error name').to.equal('DatabaseNameTooLong')
-          expect(e.message, 'error message').to.equal('Database name cannot be more than 50 characters.')
+          expect(e.message, 'error message').to.equal('Database name cannot be more than 100 characters.')
           expect(e.status, 'error status').to.equal(400)
         }
 
