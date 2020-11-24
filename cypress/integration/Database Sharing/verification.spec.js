@@ -235,6 +235,7 @@ describe('DB Sharing Tests', function () {
         isOwner: false,
         readOnly: true,
         resharingAllowed: true,
+        encryptionMode: 'end-to-end',
       }
     }
 
