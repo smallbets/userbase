@@ -1,3 +1,15 @@
+## [2.4.0] - 2020-11-24
+### Added
+- Encryption modes 'end-to-end' or 'server-side' set by the admin in the Admin panel are respected by the client. Databases created in 'end-to-end' mode remain end-to-end encrypted same as before (the default behavior). Databases created in 'server-side' mode store the plaintext database encryption key on the server; these databases can be recovered if a user forgets their password and loses access to their device.
+- getDatabases() returns a database's `encryptionMode`.
+- sign() returns a boolean `changePassword` if the user needs to change their password to access database and payments functions in the SDK.
+- forgotPassword() accepts a new optional parameter `deleteEndToEndEncryptedData` to allow users of an app with encryption mode set to 'end-to-end' who forget their password and lose access to their device to regain access to their account.
+- openDatabase(), insertItem(), updateItem(), putTransaction(), uploadFile(), and getFile() all take a new optional parameter `encryptionMode` to override an app's default behavior for a database.
+
+### Fixed
+- signIn() signs in correctly when a user provides the correct password but their seed stored in browser storage is incorrect, rather than throw ServiceUnavailable.
+- init() returns the `lastUsedUsername` when a user's seed stored in browser storage is incorrect, rather than throw ServiceUnavailable.
+
 ## [2.3.0] - 2020-10-26
 ### Added
 - uploadFile() now accepts an optional `progressHandler` callback, which passes total `bytesTransferred` back to the caller every 512 KB uploaded.
@@ -5,7 +17,7 @@
 ### Changed
 - `databaseName` can now be up to 100 characters, rather than 50 characters.
 - forgotPassword() gives a more user-friendly error message if the user attempts to call it from a device that does not have their key saved.
-- signIn() gives a more user-friendly error message if the user attempts to sign in using a temporary password from a device that does not ahve their key saved.
+- signIn() gives a more user-friendly error message if the user attempts to sign in using a temporary password from a device that does not have their key saved.
 
 ### Fixed
 - typescript file's getDatabases() returns correct object type.
