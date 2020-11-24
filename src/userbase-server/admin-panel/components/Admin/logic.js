@@ -69,13 +69,14 @@ const createAdmin = async (email, password, fullName, receiveEmailUpdates) => {
   }
 }
 
-const createApp = async (appName) => {
+const createApp = async (appName, encryptionMode) => {
   try {
     const appResponse = await axios({
       method: 'POST',
       url: `/${VERSION}/admin/create-app`,
       data: {
-        appName
+        appName,
+        encryptionMode,
       },
       timeout: TEN_SECONDS_MS
     })

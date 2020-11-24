@@ -189,6 +189,18 @@ const disablePayments = async (appName, appId) => {
   }
 }
 
+const modifyEncryptionMode = async (appId, appName, encryptionMode) => {
+  try {
+    await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/apps/${appId}/encryption-mode?appName=${encodeURIComponent(appName)}&encryptionMode=${encodeURIComponent(encryptionMode)}`,
+      timeout: TEN_SECONDS_MS
+    })
+  } catch (e) {
+    adminLogic.errorHandler(e)
+  }
+}
+
 export default {
   listApps,
   listAppUsers,
@@ -203,4 +215,5 @@ export default {
   enableTestPayments,
   enableProdPayments,
   disablePayments,
+  modifyEncryptionMode,
 }

@@ -6,6 +6,7 @@ import dashboardLogic from './logic'
 import adminLogic from '../Admin/logic'
 import UnknownError from '../Admin/UnknownError'
 import { formatSize } from '../../utils'
+import EncryptionModeModal from './EncryptionModeModal'
 
 export default class Dashboard extends Component {
   constructor(props) {
@@ -17,7 +18,8 @@ export default class Dashboard extends Component {
       showDeletedApps: false,
       appName: '',
       loading: true,
-      loadingApp: false
+      loadingApp: false,
+      encryptionMode: 'end-to-end',
     }
 
     this.handleCreateApp = this.handleCreateApp.bind(this)
@@ -25,6 +27,9 @@ export default class Dashboard extends Component {
     this.handleShowDeletedApps = this.handleShowDeletedApps.bind(this)
     this.handleHideDeletedApps = this.handleHideDeletedApps.bind(this)
     this.handlePermanentDeleteApp = this.handlePermanentDeleteApp.bind(this)
+    this.handleSetEncryptionMode = this.handleSetEncryptionMode.bind(this)
+    this.handleShowEncryptionModeModal = this.handleShowEncryptionModeModal.bind(this)
+    this.handleHideEncryptionModeModal = this.handleHideEncryptionModeModal.bind(this)
   }
 
   async componentDidMount() {
@@ -72,14 +77,14 @@ export default class Dashboard extends Component {
 
   async handleCreateApp(e) {
     e.preventDefault()
-    const { appName, activeApps, loadingApp } = this.state
+    const { appName, encryptionMode, activeApps, loadingApp } = this.state
 
     if (loadingApp) return
 
     try {
       this.setState({ loadingApp: true })
 
-      const app = await adminLogic.createApp(appName)
+      const app = await adminLogic.createApp(appName, encryptionMode)
 
       let insertionIndex = activeApps.findIndex((activeApp) => (activeApp['app-name'].toLowerCase() > app['app-name'].toLowerCase()))
       if (insertionIndex === -1) {
@@ -149,10 +154,22 @@ export default class Dashboard extends Component {
     }
   }
 
+  handleSetEncryptionMode(encryptionMode) {
+    this.setState({ encryptionMode })
+  }
+
+  handleShowEncryptionModeModal() {
+    this.setState({ showEncryptionModeModal: true })
+  }
+
+  handleHideEncryptionModeModal() {
+    this.setState({ showEncryptionModeModal: false })
+  }
+
   render() {
     const { admin } = this.props
     const { size, sizeAllowed } = admin
-    const { loading, activeApps, deletedApps, showDeletedApps, error, appName, loadingApp } = this.state
+    const { loading, activeApps, deletedApps, showDeletedApps, error, appName, encryptionMode, showEncryptionModeModal, loadingApp } = this.state
 
     return (
       <div className='text-xs sm:text-sm'>
@@ -173,6 +190,8 @@ export default class Dashboard extends Component {
                   }
                 </span>
               </div>
+
+              {showEncryptionModeModal && <EncryptionModeModal handleHideEncryptionModeModal={this.handleHideEncryptionModeModal} />}
 
               {
                 (!adminLogic.saasSubscriptionNotActive(admin)) ? <div />
@@ -220,7 +239,7 @@ export default class Dashboard extends Component {
               {!adminLogic.saasSubscriptionNotActive(admin) &&
 
                 <form className={`flex text-left ${(activeApps && activeApps.length) ? 'mt-8' : ''}`}>
-                  <div className='flex-1'>
+                  <div className='flex-1 my-auto'>
                     <input
                       className='input-text text-xs sm:text-sm w-36 xs:w-48'
                       type='text'
@@ -232,7 +251,34 @@ export default class Dashboard extends Component {
                     />
                   </div>
 
-                  <div className='flex-1 text-center'>
+                  <div className='flex-3 my-auto ml-6 mr-2 text-left'>
+                    <span className='inline-block mr-3 align-top'>
+                      <div className='font-semibold text-sm'>Encryption Mode</div>
+                      <a className='font-light italic underline text-xs cursor-pointer select-none' onClick={this.handleShowEncryptionModeModal}>What&apos;s this?</a>
+                    </span>
+                    <span className='inline-block'>
+                      <div>
+                        <input className='align-middle mb-1 mr-2 cursor-pointer' type='radio'
+                          checked={encryptionMode === 'end-to-end'}
+                          onChange={() => this.handleSetEncryptionMode('end-to-end')}
+                        />
+                        <label className='font-light cursor-pointer'
+                          onClick={() => this.handleSetEncryptionMode('end-to-end')}
+                        >End-to-end</label>
+                      </div>
+                      <div>
+                        <input className='align-middle mb-1 mr-2 cursor-pointer' type='radio'
+                          checked={encryptionMode === 'server-side'}
+                          onChange={() => this.handleSetEncryptionMode('server-side')}
+                        />
+                        <label className='font-light cursor-pointer'
+                          onClick={() => this.handleSetEncryptionMode('server-side')}
+                        >Server-side</label>
+                      </div>
+                    </span>
+                  </div>
+
+                  <div className='flex-1 my-auto text-center'>
                     <input
                       className='btn'
                       type='submit'

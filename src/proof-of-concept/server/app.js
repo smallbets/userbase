@@ -34,6 +34,9 @@ const POC_APP_ID = 'poc-id'
 const TEST_APP_NAME = 'test-integration'
 const TEST_APP_ID = 'test-id'
 
+const SERVER_SIDE_ENCRYPTION_MODE_APP_NAME = 'test-server-side-encryption-mode'
+const SERVER_SIDE_ENCRYPTION_MODE_APP_ID = 'server-side-app-id'
+
 const CONFLICT_STATUS_CODE = 409
 
 start()
@@ -74,6 +77,10 @@ async function setupApps() {
     await Promise.all([
       userbaseServer.createApp({ appName: POC_APP_NAME, adminId: ADMIN_ID, appId: POC_APP_ID }),
       userbaseServer.createApp({ appName: TEST_APP_NAME, adminId: ADMIN_ID, appId: TEST_APP_ID }),
+      userbaseServer.createApp({
+        appName: SERVER_SIDE_ENCRYPTION_MODE_APP_NAME, adminId: ADMIN_ID,
+        appId: SERVER_SIDE_ENCRYPTION_MODE_APP_ID, encryptionMode: 'server-side'
+      })
     ])
   } catch (e) {
     if (!e || e.status !== CONFLICT_STATUS_CODE) {

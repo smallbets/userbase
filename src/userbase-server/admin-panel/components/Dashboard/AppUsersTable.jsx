@@ -1,7 +1,7 @@
 import React, { Component } from 'react'
 import { string, object } from 'prop-types'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { faTrashAlt } from '@fortawesome/free-regular-svg-icons'
+import { faTrashAlt, faQuestionCircle } from '@fortawesome/free-regular-svg-icons'
 import dashboardLogic from './logic'
 import adminLogic from '../Admin/logic'
 import UnknownError from '../Admin/UnknownError'
@@ -9,6 +9,7 @@ import { formatDate, formatSize } from '../../utils'
 import { ProfileTable } from './ProfileTable'
 import { StripeDataTable } from './StripeDataTable'
 import { STRIPE_CLIENT_ID, getStripeState } from '../../config'
+import EncryptionModeModal from './EncryptionModeModal'
 
 // admin must have an active Userbase subscripion & active payments add-on subscription to enable prod payments
 const prodPaymentsAllowed = ({ paymentStatus, cancelSaasSubscriptionAt, paymentsAddOnSubscriptionStatus, cancelPaymentsAddOnSubscriptionAt }) => {
@@ -28,6 +29,7 @@ export default class AppUsersTable extends Component {
       deletedUsers: [],
       loading: true,
       showDeletedUsers: false,
+      showEncryptionModeModal: false,
       paymentsState: {
         paymentsMode: 'disabled',
         testSubscriptionPlanId: '',
@@ -60,6 +62,9 @@ export default class AppUsersTable extends Component {
     this.handleEnableTestPayments = this.handleEnableTestPayments.bind(this)
     this.handleEnableProdPayments = this.handleEnableProdPayments.bind(this)
     this.handleDisablePayments = this.handleDisablePayments.bind(this)
+    this.handleSetEncryptionMode = this.handleSetEncryptionMode.bind(this)
+    this.handleShowEncryptionModeModal = this.handleShowEncryptionModeModal.bind(this)
+    this.handleHideEncryptionModeModal = this.handleHideEncryptionModeModal.bind(this)
   }
 
   async componentDidMount() {
@@ -69,7 +74,7 @@ export default class AppUsersTable extends Component {
     const { paymentsState } = this.state
 
     try {
-      const { users, appId, paymentsMode, testSubscriptionPlanId, prodSubscriptionPlanId } = await dashboardLogic.listAppUsers(appName)
+      const { users, appId, encryptionMode, paymentsMode, testSubscriptionPlanId, prodSubscriptionPlanId } = await dashboardLogic.listAppUsers(appName)
 
       // sort by date in descending order
       const appUsers = users.sort((a, b) => new Date(b['creationDate']) - new Date(a['creationDate']))
@@ -93,7 +98,7 @@ export default class AppUsersTable extends Component {
           : paymentsMode
       }
 
-      if (this._isMounted) this.setState({ appId, activeUsers, deletedUsers, loading: false, paymentsState: updatedPaymentsState })
+      if (this._isMounted) this.setState({ appId, encryptionMode, activeUsers, deletedUsers, loading: false, paymentsState: updatedPaymentsState })
     } catch (e) {
       if (this._isMounted) this.setState({ error: e.message, loading: false })
     }
@@ -570,6 +575,35 @@ export default class AppUsersTable extends Component {
     }
   }
 
+  async handleSetEncryptionMode(encryptionMode) {
+    if (encryptionMode === this.state.encryptionMode) return
+    const { appName } = this.props
+    const { loadingEncryptionMode, appId } = this.state
+
+    if (loadingEncryptionMode) return
+
+    this.setState({ errorEncryptionMode: false })
+
+    if (window.confirm("Are you sure you want to modify your application's encryption mode?\n\nModifying the encryption mode while you have active users is not recommended, and could render their data inaccessible.")) {
+      try {
+        this.setState({ loadingEncryptionMode: true })
+
+        await dashboardLogic.modifyEncryptionMode(appId, appName, encryptionMode)
+        if (this._isMounted) this.setState({ loadingEncryptionMode: false, encryptionMode })
+      } catch (e) {
+        if (this._isMounted) this.setState({ loadingEncryptionMode: false, errorEncryptionMode: e.message })
+      }
+    }
+  }
+
+  handleShowEncryptionModeModal() {
+    this.setState({ showEncryptionModeModal: true })
+  }
+
+  handleHideEncryptionModeModal() {
+    this.setState({ showEncryptionModeModal: false })
+  }
+
   render() {
     const { appName, admin } = this.props
     const { connectedToStripe } = admin
@@ -580,6 +614,11 @@ export default class AppUsersTable extends Component {
       error,
       showDeletedUsers,
       paymentsState,
+      appId,
+      encryptionMode,
+      loadingEncryptionMode,
+      errorEncryptionMode,
+      showEncryptionModeModal,
     } = this.state
 
     const {
@@ -603,15 +642,29 @@ export default class AppUsersTable extends Component {
         <div className='container content'>
 
           <div className='mb-6'>
-            <div className='mb-4'>
-              <span>
-                <span className='text-lg sm:text-xl text-left'>{appName}</span>
-                {activeUsers && activeUsers.length > 0 &&
-                  <span className='font-light text-md ml-2'>
-                    ({activeUsers.length} user{`${activeUsers.length === 1 ? '' : 's'}`})
-                  </span>}
-              </span>
+            <div className='mb-2'>
+              <span className='text-lg sm:text-xl text-left'>{appName}</span>
+              {activeUsers && activeUsers.length > 0 &&
+                <span className='font-light text-md ml-2'>
+                  ({activeUsers.length} user{`${activeUsers.length === 1 ? '' : 's'}`})
+                </span>}
             </div>
+
+            {appId &&
+              <div>
+                <div className='text-md text-gray-800'>
+                  App ID:
+                  <span className='font-light font-mono ml-2 text-xs'>{appId}</span>
+                </div>
+                <div className='mb-6 text-md text-gray-800'>
+                  Encryption Mode <a className='font-light cursor-pointer text-yellow-700' onClick={this.handleShowEncryptionModeModal}><FontAwesomeIcon icon={faQuestionCircle} /></a>:
+                  <span className='font-light ml-2 text-sm capitalize text-black'>{encryptionMode}</span>
+                </div>
+              </div>
+            }
+
+            {showEncryptionModeModal && <EncryptionModeModal handleHideEncryptionModeModal={this.handleHideEncryptionModeModal} />}
+
             {
               !adminLogic.saasSubscriptionNotActive(admin) ? <div />
                 : <div className='text-left mb-4 text-red-600 font-normal'>
@@ -1084,13 +1137,46 @@ export default class AppUsersTable extends Component {
             )}
           </div>
 
-          {adminLogic.saasSubscriptionNotActive(admin)
-            ? <div />
-            : <div>
-              <hr className='border border-t-0 border-gray-400 mt-8 mb-6' />
+          <hr className='border border-t-0 border-gray-400 mt-8 mb-6' />
 
-              <div className='flex-0 text-lg sm:text-xl text-left mb-4 text-red-600'>Danger Zone</div>
+          <div className='flex-0 text-lg sm:text-xl text-left mb-4 text-red-600'>Danger Zone</div>
 
+          <div className='mb-4'>
+            <div className='flex-0 text-base sm:text-lg text-left mb-1'>Encryption Mode</div>
+            <p className='text-left font-normal'>Modifying the encryption mode alters the default settings in your Userbase SDK. Modifying the encryption mode while you have active users is not recommended, and could render their data inaccessible. <a className='underline cursor-pointer' onClick={this.handleShowEncryptionModeModal}>Learn more</a> about the encryption modes.</p>
+
+            <div className='text-center'>
+              <div>
+                <input className={'align-middle mb-1 mr-2 ' + (loadingEncryptionMode ? 'cursor-wait' : 'cursor-pointer')} type='radio'
+                  checked={encryptionMode === 'end-to-end'}
+                  disabled={loadingEncryptionMode}
+                  onChange={() => this.handleSetEncryptionMode('end-to-end')}
+                />
+                <label className={'font-light ' + (loadingEncryptionMode ? 'cursor-wait' : 'cursor-pointer')}
+                  onClick={() => this.handleSetEncryptionMode('end-to-end')}
+                >End-to-end</label>
+              </div>
+              <div>
+                <input className={'align-middle mb-1 mr-2 ' + (loadingEncryptionMode ? 'cursor-wait' : 'cursor-pointer')} type='radio'
+                  checked={encryptionMode === 'server-side'}
+                  disabled={loadingEncryptionMode}
+                  onChange={() => this.handleSetEncryptionMode('server-side')}
+                />
+                <label className={'font-light ' + (loadingEncryptionMode ? 'cursor-wait' : 'cursor-pointer')}
+                  onClick={() => this.handleSetEncryptionMode('server-side')}
+                >Server-side</label>
+              </div>
+
+              {errorEncryptionMode && (
+                errorEncryptionMode === 'Unknown Error'
+                  ? <UnknownError />
+                  : <div className='error'>{errorEncryptionMode}</div>
+              )}
+            </div>
+          </div>
+
+          {!adminLogic.saasSubscriptionNotActive(admin) &&
+            <div>
               <div className='flex-0 text-base sm:text-lg text-left mb-1'>Delete App</div>
               <p className='text-left font-normal'>By deleting this app, your users will lose access to their accounts. This action becomes irreversible once the app is permanently deleted.</p>
 
@@ -1106,8 +1192,7 @@ export default class AppUsersTable extends Component {
           }
 
         </div>
-
-      </div >
+      </div>
     )
   }
 }

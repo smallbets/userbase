@@ -405,7 +405,7 @@ export default class Connections {
 
     if (!conn.databases[databaseId]) {
       conn.openDatabase(databaseId, dbNameHash, bundleSeqNo, reopenAtSeqNo, isOwner, attribution)
-      logger.child({ connectionId, databaseId, adminId: conn.adminId }).info('Database opened')
+      logger.child({ connectionId, databaseId, adminId: conn.adminId, encryptionMode: plaintextDbKey ? 'server-side' : 'end-to-end' }).info('Database opened')
     }
 
     conn.push(databaseId, dbNameHash, dbKey, reopenAtSeqNo, plaintextDbKey)
