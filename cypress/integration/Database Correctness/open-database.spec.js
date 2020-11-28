@@ -48,6 +48,18 @@ describe('DB Correctness Tests', function () {
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
       })
 
+      it('Open 1 Database with changeHandler that fails on first open', async function () {
+        let changeHandlerCallCount = 0
+
+        const changeHandler = function () {
+          changeHandlerCallCount += 1
+          throw new Error('Change handler fails')
+        }
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+      })
+
       it('Open 2 Databases sequentially with the same name', async function () {
         let changeHandler1CallCount = 0
         let changeHandler2CallCount = 0
@@ -58,6 +70,26 @@ describe('DB Correctness Tests', function () {
 
         const changeHandler2 = function () {
           changeHandler2CallCount += 1
+        }
+
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: changeHandler1 })
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: changeHandler2 })
+
+        expect(changeHandler1CallCount, 'changeHandler 1 called correct number of times').to.equal(1)
+        expect(changeHandler2CallCount, 'changeHandler 2 called correct number of times').to.equal(1)
+      })
+
+      it('Open 2 Databases sequentially with the same name, second changeHandler fails on first open', async function () {
+        let changeHandler1CallCount = 0
+        let changeHandler2CallCount = 0
+
+        const changeHandler1 = function () {
+          changeHandler1CallCount += 1
+        }
+
+        const changeHandler2 = function () {
+          changeHandler2CallCount += 1
+          throw new Error('Change handler fails')
         }
 
         await this.test.userbase.openDatabase({ databaseName, changeHandler: changeHandler1 })

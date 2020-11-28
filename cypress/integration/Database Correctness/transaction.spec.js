@@ -101,6 +101,43 @@ describe('DB Correctness Tests', function () {
         expect(successful, 'successful state').to.be.true
       })
 
+      it('Insert 1 Item, then changeHandler fails, then insert another', async function () {
+        const itemToInsert = {
+          key1: 'Test',
+          key2: 123
+        }
+
+        let successful
+        let changeHandlerCallCount = 0
+
+        const changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (changeHandlerCallCount === 2) {
+            expect(items, 'items array to have correct length').to.have.lengthOf(1)
+
+            const insertedItem = items[0]
+            expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
+
+            const { item, itemId } = insertedItem
+            expect(item, 'item in items array passed to changeHandler').to.deep.equal(itemToInsert)
+            expect(itemId, 'item ID of item in items array passed to changeHandler').to.be.a('string')
+
+            throw new Error('Change handler fails')
+          } else if (changeHandlerCallCount === 3) {
+            expect(items, 'items array to have correct length').to.have.lengthOf(2)
+            successful = true
+          }
+        }
+
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+        await this.test.userbase.insertItem({ databaseName, item: itemToInsert })
+        await this.test.userbase.insertItem({ databaseName, item: itemToInsert })
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(3)
+        expect(successful, 'successful state').to.be.true
+      })
+
       it('Update 1 Item', async function () {
         const testItemId = 'test-id'
         const itemToInsert = {
