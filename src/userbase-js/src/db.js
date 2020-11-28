@@ -114,7 +114,7 @@ class UnverifiedTransaction {
 
 class Database {
   constructor(changeHandler, receivedMessage) {
-    this.onChange = changeHandler
+    this.onChange = _setChangeHandler(changeHandler)
 
     this.items = {}
     this.fileIds = {}
@@ -487,9 +487,19 @@ class Database {
   }
 }
 
+const _setChangeHandler = (changeHandler) => {
+  return (items) => {
+    try {
+      changeHandler(items)
+    } catch (e) {
+      console.error('There was an error in your changeHandler.\n\n', e)
+    }
+  }
+}
+
 const _idempotentOpenDatabase = (database, changeHandler, receivedMessage) => {
   // safe to replace -- enables idempotent calls to openDatabase
-  database.onChange = changeHandler
+  database.onChange = _setChangeHandler(changeHandler)
 
   // if 1 call succeeds, all idempotent calls succeed
   const currentReceivedMessage = database.receivedMessage
@@ -500,7 +510,7 @@ const _idempotentOpenDatabase = (database, changeHandler, receivedMessage) => {
 
   // database is already open, can return successfully
   if (database.init) {
-    changeHandler(database.getItems())
+    database.onChange(database.getItems())
     database.receivedMessage()
     return true
   }
