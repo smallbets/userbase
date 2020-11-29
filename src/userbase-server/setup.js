@@ -4,7 +4,6 @@ import logger from './logger'
 import crypto from './crypto'
 import peers from './peers'
 import nightly from './nightly'
-import { wait } from './utils'
 
 let awsAccountId
 let initialized = false
@@ -476,10 +475,7 @@ async function createBucket(s3, params) {
     await s3.createBucket(params).promise()
     logger.info(`Bucket ${params.Bucket} created successfully`)
   } catch (e) {
-    if (e.message.includes('Please try again')) {
-      await wait(3000)
-      return createBucket(s3, params)
-    } else if (!e.message.includes('Your previous request to create the named bucket succeeded')) {
+    if (!e.message.includes('Your previous request to create the named bucket succeeded')) {
       throw e
     }
   }
