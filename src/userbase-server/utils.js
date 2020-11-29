@@ -134,3 +134,5 @@ export const nextPageTokenToLastEvaluatedKey = (nextPageToken, validateLastEvalu
     }
   }
 }
+
+export const wait = (ms) => new Promise((resolve) => setTimeout(() => resolve(), ms))
