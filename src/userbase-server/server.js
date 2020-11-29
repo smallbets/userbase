@@ -727,7 +727,7 @@ async function start(express, app, userbaseConfig = {}) {
     })
 
   } catch (e) {
-    logger.fatal(`Unhandled error while launching server: ${e}`)
+    logger.child(e).fatal('Unhandled error while launching server')
   }
 }
 
