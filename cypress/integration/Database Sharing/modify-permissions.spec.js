@@ -297,7 +297,7 @@ describe('DB Sharing Tests', function () {
         const sender = await signUp(this.test.userbase)
         await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
 
-        // sender shares database with recipient with readOnly true, then modifies to readOnly false
+        // sender shares database with recipient, then revokes
         await this.test.userbase.shareDatabase({ databaseName, username: recipient.username, requireVerified: false, readOnly: true })
         await this.test.userbase.modifyDatabasePermissions({ databaseName, username: recipient.username, revoke: true })
 
@@ -309,8 +309,34 @@ describe('DB Sharing Tests', function () {
 
         // recipient signs in and should not see database in response to getDatabases()
         await this.test.userbase.signIn({ username: recipient.username, password: recipient.password, rememberMe: 'none' })
+
+        // clean up
+        await this.test.userbase.deleteUser()
+        await this.test.userbase.signIn({ username: sender.username, password: sender.password, rememberMe: 'none' })
+        await this.test.userbase.deleteUser()
+      })
+
+      it('revoke self', async function () {
+        const recipient = await signUp(this.test.userbase)
+        await this.test.userbase.signOut()
+
+        const sender = await signUp(this.test.userbase)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        // sender shares database with recipient
+        await this.test.userbase.shareDatabase({ databaseName, username: recipient.username, requireVerified: false, readOnly: true })
+
+        await this.test.userbase.signOut()
+
+        // recipient signs in, then revokes self
+        await this.test.userbase.signIn({ username: recipient.username, password: recipient.password, rememberMe: 'none' })
         const { databases } = await this.test.userbase.getDatabases()
-        expect(databases, 'databases array').to.deep.equal([])
+        const { databaseId } = databases[0]
+        await this.test.userbase.modifyDatabasePermissions({ databaseId, username: recipient.username, revoke: true })
+
+        // recipient should not have access to any databases
+        const databasesResult = await this.test.userbase.getDatabases()
+        expect(databasesResult.databases, 'databases array').to.deep.equal([])
 
         // clean up
         await this.test.userbase.deleteUser()

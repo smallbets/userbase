@@ -1082,7 +1082,7 @@ exports.getChunk = async function (logChildObject, userId, connectionId, databas
   }
 }
 
-const _validateShareDatabase = async function (sender, dbId, dbNameHash, recipientUsername, readOnly) {
+const _validateShareDatabase = async function (sender, dbId, dbNameHash, recipientUsername, readOnly, revoke) {
   const [database, senderUserDb, recipient] = await Promise.all([
     findDatabaseByDatabaseId(dbId),
     _getUserDatabase(sender['user-id'], dbNameHash),
@@ -1099,12 +1099,13 @@ const _validateShareDatabase = async function (sender, dbId, dbNameHash, recipie
     error: { message: 'UserNotFound' }
   }
 
-  if (sender['user-id'] === recipient['user-id']) throw {
+  const revokingSelf = revoke && sender['user-id'] === recipient['user-id']
+  if (sender['user-id'] === recipient['user-id'] && !revokingSelf) throw {
     status: statusCodes['Conflict'],
     error: { message: 'SharingWithSelfNotAllowed' }
   }
 
-  if (database['owner-id'] !== sender['user-id'] && !senderUserDb['resharing-allowed']) throw {
+  if (database['owner-id'] !== sender['user-id'] && !senderUserDb['resharing-allowed'] && !revokingSelf) throw {
     status: statusCodes['Forbidden'],
     error: { message: 'ResharingNotAllowed' }
   }
@@ -1242,7 +1243,7 @@ exports.saveDatabase = async function (logChildObject, user, dbNameHash, encrypt
 
 exports.modifyDatabasePermissions = async function (logChildObject, sender, dbId, dbNameHash, recipientUsername, readOnly, resharingAllowed, revoke) {
   try {
-    const { database, senderUserDb, recipient } = await _validateShareDatabase(sender, dbId, dbNameHash, recipientUsername, readOnly)
+    const { database, senderUserDb, recipient } = await _validateShareDatabase(sender, dbId, dbNameHash, recipientUsername, readOnly, revoke)
     const recipientUserDb = await _getUserDatabaseByUserIdAndDatabaseId(recipient['user-id'], senderUserDb['database-id'])
 
     if (recipientUserDb && recipientUserDb['user-id'] === database['owner-id']) throw {
