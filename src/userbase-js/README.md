@@ -20,8 +20,8 @@ Userbase is [100% open source](https://github.com/encrypted-dev/userbase), MIT l
 If you're building a web app, you will likely need a database and a backend. Userbase can replace both of those things...
 
 - If you want to build a web app without writing any backend code.
-- If you never want to see your users' data.
-- If you're tired of dealing with databases.
+- If you want secure authentication out of the box.
+- If you want to store user data securely.
 - If you want to radically simplify your GDPR compliance.
 - And if you want to keep things really simple.
 
