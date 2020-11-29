@@ -15,7 +15,7 @@ import appController from './app'
 import connections from './ws'
 import statusCodes from './statusCodes'
 import responseBuilder from './responseBuilder'
-import { trimReq, truncateSessionId } from './utils'
+import { trimReq, truncateSessionId, wait } from './utils'
 import stripe from './stripe'
 
 const adminPanelDir = '/admin-panel/dist'
@@ -727,7 +727,12 @@ async function start(express, app, userbaseConfig = {}) {
     })
 
   } catch (e) {
-    logger.info(`Unhandled error while launching server: ${e}`)
+    if (e.message.includes('Please try again')) {
+      await wait(Math.random() * 8000)
+      return start(express, app, userbaseConfig = {})
+    } else {
+      logger.child(e).fatal('Unhandled error while launching server')
+    }
   }
 }
 
