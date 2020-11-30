@@ -1,3 +1,10 @@
+## [2.4.1] - 2020-11-30
+### Changed
+- modifyDatabasePermissions() now accepts self if user wants to revoke own access to database.
+
+### Fixed
+- If developer provides `changeHandler` that throws when executed, SDK catches the error then passes to console.error and continues, rather than throw ServiceUnavailable.
+
 ## [2.4.0] - 2020-11-24
 ### Added
 - Encryption modes 'end-to-end' or 'server-side' set by the admin in the Admin panel are respected by the client. Databases created in 'end-to-end' mode remain end-to-end encrypted same as before (the default behavior). Databases created in 'server-side' mode store the plaintext database encryption key on the server; these databases can be recovered if a user forgets their password and loses access to their device.
