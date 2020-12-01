@@ -226,7 +226,7 @@ const _deleteConnectedStripeCustomer = async (customerId, stripeAccount, useTest
       await stripe.getClient(useTestClient).customers.del(customerId, { stripeAccount })
     } catch (e) {
       // only ok to let fail if customer is already deleted
-      if (e.message !== 'No such customer: ' + customerId) throw e
+      if (e.message !== `No such customer: '${customerId}'`) throw e
     }
   }
 }
@@ -446,7 +446,7 @@ const _deleteStripeCustomer = async (customerId) => {
       await stripe.getClient().customers.del(customerId)
     } catch (e) {
       // only ok to let fail if customer is already deleted
-      if (e.message !== 'No such customer: ' + customerId) throw e
+      if (e.message !== `No such customer: '${customerId}'`) throw e
     }
   }
 }
