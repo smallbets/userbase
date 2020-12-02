@@ -10,7 +10,7 @@ const beforeEachHook = function () {
 
     const { serverSideEncryptionModeAppId, endpoint } = Cypress.env()
     win._userbaseEndpoint = endpoint
-    userbase.init({ appId: serverSideEncryptionModeAppId })
+    userbase.init({ appId: serverSideEncryptionModeAppId, allowServerSideEncryption: true })
 
     const randomUser = 'test-user-' + getRandomString()
     const password = getRandomString()
@@ -24,6 +24,7 @@ const beforeEachHook = function () {
 
     this.currentTest.username = randomUser
     this.currentTest.password = password
+    this.currentTest.serverSideEncryptionModeAppId = serverSideEncryptionModeAppId
   })
 }
 
@@ -369,6 +370,21 @@ describe('DB Tests', function () {
         }
       })
 
+      it('Server-side encryption mode not allowed', async function () {
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        // assumes idempotent calls to init allowed
+        this.test.userbase.init({ appId: this.test.serverSideEncryptionModeAppId, allowServerSideEncryption: false })
+
+        try {
+          await this.test.userbase.insertItem({ databaseName, item: 'hello world' })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.equal('ServerSideEncryptionNotEnabledInClient')
+          expect(e.message, 'error message').to.equal('Server-side encryption must be enabled in the client to use it. To enable it, set allowServerSideEncryption to true in init().')
+          expect(e.status, 'error status').to.equal(403)
+        }
+      })
     })
 
   })

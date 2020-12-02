@@ -731,7 +731,7 @@ async function start(express, app, userbaseConfig = {}) {
       await wait(Math.random() * 8000)
       return start(express, app, userbaseConfig = {})
     } else {
-      logger.child(e).fatal('Unhandled error while launching server')
+      logger.child(e).fatal(`Unhandled error while launching server ${e}`)
     }
   }
 }

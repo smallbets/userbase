@@ -8,6 +8,7 @@ import statusCodes from './statusCodes'
 import { byteSizeOfString, Queue, objectHasOwnProperty } from './utils'
 import { arrayBufferToString, stringToArrayBuffer } from './Crypto/utils'
 import api from './api'
+import config from './config'
 
 const success = 'Success'
 
@@ -626,6 +627,12 @@ const _createDatabase = async (dbName, encryptionMode) => {
   return newDatabaseParams
 }
 
+const _validateEncryptionMode = (encryptionMode) => {
+  if (encryptionMode === 'server-side' && !config.isServerSideEncryptionModeAllowed()) {
+    throw new errors.ServerSideEncryptionNotEnabledInClient
+  }
+}
+
 const _validateDbName = (dbName) => {
   if (typeof dbName !== 'string') throw new errors.DatabaseNameMustBeString
   if (dbName.length === 0) throw new errors.DatabaseNameCannotBeBlank
@@ -673,6 +680,7 @@ const openDatabase = async (params) => {
     const { databaseName, databaseId, changeHandler, encryptionMode = ws.encryptionMode } = params
 
     if (typeof changeHandler !== 'function') throw new errors.ChangeHandlerMustBeFunction
+    _validateEncryptionMode(encryptionMode)
 
     if (databaseName) {
       const dbNameHash = encryptionMode === 'server-side'
@@ -708,6 +716,7 @@ const openDatabase = async (params) => {
       case 'ChangeHandlerMissing':
       case 'ChangeHandlerMustBeFunction':
       case 'EncryptionModeNotValid':
+      case 'ServerSideEncryptionNotEnabledInClient':
       case 'UserMustChangePassword':
       case 'UserNotSignedIn':
       case 'UserNotFound':
@@ -727,6 +736,8 @@ const openDatabase = async (params) => {
 }
 
 const getOpenDb = (dbName, databaseId, encryptionMode = 'end-to-end') => {
+  _validateEncryptionMode(encryptionMode)
+
   const dbNameHash = encryptionMode === 'server-side' ? dbName : ws.state.dbNameToHash[dbName]
   const database = dbName
     ? ws.state.databases[dbNameHash]
@@ -763,6 +774,7 @@ const insertItem = async (params) => {
       case 'DatabaseIdNotAllowed':
       case 'DatabaseIsReadOnly':
       case 'EncryptionModeNotValid':
+      case 'ServerSideEncryptionNotEnabledInClient':
       case 'ItemIdMustBeString':
       case 'ItemIdCannotBeBlank':
       case 'ItemIdTooLong':
@@ -834,6 +846,7 @@ const updateItem = async (params) => {
       case 'DatabaseIdNotAllowed':
       case 'DatabaseIsReadOnly':
       case 'EncryptionModeNotValid':
+      case 'ServerSideEncryptionNotEnabledInClient':
       case 'ItemIdMissing':
       case 'ItemIdMustBeString':
       case 'ItemIdCannotBeBlank':
@@ -907,6 +920,7 @@ const deleteItem = async (params) => {
       case 'DatabaseIdNotAllowed':
       case 'DatabaseIsReadOnly':
       case 'EncryptionModeNotValid':
+      case 'ServerSideEncryptionNotEnabledInClient':
       case 'ItemIdMissing':
       case 'ItemIdMustBeString':
       case 'ItemIdCannotBeBlank':
@@ -1012,6 +1026,7 @@ const putTransaction = async (params) => {
       case 'DatabaseIdNotAllowed':
       case 'DatabaseIsReadOnly':
       case 'EncryptionModeNotValid':
+      case 'ServerSideEncryptionNotEnabledInClient':
       case 'OperationsMissing':
       case 'OperationsMustBeArray':
       case 'OperationsConflict':
@@ -1239,6 +1254,7 @@ const uploadFile = async (params) => {
       case 'DatabaseIdNotAllowed':
       case 'DatabaseIsReadOnly':
       case 'EncryptionModeNotValid':
+      case 'ServerSideEncryptionNotEnabledInClient':
       case 'ItemIdMissing':
       case 'ItemIdMustBeString':
       case 'ItemIdCannotBeBlank':
@@ -1397,6 +1413,7 @@ const getFile = async (params) => {
       case 'DatabaseIdNotAllowed':
       case 'DatabaseIsReadOnly':
       case 'EncryptionModeNotValid':
+      case 'ServerSideEncryptionNotEnabledInClient':
       case 'FileIdMissing':
       case 'FileIdMustBeString':
       case 'FileIdCannotBeBlank':
@@ -1648,6 +1665,7 @@ const getDatabases = async (params) => {
     const username = ws.session.username
 
     const encryptionMode = (params && params.encryptionMode) || ws.encryptionMode
+    _validateEncryptionMode(encryptionMode)
 
     try {
       const databases = []
@@ -1689,6 +1707,7 @@ const getDatabases = async (params) => {
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
       case 'EncryptionModeNotValid':
+      case 'ServerSideEncryptionNotEnabledInClient':
       case 'UserMustChangePassword':
       case 'UserNotSignedIn':
       case 'ServiceUnavailable':
@@ -1701,6 +1720,8 @@ const getDatabases = async (params) => {
 }
 
 const _getDatabase = async (databaseName, databaseId, encryptionMode = 'end-to-end') => {
+  _validateEncryptionMode(encryptionMode)
+
   let database
   try {
     // check if database is already open in memory
@@ -1793,6 +1814,7 @@ const shareDatabase = async (params) => {
     _validateDbSharingInput(params)
 
     const { databaseName, databaseId, encryptionMode = ws.encryptionMode } = params
+    _validateEncryptionMode(encryptionMode)
     const username = params.username.toLowerCase()
     const readOnly = objectHasOwnProperty(params, 'readOnly') ? params.readOnly : true
     const resharingAllowed = objectHasOwnProperty(params, 'resharingAllowed') ? params.resharingAllowed : false
@@ -1899,6 +1921,7 @@ const shareDatabase = async (params) => {
       case 'DatabaseIdNotAllowed':
       case 'DatabaseNotFound':
       case 'EncryptionModeNotValid':
+      case 'ServerSideEncryptionNotEnabledInClient':
       case 'UsernameMissing':
       case 'UsernameCannotBeBlank':
       case 'UsernameMustBeString':
@@ -1995,6 +2018,7 @@ const modifyDatabasePermissions = async (params) => {
       case 'DatabaseIdNotAllowed':
       case 'DatabaseNotFound':
       case 'EncryptionModeNotValid':
+      case 'ServerSideEncryptionNotEnabledInClient':
       case 'UsernameMissing':
       case 'UsernameCannotBeBlank':
       case 'UsernameMustBeString':

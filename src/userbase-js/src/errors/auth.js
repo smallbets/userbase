@@ -150,6 +150,16 @@ class SessionLengthTooLong extends Error {
   }
 }
 
+class AllowServerSideEncryptionMustBeBoolean extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'AllowServerSideEncryptionMustBeBoolean'
+    this.message = 'Allow server-side encryption value must be a boolean.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
 class UserAlreadySignedIn extends Error {
   constructor(username, ...params) {
     super(...params)
@@ -393,6 +403,7 @@ export default {
   SessionLengthMustBeNumber,
   SessionLengthTooShort,
   SessionLengthTooLong,
+  AllowServerSideEncryptionMustBeBoolean,
   UserAlreadySignedIn,
   UserPendingDeletion,
   AppIdNotValid,
