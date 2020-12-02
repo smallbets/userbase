@@ -112,7 +112,7 @@ export interface CancelSubscriptionResult {
 export type databaseNameXorId = ({ databaseId: string, databaseName?: never } | { databaseName: string, databaseId?: never });
 
 export interface Userbase {
-  init(params: { appId: string, updateUserHandler?: UpdateUserHandler, sessionLength?: number }): Promise<Session>
+  init(params: { appId: string, updateUserHandler?: UpdateUserHandler, sessionLength?: number, allowServerSideEncryption?: boolean }): Promise<Session>
 
   signUp(params: { username: string, password: string, email?: string, profile?: UserProfile, rememberMe?: RememberMeOption, sessionLength?: number }): Promise<UserResult>
 

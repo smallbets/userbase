@@ -58,7 +58,7 @@ export const estimateSizeOfDdbItem = (item) => {
   return bytes
 }
 
-export const trimReq = (req) => ({ id: req.id, url: req.url })
+export const trimReq = (req) => ({ id: req.id, url: req.url, headers: req.headers })
 
 export const truncateSessionId = (sessionId) => typeof sessionId === 'string' && sessionId.substring(0, 8) // limit sensitive logging
 

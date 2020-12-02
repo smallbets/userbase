@@ -90,6 +90,16 @@ class EncryptionModeNotValid extends Error {
   }
 }
 
+class ServerSideEncryptionNotEnabledInClient extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'ServerSideEncryptionNotEnabledInClient'
+    this.message = 'Server-side encryption must be enabled in the client to use it. To enable it, set allowServerSideEncryption to true in init().'
+    this.status = statusCodes['Forbidden']
+  }
+}
+
 class DatabaseNotOpen extends Error {
   constructor(...params) {
     super(...params)
@@ -740,6 +750,7 @@ export default {
   ChangeHandlerMissing,
   ChangeHandlerMustBeFunction,
   EncryptionModeNotValid,
+  ServerSideEncryptionNotEnabledInClient,
   DatabaseNotOpen,
   ItemMissing,
   ItemInvalid,

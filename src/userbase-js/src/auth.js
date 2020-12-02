@@ -527,6 +527,10 @@ const init = async (params) => {
       throw new errors.SessionLengthMustBeNumber
     }
 
+    if (objectHasOwnProperty(params, 'allowServerSideEncryption') && typeof params.allowServerSideEncryption !== 'boolean') {
+      throw new errors.AllowServerSideEncryptionMustBeBoolean
+    }
+
     config.configure(params)
 
     const session = await signInWithSession(params.appId, _calculateSessionLengthMs(params.sessionLength))
@@ -545,6 +549,7 @@ const init = async (params) => {
       case 'SessionLengthMustBeNumber':
       case 'SessionLengthTooShort':
       case 'SessionLengthTooLong':
+      case 'AllowServerSideEncryptionMustBeBoolean':
       case 'UserAlreadySignedIn':
       case 'ServiceUnavailable':
         throw e

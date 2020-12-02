@@ -1,3 +1,7 @@
+## [2.4.2] - 2020-12-02
+### Fixed
+- init() now accepts a parameter `allowServerSideEncryption` in order for the SDK to create and interact with databases in the 'server-side' encryption mode. This prevents a dishonest server from maliciously changing an app's encryption mode to server-side, thereby causing clients to store new data in plaintext.
+
 ## [2.4.1] - 2020-11-30
 ### Changed
 - modifyDatabasePermissions() now accepts self if user wants to revoke own access to database.
@@ -9,7 +13,7 @@
 ### Added
 - Encryption modes 'end-to-end' or 'server-side' set by the admin in the Admin panel are respected by the client. Databases created in 'end-to-end' mode remain end-to-end encrypted same as before (the default behavior). Databases created in 'server-side' mode store the plaintext database encryption key on the server; these databases can be recovered if a user forgets their password and loses access to their device.
 - getDatabases() returns a database's `encryptionMode`.
-- sign() returns a boolean `changePassword` if the user needs to change their password to access database and payments functions in the SDK.
+- signIn() returns a boolean `changePassword` if the user needs to change their password to access database and payments functions in the SDK.
 - forgotPassword() accepts a new optional parameter `deleteEndToEndEncryptedData` to allow users of an app with encryption mode set to 'end-to-end' who forget their password and lose access to their device to regain access to their account.
 - openDatabase(), insertItem(), updateItem(), putTransaction(), uploadFile(), and getFile() all take a new optional parameter `encryptionMode` to override an app's default behavior for a database.
 
