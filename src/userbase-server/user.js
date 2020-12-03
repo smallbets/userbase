@@ -1221,7 +1221,10 @@ exports.signIn = async function (req, res) {
       }
     }
 
-    const admin = await adminController.findAdminByAdminId(app['admin-id'])
+    const [admin, user] = await Promise.all([
+      adminController.findAdminByAdminId(app['admin-id']),
+      getUser(appId, username.toLowerCase()),
+    ])
     if (!admin || admin['deleted']) {
       throw {
         status: statusCodes['Unauthorized'],
@@ -1233,8 +1236,6 @@ exports.signIn = async function (req, res) {
     } else {
       logChildObject.adminId = admin['admin-id']
     }
-
-    const user = await getUser(appId, username.toLowerCase())
 
     let usedTempPassword
     try {
