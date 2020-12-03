@@ -175,7 +175,7 @@ export default class Dashboard extends Component {
       <div className='text-xs sm:text-sm'>
         {
           loading
-            ? <div className='text-center'><div className='loader w-6 h-6 inline-block' /></div>
+            ? <div className='text-center'><div className='loader w-6 h-6 inline-block mt-4' /></div>
             :
 
             <div className='container content text-center'>

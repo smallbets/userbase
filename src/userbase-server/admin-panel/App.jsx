@@ -45,7 +45,7 @@ export default class App extends Component {
         }
 
       } catch (e) {
-        this.setState({ errorGettingAdmin: true })
+        if (e && e.message !== 'Please sign in.') this.setState({ errorGettingAdmin: true })
       }
     }
 
@@ -236,7 +236,7 @@ export default class App extends Component {
             <UnknownError noMarginTop />
           </div>
           : loadingAdmin
-            ? <div className='text-center'>< div className='loader w-6 h-6 inline-block' /></div>
+            ? <div className='text-center'><div className='loader w-6 h-6 inline-block mt-4' /></div>
             : (() => {
               switch (mode) {
                 case 'create-admin':
