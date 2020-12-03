@@ -1192,8 +1192,9 @@ const _usingDomainWhitelist = async function (appId) {
 }
 
 exports.validateOrigin = async function (appId, origin) {
-  // some browsers don't include origin header. those users are automatically validated
-  if (!origin) return
+  // some browsers don't include origin header, or serialize to "null". those users are automatically validated
+  // see: https://stackoverflow.com/questions/42239643/when-do-browsers-send-the-origin-header-when-do-browsers-set-the-origin-to-null
+  if (!origin || origin === 'null') return
 
   const params = {
     TableName: setup.domainWhitelistTableName,
