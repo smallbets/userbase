@@ -627,7 +627,6 @@ export default class AppUsersTable extends Component {
     })
   }
 
-
   async handleAddDomainToWhitelist(e) {
     e.preventDefault()
 
@@ -651,55 +650,29 @@ export default class AppUsersTable extends Component {
     }
   }
 
-  async handleDelete(e) {
-    e.preventDefault()
-
-    const { appId, domainName, loadingAddDomainToWhitelist } = this.state
-    if (loadingAddDomainToWhitelist) return
-    if (!domainName) return
-
-    this.setState({ errorAddingDomainToWhitelist: false, errorDeletingDomainFromWhitelist: false })
-
-    try {
-      this.setState({ loadingAddDomainToWhitelist: true })
-
-      await dashboardLogic.addDomainToWhitelist(appId, domainName)
-      if (this._isMounted) {
-        const { domains } = this.state
-        domains.push({ domain: domainName })
-        this.setState({ loadingAddDomainToWhitelist: false, domainName: '', domains })
-      }
-    } catch (e) {
-      if (this._isMounted) this.setState({ loadingAddDomainToWhitelist: false, errorAddingDomainToWhitelist: e.message })
-    }
-  }
-
   async handleDeleteDomain(domain, i) {
     const { appId } = this.state
-
     const initDomains = this.state.domains
 
     this.setState({ errorAddingDomainToWhitelist: false, errorDeletingDomainFromWhitelist: false })
 
     if (initDomains[i] && initDomains[i].domain === domain) {
-
-      const finalState = {}
+      let errorDeletingDomainFromWhitelist = false
       try {
         initDomains[i].deleting = true
         this.setState({ domains: initDomains })
 
         await dashboardLogic.deleteDomainFromWhitelist(appId, domain)
       } catch (e) {
-        finalState.errorDeletingDomainFromWhitelist = e.message
+        errorDeletingDomainFromWhitelist = e.message
       }
 
       if (this._isMounted) {
         const finalDomains = this.state.domains
-        const finalState = {}
 
         for (let j = 0; j < finalDomains.length; j++) {
           if (finalDomains[j].domain === domain) {
-            if (!finalState.errorDeletingDomainFromWhitelist) {
+            if (!errorDeletingDomainFromWhitelist) {
               finalDomains.splice(j, 1) // remove from array since deleted successfully
             } else {
               delete finalDomains[j].deleting
@@ -708,7 +681,7 @@ export default class AppUsersTable extends Component {
           }
         }
 
-        this.setState({ ...finalState, domains: finalDomains })
+        this.setState({ domains: finalDomains, errorDeletingDomainFromWhitelist })
       }
     }
   }
