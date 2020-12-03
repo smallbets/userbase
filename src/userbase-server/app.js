@@ -1083,27 +1083,21 @@ exports.addDomainToWhitelist = async function (req, res) {
     const message = e.data || (e.error && e.error.message) || failureMessage
 
     logger.child({ ...logChildObject, statusCode, err: e }).info(failureMessage)
-    return res
-      .status(statusCode)
-      .send(message)
+    return res.status(statusCode).send(message)
   }
 }
 
 exports.getDomainWhitelist = async function (req, res) {
-  const appName = req.params.appName
-
-  const admin = res.locals.admin
-  const adminId = admin['admin-id']
-
   let logChildObject
   try {
-    logChildObject = { adminId, appName, req: trimReq(req) }
-    logger.child(logChildObject).info('Retrieving domain whitelist')
+    const admin = res.locals.admin
+    const adminId = admin['admin-id']
 
-    const app = await getApp(adminId, appName)
-    if (!app || app['deleted']) return res.status(statusCodes['Not Found']).send('App not found')
+    const app = res.locals.app
     const appId = app['app-id']
-    logChildObject.appId = appId
+
+    logChildObject = { adminId, appId, req: trimReq(req) }
+    logger.child(logChildObject).info('Retrieving domain whitelist')
 
     const params = {
       TableName: setup.domainWhitelistTableName,

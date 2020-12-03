@@ -336,7 +336,7 @@ exports.signOutAdmin = async function (req, res) {
   }
 }
 
-exports.authenticateAdmin = async function (req, res, next) {
+exports.authenticateAdmin = async function (req, res, next, opts = {}) {
   const sessionId = req.cookies[SESSION_COOKIE_NAME]
 
   if (!sessionId) return res
@@ -351,6 +351,9 @@ exports.authenticateAdmin = async function (req, res, next) {
   }
 
   try {
+    const { authenticateAppName, authenticateAppId } = opts
+    if (authenticateAppName && authenticateAppId) throw new Error('authenticate options are mutually exclusive')
+
     const ddbClient = connection.ddbClient()
     const sessionResponse = await ddbClient.get(params).promise()
 
@@ -364,20 +367,26 @@ exports.authenticateAdmin = async function (req, res, next) {
     if (doesNotExist || invalidated || expired || isNotAdminSession) return res
       .status(statusCodes['Unauthorized']).end()
 
-    const appId = req.body.appId || req.query.appId || req.params.appId
+    const appId = authenticateAppId && (req.body.appId || req.query.appId || req.params.appId)
+    const appName = authenticateAppName && (req.body.appName || req.query.appName || req.params.appName)
+
     const [admin, app] = await Promise.all([
       findAdminByAdminId(session['admin-id']),
-      appId && appController.getAppByAppId(appId), // if appId provided, make sure it belongs to admin
+      (appId || appName) // either authenticating appId or authenticating appName
+        ? (appId ? appController.getAppByAppId(appId) : appController.getApp(session['admin-id'], appName))
+        : null
     ])
     if (!admin || admin['deleted']) return res
       .status(statusCodes['Not Found'])
       .send('Admin does not exist')
 
-    // don't check if app deleted because permanentDeleteApp goes through this
-    if (appId && (!app || app['admin-id'] !== session['admin-id'])) return res
-      .status(statusCodes['Not Found']).send('App not found.')
+    if ((authenticateAppId || authenticateAppName) && (!app || app['deleted'])) return res
+      .status(statusCodes['Not Found'])
+      .send('App not found')
 
-    res.locals.admin = admin // makes admin object available in next route
+    // makes objects available in next route
+    res.locals.admin = admin
+    res.locals.app = app
     next()
   } catch (e) {
     logger.error(`Failed to authenticate admin session ${sessionId} with ${e}`)
