@@ -318,10 +318,9 @@ exports.listAppUsers = async function (req, res) {
   const admin = res.locals.admin
   const adminId = admin['admin-id']
 
-  try {
-    const app = await getApp(adminId, appName)
-    if (!app || app['deleted']) return res.status(statusCodes['Not Found']).send('App not found')
+  const app = res.locals.app
 
+  try {
     const params = {
       TableName: setup.usersTableName,
       IndexName: setup.appIdIndex,

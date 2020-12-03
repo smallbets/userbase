@@ -631,7 +631,7 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.post('/sign-out', admin.authenticateAdmin, admin.signOutAdmin)
     v1Admin.post('/create-app', admin.authenticateAdmin, appController.createAppController)
     v1Admin.post('/list-apps', admin.authenticateAdmin, appController.listApps)
-    v1Admin.post('/list-app-users', admin.authenticateAdmin, appController.listAppUsers)
+    v1Admin.post('/list-app-users', (req, res, next) => admin.authenticateAdmin(req, res, next, { authenticateAppName: true }), appController.listAppUsers)
     v1Admin.post('/delete-app', admin.authenticateAdmin, appController.deleteApp)
     v1Admin.post('/permanent-delete-app', admin.authenticateAdmin, appController.permanentDeleteAppController)
     v1Admin.post('/delete-user', admin.authenticateAdmin, admin.deleteUser)
