@@ -364,10 +364,18 @@ exports.authenticateAdmin = async function (req, res, next) {
     if (doesNotExist || invalidated || expired || isNotAdminSession) return res
       .status(statusCodes['Unauthorized']).end()
 
-    const admin = await findAdminByAdminId(session['admin-id'])
+    const appId = req.body.appId || req.query.appId || req.params.appId
+    const [admin, app] = await Promise.all([
+      findAdminByAdminId(session['admin-id']),
+      appId && appController.getAppByAppId(appId), // if appId provided, make sure it belongs to admin
+    ])
     if (!admin || admin['deleted']) return res
       .status(statusCodes['Not Found'])
       .send('Admin does not exist')
+
+    // don't check if app deleted because permanentDeleteApp goes through this
+    if (appId && (!app || app['admin-id'] !== session['admin-id'])) return res
+      .status(statusCodes['Not Found']).send('App not found.')
 
     res.locals.admin = admin // makes admin object available in next route
     next()

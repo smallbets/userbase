@@ -645,6 +645,9 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.delete('/access-token', admin.authenticateAdmin, admin.deleteAccessToken)
     v1Admin.get('/account', admin.authenticateAdmin, admin.getAdminAccount)
     v1Admin.post('/apps/:appId/encryption-mode', admin.authenticateAdmin, appController.modifyEncryptionMode)
+    v1Admin.post('/apps/:appId/domain', admin.authenticateAdmin, appController.addDomainToWhitelist)
+    v1Admin.get('/apps/:appName/domains', admin.authenticateAdmin, appController.getDomainWhitelist)
+    v1Admin.delete('/apps/:appId/domain', admin.authenticateAdmin, appController.deleteDomainFromWhitelist)
 
     // endpoints for admin to manage their own account's payments to Userbase
     v1Admin.post('/stripe/create-saas-payment-session', admin.authenticateAdmin, admin.createSaasPaymentSession)

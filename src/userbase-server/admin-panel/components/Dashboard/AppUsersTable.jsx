@@ -30,6 +30,8 @@ export default class AppUsersTable extends Component {
       loading: true,
       showDeletedUsers: false,
       showEncryptionModeModal: false,
+      domains: [],
+      domainName: '',
       paymentsState: {
         paymentsMode: 'disabled',
         testSubscriptionPlanId: '',
@@ -65,6 +67,9 @@ export default class AppUsersTable extends Component {
     this.handleSetEncryptionMode = this.handleSetEncryptionMode.bind(this)
     this.handleShowEncryptionModeModal = this.handleShowEncryptionModeModal.bind(this)
     this.handleHideEncryptionModeModal = this.handleHideEncryptionModeModal.bind(this)
+    this.handleInputChange = this.handleInputChange.bind(this)
+    this.handleAddDomainToWhitelist = this.handleAddDomainToWhitelist.bind(this)
+    this.handleDeleteDomain = this.handleDeleteDomain.bind(this)
   }
 
   async componentDidMount() {
@@ -74,7 +79,13 @@ export default class AppUsersTable extends Component {
     const { paymentsState } = this.state
 
     try {
-      const { users, appId, encryptionMode, paymentsMode, testSubscriptionPlanId, prodSubscriptionPlanId } = await dashboardLogic.listAppUsers(appName)
+      const [listAppUsersResponse, domainWhitelist] = await Promise.all([
+        dashboardLogic.listAppUsers(appName),
+        dashboardLogic.getDomainWhitelist(appName),
+      ])
+      const { users, appId, encryptionMode, paymentsMode, testSubscriptionPlanId, prodSubscriptionPlanId } = listAppUsersResponse
+      const { domains } = domainWhitelist
+      if (appId !== domainWhitelist.appId) throw new Error('Please refresh the page!')
 
       // sort by date in descending order
       const appUsers = users.sort((a, b) => new Date(b['creationDate']) - new Date(a['creationDate']))
@@ -98,7 +109,7 @@ export default class AppUsersTable extends Component {
           : paymentsMode
       }
 
-      if (this._isMounted) this.setState({ appId, encryptionMode, activeUsers, deletedUsers, loading: false, paymentsState: updatedPaymentsState })
+      if (this._isMounted) this.setState({ appId, encryptionMode, activeUsers, deletedUsers, domains, loading: false, paymentsState: updatedPaymentsState })
     } catch (e) {
       if (this._isMounted) this.setState({ error: e.message, loading: false })
     }
@@ -604,6 +615,104 @@ export default class AppUsersTable extends Component {
     this.setState({ showEncryptionModeModal: false })
   }
 
+  handleInputChange(event) {
+    const target = event.target
+    const value = target.value
+    const name = target.name
+
+    this.setState({
+      [name]: value,
+      errorAddingDomainToWhitelist: false,
+      errorDeletingDomainFromWhitelist: false,
+    })
+  }
+
+
+  async handleAddDomainToWhitelist(e) {
+    e.preventDefault()
+
+    const { appId, domainName, loadingAddDomainToWhitelist } = this.state
+    if (loadingAddDomainToWhitelist) return
+    if (!domainName) return
+
+    this.setState({ errorAddingDomainToWhitelist: false, errorDeletingDomainFromWhitelist: false })
+
+    try {
+      this.setState({ loadingAddDomainToWhitelist: true })
+
+      const domain = await dashboardLogic.addDomainToWhitelist(appId, domainName)
+      if (this._isMounted) {
+        const { domains } = this.state
+        domains.push({ domain })
+        this.setState({ loadingAddDomainToWhitelist: false, domainName: '', domains })
+      }
+    } catch (e) {
+      if (this._isMounted) this.setState({ loadingAddDomainToWhitelist: false, errorAddingDomainToWhitelist: e.message })
+    }
+  }
+
+  async handleDelete(e) {
+    e.preventDefault()
+
+    const { appId, domainName, loadingAddDomainToWhitelist } = this.state
+    if (loadingAddDomainToWhitelist) return
+    if (!domainName) return
+
+    this.setState({ errorAddingDomainToWhitelist: false, errorDeletingDomainFromWhitelist: false })
+
+    try {
+      this.setState({ loadingAddDomainToWhitelist: true })
+
+      await dashboardLogic.addDomainToWhitelist(appId, domainName)
+      if (this._isMounted) {
+        const { domains } = this.state
+        domains.push({ domain: domainName })
+        this.setState({ loadingAddDomainToWhitelist: false, domainName: '', domains })
+      }
+    } catch (e) {
+      if (this._isMounted) this.setState({ loadingAddDomainToWhitelist: false, errorAddingDomainToWhitelist: e.message })
+    }
+  }
+
+  async handleDeleteDomain(domain, i) {
+    const { appId } = this.state
+
+    const initDomains = this.state.domains
+
+    this.setState({ errorAddingDomainToWhitelist: false, errorDeletingDomainFromWhitelist: false })
+
+    if (initDomains[i] && initDomains[i].domain === domain) {
+
+      const finalState = {}
+      try {
+        initDomains[i].deleting = true
+        this.setState({ domains: initDomains })
+
+        await dashboardLogic.deleteDomainFromWhitelist(appId, domain)
+      } catch (e) {
+        finalState.errorDeletingDomainFromWhitelist = e.message
+      }
+
+      if (this._isMounted) {
+        const finalDomains = this.state.domains
+        const finalState = {}
+
+        for (let j = 0; j < finalDomains.length; j++) {
+          if (finalDomains[j].domain === domain) {
+            if (!finalState.errorDeletingDomainFromWhitelist) {
+              finalDomains.splice(j, 1) // remove from array since deleted successfully
+            } else {
+              delete finalDomains[j].deleting
+            }
+            break
+          }
+        }
+
+        this.setState({ ...finalState, domains: finalDomains })
+      }
+    }
+  }
+
   render() {
     const { appName, admin } = this.props
     const { connectedToStripe } = admin
@@ -619,6 +728,11 @@ export default class AppUsersTable extends Component {
       loadingEncryptionMode,
       errorEncryptionMode,
       showEncryptionModeModal,
+      domains,
+      domainName,
+      loadingAddDomainToWhitelist,
+      errorAddingDomainToWhitelist,
+      errorDeletingDomainFromWhitelist,
     } = this.state
 
     const {
@@ -1134,6 +1248,88 @@ export default class AppUsersTable extends Component {
               errorPaymentsPortal === 'Unknown Error'
                 ? <UnknownError />
                 : <div className='error'>{errorPaymentsPortal}</div>
+            )}
+          </div>
+
+          <hr className='border border-t-0 border-gray-400 mt-8 mb-6' />
+
+          <div className='flex-0 text-lg sm:text-xl text-left mb-1'>Domain Whitelist</div>
+          <p className='text-left font-normal'>Ensure your app ID only works from fixed domains.</p>
+
+          {loading
+            ? <div className='text-center'><div className='loader w-6 h-6 inline-block' /></div>
+            : <table className='mt-6 mb-8 table-auto w-96 max-w-full border-none mx-auto text-xs'>
+
+              <thead>
+                <tr className='border-b'>
+                  <th className='px-1 py-1 text-gray-800 text-left'>Domain</th>
+                  <th className='px-1 py-1 text-gray-800 text-left'></th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {domains.map((domain, i) => {
+                  return (
+                    <tr key={i} className='border-b h-8'>
+                      <td className='px-1 font-light text-left'>{domain.domain}</td>
+                      <td className='px-1 font-light w-8 text-center'>
+
+                        {domain['deleting']
+                          ? <div className='loader w-4 h-4 inline-block' />
+                          : <div
+                            className='font-normal text-sm cursor-pointer text-yellow-700'
+                            onClick={() => this.handleDeleteDomain(domain.domain, i)}
+                          >
+                            <FontAwesomeIcon icon={faTrashAlt} />
+                          </div>
+                        }
+
+                      </td>
+                    </tr>
+                  )
+                })}
+
+                <tr className='border-b h-8'>
+                  <td className='px-1 font-light text-left'>
+                    <form className='my-2' onSubmit={this.handleAddDomainToWhitelist}>
+                      <span className='flex'>
+                        <input
+                          className='flex-4 font-light text-xs sm:text-sm w-48 sm:w-56 h-8 p-2 border border-gray-500 outline-none'
+                          type='text'
+                          name='domainName'
+                          autoComplete='off'
+                          onChange={this.handleInputChange}
+                          placeholder='https://example.com'
+                          value={domainName}
+                        />
+
+                        <input
+                          className='btn w-24 ml-2'
+                          type='submit'
+                          value={loadingAddDomainToWhitelist ? 'Adding...' : 'Add'}
+                          disabled={!domainName || loadingAddDomainToWhitelist}
+                        />
+                      </span>
+                    </form>
+                  </td>
+                  <td></td>
+                </tr>
+
+              </tbody>
+            </table>
+          }
+
+          <div className='text-center'>
+            {errorAddingDomainToWhitelist && (
+              errorAddingDomainToWhitelist === 'Unknown Error'
+                ? <UnknownError action='adding the domain to the whitelist' />
+                : <div className='error'>{errorAddingDomainToWhitelist}</div>
+            )}
+
+            {errorDeletingDomainFromWhitelist && (
+              errorDeletingDomainFromWhitelist === 'Unknown Error'
+                ? <UnknownError action='deleting the domain from the whitelist' />
+                : <div className='error'>{errorDeletingDomainFromWhitelist}</div>
             )}
           </div>
 

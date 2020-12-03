@@ -495,8 +495,10 @@ exports.signUp = async function (req, res) {
 
     const userId = uuidv4()
 
-    // Warning: uses secondary index here. It's possible index won't be up to date and this fails
-    const app = await appController.getAppByAppId(appId)
+    const [app] = await Promise.all([
+      appController.getAppByAppId(appId),
+      appController.validateOrigin(appId, req.headers.origin),
+    ])
     if (!app || app['deleted']) {
       throw {
         status: statusCodes['Unauthorized'],
@@ -624,10 +626,10 @@ exports.authenticateUser = async function (req, res, next) {
       }
     }
 
-    // Warning: uses secondary indexes here. It's possible index won't be up to date and this fails
     const [user, app] = await Promise.all([
       getUserByUserId(session['user-id']),
-      appController.getAppByAppId(session['app-id'])
+      appController.getAppByAppId(session['app-id']),
+      appController.validateOrigin(session['app-id'], req.headers.origin),
     ])
 
     if (!user || user['deleted']) {
@@ -1204,8 +1206,11 @@ exports.signIn = async function (req, res) {
       }
     }
 
-    // Warning: uses secondary index here. It's possible index won't be up to date and this fails
-    const app = await appController.getAppByAppId(appId)
+    const [app] = await Promise.all([
+      appController.getAppByAppId(appId),
+      appController.validateOrigin(appId, req.headers.origin),
+    ])
+
     if (!app || app['deleted']) {
       throw {
         status: statusCodes['Unauthorized'],

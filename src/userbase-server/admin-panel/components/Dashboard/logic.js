@@ -201,6 +201,52 @@ const modifyEncryptionMode = async (appId, appName, encryptionMode) => {
   }
 }
 
+const addDomainToWhitelist = async (appId, domain) => {
+  try {
+    const domainResponse = await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/apps/${appId}/domain`,
+      data: {
+        domain
+      },
+      timeout: TEN_SECONDS_MS
+    })
+    return domainResponse.data
+  } catch (e) {
+    adminLogic.errorHandler(e)
+  }
+}
+
+const getDomainWhitelist = async (appName) => {
+  try {
+    const domainWhitelistResponse = await axios({
+      method: 'GET',
+      url: `/${VERSION}/admin/apps/${encodeURIComponent(appName)}/domains`,
+      timeout: TEN_SECONDS_MS
+    })
+
+    const domains = domainWhitelistResponse.data
+    return domains
+  } catch (e) {
+    adminLogic.errorHandler(e)
+  }
+}
+
+const deleteDomainFromWhitelist = async (appId, domain) => {
+  try {
+    await axios({
+      method: 'DELETE',
+      url: `/${VERSION}/admin/apps/${appId}/domain`,
+      data: {
+        domain
+      },
+      timeout: TEN_SECONDS_MS
+    })
+  } catch (e) {
+    adminLogic.errorHandler(e)
+  }
+}
+
 export default {
   listApps,
   listAppUsers,
@@ -216,4 +262,7 @@ export default {
   enableProdPayments,
   disablePayments,
   modifyEncryptionMode,
+  addDomainToWhitelist,
+  getDomainWhitelist,
+  deleteDomainFromWhitelist,
 }

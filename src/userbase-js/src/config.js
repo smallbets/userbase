@@ -1,6 +1,6 @@
 import errors from './errors'
 
-const USERBASE_JS_VERSION = '2.4.2'
+const USERBASE_JS_VERSION = '2.4.3'
 
 const VERSION = '/v1'
 const DEFAULT_ENDPOINT = 'https://v1.userbase.com' + VERSION

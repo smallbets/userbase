@@ -28,7 +28,9 @@ const _checkSignedInState = () => {
 
 const _parseGenericErrors = (e) => {
   if (e.response) {
-    if (e.response.data === 'App ID not valid') {
+    if (e.response.data === 'Domain not whitelisted') {
+      throw new errors.DomainNotWhitelisted(window.location.origin)
+    } else if (e.response.data === 'App ID not valid') {
       throw new errors.AppIdNotValid
     } else if (e.response.data === 'UserNotFound') {
       throw new errors.UserNotFound
@@ -321,6 +323,7 @@ const signUp = async (params) => {
       case 'TrialExceededLimit':
       case 'AppIdNotSet':
       case 'AppIdNotValid':
+      case 'DomainNotWhitelisted':
       case 'UserAlreadySignedIn':
       case 'ServiceUnavailable':
         throw e
@@ -498,6 +501,7 @@ const signIn = async (params) => {
       case 'KeyNotFound':
       case 'AppIdNotSet':
       case 'AppIdNotValid':
+      case 'DomainNotWhitelisted':
       case 'UserAlreadySignedIn':
       case 'ServiceUnavailable':
         throw e
@@ -545,6 +549,7 @@ const init = async (params) => {
       case 'AppIdMustBeString':
       case 'AppIdCannotBeBlank':
       case 'AppIdNotValid':
+      case 'DomainNotWhitelisted':
       case 'UpdateUserHandlerMustBeFunction':
       case 'SessionLengthMustBeNumber':
       case 'SessionLengthTooShort':
