@@ -191,6 +191,16 @@ class AppIdNotValid extends Error {
   }
 }
 
+class DomainNotWhitelisted extends Error {
+  constructor(domain, ...params) {
+    super(domain, ...params)
+
+    this.name = 'DomainNotWhitelisted'
+    this.message = `Domain not whitelisted. Whitelist the domain ${domain ? `'${domain}' ` : ''}in your admin panel.`
+    this.status = statusCodes['Unauthorized']
+  }
+}
+
 class UserNotSignedIn extends Error {
   constructor(...params) {
     super(...params)
@@ -407,6 +417,7 @@ export default {
   UserAlreadySignedIn,
   UserPendingDeletion,
   AppIdNotValid,
+  DomainNotWhitelisted,
   UserNotSignedIn,
   UserNotFound,
   UserEmailNotFound,

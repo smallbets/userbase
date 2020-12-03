@@ -318,10 +318,9 @@ exports.listAppUsers = async function (req, res) {
   const admin = res.locals.admin
   const adminId = admin['admin-id']
 
-  try {
-    const app = await getApp(adminId, appName)
-    if (!app || app['deleted']) return res.status(statusCodes['Not Found']).send('App not found')
+  const app = res.locals.app
 
+  try {
     const params = {
       TableName: setup.usersTableName,
       IndexName: setup.appIdIndex,
@@ -1022,6 +1021,193 @@ exports.modifyEncryptionMode = async function (req, res) {
       const statusCode = statusCodes['Internal Server Error']
       logger.child({ ...logChildObject, statusCode, err: e }).error(message)
       return res.status(statusCode).send(message)
+    }
+  }
+}
+
+exports.addDomainToWhitelist = async function (req, res) {
+  const appId = req.params.appId
+
+  const admin = res.locals.admin
+  const adminId = admin['admin-id']
+
+  let logChildObject
+  try {
+    logChildObject = { appId, adminId, req: trimReq(req) }
+    logger.child(logChildObject).info('Adding domain to whitelist')
+
+    const trimmedDomain = req.body.domain.trim()
+    if (!trimmedDomain) throw {
+      status: statusCodes['Bad Request'],
+      data: 'Missing domain'
+    }
+    const domain = trimmedDomain.toLowerCase()
+
+    if (!domain.includes('://')) throw {
+      status: statusCodes['Bad Request'],
+      data: 'Missing protocol (e.g. "https://")'
+    }
+
+    const Item = {
+      'app-id': appId,
+      domain,
+      'creation-date': new Date().toISOString(),
+    }
+
+    const params = {
+      TableName: setup.domainWhitelistTableName,
+      Item,
+      ConditionExpression: 'attribute_not_exists(#appId)',
+      ExpressionAttributeNames: {
+        '#appId': 'app-id'
+      },
+    }
+
+    try {
+      const ddbClient = connection.ddbClient()
+      await ddbClient.put(params).promise()
+    } catch (e) {
+      if (e.name === 'ConditionalCheckFailedException') throw {
+        status: statusCodes['Conflict'],
+        data: 'Domain already added to whitelist'
+      }
+      throw e
+    }
+
+    logger.child(logChildObject).info('Successfully added domain to whitelist')
+    return res.send(domain)
+  } catch (e) {
+    const failureMessage = 'Failed to add domain to whitelist'
+    const statusCode = e.status || statusCodes['Internal Server Error']
+    const message = e.data || (e.error && e.error.message) || failureMessage
+
+    logger.child({ ...logChildObject, statusCode, err: e }).info(failureMessage)
+    return res.status(statusCode).send(message)
+  }
+}
+
+exports.getDomainWhitelist = async function (req, res) {
+  let logChildObject
+  try {
+    const admin = res.locals.admin
+    const adminId = admin['admin-id']
+
+    const app = res.locals.app
+    const appId = app['app-id']
+
+    logChildObject = { adminId, appId, req: trimReq(req) }
+    logger.child(logChildObject).info('Retrieving domain whitelist')
+
+    const params = {
+      TableName: setup.domainWhitelistTableName,
+      KeyConditionExpression: '#appId = :appId',
+      ExpressionAttributeValues: {
+        ':appId': appId,
+      },
+      ExpressionAttributeNames: {
+        '#appId': 'app-id',
+      }
+    }
+
+    const ddbClient = connection.ddbClient()
+    let domainWhitelistResponse = await ddbClient.query(params).promise()
+    let domains = domainWhitelistResponse.Items
+
+    while (domainWhitelistResponse.LastEvaluatedKey) {
+      params.ExclusiveStartKey = domainWhitelistResponse.LastEvaluatedKey
+      domainWhitelistResponse = await ddbClient.query(params).promise()
+      domains.push(...domainWhitelistResponse.Items)
+    }
+
+    logger.child(logChildObject).info('Successfully retrieved domain whitelist')
+    return res.send({ appId, domains })
+  } catch (e) {
+    const failureMessage = 'Failed to get domain whitelist'
+    const statusCode = e.status || statusCodes['Internal Server Error']
+    const message = e.data || failureMessage
+
+    logger.child({ ...logChildObject, statusCode, err: e }).info(failureMessage)
+    return res.status(statusCode).send(message)
+  }
+}
+
+exports.deleteDomainFromWhitelist = async function (req, res) {
+  const appId = req.params.appId
+  const domain = req.body.domain
+
+  const admin = res.locals.admin
+  const adminId = admin['admin-id']
+
+  let logChildObject
+  try {
+    logChildObject = { appId, adminId, req: trimReq(req) }
+    logger.child(logChildObject).info('Deleting domain from whitelist')
+
+    const params = {
+      TableName: setup.domainWhitelistTableName,
+      Key: {
+        'app-id': appId,
+        domain: domain.toLowerCase()
+      }
+    }
+
+    const ddbClient = connection.ddbClient()
+    await ddbClient.delete(params).promise()
+
+    logger.child(logChildObject).info('Successfully deleted domain from whitelist')
+    return res.end()
+  } catch (e) {
+    const failureMessage = 'Failed to delete domain from whitelist'
+    const statusCode = e.status || statusCodes['Internal Server Error']
+    const message = e.data || failureMessage
+
+    logger.child({ ...logChildObject, statusCode, err: e }).info(failureMessage)
+    return res.status(statusCode).send(message)
+  }
+}
+
+const _usingDomainWhitelist = async function (appId) {
+  const params = {
+    TableName: setup.domainWhitelistTableName,
+    Limit: '1',
+    KeyConditionExpression: '#appId = :appId',
+    ExpressionAttributeValues: {
+      ':appId': appId,
+    },
+    ExpressionAttributeNames: {
+      '#appId': 'app-id',
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+  const domainWhitelistResponse = await ddbClient.query(params).promise()
+  return domainWhitelistResponse.Items.length > 0
+}
+
+exports.validateOrigin = async function (appId, origin) {
+  // some browsers don't include origin header, or serialize to "null". those users are automatically validated
+  // see: https://stackoverflow.com/questions/42239643/when-do-browsers-send-the-origin-header-when-do-browsers-set-the-origin-to-null
+  if (!origin || origin === 'null') return
+
+  const params = {
+    TableName: setup.domainWhitelistTableName,
+    Key: {
+      'app-id': appId,
+      'domain': origin
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+  const [domainResponse, usingDomainWhitelist] = await Promise.all([
+    ddbClient.get(params).promise(),
+    _usingDomainWhitelist(appId)
+  ])
+
+  // if using domain whitelist and domain is not in the list, domain not whitelisted
+  if (usingDomainWhitelist && !domainResponse.Item) throw {
+    status: statusCodes['Forbidden'],
+    error: {
+      message: 'Domain not whitelisted'
     }
   }
 }

@@ -9,7 +9,7 @@ const errorHandler = (e, signOutUnauthorized = true) => {
   if (e && e.response) {
     if (signOutUnauthorized && e.response.status === UNAUTHORIZED) {
       handleSignOut()
-      throw new Error(e.response.data)
+      throw new Error('Please sign in.')
     } else if (e.response.status >= 500) {
       throw new Error('Unknown Error')
     } else {

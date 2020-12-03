@@ -631,7 +631,7 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.post('/sign-out', admin.authenticateAdmin, admin.signOutAdmin)
     v1Admin.post('/create-app', admin.authenticateAdmin, appController.createAppController)
     v1Admin.post('/list-apps', admin.authenticateAdmin, appController.listApps)
-    v1Admin.post('/list-app-users', admin.authenticateAdmin, appController.listAppUsers)
+    v1Admin.post('/list-app-users', (req, res, next) => admin.authenticateAdmin(req, res, next, { authenticateAppName: true }), appController.listAppUsers)
     v1Admin.post('/delete-app', admin.authenticateAdmin, appController.deleteApp)
     v1Admin.post('/permanent-delete-app', admin.authenticateAdmin, appController.permanentDeleteAppController)
     v1Admin.post('/delete-user', admin.authenticateAdmin, admin.deleteUser)
@@ -645,6 +645,9 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.delete('/access-token', admin.authenticateAdmin, admin.deleteAccessToken)
     v1Admin.get('/account', admin.authenticateAdmin, admin.getAdminAccount)
     v1Admin.post('/apps/:appId/encryption-mode', admin.authenticateAdmin, appController.modifyEncryptionMode)
+    v1Admin.post('/apps/:appId/domain', (req, res, next) => admin.authenticateAdmin(req, res, next, { authenticateAppId: true }), appController.addDomainToWhitelist)
+    v1Admin.get('/apps/:appName/domains', (req, res, next) => admin.authenticateAdmin(req, res, next, { authenticateAppName: true }), appController.getDomainWhitelist)
+    v1Admin.delete('/apps/:appId/domain', (req, res, next) => admin.authenticateAdmin(req, res, next, { authenticateAppId: true }), appController.deleteDomainFromWhitelist)
 
     // endpoints for admin to manage their own account's payments to Userbase
     v1Admin.post('/stripe/create-saas-payment-session', admin.authenticateAdmin, admin.createSaasPaymentSession)

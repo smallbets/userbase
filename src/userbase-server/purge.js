@@ -354,12 +354,36 @@ const deleteAppFromAppsTable = async (app) => {
   }
 }
 
-const purgeApp = async (app, _admin = undefined) => {
-  const start = Date.now()
-  const logChildObject = { userId: app['user-id'], appId: app['app-id'], adminId: app['admin-id'], appName: app['app-name'], deleted: app['deleted'] }
-  logger.child(logChildObject).info('Purging app')
+const purgeDomain = async (domain) => {
+  const ddbClient = connection.ddbClient()
+  await ddbClient.delete({
+    TableName: setup.domainWhitelistTableName,
+    Key: {
+      'app-id': domain['app-id'],
+      domain: domain.domain
+    }
+  }).promise()
+}
 
-  // purge all app's users
+const purgeDomainWhitelist = async (app) => {
+  const params = {
+    TableName: setup.domainWhitelistTableName,
+    KeyConditionExpression: '#appId = :appId',
+    ExpressionAttributeNames: {
+      '#appId': 'app-id'
+    },
+    ExpressionAttributeValues: {
+      ':appId': app['app-id']
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+  const ddbQuery = (params) => ddbClient.query(params).promise()
+  const action = (domains) => Promise.all(domains.map(domain => purgeDomain(domain)))
+  await ddbWhileLoop(params, ddbQuery, action)
+}
+
+const purgeAppUsers = async (app, _admin) => {
   const params = {
     TableName: setup.usersTableName,
     IndexName: setup.appIdIndex,
@@ -377,11 +401,23 @@ const purgeApp = async (app, _admin = undefined) => {
   const ddbQuery = (params) => ddbClient.query(params).promise()
   const action = (users) => Promise.all(users.map(user => purgeUser(user, app['admin-id'], _admin)))
   await ddbWhileLoop(params, ddbQuery, action)
+}
+
+const purgeApp = async (app, _admin = undefined) => {
+  const start = Date.now()
+  const logChildObject = { userId: app['user-id'], appId: app['app-id'], adminId: app['admin-id'], appName: app['app-name'], deleted: app['deleted'] }
+  logger.child(logChildObject).info('Purging app')
+
+  await Promise.all([
+    purgeAppUsers(app, _admin),
+    purgeDomainWhitelist(app),
+  ])
 
   // should only be present in this table if purging deleted admin
   const deleteFromTable = deleteAppFromAppsTable(app)
 
   // should only be present in this table if purging deleted app
+  const ddbClient = connection.ddbClient()
   const deleteFromDeletedTable = ddbClient.delete({
     TableName: setup.deletedAppsTableName,
     Key: {

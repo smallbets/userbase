@@ -33,6 +33,7 @@ const ddbTableGroup = 'userbase-' + defineUsername()
 const adminTableName = resourceNamePrefix + 'admins'
 const adminAccessTokensTableName = resourceNamePrefix + 'admin-access-tokens'
 const appsTableName = resourceNamePrefix + 'apps'
+const domainWhitelistTableName = resourceNamePrefix + 'domain-whitelist'
 const usersTableName = resourceNamePrefix + 'users'
 const sessionsTableName = resourceNamePrefix + 'sessions'
 const databaseTableName = resourceNamePrefix + 'databases'
@@ -48,6 +49,7 @@ const secretManagerSecretId = resourceNamePrefix + 'env'
 exports.adminTableName = adminTableName
 exports.adminAccessTokensTableName = adminAccessTokensTableName
 exports.appsTableName = appsTableName
+exports.domainWhitelistTableName = domainWhitelistTableName
 exports.usersTableName = usersTableName
 exports.sessionsTableName = sessionsTableName
 exports.databaseTableName = databaseTableName
@@ -231,6 +233,20 @@ async function setupDdb() {
     ]
   }
 
+  // the domain whitelist table holds a record for each whitelisted domain per app
+  const domainWhitelistTableParams = {
+    TableName: domainWhitelistTableName,
+    BillingMode: 'PAY_PER_REQUEST',
+    AttributeDefinitions: [
+      { AttributeName: 'app-id', AttributeType: 'S' },
+      { AttributeName: 'domain', AttributeType: 'S' }
+    ],
+    KeySchema: [
+      { AttributeName: 'app-id', KeyType: 'HASH' },
+      { AttributeName: 'domain', KeyType: 'RANGE' }
+    ],
+  }
+
   // the users table holds a record for user per app
   const usersTableParams = {
     TableName: usersTableName,
@@ -390,6 +406,7 @@ async function setupDdb() {
     createTable(ddb, adminTableParams),
     createTable(ddb, adminAccessTokensTableParams),
     createTable(ddb, appsTableParams),
+    createTable(ddb, domainWhitelistTableParams),
     createTable(ddb, usersTableParams),
     createTable(ddb, sessionsTableParams),
     createTable(ddb, databaseTableParams),
