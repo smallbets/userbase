@@ -114,7 +114,14 @@ module.exports = (env, argv) => {
         '/v1/api/*': {
           target: 'http://localhost:8080/',
           ws: true,
-          secure: false
+          secure: false,
+
+          // https://github.com/webpack/webpack-dev-server/issues/1642#issuecomment-733826290
+          onProxyReqWs: (proxyReq, req, socket) => {
+            socket.on('error', function (err) {
+              console.warn('Socket error using onProxyReqWs event', err)
+            })
+          }
         }
       }
     }
