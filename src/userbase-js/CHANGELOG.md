@@ -1,3 +1,7 @@
+## [2.4.3] - 2020-12-03
+### Added
+- Admin can now create a domain whitelist for an app in the admin panel. The SDK catches and throws clean `DomainNotWhitelisted` error when user attempts to use an app ID from a domain that is not on the whitelist.
+
 ## [2.4.2] - 2020-12-02
 ### Fixed
 - init() now accepts a parameter `allowServerSideEncryption` in order for the SDK to create and interact with databases in the 'server-side' encryption mode. This prevents a dishonest server from maliciously changing an app's encryption mode to server-side, thereby causing clients to store new data in plaintext.
