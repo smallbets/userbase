@@ -33,15 +33,9 @@ export default class AppUsersTable extends Component {
       domains: [],
       domainName: '',
       paymentsState: {
-        paymentsMode: 'disabled',
-        testSubscriptionPlanId: '',
-        prodSubscriptionPlanId: '',
-        newTestSubscriptionPlanId: '',
-        newProdSubscriptionPlanId: '',
-        loadingSetTestSubscriptionPlanId: false,
-        loadingSetProdSubscriptionPlanId: false,
-        loadingDeleteTestSubscriptionPlanId: false,
-        loadingDeleteProdSubscriptionPlanId: false,
+        paymentsMode: '',
+        trialPeriodDays: '',
+        newTrialPeriodDays: '',
         loadingPaymentsMode: false,
         loadingPlanMode: false,
         errorPaymentsPortal: false,
@@ -56,14 +50,12 @@ export default class AppUsersTable extends Component {
     this.handleToggleDisplayUserMetadata = this.handleToggleDisplayUserMetadata.bind(this)
     this.handleExpandAll = this.handleExpandAll.bind(this)
     this.handleHideAll = this.handleHideAll.bind(this)
-    this.handlePaymentsPlanInputChange = this.handlePaymentsPlanInputChange.bind(this)
-    this.handleSetTestSubscriptionPlanId = this.handleSetTestSubscriptionPlanId.bind(this)
-    this.handleSetProdSubscriptionPlanId = this.handleSetProdSubscriptionPlanId.bind(this)
-    this.handleDeleteTestSubscriptionPlanId = this.handleDeleteTestSubscriptionPlanId.bind(this)
-    this.handleDeleteProdSubscriptionPlanId = this.handleDeleteProdSubscriptionPlanId.bind(this)
+    this.handleTrialPeriodInputChange = this.handleTrialPeriodInputChange.bind(this)
+    this.handleSetTrialPeriod = this.handleSetTrialPeriod.bind(this)
+    this.handleDeleteTrial = this.handleDeleteTrial.bind(this)
     this.handleEnableTestPayments = this.handleEnableTestPayments.bind(this)
     this.handleEnableProdPayments = this.handleEnableProdPayments.bind(this)
-    this.handleDisablePayments = this.handleDisablePayments.bind(this)
+    this.handleTogglePaymentRequired = this.handleTogglePaymentRequired.bind(this)
     this.handleSetEncryptionMode = this.handleSetEncryptionMode.bind(this)
     this.handleShowEncryptionModeModal = this.handleShowEncryptionModeModal.bind(this)
     this.handleHideEncryptionModeModal = this.handleHideEncryptionModeModal.bind(this)
@@ -75,7 +67,7 @@ export default class AppUsersTable extends Component {
   async componentDidMount() {
     this._isMounted = true
 
-    const { appName, admin } = this.props
+    const { appName } = this.props
     const { paymentsState } = this.state
 
     try {
@@ -83,7 +75,7 @@ export default class AppUsersTable extends Component {
         dashboardLogic.listAppUsers(appName),
         dashboardLogic.getDomainWhitelist(appName),
       ])
-      const { users, appId, encryptionMode, paymentsMode, testSubscriptionPlanId, prodSubscriptionPlanId } = listAppUsersResponse
+      const { users, appId, encryptionMode, paymentsMode, paymentRequired, trialPeriodDays } = listAppUsersResponse
       const { domains } = domainWhitelist
       if (appId !== domainWhitelist.appId) throw new Error('Please refresh the page!')
 
@@ -103,10 +95,10 @@ export default class AppUsersTable extends Component {
       }
 
       const updatedPaymentsState = {
-        ...paymentsState, testSubscriptionPlanId, prodSubscriptionPlanId,
-        paymentsMode: (paymentsMode === 'prod' && !prodPaymentsAllowed(admin))
-          ? 'disabled' // app's payments mode considered functionally disabled if set to prod but cannot take prod payments
-          : paymentsMode
+        ...paymentsState,
+        paymentsMode,
+        paymentRequired,
+        trialPeriodDays,
       }
 
       if (this._isMounted) this.setState({ appId, encryptionMode, activeUsers, deletedUsers, domains, loading: false, paymentsState: updatedPaymentsState })
@@ -271,7 +263,7 @@ export default class AppUsersTable extends Component {
     })
   }
 
-  handlePaymentsPlanInputChange(event) {
+  handleTrialPeriodInputChange(event) {
     const { paymentsState } = this.state
 
     const target = event.target
@@ -287,30 +279,31 @@ export default class AppUsersTable extends Component {
     })
   }
 
-  async handleSetTestSubscriptionPlanId(event) {
+  async handleSetTrialPeriod(event) {
     event.preventDefault()
     const { appName } = this.props
     const { appId, paymentsState } = this.state
 
     try {
+      const { newTrialPeriodDays } = paymentsState
+      if (!newTrialPeriodDays) return
+
       this.setState({
         paymentsState: {
           ...paymentsState,
-          loadingSetTestSubscriptionPlanId: true,
+          loadingSetTrialPeriod: true,
           errorPaymentsPortal: false
         }
       })
 
-      const { newTestSubscriptionPlanId } = paymentsState
-
-      await dashboardLogic.setTestSubscriptionPlanId(appName, appId, newTestSubscriptionPlanId)
+      await dashboardLogic.setTrialPeriod(appName, appId, newTrialPeriodDays)
 
       if (this._isMounted) {
         this.setState({
           paymentsState: {
             ...paymentsState,
-            loadingSetTestSubscriptionPlanId: false,
-            testSubscriptionPlanId: newTestSubscriptionPlanId
+            loadingSetTrialPeriod: false,
+            trialPeriodDays: newTrialPeriodDays
           }
         })
       }
@@ -319,7 +312,7 @@ export default class AppUsersTable extends Component {
         this.setState({
           paymentsState: {
             ...paymentsState,
-            loadingSetTestSubscriptionPlanId: false,
+            loadingSetTrialPeriod: false,
             errorPaymentsPortal: e.message
           }
         })
@@ -327,30 +320,30 @@ export default class AppUsersTable extends Component {
     }
   }
 
-  async handleSetProdSubscriptionPlanId(event) {
+  async handleDeleteTrial(event) {
     event.preventDefault()
     const { appName } = this.props
     const { appId, paymentsState } = this.state
+
+    if (!window.confirm("Are you sure you want to remove your app's free trial?")) return
 
     try {
       this.setState({
         paymentsState: {
           ...paymentsState,
-          loadingSetProdSubscriptionPlanId: true,
+          loadingDeleteTrial: true,
           errorPaymentsPortal: false
         }
       })
 
-      const { newProdSubscriptionPlanId } = paymentsState
-
-      await dashboardLogic.setProdSubscriptionPlanId(appName, appId, newProdSubscriptionPlanId)
+      await dashboardLogic.deleteTrial(appName, appId)
 
       if (this._isMounted) {
         this.setState({
           paymentsState: {
             ...paymentsState,
-            loadingSetProdSubscriptionPlanId: false,
-            prodSubscriptionPlanId: newProdSubscriptionPlanId
+            loadingDeleteTrial: false,
+            trialPeriodDays: undefined,
           }
         })
       }
@@ -359,7 +352,7 @@ export default class AppUsersTable extends Component {
         this.setState({
           paymentsState: {
             ...paymentsState,
-            loadingSetProdSubscriptionPlanId: false,
+            loadingDeleteTrial: false,
             errorPaymentsPortal: e.message
           }
         })
@@ -367,7 +360,7 @@ export default class AppUsersTable extends Component {
     }
   }
 
-  async handleDeleteTestSubscriptionPlanId(event) {
+  async handleTogglePaymentRequired(event) {
     event.preventDefault()
     const { appName } = this.props
     const { appId, paymentsState } = this.state
@@ -376,24 +369,20 @@ export default class AppUsersTable extends Component {
       this.setState({
         paymentsState: {
           ...paymentsState,
-          loadingDeleteTestSubscriptionPlanId: true,
+          loadingPaymentRequired: true,
           errorPaymentsPortal: false
         }
       })
 
-      const { testSubscriptionPlanId } = paymentsState
-
-      const confirmed = window.confirm('Warning! This will not delete your subscription plan in Stripe. If you have customers subscribed to this plan, you will need to cancel their subscriptions manually in the Stripe dashboard.')
-      if (confirmed) {
-        await dashboardLogic.deleteTestSubscriptionPlanId(appName, appId, testSubscriptionPlanId)
-      }
+      const { paymentRequired } = paymentsState
+      await dashboardLogic.setPaymentRequired(appName, appId, !paymentRequired)
 
       if (this._isMounted) {
         this.setState({
           paymentsState: {
             ...paymentsState,
-            loadingDeleteTestSubscriptionPlanId: false,
-            testSubscriptionPlanId: confirmed ? '' : testSubscriptionPlanId
+            loadingPaymentRequired: false,
+            paymentRequired: !paymentRequired
           }
         })
       }
@@ -402,96 +391,7 @@ export default class AppUsersTable extends Component {
         this.setState({
           paymentsState: {
             ...paymentsState,
-            loadingDeleteTestSubscriptionPlanId: false,
-            errorPaymentsPortal: e.message
-          }
-        })
-      }
-    }
-  }
-
-  async handleDeleteProdSubscriptionPlanId(event) {
-    event.preventDefault()
-    const { appName } = this.props
-    const { appId, paymentsState } = this.state
-
-    try {
-      this.setState({
-        paymentsState: {
-          ...paymentsState,
-          loadingDeleteProdSubscriptionPlanId: true,
-          errorPaymentsPortal: false
-        }
-      })
-
-      const { prodSubscriptionPlanId } = paymentsState
-
-      const confirmed = window.confirm('Warning! This will not delete your subscription plan in Stripe. If you have customers subscribed to this plan, you will need to cancel their subscriptions manually in the Stripe dashboard.')
-      if (confirmed) {
-        await dashboardLogic.deleteProdSubscriptionPlanId(appName, appId, prodSubscriptionPlanId)
-      }
-
-      if (this._isMounted) {
-        this.setState({
-          paymentsState: {
-            ...paymentsState,
-            loadingDeleteProdSubscriptionPlanId: false,
-            prodSubscriptionPlanId: confirmed ? '' : prodSubscriptionPlanId
-          }
-        })
-      }
-    } catch (e) {
-      if (this._isMounted) {
-        this.setState({
-          paymentsState: {
-            ...paymentsState,
-            loadingDeleteProdSubscriptionPlanId: false,
-            errorPaymentsPortal: e.message
-          }
-        })
-      }
-    }
-  }
-
-  async handleDisablePayments(event) {
-    event.preventDefault()
-    const { appName } = this.props
-    const { appId, paymentsState } = this.state
-
-    try {
-      this.setState({
-        paymentsState: {
-          ...paymentsState,
-          loadingPaymentsMode: true,
-          errorPaymentsPortal: false
-        }
-      })
-
-      let confirmed = true
-      if (paymentsState.paymentsMode === 'prod') {
-        confirmed = window.confirm('Are you sure you want to disable production payments?')
-      }
-
-      let paymentsMode = paymentsState.paymentsMode
-      if (confirmed) {
-        paymentsMode = await dashboardLogic.disablePayments(appName, appId)
-      }
-
-      if (this._isMounted) {
-        this.setState({
-          paymentsState: {
-            ...paymentsState,
-            loadingPaymentsMode: false,
-            paymentsMode
-          }
-        })
-      }
-    } catch (e) {
-      if (this._isMounted) {
-        this.setState({
-          paymentsState: {
-            ...paymentsState,
-            loadingPaymentsMode: false,
+            loadingPaymentRequired: false,
             errorPaymentsPortal: e.message
           }
         })
@@ -710,18 +610,18 @@ export default class AppUsersTable extends Component {
 
     const {
       paymentsMode,
-      testSubscriptionPlanId,
-      prodSubscriptionPlanId,
-      newTestSubscriptionPlanId,
-      newProdSubscriptionPlanId,
+      paymentRequired,
+      trialPeriodDays,
+      newTrialPeriodDays,
       loadingPaymentsMode,
       loadingPlanMode,
-      loadingSetTestSubscriptionPlanId,
-      loadingSetProdSubscriptionPlanId,
-      loadingDeleteTestSubscriptionPlanId,
-      loadingDeleteProdSubscriptionPlanId,
+      loadingSetTrialPeriod,
+      loadingDeleteTrial,
+      loadingPaymentRequired,
       errorPaymentsPortal,
     } = paymentsState
+
+    const disableProdPaymentSelection = admin && !prodPaymentsAllowed(admin) && paymentsMode !== 'prod'
 
     return (
       <div className='text-xs sm:text-sm'>
@@ -861,7 +761,7 @@ export default class AppUsersTable extends Component {
                                     {user['testStripeData']
                                       ? StripeDataTable(user['testStripeData'])
                                       : <span className='font-light ml-1'>
-                                        No test Stripe data saved.
+                                        Stripe account not connected. See Payments Portal below.
                                       </span>
                                     }
                                   </h6>
@@ -870,7 +770,7 @@ export default class AppUsersTable extends Component {
                                     {user['prodStripeData']
                                       ? StripeDataTable(user['prodStripeData'], true)
                                       : <span className='font-light ml-1'>
-                                        No prod Stripe data saved.
+                                        Stripe account not connected. See Payments Portal below.
                                       </span>
                                     }
                                   </h6>
@@ -974,7 +874,7 @@ export default class AppUsersTable extends Component {
                                         {user['testStripeData']
                                           ? StripeDataTable(user['testStripeData'])
                                           : <span className='font-light ml-1'>
-                                            No test Stripe data saved.
+                                            Stripe account not connected. See Payments Portal below.
                                           </span>
                                         }
                                       </h6>
@@ -983,7 +883,7 @@ export default class AppUsersTable extends Component {
                                         {user['prodStripeData']
                                           ? StripeDataTable(user['prodStripeData'], true)
                                           : <span className='font-light ml-1'>
-                                            No prod Stripe data saved.
+                                            Stripe account not connected. See Payments Portal below.
                                           </span>
                                         }
                                       </h6>
@@ -1020,7 +920,7 @@ export default class AppUsersTable extends Component {
           <hr className='border border-t-0 border-gray-400 mt-8 mb-6' />
 
           <div className='flex-0 text-lg sm:text-xl text-left mb-1'>Payments Portal</div>
-          <p className='text-left font-normal mb-4'>Collect payments on your app with Stripe.</p>
+          <p className='text-left font-normal mb-4'>Collect recurring payments on your app with Stripe. Check the <a href='https://userbase.com/docs/sdk/#sdk-payments' target='_blank' rel='noopener noreferrer'>docs on Payments</a> for detailed instructions.</p>
 
           {
             prodPaymentsAllowed(admin) ? <div />
@@ -1035,175 +935,97 @@ export default class AppUsersTable extends Component {
               ? <div>
 
                 <label className='flex items-center mb-4 fit-content'>
+                  <div className={`relative ${disableProdPaymentSelection ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                    <input
+                      type='checkbox'
+                      className='hidden'
+                      checked={paymentsMode === 'prod'}
+                      onChange={(e) => paymentsMode === 'prod' ? this.handleEnableTestPayments(e, loadingPaymentsMode, true) : this.handleEnableProdPayments(e)}
+                      disabled={disableProdPaymentSelection || loadingPlanMode}
+                    />
+                    <div className={`w-10 h-4 rounded-full shadow-inner ${disableProdPaymentSelection ? 'bg-gray-200' : 'bg-gray-400'}`} />
+                    <div className='toggle-dot absolute w-6 h-6 bg-white rounded-full shadow' />
+                  </div>
+
+                  <div className={`ml-3 font-medium ${disableProdPaymentSelection ? 'cursor-not-allowed text-gray-400' : 'cursor-pointer text-gray-600 hover:text-gray-800'}`}>
+                    {paymentsMode === 'test' ? 'Test mode' : 'Production mode'}
+                  </div>
+
+                  {loadingPlanMode && <div className='loader w-4 h-4 ml-4 inline-block' />}
+                </label>
+
+                <label className='flex items-center mb-4 fit-content'>
                   <div className='relative cursor-pointer'>
                     <input
                       type='checkbox'
                       className='hidden'
-                      checked={paymentsMode === 'test' || paymentsMode === 'prod'}
-                      onChange={(e) => paymentsMode === 'disabled' ? this.handleEnableTestPayments(e, true, loadingPlanMode) : this.handleDisablePayments(e)}
-                      disabled={loadingPaymentsMode}
+                      checked={paymentRequired}
+                      onChange={this.handleTogglePaymentRequired}
+                      disabled={loadingPaymentRequired}
                     />
                     <div className='w-10 h-4 bg-gray-400 rounded-full shadow-inner' />
                     <div className='toggle-dot absolute w-6 h-6 bg-white rounded-full shadow' />
                   </div>
 
-                  <div className='ml-3 text-gray-500 hover:text-gray-600 font-medium cursor-pointer'>
-                    {paymentsMode === 'disabled' ? 'Enable Payments' : 'Payments Enabled'}
+                  <div className='ml-3 text-gray-600 hover:text-gray-800 font-medium cursor-pointer'>
+                    {paymentRequired ? 'Payment required to open a database' : 'No payment required to open a database'}
                   </div>
 
-                  {loadingPaymentsMode && <div className='loader w-4 h-4 ml-4 inline-block' />}
+                  {loadingPaymentRequired && <div className='loader w-4 h-4 ml-4 inline-block' />}
                 </label>
 
-                {(paymentsMode === 'test' || paymentsMode === 'prod') &&
-                  <label className='flex items-center mb-4 fit-content'>
-                    <div className={`relative ${prodPaymentsAllowed(admin) ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
-                      <input
-                        type='checkbox'
-                        className='hidden'
-                        checked={paymentsMode === 'prod'}
-                        onChange={(e) => paymentsMode === 'prod' ? this.handleEnableTestPayments(e, loadingPaymentsMode, true) : this.handleEnableProdPayments(e)}
-                        disabled={!prodPaymentsAllowed(admin) || loadingPlanMode}
-                      />
-                      <div className='w-10 h-4 bg-gray-400 rounded-full shadow-inner' />
-                      <div className='toggle-dot absolute w-6 h-6 bg-white rounded-full shadow' />
+                <form className='mt-6 mb-4' onSubmit={this.handleSetTrialPeriod}>
+                  <div className='table-row'>
+                    <div className='table-cell w-32 sm:w-40'>
+                      Free Trial <span className='font-light'>(optional)</span>
                     </div>
 
-                    <div className={`ml-3 font-medium ${prodPaymentsAllowed(admin) ? 'cursor-pointer text-gray-500 hover:text-gray-600' : 'cursor-not-allowed text-gray-400'}`}>
-                      {paymentsMode === 'test' ? 'Use Production Plan' : 'Using Prod Plan'}
-                    </div>
-
-                    {loadingPlanMode && <div className='loader w-4 h-4 ml-4 inline-block' />}
-                  </label>
-                }
-
-                <form onSubmit={this.handleSetTestSubscriptionPlanId}>
-
-                  {testSubscriptionPlanId
-                    ? <div className='table-row'>
-                      <div className='table-cell p-2 w-32 sm:w-40 text-right'>Test Plan ID</div>
-
-                      <div className='table-cell p-2 w-32 sm:w-40'>
-                        <div className='font-light w-48 sm:w-84 text-left'>
-                          <a
-                            href={'https://dashboard.stripe.com/test/plans/' + testSubscriptionPlanId}>
-                            {testSubscriptionPlanId}
-                          </a>
+                    {trialPeriodDays
+                      ? <span>
+                        <div className='table-cell font-normal'>
+                          {trialPeriodDays === 1 ? '1 day' : `${trialPeriodDays} days`}
                         </div>
-                      </div>
 
-                      <div className='ml-2 w-24 text-center'>
-                        {
-                          loadingDeleteTestSubscriptionPlanId
-                            ? <div className='loader w-4 h-4 inline-block' />
-                            : <div className='font-normal text-sm text-yellow-700'>
-                              <FontAwesomeIcon
-                                className='cursor-pointer'
-                                onClick={this.handleDeleteTestSubscriptionPlanId}
-                                icon={faTrashAlt}
-                              />
-                            </div>
-                        }
-                      </div>
+                        <span className='ml-4 w-24'>
+                          {
+                            loadingDeleteTrial
+                              ? <span className='loader w-4 h-4 inline-block' />
+                              : <span className='font-normal text-sm text-yellow-700'>
+                                <FontAwesomeIcon
+                                  className='cursor-pointer'
+                                  onClick={this.handleDeleteTrial}
+                                  icon={faTrashAlt}
+                                />
+                              </span>
+                          }
+                        </span>
+                      </span>
 
-                    </div>
-
-                    : <div className='table-row'>
-                      <div className='table-cell p-2 w-32 sm:w-40 text-right'>
-                        <a href='https://dashboard.stripe.com/test/subscriptions/products/create'>
-                          Test Plan ID
-                        </a>
-                      </div>
-
-                      <div className='table-cell p-2 w-32 sm:w-40'>
-                        <input
-                          className='font-light text-xs sm:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none'
-                          type='text'
-                          name='newTestSubscriptionPlanId'
-                          autoComplete='off'
-                          value={newTestSubscriptionPlanId}
-                          spellCheck={false}
-                          onChange={this.handlePaymentsPlanInputChange}
-                          placeholder='price_ or plan_'
-                        />
-                      </div>
-
-                      <input
-                        className='btn w-24 ml-2'
-                        type='submit'
-                        value={loadingSetTestSubscriptionPlanId ? 'Saving...' : 'Save'}
-                        disabled={!newTestSubscriptionPlanId || loadingSetTestSubscriptionPlanId}
-                      />
-
-                    </div>
-                  }
-
-                </form>
-
-                <form onSubmit={this.handleSetProdSubscriptionPlanId}>
-
-                  {prodSubscriptionPlanId
-                    ? <div className='table-row'>
-                      <div className='table-cell p-2 w-32 sm:w-40 text-right'>Prod Plan ID</div>
-
-                      <div className='table-cell p-2 w-32 sm:w-40'>
-                        <div className='font-light w-48 sm:w-84 text-left'>
-                          <a
-                            href={'https://dashboard.stripe.com/plans/' + prodSubscriptionPlanId}>
-                            {prodSubscriptionPlanId}
-                          </a>
+                      : <span>
+                        <div className='table-cell w-32 sm:w-40'>
+                          <input
+                            className='font-light text-xs sm:text-sm w-48 sm:w-56 h-8 p-2 border border-gray-500 outline-none'
+                            type='number'
+                            min={1}
+                            max={730}
+                            name='newTrialPeriodDays'
+                            autoComplete='off'
+                            spellCheck={false}
+                            onChange={this.handleTrialPeriodInputChange}
+                            placeholder='days'
+                          />
                         </div>
-                      </div>
 
-                      <div className='ml-2 w-24 text-center'>
-                        {
-                          loadingDeleteProdSubscriptionPlanId
-                            ? <div className='loader w-4 h-4 inline-block' />
-                            : <div className='font-normal text-sm cursor-pointer text-yellow-700'>
-                              <FontAwesomeIcon
-                                className='cursor-pointer'
-                                onClick={this.handleDeleteProdSubscriptionPlanId}
-                                icon={faTrashAlt}
-                              />
-                            </div>
-                        }
-                      </div>
-
-                    </div>
-
-                    : <div className='table-row'>
-
-                      <div className='table-cell p-2 w-32 sm:w-40 text-right'>
-                        <a href='https://dashboard.stripe.com/subscriptions/products/create'>
-                          Prod Plan ID
-                        </a>
-                      </div>
-
-                      <div className='table-cell p-2 w-32 sm:w-40'>
                         <input
-                          className={`font-light text-xs sm:text-sm w-48 sm:w-84 h-8 p-2 border border-gray-500 outline-none ${prodPaymentsAllowed(admin) ? '' : 'cursor-not-allowed'}`}
-                          type='text'
-                          name='newProdSubscriptionPlanId'
-                          autoComplete='off'
-                          value={newProdSubscriptionPlanId}
-                          spellCheck={false}
-                          onChange={this.handlePaymentsPlanInputChange}
-                          placeholder='price_ or plan_'
-                          disabled={!prodPaymentsAllowed(admin)}
+                          className='btn w-24 ml-2'
+                          type='submit'
+                          value={loadingSetTrialPeriod ? 'Saving...' : 'Save'}
+                          disabled={!newTrialPeriodDays || loadingSetTrialPeriod}
                         />
-                      </div>
-
-                      <input
-                        className='btn w-24 ml-2'
-                        type='submit'
-                        value={loadingSetProdSubscriptionPlanId ? 'Saving...' : 'Save'}
-                        disabled={!newProdSubscriptionPlanId || loadingSetProdSubscriptionPlanId}
-                      />
-
-                    </div>
-                  }
-
+                      </span>
+                    }
+                  </div>
                 </form>
-
               </div>
               :
 

@@ -102,54 +102,6 @@ const permanentDeleteUser = async (userId, appName, username) => {
   }
 }
 
-const setTestSubscriptionPlanId = async (appName, appId, testSubscriptionPlanId) => {
-  try {
-    await axios({
-      method: 'POST',
-      url: `/${VERSION}/admin/stripe/connected/apps/${appId}/test-subscription/${testSubscriptionPlanId}?appName=${encodeURIComponent(appName)}`,
-      timeout: TEN_SECONDS_MS
-    })
-  } catch (e) {
-    adminLogic.errorHandler(e)
-  }
-}
-
-const deleteTestSubscriptionPlanId = async (appName, appId, testSubscriptionPlanId) => {
-  try {
-    await axios({
-      method: 'DELETE',
-      url: `/${VERSION}/admin/stripe/connected/apps/${appId}/test-subscription/${testSubscriptionPlanId}?appName=${encodeURIComponent(appName)}`,
-      timeout: TEN_SECONDS_MS
-    })
-  } catch (e) {
-    adminLogic.errorHandler(e)
-  }
-}
-
-const setProdSubscriptionPlanId = async (appName, appId, prodSubscriptionPlanId) => {
-  try {
-    await axios({
-      method: 'POST',
-      url: `/${VERSION}/admin/stripe/connected/apps/${appId}/prod-subscription/${prodSubscriptionPlanId}?appName=${encodeURIComponent(appName)}`,
-      timeout: TEN_SECONDS_MS
-    })
-  } catch (e) {
-    adminLogic.errorHandler(e)
-  }
-}
-
-const deleteProdSubscriptionPlanId = async (appName, appId, prodSubscriptionPlanId) => {
-  try {
-    await axios({
-      method: 'DELETE',
-      url: `/${VERSION}/admin/stripe/connected/apps/${appId}/prod-subscription/${prodSubscriptionPlanId}?appName=${encodeURIComponent(appName)}`,
-      timeout: TEN_SECONDS_MS
-    })
-  } catch (e) {
-    adminLogic.errorHandler(e)
-  }
-}
-
 const enableTestPayments = async (appName, appId) => {
   try {
     const paymentsModeResponse = await axios({
@@ -176,14 +128,43 @@ const enableProdPayments = async (appName, appId) => {
   }
 }
 
-const disablePayments = async (appName, appId) => {
+const setPaymentRequired = async (appName, appId, paymentRequired) => {
   try {
-    const paymentsModeResponse = await axios({
-      method: 'DELETE',
-      url: `/${VERSION}/admin/stripe/connected/apps/${appId}/payments-mode?appName=${encodeURIComponent(appName)}`,
+    await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/stripe/connected/apps/${appId}/payment-required?appName=${encodeURIComponent(appName)}`,
+      data: {
+        paymentRequired,
+      },
       timeout: TEN_SECONDS_MS
     })
-    return paymentsModeResponse.data
+  } catch (e) {
+    adminLogic.errorHandler(e)
+  }
+}
+
+const setTrialPeriod = async (appName, appId, trialPeriodDays) => {
+  try {
+    await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/stripe/connected/apps/${appId}/trial-period?appName=${encodeURIComponent(appName)}`,
+      data: {
+        trialPeriodDays,
+      },
+      timeout: TEN_SECONDS_MS
+    })
+  } catch (e) {
+    adminLogic.errorHandler(e)
+  }
+}
+
+const deleteTrial = async (appName, appId) => {
+  try {
+    await axios({
+      method: 'DELETE',
+      url: `/${VERSION}/admin/stripe/connected/apps/${appId}/trial-period?appName=${encodeURIComponent(appName)}`,
+      timeout: TEN_SECONDS_MS
+    })
   } catch (e) {
     adminLogic.errorHandler(e)
   }
@@ -254,13 +235,11 @@ export default {
   permanentDeleteApp,
   deleteUser,
   permanentDeleteUser,
-  setTestSubscriptionPlanId,
-  setProdSubscriptionPlanId,
-  deleteTestSubscriptionPlanId,
-  deleteProdSubscriptionPlanId,
   enableTestPayments,
   enableProdPayments,
-  disablePayments,
+  setPaymentRequired,
+  setTrialPeriod,
+  deleteTrial,
   modifyEncryptionMode,
   addDomainToWhitelist,
   getDomainWhitelist,

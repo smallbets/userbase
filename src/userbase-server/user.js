@@ -836,14 +836,22 @@ const _getEncryptedValidationMessage = (validationMessage, publicKey) => {
 
 const _buildStripeData = (user, app, admin) => {
   const stripeData = {}
-  stripeData.stripeAccountId = admin['stripe-account-id']
-  stripeData.paymentsMode = app['payments-mode'] || 'disabled'
+  const stripeAccountId = admin['stripe-account-id']
+  stripeData.stripeAccountId = stripeAccountId
 
   const paymentsMode = app['payments-mode']
-  if (paymentsMode !== 'test' && paymentsMode !== 'prod') return stripeData
+  stripeData.paymentsMode = (
+    // make sure Stripe account is connected
+    stripeAccountId &&
 
-  // payments mode set to prod but subscriptions not paid for gets same functional treatment as disabled payments mode
-  if (paymentsMode === 'prod' && !adminController.prodPaymentsEnabled(admin)) return stripeData
+    // make sure paid for payments feature, or that didn't need to pay
+    ((paymentsMode === 'prod' && adminController.prodPaymentsEnabled(admin)) || paymentsMode !== 'prod') &&
+
+    // default paymentsMode to 'test' so long as above conditions are met
+    (paymentsMode || 'test')
+  ) || 'disabled'
+
+  if (paymentsMode !== 'test' && paymentsMode !== 'prod') return stripeData
 
   stripeData.subscriptionStatus = user[paymentsMode + '-subscription-status']
   stripeData.cancelSubscriptionAt = user[paymentsMode + '-cancel-subscription-at']
@@ -1353,7 +1361,7 @@ async function getUserByUserId(userId) {
 }
 exports.getUserByUserId = getUserByUserId
 
-const buildUserResult = (user, app) => {
+const buildUserResult = (user, app, admin) => {
   const result = {
     username: user['username'],
     userId: user['user-id'],
@@ -1367,29 +1375,25 @@ const buildUserResult = (user, app) => {
   if (user['protected-profile']) result['protectedProfile'] = user['protected-profile']
   if (user['deleted']) result['deleted'] = user['deleted']
 
-  if (app['test-subscription-plan-id']) {
-    const trialExpirationDate = _getTrialExpirationDate(user, app, 'test')
-
+  if (admin['stripe-account-id']) {
+    const testTrialExpirationDate = _getTrialExpirationDate(user, app, 'test')
     result.testStripeData = {
       customerId: user['test-stripe-customer-id'],
       subscriptionStatus: user['test-subscription-status'],
       cancelSubscriptionAt: user['test-cancel-subscription-at'],
       subscriptionId: user['test-subscription-id'],
       subscriptionPlanId: user['test-subscription-plan-id'],
-      trialExpirationDate: trialExpirationDate && trialExpirationDate.toISOString(),
+      trialExpirationDate: testTrialExpirationDate && testTrialExpirationDate.toISOString(),
     }
-  }
 
-  if (app['prod-subscription-plan-id']) {
-    const trialExpirationDate = _getTrialExpirationDate(user, app, 'prod')
-
+    const prodTrialExpirationDate = _getTrialExpirationDate(user, app, 'prod')
     result.prodStripeData = {
       customerId: user['prod-stripe-customer-id'],
       subscriptionStatus: user['prod-subscription-status'],
       cancelSubscriptionAt: user['prod-cancel-subscription-at'],
       subscriptionId: user['prod-subscription-id'],
       subscriptionPlanId: user['prod-subscription-plan-id'],
-      trialExpirationDate: trialExpirationDate && trialExpirationDate.toISOString(),
+      trialExpirationDate: prodTrialExpirationDate && prodTrialExpirationDate.toISOString(),
     }
   }
 
@@ -1437,12 +1441,13 @@ exports.adminGetUserController = async function (req, res) {
 
     _validateUserId(userId)
 
-    const { user, app } = await adminGetUser(userId, res.locals.admin['admin-id'], logChildObject)
+    const admin = res.locals.admin
+    const { user, app } = await adminGetUser(userId, admin['admin-id'], logChildObject)
 
     logChildObject.statusCode = statusCodes['Success']
     logger.child(logChildObject).info('Successfully retrieved user for admin')
 
-    return res.send(buildUserResult(user, app))
+    return res.send(buildUserResult(user, app, admin))
   } catch (e) {
     const message = 'Failed to retrieve user for admin.'
 
@@ -1887,7 +1892,7 @@ exports.updateUser = async function (connectionId, conn, adminId, userId, userna
     if (newKeyData) conn.validateKey() // must have rotated keys successfully
 
     const updatedUserResult = {
-      ...buildUserResult(updatedUser, app),
+      ...buildUserResult(updatedUser, app, admin),
       userData: { ..._buildUserData(updatedUser, app, admin) },
       passwordChanged: passwordToken ? true : undefined
     }
@@ -2020,7 +2025,7 @@ exports.updateProtectedProfile = async function (req, res) {
     logger.child(logChildObject).info('Successfully updated protected profile')
 
     const updatedUserResult = {
-      ...buildUserResult(updatedUser, app),
+      ...buildUserResult(updatedUser, app, res.locals.admin),
       userData: { ..._buildUserData(updatedUser, app, res.locals.admin) },
     }
 
@@ -2361,23 +2366,28 @@ const _createStripePaymentSession = async function (user, admin, subscriptionPla
   }
 }
 
-exports.createSubscriptionPaymentSession = async function (logChildObject, app, admin, user, success_url, cancel_url) {
+exports.createSubscriptionPaymentSession = async function (logChildObject, app, admin, user, success_url, cancel_url, providedPlanId, providedPriceId) {
   try {
     const stripeAccountId = admin['stripe-account-id']
     logChildObject.stripeAccountId = stripeAccountId
     logChildObject.userEmail = user['email']
     logger.child(logChildObject).info('Creating payment session for user')
 
-    let subscriptionPlanId, userPlanId, subscriptionStatus, customerId
+    if (providedPlanId && providedPriceId) throw {
+      status: statusCodes['Bad Request'],
+      error: 'PriceIdOrPlanIdAllowed'
+    }
+
+    let subscriptionPlanId, subscriptionStatus, cancelSubscriptionAt, customerId
     if (app['payments-mode'] === 'prod' && adminController.prodPaymentsEnabled(admin)) {
-      subscriptionPlanId = app['prod-subscription-plan-id']
-      userPlanId = user['prod-subscription-plan-id']
+      subscriptionPlanId = providedPlanId || providedPriceId || app['prod-subscription-plan-id']
       subscriptionStatus = user['prod-subscription-status']
+      cancelSubscriptionAt = user['prod-cancel-subscription-at']
       customerId = user['prod-stripe-customer-id']
     } else if (app['payments-mode'] === 'test') {
-      subscriptionPlanId = app['test-subscription-plan-id']
-      userPlanId = user['test-subscription-plan-id']
+      subscriptionPlanId = providedPlanId || providedPriceId || app['test-subscription-plan-id']
       subscriptionStatus = user['test-subscription-status']
+      cancelSubscriptionAt = user['test-cancel-subscription-at']
       customerId = user['test-stripe-customer-id']
     } else {
       throw {
@@ -2390,11 +2400,13 @@ exports.createSubscriptionPaymentSession = async function (logChildObject, app, 
     logChildObject.customerId = customerId
 
     if (!subscriptionPlanId) throw {
-      status: statusCodes['Forbidden'],
-      error: 'SubscriptionPlanNotSet'
+      status: statusCodes['Bad Request'],
+      error: 'PriceIdOrPlanIdMissing'
     }
 
-    if (userPlanId === subscriptionPlanId && subscriptionStatus !== 'canceled') {
+    logger.child(user).warn('???')
+
+    if (subscriptionStatus && !cancelSubscriptionAt && subscriptionStatus !== 'canceled') {
       throw {
         status: statusCodes['Conflict'],
         error: 'SubscriptionPlanAlreadyPurchased'
@@ -2423,7 +2435,7 @@ exports.createSubscriptionPaymentSession = async function (logChildObject, app, 
   }
 }
 
-const _buildStripeSubscriptionDdbParams = async (user, customerId, subscriptionId, planId, status, cancelAt, stripeEventTimestamp, isProduction) => {
+const _buildStripeSubscriptionDdbParams = async (user, customerId, subscriptionId, planId, status, cancelAt, stripeEventTimestamp, paymentsMode) => {
   const stripeSubscriptionDdbParams = conditionCheckUserExists(user['username'], user['app-id'], user['user-id'])
 
   // Making sure event timestamp provided is greater than one stored ensures latest gets stored in DDB (Stripe sends events out of order)
@@ -2437,12 +2449,12 @@ const _buildStripeSubscriptionDdbParams = async (user, customerId, subscriptionI
     #stripeEventTimestamp = :stripeEventTimestamp
   `
 
-  stripeSubscriptionDdbParams.ExpressionAttributeNames['#stripeCustomerId'] = (isProduction ? 'prod' : 'test') + '-stripe-customer-id'
-  stripeSubscriptionDdbParams.ExpressionAttributeNames['#stripeSubscriptionId'] = (isProduction ? 'prod' : 'test') + '-subscription-id'
-  stripeSubscriptionDdbParams.ExpressionAttributeNames['#stripePlanId'] = (isProduction ? 'prod' : 'test') + '-subscription-plan-id'
-  stripeSubscriptionDdbParams.ExpressionAttributeNames['#stripeSubscriptionStatus'] = (isProduction ? 'prod' : 'test') + '-subscription-status'
-  stripeSubscriptionDdbParams.ExpressionAttributeNames['#stripeEventTimestamp'] = (isProduction ? 'prod' : 'test') + '-stripe-event-timestamp'
-  stripeSubscriptionDdbParams.ExpressionAttributeNames['#cancelAt'] = (isProduction ? 'prod' : 'test') + '-cancel-subscription-at'
+  stripeSubscriptionDdbParams.ExpressionAttributeNames['#stripeCustomerId'] = paymentsMode + '-stripe-customer-id'
+  stripeSubscriptionDdbParams.ExpressionAttributeNames['#stripeSubscriptionId'] = paymentsMode + '-subscription-id'
+  stripeSubscriptionDdbParams.ExpressionAttributeNames['#stripePlanId'] = paymentsMode + '-subscription-plan-id'
+  stripeSubscriptionDdbParams.ExpressionAttributeNames['#stripeSubscriptionStatus'] = paymentsMode + '-subscription-status'
+  stripeSubscriptionDdbParams.ExpressionAttributeNames['#stripeEventTimestamp'] = paymentsMode + '-stripe-event-timestamp'
+  stripeSubscriptionDdbParams.ExpressionAttributeNames['#cancelAt'] = paymentsMode + '-cancel-subscription-at'
 
   stripeSubscriptionDdbParams.ExpressionAttributeValues[':stripeCustomerId'] = customerId
   stripeSubscriptionDdbParams.ExpressionAttributeValues[':stripeSubscriptionId'] = subscriptionId
@@ -2492,15 +2504,15 @@ exports.updateSubscriptionInDdb = async (logChildObject, logs, metadata, custome
     // the admin created with a prior Stripe Connect account
     if (admin['stripe-account-id'] !== stripeAccountId) throw new Error('IncorrectStripeAccount')
 
-    // possible admin has deleted or changed the Stripe Plan ID in the admin panel, but there is a user still subscribed to a prior plan
-    // the admin had stored
-    if ((isProduction && app['prod-subscription-plan-id'] !== subscriptionPlanId) ||
-      (!isProduction && app['test-subscription-plan-id'] !== subscriptionPlanId)
-    ) {
-      throw new Error('IncorrectSubscriptionPlanId')
-    }
+    // do not overwrite with different subscription if user has an active plan saved already, unless overwriting with an active plan
+    const paymentsMode = isProduction ? 'prod' : 'test'
+    if (
+      subscriptionId !== user[paymentsMode + '-subscription-id'] &&
+      user[paymentsMode + '-subscription-status'] === 'active' && !user[paymentsMode + '-cancel-subscription-at'] &&
+      (status !== 'active' || cancelAt)
+    ) throw new Error('AlreadyHasActivePlan')
 
-    const updateUserParams = await _buildStripeSubscriptionDdbParams(user, customerId, subscriptionId, subscriptionPlanId, status, cancelAt, stripeEventTimestamp, isProduction)
+    const updateUserParams = await _buildStripeSubscriptionDdbParams(user, customerId, subscriptionId, subscriptionPlanId, status, cancelAt, stripeEventTimestamp, paymentsMode)
     const ddbClient = connection.ddbClient()
     await ddbClient.update(updateUserParams).promise()
   } catch (e) {
@@ -2512,7 +2524,7 @@ exports.updateSubscriptionInDdb = async (logChildObject, logs, metadata, custome
       case 'IncorrectAppIdInMetadata':
       case 'IncorrectUserIdInMetadata':
       case 'IncorrectStripeAccount':
-      case 'IncorrectSubscriptionPlanId': {
+      case 'AlreadyHasActivePlan': {
         // if error is any one of the above, no need to make the webhook throw
         logger.child({ ...logChildObject, err: e }).warn(logs.issueLog)
         break
@@ -2525,22 +2537,8 @@ exports.updateSubscriptionInDdb = async (logChildObject, logs, metadata, custome
   }
 }
 
-const _throwPaymentErrors = (subscriptionPlanNotSet, subscriptionNotFound, subscribedToIncorrectPlan, subscriptionInactive, subscriptionStatus, trialExpired) => {
-  if (subscriptionPlanNotSet) {
-    throw {
-      status: statusCodes['Forbidden'],
-      error: {
-        name: 'SubscriptionPlanNotSet'
-      }
-    }
-  } else if (subscribedToIncorrectPlan) {
-    throw {
-      status: statusCodes['Payment Required'],
-      error: {
-        name: 'SubscribedToIncorrectPlan'
-      }
-    }
-  } else if (trialExpired) {
+const _throwPaymentErrors = (subscriptionNotFound, subscriptionInactive, subscriptionStatus, trialExpired) => {
+  if (trialExpired) {
     throw {
       status: statusCodes['Payment Required'],
       error: {
@@ -2570,7 +2568,7 @@ const _getTrialExpirationDate = (user, app, paymentsMode) => {
   const subscriptionActive = subscriptionStatus === 'active'
   if (subscriptionActive) return
 
-  const trialPeriodDays = app[paymentsMode + '-trial-period-days']
+  const trialPeriodDays = app['trial-period-days']
   if (!trialPeriodDays) return
 
   const trialPeriodDaysMs = trialPeriodDays * MS_IN_A_DAY
@@ -2578,6 +2576,8 @@ const _getTrialExpirationDate = (user, app, paymentsMode) => {
 }
 
 exports.validatePayment = function (user, app, admin) {
+  if (!app['payment-required']) return
+
   if (app['payments-mode'] !== 'prod' && app['payments-mode'] !== 'test') return
 
   // payments mode set to prod but subscriptions not paid for gets same functional treatment as disabled payments mode
@@ -2585,11 +2585,7 @@ exports.validatePayment = function (user, app, admin) {
 
   const paymentsMode = app['payments-mode'] === 'prod' ? 'prod' : 'test'
 
-  const subscriptionPlanNotSet = !app[paymentsMode + '-subscription-plan-id']
-
   const subscriptionNotFound = !user[paymentsMode + '-subscription-plan-id']
-
-  const subscribedToIncorrectPlan = user[paymentsMode + '-subscription-plan-id'] && app[paymentsMode + '-subscription-plan-id'] !== user[paymentsMode + '-subscription-plan-id']
 
   const subscriptionStatus = user[paymentsMode + '-subscription-status']
   const subscriptionInactive = subscriptionStatus !== 'active'
@@ -2598,7 +2594,7 @@ exports.validatePayment = function (user, app, admin) {
   const trialExpired = trialExpirationDate && new Date() > trialExpirationDate
   if (trialExpirationDate && !trialExpired) return
 
-  _throwPaymentErrors(subscriptionPlanNotSet, subscriptionNotFound, subscribedToIncorrectPlan, subscriptionInactive, subscriptionStatus, trialExpired)
+  _throwPaymentErrors(subscriptionNotFound, subscriptionInactive, subscriptionStatus, trialExpired)
 }
 
 const _cancelStripeSubscriptionInDdb = async (user, isProduction, cancel_at) => {
@@ -2657,7 +2653,7 @@ const _validateModifySubscription = (logChildObject, app, user) => {
 
   if (!subscriptionId) throw {
     status: statusCodes['Forbidden'],
-    error: 'SubscriptionPlanNotSet'
+    error: 'SubscriptionNotFound'
   }
 
   return { subscriptionId, isProduction }
