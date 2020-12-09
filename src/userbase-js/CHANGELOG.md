@@ -1,3 +1,7 @@
+## [2.5.0] - 2020-12-09
+### Added
+- purchaseSubscription() now accepts `priceId` or `planId` as parameters in case admin wants to offer multiple plans for users to choose from.
+
 ## [2.4.3] - 2020-12-03
 ### Added
 - Admin can now create a domain whitelist for an app in the admin panel. The SDK catches and throws clean `DomainNotWhitelisted` error when user attempts to use an app ID from a domain that is not on the whitelist.
