@@ -111,6 +111,8 @@ export interface CancelSubscriptionResult {
 
 export type databaseNameXorId = ({ databaseId: string, databaseName?: never } | { databaseName: string, databaseId?: never });
 
+export type priceIdXorPlanId = ({ priceId?: string, planId?: never } | { planId?: string, priceId?: never });
+
 export interface Userbase {
   init(params: { appId: string, updateUserHandler?: UpdateUserHandler, sessionLength?: number, allowServerSideEncryption?: boolean }): Promise<Session>
 
@@ -150,7 +152,7 @@ export interface Userbase {
 
   modifyDatabasePermissions(params: databaseNameXorId & { username: string, readOnly?: boolean, resharingAllowed?: boolean, revoke?: boolean }): Promise<void>
 
-  purchaseSubscription(params: { successUrl: string, cancelUrl: string }): Promise<void>
+  purchaseSubscription(params: { successUrl: string, cancelUrl: string } & priceIdXorPlanId): Promise<void>
 
   cancelSubscription(): Promise<CancelSubscriptionResult>
 
