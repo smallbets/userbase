@@ -2404,8 +2404,6 @@ exports.createSubscriptionPaymentSession = async function (logChildObject, app, 
       error: 'PriceIdOrPlanIdMissing'
     }
 
-    logger.child(user).warn('???')
-
     if (subscriptionStatus && !cancelSubscriptionAt && subscriptionStatus !== 'canceled') {
       throw {
         status: statusCodes['Conflict'],
