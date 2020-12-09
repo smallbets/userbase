@@ -948,7 +948,7 @@ export default class AppUsersTable extends Component {
                   </div>
 
                   <div className={`ml-3 font-medium ${disableProdPaymentSelection ? 'cursor-not-allowed text-gray-400' : 'cursor-pointer text-gray-600 hover:text-gray-800'}`}>
-                    {paymentsMode === 'test' ? 'Test mode' : 'Production mode'}
+                    {paymentsMode === 'prod' ? 'Production mode' : 'Test mode'}
                   </div>
 
                   {loadingPlanMode && <div className='loader w-4 h-4 ml-4 inline-block' />}

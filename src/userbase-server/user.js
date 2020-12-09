@@ -839,17 +839,17 @@ const _buildStripeData = (user, app, admin) => {
   const stripeAccountId = admin['stripe-account-id']
   stripeData.stripeAccountId = stripeAccountId
 
-  const paymentsMode = app['payments-mode']
-  stripeData.paymentsMode = (
+  const paymentsMode = (
     // make sure Stripe account is connected
     stripeAccountId &&
 
     // make sure paid for payments feature, or that didn't need to pay
-    ((paymentsMode === 'prod' && adminController.prodPaymentsEnabled(admin)) || paymentsMode !== 'prod') &&
+    ((app['payments-mode'] === 'prod' && adminController.prodPaymentsEnabled(admin)) || app['payments-mode'] !== 'prod') &&
 
     // default paymentsMode to 'test' so long as above conditions are met
-    (paymentsMode || 'test')
+    (app['payments-mode'] || 'test')
   ) || 'disabled'
+  stripeData.paymentsMode = paymentsMode
 
   if (paymentsMode !== 'test' && paymentsMode !== 'prod') return stripeData
 
@@ -2373,6 +2373,11 @@ exports.createSubscriptionPaymentSession = async function (logChildObject, app, 
     logChildObject.userEmail = user['email']
     logger.child(logChildObject).info('Creating payment session for user')
 
+    if (!stripeAccountId) throw {
+      status: statusCodes['Forbidden'],
+      error: 'StripeAccountNotConnected'
+    }
+
     if (providedPlanId && providedPriceId) throw {
       status: statusCodes['Bad Request'],
       error: 'PriceIdOrPlanIdAllowed'
@@ -2384,16 +2389,11 @@ exports.createSubscriptionPaymentSession = async function (logChildObject, app, 
       subscriptionStatus = user['prod-subscription-status']
       cancelSubscriptionAt = user['prod-cancel-subscription-at']
       customerId = user['prod-stripe-customer-id']
-    } else if (app['payments-mode'] === 'test') {
+    } else {
       subscriptionPlanId = providedPlanId || providedPriceId || app['test-subscription-plan-id']
       subscriptionStatus = user['test-subscription-status']
       cancelSubscriptionAt = user['test-cancel-subscription-at']
       customerId = user['test-stripe-customer-id']
-    } else {
-      throw {
-        status: statusCodes['Forbidden'],
-        error: 'PaymentsDisabled'
-      }
     }
 
     logChildObject.subscriptionPlanId = subscriptionPlanId
@@ -2411,7 +2411,7 @@ exports.createSubscriptionPaymentSession = async function (logChildObject, app, 
       }
     }
 
-    const session = await _createStripePaymentSession(user, admin, subscriptionPlanId, customerId, success_url, cancel_url, app['payments-mode'] === 'test')
+    const session = await _createStripePaymentSession(user, admin, subscriptionPlanId, customerId, success_url, cancel_url, app['payments-mode'] !== 'prod')
 
     logger
       .child({ ...logChildObject, statusCode: statusCodes['Success'] })
@@ -2576,8 +2576,6 @@ const _getTrialExpirationDate = (user, app, paymentsMode) => {
 exports.validatePayment = function (user, app, admin) {
   if (!app['payment-required']) return
 
-  if (app['payments-mode'] !== 'prod' && app['payments-mode'] !== 'test') return
-
   // payments mode set to prod but subscriptions not paid for gets same functional treatment as disabled payments mode
   if (app['payments-mode'] === 'prod' && !adminController.prodPaymentsEnabled(admin)) return
 
@@ -2633,18 +2631,18 @@ const _resumeStripeSubscriptionInDdb = async (user, isProduction) => {
   }
 }
 
-const _validateModifySubscription = (logChildObject, app, user) => {
+const _validateModifySubscription = (logChildObject, stripeAccountId, app, user) => {
+  if (!stripeAccountId) throw {
+    status: statusCodes['Forbidden'],
+    error: 'StripeAccountNotConnected'
+  }
+
   let subscriptionId, isProduction
   if (app['payments-mode'] === 'prod') {
     subscriptionId = user['prod-subscription-id']
     isProduction = true
-  } else if (app['payments-mode'] === 'test') {
-    subscriptionId = user['test-subscription-id']
   } else {
-    throw {
-      status: statusCodes['Forbidden'],
-      error: 'PaymentsDisabled'
-    }
+    subscriptionId = user['test-subscription-id']
   }
 
   logChildObject.subscriptionId = subscriptionId
@@ -2664,7 +2662,7 @@ exports.cancelSubscription = async function (logChildObject, app, admin, user) {
     logChildObject.stripeAccountId = stripeAccount
     logger.child(logChildObject).info('Canceling user subscription')
 
-    const { subscriptionId, isProduction } = _validateModifySubscription(logChildObject, app, user)
+    const { subscriptionId, isProduction } = _validateModifySubscription(logChildObject, stripeAccount, app, user)
     const useTestClient = !isProduction
 
     const updatedSubscription = await stripe.getClient(useTestClient).subscriptions.update(
@@ -2701,7 +2699,7 @@ exports.resumeSubscription = async function (logChildObject, app, admin, user) {
     logChildObject.stripeAccountId = stripeAccount
     logger.child(logChildObject).info('Resuming user subscription')
 
-    const { subscriptionId, isProduction } = _validateModifySubscription(logChildObject, app, user)
+    const { subscriptionId, isProduction } = _validateModifySubscription(logChildObject, stripeAccount, app, user)
     const useTestClient = !isProduction
 
     await stripe.getClient(useTestClient).subscriptions.update(
@@ -2775,19 +2773,19 @@ exports.updatePaymentMethod = async function (logChildObject, app, admin, user, 
     logChildObject.userEmail = user['email']
     logger.child(logChildObject).info('Creating update payment method session for user')
 
+    if (!stripeAccountId) throw {
+      status: statusCodes['Forbidden'],
+      error: 'StripeAccountNotConnected'
+    }
+
     let customerId, subscriptionId, useTestClient
     if (app['payments-mode'] === 'prod') {
       customerId = user['prod-stripe-customer-id']
       subscriptionId = user['prod-subscription-id']
-    } else if (app['payments-mode'] === 'test') {
+    } else {
       customerId = user['test-stripe-customer-id']
       subscriptionId = user['test-subscription-id']
       useTestClient = true
-    } else {
-      throw {
-        status: statusCodes['Forbidden'],
-        error: 'PaymentsDisabled'
-      }
     }
 
     logChildObject.customerId = customerId

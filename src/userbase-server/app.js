@@ -403,7 +403,7 @@ const _buildAppResult = (app, admin) => {
   const stripeData = admin['stripe-account-id']
     ? {
       paymentsMode: app['payments-mode'] || 'test',
-      paymentRequired: app['payment-required'],
+      paymentRequired: app['payment-required'] || false,
       trialPeriodDays: app['trial-period-days'],
 
       // legacy plans stored on app
