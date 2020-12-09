@@ -287,8 +287,17 @@ modifyDatabasePermissions({ username: 'tuser' })
 // $ExpectType Promise<void>
 purchaseSubscription({ successUrl: 'turl', cancelUrl: 'turl' })
 
+// $ExpectType Promise<void>
+purchaseSubscription({ successUrl: 'turl', cancelUrl: 'turl', priceId: 'tid' })
+
+// $ExpectType Promise<void>
+purchaseSubscription({ successUrl: 'turl', cancelUrl: 'turl', planId: 'tid' })
+
 // $ExpectError
 purchaseSubscription({ successUrl: 'turl' })
+
+// $ExpectError
+purchaseSubscription({ successUrl: 'turl', cancelUrl: 'turl', priceId: 'tid', planId: 'tid' })
 
 // $ExpectType Promise<CancelSubscriptionResult>
 cancelSubscription()

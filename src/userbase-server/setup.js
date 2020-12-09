@@ -65,8 +65,6 @@ const userIdIndex = 'UserIdIndex'
 const appIdIndex = 'AppIdIndex'
 const authTokenIndex = 'AuthTokenIndex'
 const subscriptionPlanIndex = 'SubscriptionPlanIndex'
-const testSubscriptionPlanIndex = 'test' + subscriptionPlanIndex
-const prodSubscriptionPlanIndex = 'prod' + subscriptionPlanIndex
 const userDatabaseIdIndex = 'UserDatabaseIdIndex'
 
 exports.adminIdIndex = adminIdIndex
@@ -201,8 +199,6 @@ async function setupDdb() {
       { AttributeName: 'admin-id', AttributeType: 'S' },
       { AttributeName: 'app-name', AttributeType: 'S' },
       { AttributeName: 'app-id', AttributeType: 'S' },
-      { AttributeName: 'test-subscription-plan-id', AttributeType: 'S' },
-      { AttributeName: 'prod-subscription-plan-id', AttributeType: 'S' },
     ],
     KeySchema: [
       { AttributeName: 'admin-id', KeyType: 'HASH' },
@@ -215,21 +211,7 @@ async function setupDdb() {
           { AttributeName: 'app-id', KeyType: 'HASH' }
         ],
         Projection: { ProjectionType: 'ALL' }
-      },
-      {
-        IndexName: testSubscriptionPlanIndex,
-        KeySchema: [
-          { AttributeName: 'test-subscription-plan-id', KeyType: 'HASH' }
-        ],
-        Projection: { ProjectionType: 'ALL' }
-      },
-      {
-        IndexName: prodSubscriptionPlanIndex,
-        KeySchema: [
-          { AttributeName: 'prod-subscription-plan-id', KeyType: 'HASH' }
-        ],
-        Projection: { ProjectionType: 'ALL' }
-      },
+      }
     ]
   }
 

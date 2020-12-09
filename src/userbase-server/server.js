@@ -333,7 +333,9 @@ async function start(express, app, userbaseConfig = {}) {
                     res.locals.admin,
                     res.locals.user,
                     params.successUrl,
-                    params.cancelUrl
+                    params.cancelUrl,
+                    params.planId,
+                    params.priceId,
                   )
                   break
                 }
@@ -664,13 +666,11 @@ async function start(express, app, userbaseConfig = {}) {
     // endpoints for admin to use payment portal to accept payments from their users
     v1Admin.post('/stripe/connection/:authorizationCode', admin.authenticateAdmin, admin.completeStripeConnection)
     v1Admin.delete('/stripe/connection', admin.authenticateAdmin, admin.disconnectStripeAccount)
-    v1Admin.post('/stripe/connected/apps/:appId/test-subscription/:subscriptionPlanId', admin.authenticateAdmin, appController.setTestSubscriptionPlan)
-    v1Admin.delete('/stripe/connected/apps/:appId/test-subscription/:subscriptionPlanId', admin.authenticateAdmin, appController.deleteTestSubscriptionPlan)
-    v1Admin.post('/stripe/connected/apps/:appId/prod-subscription/:subscriptionPlanId', admin.authenticateAdmin, appController.setProdSubscriptionPlan)
-    v1Admin.delete('/stripe/connected/apps/:appId/prod-subscription/:subscriptionPlanId', admin.authenticateAdmin, appController.deleteProdSubscriptionPlan)
+    v1Admin.post('/stripe/connected/apps/:appId/trial-period', admin.authenticateAdmin, appController.setTrialPeriod)
+    v1Admin.delete('/stripe/connected/apps/:appId/trial-period', admin.authenticateAdmin, appController.deleteTrial)
     v1Admin.post('/stripe/connected/apps/:appId/enable-test-payments', admin.authenticateAdmin, appController.enableTestPayments)
     v1Admin.post('/stripe/connected/apps/:appId/enable-prod-payments', admin.authenticateAdmin, appController.enableProdPayments)
-    v1Admin.delete('/stripe/connected/apps/:appId/payments-mode', admin.authenticateAdmin, appController.disablePayments)
+    v1Admin.post('/stripe/connected/apps/:appId/payment-required', admin.authenticateAdmin, appController.setPaymentRequired)
 
     // Access token endpoints
     v1Admin.post('/users/:userId', admin.authenticateAccessToken, userController.updateProtectedProfile)
@@ -732,7 +732,7 @@ async function start(express, app, userbaseConfig = {}) {
   } catch (e) {
     if (e.message.includes('Please try again')) {
       await wait(Math.random() * 8000)
-      return start(express, app, userbaseConfig = {})
+      return start(express, app, userbaseConfig)
     } else {
       logger.child(e).fatal(`Unhandled error while launching server ${e}`)
     }

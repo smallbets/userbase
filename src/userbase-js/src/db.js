@@ -578,12 +578,8 @@ const _openDatabase = async (changeHandler, params) => {
         }
 
         switch (data.name) {
-          case 'SubscriptionPlanNotSet':
-            throw new errors.SubscriptionPlanNotSet
           case 'SubscriptionNotFound':
             throw new errors.SubscriptionNotFound
-          case 'SubscribedToIncorrectPlan':
-            throw new errors.SubscribedToIncorrectPlan
           case 'SubscriptionInactive':
             throw new errors.SubscriptionInactive(data.subscriptionStatus)
           case 'TrialExpired':
@@ -720,9 +716,7 @@ const openDatabase = async (params) => {
       case 'UserMustChangePassword':
       case 'UserNotSignedIn':
       case 'UserNotFound':
-      case 'SubscriptionPlanNotSet':
       case 'SubscriptionNotFound':
-      case 'SubscribedToIncorrectPlan':
       case 'SubscriptionInactive':
       case 'TrialExpired':
       case 'TooManyRequests':

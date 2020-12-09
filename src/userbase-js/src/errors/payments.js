@@ -76,13 +76,23 @@ class PaymentsDisabled extends Error {
   }
 }
 
-class SubscriptionPlanNotSet extends Error {
+class PriceIdOrPlanIdAllowed extends Error {
   constructor(...params) {
     super(...params)
 
-    this.name = 'SubscriptionPlanNotSet'
-    this.message = 'Subscription plan not set. Set the subscription plan in the admin panel.'
-    this.status = statusCodes['Forbidden']
+    this.name = 'PriceIdOrPlanIdAllowed'
+    this.message = 'Only one of priceId or planId allowed.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class PriceIdOrPlanIdMissing extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'PriceIdOrPlanIdMissing'
+    this.message = 'Please provide a priceId or planId. You can create a product in the Stripe dashboard and find its priceId there.'
+    this.status = statusCodes['Bad Request']
   }
 }
 
@@ -91,7 +101,7 @@ class SubscriptionPlanAlreadyPurchased extends Error {
     super(...params)
 
     this.name = 'SubscriptionPlanAlreadyPurchased'
-    this.message = 'Subscription plan already purchased.'
+    this.message = 'Subscription plan already purchased. Cancel subscription to purchase another.'
     this.status = statusCodes['Conflict']
   }
 }
@@ -111,16 +121,6 @@ class SubscriptionNotFound extends Error {
 
     this.name = 'SubscriptionNotFound'
     this.message = 'Subscription not found. User must purchase a subscription.'
-    this.status = statusCodes['Payment Required']
-  }
-}
-
-class SubscribedToIncorrectPlan extends Error {
-  constructor(...params) {
-    super(...params)
-
-    this.name = 'SubscribedToIncorrectPlan'
-    this.message = "Subscribed to the incorrect subscription plan. The user must purchase the app's current subscription plan."
     this.status = statusCodes['Payment Required']
   }
 }
@@ -188,11 +188,11 @@ export default {
   CancelUrlInvalid,
   StripeJsLibraryMissing,
   PaymentsDisabled,
-  SubscriptionPlanNotSet,
+  PriceIdOrPlanIdAllowed,
+  PriceIdOrPlanIdMissing,
   SubscriptionPlanAlreadyPurchased,
   StripeAccountNotConnected,
   SubscriptionNotFound,
-  SubscribedToIncorrectPlan,
   SubscriptionInactive,
   SubscriptionNotPurchased,
   SubscriptionAlreadyCanceled,

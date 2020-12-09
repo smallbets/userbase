@@ -53,7 +53,7 @@ const _validatePurchaseOrUpdate = (params) => {
 const purchaseSubscription = async (params) => {
   try {
     const stripeData = ws.userData.stripeData
-    if (stripeData.subscriptionStatus && stripeData.subscriptionStatus !== 'canceled') {
+    if (!stripeData.cancelSubscriptionAt && stripeData.subscriptionStatus && stripeData.subscriptionStatus !== 'canceled') {
       throw new errors.SubscriptionPlanAlreadyPurchased
     }
     _validatePurchaseOrUpdate(params)
@@ -75,16 +75,17 @@ const purchaseSubscription = async (params) => {
       _parseGenericErrors(e)
 
       if (e.response) {
-        if (e.response.data === 'SubscriptionPlanNotSet') {
-          throw new errors.SubscriptionPlanNotSet
-        } else if (e.response.data === 'SubscriptionPlanAlreadyPurchased') {
-          throw new errors.SubscriptionPlanAlreadyPurchased
-        } else if (e.response.data === 'SuccessUrlInvalid') {
-          throw new errors.SuccessUrlInvalid
-        } else if (e.response.data === 'CancelUrlInvalid') {
-          throw new errors.CancelUrlInvalid
-        } else if (e.response.data && e.response.data.name === 'StripeError') {
-          throw new errors.StripeError(e.response.data)
+        switch (e.response.data) {
+          case 'PriceIdOrPlanIdAllowed': throw new errors.PriceIdOrPlanIdAllowed
+          case 'PriceIdOrPlanIdMissing': throw new errors.PriceIdOrPlanIdMissing
+          case 'SubscriptionPlanAlreadyPurchased': throw new errors.SubscriptionPlanAlreadyPurchased
+          case 'SuccessUrlInvalid': throw new errors.SuccessUrlInvalid
+          case 'CancelUrlInvalid': throw new errors.CancelUrlInvalid
+          default: {
+            if (e.response.data && e.response.data.name === 'StripeError') {
+              throw new errors.StripeError(e.response.data)
+            }
+          }
         }
       }
 
@@ -103,7 +104,8 @@ const purchaseSubscription = async (params) => {
       case 'CancelUrlInvalid':
       case 'StripeError':
       case 'StripeJsLibraryMissing':
-      case 'SubscriptionPlanNotSet':
+      case 'PriceIdOrPlanIdAllowed':
+      case 'PriceIdOrPlanIdMissing':
       case 'SubscriptionPlanAlreadyPurchased':
       case 'StripeAccountNotConnected':
       case 'PaymentsDisabled':
@@ -138,13 +140,13 @@ const cancelSubscription = async () => {
       const cancelResponse = await ws.request(action)
       const cancelSubscriptionAt = cancelResponse.data
 
-      ws.userData.stripeData.cancelAt = cancelSubscriptionAt
+      ws.userData.stripeData.cancelSubscriptionAt = cancelSubscriptionAt
       return { cancelSubscriptionAt }
     } catch (e) {
       _parseGenericErrors(e)
 
-      if (e.response && e.response.data === 'SubscriptionPlanNotSet') {
-        throw new errors.SubscriptionPlanNotSet
+      if (e.response && e.response.data === 'SubscriptionNotFound') {
+        throw new errors.SubscriptionNotFound
       }
 
       throw e
@@ -153,7 +155,7 @@ const cancelSubscription = async () => {
   } catch (e) {
 
     switch (e.name) {
-      case 'SubscriptionPlanNotSet':
+      case 'SubscriptionNotFound':
       case 'StripeAccountNotConnected':
       case 'PaymentsDisabled':
       case 'SubscriptionAlreadyCanceled':
@@ -177,12 +179,12 @@ const resumeSubscription = async () => {
       const action = 'ResumeSubscription'
       await ws.request(action)
 
-      delete ws.userData.stripeData.cancelAt
+      delete ws.userData.stripeData.cancelSubscriptionAt
     } catch (e) {
       _parseGenericErrors(e)
 
-      if (e.response && e.response.data === 'SubscriptionPlanNotSet') {
-        throw new errors.SubscriptionPlanNotSet
+      if (e.response && e.response.data === 'SubscriptionNotFound') {
+        throw new errors.SubscriptionNotFound
       }
 
       throw e
@@ -191,7 +193,7 @@ const resumeSubscription = async () => {
   } catch (e) {
 
     switch (e.name) {
-      case 'SubscriptionPlanNotSet':
+      case 'SubscriptionNotFound':
       case 'StripeAccountNotConnected':
       case 'PaymentsDisabled':
       case 'SubscriptionAlreadyCanceled':

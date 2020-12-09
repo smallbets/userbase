@@ -3,7 +3,6 @@ import logger from './logger'
 import statusCodes from './statusCodes'
 import userController from './user'
 import adminController from './admin'
-import appController from './app'
 
 let client
 let testClient
@@ -59,20 +58,6 @@ const getStripePaymentsAddOnPlanId = () => {
   const paymentsAddOnPlanId = process.env['sm.STRIPE_PAYMENTS_ADD_ON_PLAN_ID']
   if (!paymentsAddOnPlanId) throw new Error('Missing Stripe payments add-on plan ID')
   return paymentsAddOnPlanId
-}
-
-const _handleUpdatedSubscriptionPlan = async (logChildObject, subscriptionPlan, stripeEventTimestamp) => {
-  const subscriptionPlanId = subscriptionPlan.id
-  const isProduction = subscriptionPlan.livemode
-  const trialPeriodDays = subscriptionPlan.trial_period_days
-
-  logChildObject.subscriptionPlanId = subscriptionPlanId
-  logChildObject.isProduction = isProduction
-  logChildObject.stripeEventTimestamp = stripeEventTimestamp
-
-  logger.child(logChildObject).info('Updating trial periods')
-  await appController.updateTrialPeriodDaysInDdb(logChildObject, subscriptionPlanId, trialPeriodDays, isProduction, stripeEventTimestamp)
-  logger.child(logChildObject).info('Finished updating trial periods')
 }
 
 const _setSubscriptionDefaultPaymentMethod = async function (subscription, payment_method, stripeAccount, useTestClient) {
@@ -139,7 +124,7 @@ const _handleUpdateOrDeleteSubscription = async (logChildObject, subscription, s
 // incomplete: initial payment attempt fails
 //
 // source: https://stripe.com/docs/api/subscriptions/object
-const _shouldPayUnpaidSubscription = subscription => subscription && (
+const _shouldPayUnpaidSubscription = subscription => subscription && !subscription.cancel_at_period_end && (
   subscription.status === 'past_due' || subscription.status === 'unpaid' || subscription.status === 'incomplete'
 )
 
@@ -311,16 +296,6 @@ const handleWebhook = async function (req, res, webhookOption) {
         break
       }
 
-      case 'plan.updated': {
-        const subscriptionPlan = event.data.object
-        const stripeEventTimestamp = event.created
-
-        // only want to update trial periods for apps on Connect accounts
-        if (stripeAccountId) {
-          await _handleUpdatedSubscriptionPlan(logChildObject, subscriptionPlan, stripeEventTimestamp)
-        }
-        break
-      }
     }
 
     logger.child(logChildObject).info(`Successfully handled Stripe ${stripeAccountId ? 'Connect ' : ''}webhook event`)

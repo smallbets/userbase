@@ -4,7 +4,6 @@ import logger from './logger'
 import statusCodes from './statusCodes'
 import setup from './setup'
 import userController from './user'
-import stripe from './stripe'
 import adminController from './admin'
 import { trimReq, lastEvaluatedKeyToNextPageToken, nextPageTokenToLastEvaluatedKey } from './utils'
 
@@ -345,8 +344,8 @@ exports.listAppUsers = async function (req, res) {
     }
 
     return res.status(statusCodes['Success']).send({
-      users: users.map(user => userController.buildUserResult(user, app)),
-      ..._buildAppResult(app)
+      users: users.map(user => userController.buildUserResult(user, app, admin)),
+      ..._buildAppResult(app, admin)
     })
   } catch (e) {
     logger.error(`Failed to list app users for app ${appName} and admin ${adminId} with ${e}`)
@@ -400,24 +399,34 @@ const _getUsersQuery = async function (appId, lastEvaluatedKey) {
   return usersResponse
 }
 
-const _buildAppResult = (app) => {
+const _buildAppResult = (app, admin) => {
+  const stripeData = admin['stripe-account-id']
+    ? {
+      paymentsMode: app['payments-mode'] || 'test',
+      paymentRequired: app['payment-required'] || false,
+      trialPeriodDays: app['trial-period-days'],
+
+      // legacy plans stored on app
+      testSubscriptionPlanId: app['test-subscription-plan-id'],
+      prodSubscriptionPlanId: app['prod-subscription-plan-id'],
+    }
+    : {
+      paymentsMode: 'disabled'
+    }
+
   return {
     appName: app['app-name'],
     appId: app['app-id'],
     deleted: app['deleted'],
     creationDate: app['creation-date'],
     encryptionMode: app['encryption-mode'] || 'end-to-end',
-    paymentsMode: app['payments-mode'] || 'disabled',
-    testSubscriptionPlanId: app['test-subscription-plan-id'],
-    testTrialPeriodDays: app['test-trial-period-days'],
-    prodSubscriptionPlanId: app['prod-subscription-plan-id'],
-    prodTrialPeriodDays: app['prod-trial-period-days'],
+    ...stripeData
   }
 }
 
-const _buildUsersList = (usersResponse, app) => {
+const _buildUsersList = (usersResponse, app, admin) => {
   const result = {
-    users: usersResponse.Items.map(user => userController.buildUserResult(user, app)),
+    users: usersResponse.Items.map(user => userController.buildUserResult(user, app, admin)),
   }
 
   if (usersResponse.LastEvaluatedKey) {
@@ -427,9 +436,9 @@ const _buildUsersList = (usersResponse, app) => {
   return result
 }
 
-const _buildAppsList = (appsResponse) => {
+const _buildAppsList = (appsResponse, admin) => {
   const result = {
-    apps: appsResponse.Items.map(app => _buildAppResult(app))
+    apps: appsResponse.Items.map(app => _buildAppResult(app, admin))
   }
 
   if (appsResponse.LastEvaluatedKey) {
@@ -477,7 +486,7 @@ exports.getAppController = async function (req, res) {
     const app = await getAppByAppId(appId)
     _validateAppResponseToGetApp(app, adminId, logChildObject)
 
-    const result = _buildAppResult(app)
+    const result = _buildAppResult(app, admin)
 
     logChildObject.statusCode = statusCodes['Success']
     logger.child(logChildObject).info('Successfully got app')
@@ -520,7 +529,7 @@ exports.listUsersWithPagination = async function (req, res) {
 
     const usersResponse = await _getUsersQuery(app['app-id'], lastEvaluatedKey)
 
-    const result = _buildUsersList(usersResponse, app)
+    const result = _buildUsersList(usersResponse, app, admin)
 
     logChildObject.statusCode = statusCodes['Success']
     logger.child(logChildObject).info('Successfully listed users from Admin API')
@@ -558,7 +567,7 @@ exports.listAppsWithPagination = async function (req, res) {
 
     const appsResponse = await queryForApps(adminId, lastEvaluatedKey)
 
-    const result = _buildAppsList(appsResponse)
+    const result = _buildAppsList(appsResponse, admin)
 
     logChildObject.statusCode = statusCodes['Success']
     logger.child(logChildObject).info('Successfully listed apps from Admin API')
@@ -614,54 +623,7 @@ exports.countNonDeletedAppUsers = async function (appId, limit) {
   return count
 }
 
-exports.updateTrialPeriodDaysInDdb = async (logChildObject, subscriptionPlanId, trialPeriodDays, isProduction, stripeEventTimestamp) => {
-  // iterate over all apps with this subscription plan id set and update their trial periods
-  const paymentsMode = isProduction ? 'prod' : 'test'
-  const params = {
-    TableName: setup.appsTableName,
-    IndexName: paymentsMode + setup.subscriptionPlanIndex,
-    KeyConditionExpression: '#subscriptionPlanId = :subscriptionPlanId',
-    ExpressionAttributeValues: {
-      ':subscriptionPlanId': subscriptionPlanId,
-    },
-    ExpressionAttributeNames: {
-      '#subscriptionPlanId': paymentsMode + '-subscription-plan-id',
-    },
-    Select: 'ALL_ATTRIBUTES'
-  }
-
-  const ddbClient = connection.ddbClient()
-  let appsResponse = await ddbClient.query(params).promise()
-
-  if (!appsResponse || appsResponse.Items.length === 0) {
-    logger.child(logChildObject).warn('No apps found in DDB')
-    return
-  }
-
-  const updatePlanInDdb = async (app) => {
-    const adminId = app['admin-id']
-    const appId = app['app-id']
-    try {
-      logger.child({ ...logChildObject, adminId, appId }).info('Updating trial period')
-
-      await _updatePlanInDdb(paymentsMode, adminId, app['app-name'], appId, subscriptionPlanId, trialPeriodDays, stripeEventTimestamp)
-
-      logger.child({ ...logChildObject, adminId, appId }).info('Succesfully updated trial period')
-    } catch (e) {
-      logger.child({ ...logChildObject, adminId, appId, err: e }).warn('Issue updating trial period')
-    }
-  }
-
-  await Promise.all(appsResponse.Items.map(app => updatePlanInDdb(app)))
-
-  while (appsResponse.LastEvaluatedKey) {
-    params.ExclusiveStartKey = appsResponse.LastEvaluatedKey
-    appsResponse = await ddbClient.query(params).promise()
-    await Promise.all(appsResponse && appsResponse.Items.map(app => updatePlanInDdb(app)))
-  }
-}
-
-const _updatePlanInDdb = async function (paymentsMode, adminId, appName, appId, subscriptionPlanId, trialPeriodDays, stripeEventTimestamp) {
+const _setTrialPeriodInDdb = async function (adminId, appName, appId, trialPeriodDays) {
   const params = {
     TableName: setup.appsTableName,
     Key: {
@@ -669,47 +631,14 @@ const _updatePlanInDdb = async function (paymentsMode, adminId, appName, appId, 
       'app-name': appName
     },
     UpdateExpression: 'SET #trialPeriodDays = :trialPeriodDays',
-    ConditionExpression: `
-      #appId = :appId and
-      #subscriptionPlanId = :subscriptionPlanId and
-      (attribute_not_exists(#stripeEventTimestamp) or #stripeEventTimestamp < :stripeEventTimestamp)
-    `,
-    ExpressionAttributeValues: {
-      ':appId': appId,
-      ':subscriptionPlanId': subscriptionPlanId,
-      ':trialPeriodDays': trialPeriodDays === null ? 0 : trialPeriodDays,
-      ':stripeEventTimestamp': stripeEventTimestamp
-    },
-    ExpressionAttributeNames: {
-      '#appId': 'app-id',
-      '#subscriptionPlanId': paymentsMode + '-subscription-plan-id',
-      '#trialPeriodDays': paymentsMode + '-trial-period-days',
-      '#stripeEventTimestamp': paymentsMode + '-stripe-event-timestamp'
-    }
-  }
-
-  const ddbClient = connection.ddbClient()
-  await ddbClient.update(params).promise()
-}
-
-const _setPlanInDdb = async function (paymentsMode, adminId, appName, appId, subscriptionPlanId, trialPeriodDays) {
-  const params = {
-    TableName: setup.appsTableName,
-    Key: {
-      'admin-id': adminId,
-      'app-name': appName
-    },
-    UpdateExpression: 'SET #subscriptionPlanId = :subscriptionPlanId, #trialPeriodDays = :trialPeriodDays',
     ConditionExpression: '#appId = :appId and attribute_not_exists(deleted)',
     ExpressionAttributeValues: {
       ':appId': appId,
-      ':subscriptionPlanId': subscriptionPlanId,
-      ':trialPeriodDays': trialPeriodDays === null ? 0 : trialPeriodDays
+      ':trialPeriodDays': trialPeriodDays
     },
     ExpressionAttributeNames: {
       '#appId': 'app-id',
-      '#subscriptionPlanId': paymentsMode + '-subscription-plan-id',
-      '#trialPeriodDays': paymentsMode + '-trial-period-days'
+      '#trialPeriodDays': 'trial-period-days'
     }
   }
 
@@ -717,20 +646,21 @@ const _setPlanInDdb = async function (paymentsMode, adminId, appName, appId, sub
   await ddbClient.update(params).promise()
 }
 
-const _setSubscriptionPlan = async function (req, res, paymentsMode) {
+exports.setTrialPeriod = async function (req, res) {
   let logChildObject
   try {
+    const trialPeriodDays = Number(req.body.trialPeriodDays)
+
     const admin = res.locals.admin
     const adminId = admin['admin-id']
-    const stripeAccount = admin['stripe-account-id']
+    const stripeAccountId = admin['stripe-account-id']
     const appId = req.params.appId
-    const subscriptionPlanId = req.params.subscriptionPlanId
     const appName = req.query.appName
 
-    logChildObject = { adminId, stripeAccountId: stripeAccount, appId, subscriptionPlanId, paymentsMode, req: trimReq(req) }
-    logger.child(logChildObject).info('Setting subscription plan')
+    logChildObject = { adminId, stripeAccountId, appId, trialPeriodDays, req: trimReq(req) }
+    logger.child(logChildObject).info('Setting trial period')
 
-    if (!stripeAccount) throw {
+    if (!stripeAccountId) throw {
       status: statusCodes['Forbidden'],
       error: { message: 'Stripe account not connected.' }
     }
@@ -740,44 +670,20 @@ const _setSubscriptionPlan = async function (req, res, paymentsMode) {
       error: { message: 'Admin not found.' }
     }
 
-    try {
-      // make sure subscription plan exists in Stripe
-      const subscription = await stripe.getClient(paymentsMode === 'test').plans.retrieve(
-        subscriptionPlanId,
-        { stripeAccount }
-      )
-
-      if (paymentsMode === 'prod' && !subscription.livemode) {
-        throw {
-          status: statusCodes['Forbidden'],
-          error: { message: 'Plan must be a production plan.' }
-        }
-      } else if (paymentsMode === 'test' && subscription.livemode) {
-        throw {
-          status: statusCodes['Forbidden'],
-          error: { message: 'Plan must be a test plan.' }
-        }
-      }
-
-      await _setPlanInDdb(paymentsMode, adminId, appName, appId, subscriptionPlanId, subscription.trial_period_days)
-
-      logger
-        .child({ ...logChildObject, statusCode: statusCodes['Success'] })
-        .info('Successfully set subscription plan')
-
-      return res.send('success!')
-    } catch (e) {
-      if (e.message && e.message.includes('No such plan')) {
-        throw {
-          status: statusCodes['Not Found'],
-          error: { message: 'Plan not found.' }
-        }
-      }
-      throw e
+    if (typeof trialPeriodDays !== 'number' || trialPeriodDays < 1 || trialPeriodDays > 730) throw {
+      status: statusCodes['Bad Request'],
+      error: { message: 'Trial period must be a number between 1 and 730.' }
     }
 
+    await _setTrialPeriodInDdb(adminId, appName, appId, trialPeriodDays)
+
+    logger
+      .child({ ...logChildObject, statusCode: statusCodes['Success'] })
+      .info('Successfully set trial period')
+
+    return res.end()
   } catch (e) {
-    const message = 'Failed to set subscription plan'
+    const message = 'Failed to set trial period'
 
     if (e.status && e.error) {
       logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
@@ -790,39 +696,7 @@ const _setSubscriptionPlan = async function (req, res, paymentsMode) {
   }
 }
 
-exports.setTestSubscriptionPlan = async function (req, res) {
-  const paymentsMode = 'test'
-  return _setSubscriptionPlan(req, res, paymentsMode)
-}
-
-exports.setProdSubscriptionPlan = async function (req, res) {
-  const paymentsMode = 'prod'
-  return _setSubscriptionPlan(req, res, paymentsMode)
-}
-
-const _deleteSubscriptionPlanInDdb = async function (paymentsMode, adminId, appName, appId) {
-  const params = {
-    TableName: setup.appsTableName,
-    Key: {
-      'admin-id': adminId,
-      'app-name': appName
-    },
-    UpdateExpression: 'REMOVE #subscriptionPlanId',
-    ConditionExpression: '#appId = :appId and attribute_not_exists(deleted)',
-    ExpressionAttributeValues: {
-      ':appId': appId,
-    },
-    ExpressionAttributeNames: {
-      '#appId': 'app-id',
-      '#subscriptionPlanId': paymentsMode + '-subscription-plan-id',
-    }
-  }
-
-  const ddbClient = connection.ddbClient()
-  await ddbClient.update(params).promise()
-}
-
-const _deleteSubscriptionPlan = async function (req, res, paymentsMode) {
+exports.deleteTrial = async function (req, res) {
   let logChildObject
   try {
     const admin = res.locals.admin
@@ -830,10 +704,9 @@ const _deleteSubscriptionPlan = async function (req, res, paymentsMode) {
     const stripeAccountId = admin['stripe-account-id']
     const appId = req.params.appId
     const appName = req.query.appName
-    const subscriptionPlanId = req.params.subscriptionPlanId
 
-    logChildObject = { adminId, stripeAccountId, appId, subscriptionPlanId, paymentsMode, req: trimReq(req) }
-    logger.child(logChildObject).info('Deleting subscription plan')
+    logChildObject = { adminId, stripeAccountId, appId, req: trimReq(req) }
+    logger.child(logChildObject).info('Removing trial period')
 
     if (!stripeAccountId) throw {
       status: statusCodes['Forbidden'],
@@ -845,35 +718,25 @@ const _deleteSubscriptionPlan = async function (req, res, paymentsMode) {
       error: { message: 'Admin not found.' }
     }
 
-    await _deleteSubscriptionPlanInDdb(paymentsMode, adminId, appName, appId)
+    await _setTrialPeriodInDdb(adminId, appName, appId, 0)
 
     logger
       .child({ ...logChildObject, statusCode: statusCodes['Success'] })
-      .info('Successfully deleted subscription plan')
+      .info('Successfully removed trial period')
 
-    return res.send('success!')
+    return res.end()
   } catch (e) {
-    const message = 'Failed to delete subscription plan'
+    const message = 'Failed to remove trial period'
 
     if (e.status && e.error) {
       logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
-      return res.status(e.status).send(e.error)
+      return res.status(e.status).send(e.error.message)
     } else {
       const statusCode = statusCodes['Internal Server Error']
       logger.child({ ...logChildObject, statusCode, err: e }).error(message)
-      return res.status(statusCode).send({ message })
+      return res.status(statusCode).send(message)
     }
   }
-}
-
-exports.deleteTestSubscriptionPlan = async function (req, res) {
-  const paymentsMode = 'test'
-  return _deleteSubscriptionPlan(req, res, paymentsMode)
-}
-
-exports.deleteProdSubscriptionPlan = async function (req, res) {
-  const paymentsMode = 'prod'
-  return _deleteSubscriptionPlan(req, res, paymentsMode)
 }
 
 const _setPaymentsModeInDdb = async function (adminId, appName, appId, paymentsMode) {
@@ -942,6 +805,79 @@ const _setPaymentsMode = async function (req, res, paymentsMode, log1, log2, log
   }
 }
 
+const _setPaymentRequiredInDdb = async function (adminId, appName, appId, paymentRequired) {
+  const params = {
+    TableName: setup.appsTableName,
+    Key: {
+      'admin-id': adminId,
+      'app-name': appName
+    },
+    UpdateExpression: 'SET #paymentRequired = :paymentRequired',
+    ConditionExpression: '#appId = :appId and attribute_not_exists(deleted)',
+    ExpressionAttributeValues: {
+      ':appId': appId,
+      ':paymentRequired': paymentRequired
+    },
+    ExpressionAttributeNames: {
+      '#appId': 'app-id',
+      '#paymentRequired': 'payment-required'
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+  await ddbClient.update(params).promise()
+}
+
+const _setPaymentRequired = async function (req, res, log1, log2, log3) {
+  let logChildObject
+  try {
+    const paymentRequired = req.body.paymentRequired
+
+    const admin = res.locals.admin
+    const adminId = admin['admin-id']
+    const stripeAccountId = admin['stripe-account-id']
+    const appId = req.params.appId
+    const appName = req.query.appName
+
+    logChildObject = { adminId, stripeAccountId, appId, paymentRequired, req: trimReq(req) }
+    logger.child(logChildObject).info(log1)
+
+    if (!stripeAccountId) throw {
+      status: statusCodes['Forbidden'],
+      error: { message: 'Stripe account not connected.' }
+    }
+
+    if (admin['deleted']) throw {
+      status: statusCodes['Not Found'],
+      error: { message: 'Admin not found.' }
+    }
+
+    if (typeof paymentRequired !== 'boolean') throw {
+      status: statusCodes['Bad Request'],
+      error: { message: 'Payment required value invalid.' }
+    }
+
+    await _setPaymentRequiredInDdb(adminId, appName, appId, paymentRequired)
+
+    logger
+      .child({ ...logChildObject, statusCode: statusCodes['Success'] })
+      .info(log2)
+
+    return res.end()
+  } catch (e) {
+    const message = log3
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
+      return res.status(e.status).send(e.error.message)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return res.status(statusCode).send(message)
+    }
+  }
+}
+
 exports.enableTestPayments = function (req, res) {
   const paymentsMode = 'test'
   const log1 = 'Enabling test payments'
@@ -958,12 +894,11 @@ exports.enableProdPayments = function (req, res) {
   return _setPaymentsMode(req, res, paymentsMode, log1, log2, log3)
 }
 
-exports.disablePayments = function (req, res) {
-  const paymentsMode = 'disabled'
-  const log1 = 'Disabling payments'
-  const log2 = 'Successfully disabled payments'
-  const log3 = 'Failed to disable payments'
-  return _setPaymentsMode(req, res, paymentsMode, log1, log2, log3)
+exports.setPaymentRequired = function (req, res) {
+  const log1 = 'Setting payment required'
+  const log2 = 'Successfully set payment required'
+  const log3 = 'Failed to set payment required'
+  return _setPaymentRequired(req, res, log1, log2, log3)
 }
 
 exports.modifyEncryptionMode = async function (req, res) {
