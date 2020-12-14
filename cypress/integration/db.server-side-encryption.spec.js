@@ -103,7 +103,7 @@ const successfulUpdateSingleItem = async function (itemToUpdate, userbase, insid
   expect(successful, 'successful state').to.be.true
 }
 
-describe('DB Tests', function () {
+describe('DB Tests - server-side encryption', function () {
 
   describe('Insert Item', function () {
 

@@ -130,11 +130,29 @@ forgotPassword({})
 // $ExpectType Promise<void>
 openDatabase({ databaseName: 'tdb', changeHandler: (items) => { } })
 
+// $ExpectType Promise<void>
+openDatabase({ databaseId: 'tid', changeHandler: (items) => { } })
+
+// $ExpectType Promise<void>
+openDatabase({ shareToken: 'tst', changeHandler: (items) => { } })
+
 // $ExpectError
 openDatabase({ databaseName: 'tdb' })
 
 // $ExpectError
 openDatabase({})
+
+// $ExpectError
+openDatabase({ databaseName: 'tdb', databaseId: 'tid', changeHandler: (items) => { } })
+
+// $ExpectError
+openDatabase({ databaseId: 'tid', shareToken: 'tst', changeHandler: (items) => { } })
+
+// $ExpectError
+openDatabase({ databaseName: 'tdb', shareToken: 'st', changeHandler: (items) => { } })
+
+// $ExpectError
+openDatabase({ databaseName: 'tdb', databaseId: 'tid', shareToken: 'st', changeHandler: (items) => { } })
 
 // $ExpectType Promise<DatabasesResult>
 getDatabases()
@@ -254,20 +272,26 @@ verifyUser({ verificationMessage: 'tvf' })
 // $ExpectError
 verifyUser()
 
-// $ExpectType Promise<void>
+// $ExpectType Promise<{ shareToken?: string | undefined; }>
 shareDatabase({ databaseName: 'tdb', username: 'tuser' })
 
-// $ExpectType Promise<void>
+// $ExpectType Promise<{ shareToken?: string | undefined; }>
 shareDatabase({ databaseId: 'tid', username: 'tuser' })
 
-// $ExpectType Promise<void>
+// $ExpectType Promise<{ shareToken?: string | undefined; }>
+shareDatabase({ databaseName: 'tdb' })
+
+// $ExpectType Promise<{ shareToken?: string | undefined; }>
+shareDatabase({ databaseId: 'tdb' })
+
+// $ExpectType Promise<{ shareToken?: string | undefined; }>
 shareDatabase({ databaseId: 'tid', username: 'tuser', requireVerified: true, readOnly: true, resharingAllowed: true })
 
 // $ExpectError
-shareDatabase({ databaseId: 'tid' })
+shareDatabase({ username: 'tuser' })
 
 // $ExpectError
-shareDatabase({ username: 'tuser' })
+shareDatabase({ shareToken: 'tst' })
 
 // $ExpectType Promise<void>
 modifyDatabasePermissions({ databaseName: 'tdb', username: 'tuser' })

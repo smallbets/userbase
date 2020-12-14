@@ -111,6 +111,12 @@ export interface CancelSubscriptionResult {
 
 export type databaseNameXorId = ({ databaseId: string, databaseName?: never } | { databaseName: string, databaseId?: never });
 
+export type databaseNameXorIdXorShareToken = (
+  { databaseId: string, databaseName?: never, shareToken?: never } |
+  { shareToken: string, databaseName?: never, databaseId?: never } |
+  { databaseName: string, databaseId?: never, shareToken?: never }
+)
+
 export type priceIdXorPlanId = ({ priceId?: string, planId?: never } | { planId?: string, priceId?: never });
 
 export interface Userbase {
@@ -128,27 +134,27 @@ export interface Userbase {
 
   forgotPassword(params: { username: string }): Promise<void>
 
-  openDatabase(params: databaseNameXorId & { changeHandler: DatabaseChangeHandler }): Promise<void>
+  openDatabase(params: databaseNameXorIdXorShareToken & { changeHandler: DatabaseChangeHandler }): Promise<void>
 
   getDatabases(params?: databaseNameXorId): Promise<DatabasesResult>
 
-  insertItem(params: databaseNameXorId & { item: any, itemId?: string }): Promise<void>
+  insertItem(params: databaseNameXorIdXorShareToken & { item: any, itemId?: string }): Promise<void>
 
-  updateItem(params: databaseNameXorId & { item: any, itemId: string }): Promise<void>
+  updateItem(params: databaseNameXorIdXorShareToken & { item: any, itemId: string }): Promise<void>
 
-  deleteItem(params: databaseNameXorId & { itemId: string }): Promise<void>
+  deleteItem(params: databaseNameXorIdXorShareToken & { itemId: string }): Promise<void>
 
-  putTransaction(params: databaseNameXorId & { operations: DatabaseOperation[] }): Promise<void>
+  putTransaction(params: databaseNameXorIdXorShareToken & { operations: DatabaseOperation[] }): Promise<void>
 
-  uploadFile(params: databaseNameXorId & { itemId: string, file: File, progressHandler?: FileUploadProgressHandler }): Promise<void>
+  uploadFile(params: databaseNameXorIdXorShareToken & { itemId: string, file: File, progressHandler?: FileUploadProgressHandler }): Promise<void>
 
-  getFile(params: databaseNameXorId & { fileId: string, range?: { start: number, end: number } }): Promise<FileResult>
+  getFile(params: databaseNameXorIdXorShareToken & { fileId: string, range?: { start: number, end: number } }): Promise<FileResult>
 
   getVerificationMessage(): Promise<{ verificationMessage: string }>
 
   verifyUser(params: { verificationMessage: string }): Promise<void>
 
-  shareDatabase(params: databaseNameXorId & { username: string, requireVerified?: boolean, readOnly?: boolean, resharingAllowed?: boolean }): Promise<void>
+  shareDatabase(params: databaseNameXorId & { username?: string, requireVerified?: boolean, readOnly?: boolean, resharingAllowed?: boolean }): Promise<{ shareToken?: string }>
 
   modifyDatabasePermissions(params: databaseNameXorId & { username: string, readOnly?: boolean, resharingAllowed?: boolean, revoke?: boolean }): Promise<void>
 
