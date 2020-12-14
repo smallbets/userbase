@@ -710,7 +710,7 @@ const putTransaction = async function (transaction, userId, connectionId, databa
   connections.push(transaction)
 
   // broadcast transaction to all peers so they also push to their connected clients
-  peers.broadcastTransaction(transaction)
+  peers.broadcastTransaction(transaction, userId, connectionId)
 
   return transaction['sequence-no']
 }

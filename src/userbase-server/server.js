@@ -708,15 +708,16 @@ async function start(express, app, userbaseConfig = {}) {
     internalServer.post('/internal/notify-transaction', (req, res) => {
       const transaction = req.body.transaction
       const userId = req.body.userId
+      const connectionId = req.body.connectionId
 
       let logChildObject
       try {
-        logChildObject = { userId, databaseId: transaction['database-id'], seqNo: transaction['seq-no'], req: trimReq(req) }
+        logChildObject = { userId, connectionId, databaseId: transaction['database-id'], seqNo: transaction['seq-no'], req: trimReq(req) }
         logger
           .child(logChildObject)
           .info('Received internal notification to update db')
 
-        connections.push(transaction, userId)
+        connections.push(transaction)
       } catch (e) {
         const msg = 'Error pushing internal transaction to connected clients'
         logger.child({ ...logChildObject, err: e }).error(msg)
