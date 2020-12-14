@@ -217,7 +217,9 @@ async function start(express, app, userbaseConfig = {}) {
                       res.locals.admin,
                       connectionId,
                       params.databaseId,
-                      params.reopenAtSeqNo
+                      params.validationMessage,
+                      params.signedValidationMessage,
+                      params.reopenAtSeqNo,
                     )
                   break
                 }
@@ -384,6 +386,21 @@ async function start(express, app, userbaseConfig = {}) {
                     params.sentSignature,
                     params.recipientEcdsaPublicKey,
                   )
+                  break
+                }
+                case 'ShareDatabaseToken': {
+                  response = await db.shareDatabaseToken(
+                    logChildObject,
+                    res.locals.user,
+                    params.databaseId,
+                    params.databaseNameHash,
+                    params.readOnly,
+                    params.keyData
+                  )
+                  break
+                }
+                case 'AuthenticateShareToken': {
+                  response = await db.authenticateShareToken(logChildObject, res.locals.user, params.databaseId)
                   break
                 }
                 case 'SaveDatabase': {

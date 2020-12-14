@@ -2,8 +2,8 @@ const ONE_KB = 1024
 const TEN_KB = 10 * ONE_KB
 
 // https://stackoverflow.com/a/20604561/11601853
-export const arrayBufferToString = (buf) => {
-  const bufView = new Uint16Array(buf)
+export const arrayBufferToString = (buf, minified) => {
+  const bufView = minified ? new Uint8Array(buf) : new Uint16Array(buf)
   const length = bufView.length
   let result = ''
   let chunkSize = TEN_KB // using chunks prevents stack from blowing up
@@ -20,9 +20,9 @@ export const arrayBufferToString = (buf) => {
 }
 
 // https://developers.google.com/web/updates/2012/06/How-to-convert-ArrayBuffer-to-and-from-String
-export const stringToArrayBuffer = (str) => {
-  let buf = new ArrayBuffer(str.length * 2) // 2 bytes for each char
-  let bufView = new Uint16Array(buf)
+export const stringToArrayBuffer = (str, minified = false) => {
+  let buf = new ArrayBuffer(str.length * (minified ? 1 : 2)) // 2 bytes for each char, unless using minified. minified only safe for known input
+  let bufView = minified ? new Uint8Array(buf) : new Uint16Array(buf)
   for (let i = 0, strLen = str.length; i < strLen; i++) {
     bufView[i] = str.charCodeAt(i)
   }
