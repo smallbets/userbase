@@ -2034,8 +2034,8 @@ const shareDatabase = async (params) => {
     _validateEncryptionMode(encryptionMode)
 
     let result = {}
-    if (objectHasOwnProperty(params, 'username')) await _shareDatabaseWithUsername(params, readOnly, resharingAllowed, requireVerified)
-    else result.shareToken = await _getShareToken(params, readOnly)
+    if (objectHasOwnProperty(params, 'username')) await _shareDatabaseWithUsername(params, readOnly, resharingAllowed, requireVerified, encryptionMode)
+    else result.shareToken = await _getShareToken(params, readOnly, encryptionMode)
 
     return result
   } catch (e) {
