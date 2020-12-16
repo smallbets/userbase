@@ -82,7 +82,8 @@ class Connection {
     this.state = state || {
       dbNameToHash: {},
       databases: {}, // used when openDatabase is called with databaseName
-      databasesByDbId: {} // used when openDatabase is called with databaseId
+      databasesByDbId: {}, // used when openDatabase is called with databaseId
+      shareTokenIdToDbId: {}, // used when openDatabase is called with shareToken
     }
 
     this.encryptionMode = encryptionMode
@@ -354,7 +355,8 @@ class Connection {
             const state = currentState || {
               dbNameToHash: { ...this.state.dbNameToHash },
               databases: { ...this.state.databases },
-              databasesByDbId: { ...this.state.databasesByDbId }
+              databasesByDbId: { ...this.state.databasesByDbId },
+              shareTokenIdToDbId: { ...this.state.shareTokenIdToDbId },
             }
 
             // mark databases as uninitialized to prevent client from using them until they are reopened
@@ -414,7 +416,7 @@ class Connection {
 
           // if opened with shareToken, need to reauthenticate it
           const shareTokenAuthData = shareTokenHkdfKey
-            ? await this.authenticateShareToken(databaseId, shareTokenHkdfKey)
+            ? await this.authenticateShareToken(database.shareTokenId, shareTokenHkdfKey)
             : {}
 
           const action = 'OpenDatabaseByDatabaseId'
@@ -689,12 +691,19 @@ class Connection {
     this.keys.init = true
   }
 
-  async authenticateShareToken(databaseId, shareTokenHkdfKey) {
+  async authenticateShareToken(shareTokenId, shareTokenHkdfKey) {
     // retrieve shareToken auth key data in order to prove access to shareToken to server
     const action = 'AuthenticateShareToken'
-    const params = { databaseId }
-    const response = await this.request(action, params)
-    const { shareTokenAuthKeyData, validationMessage } = response.data
+    const params = { shareTokenId }
+
+    let response
+    try {
+      response = await this.request(action, params)
+    } catch (e) {
+      if (e.response && e.response.data === 'ShareTokenNotFound') throw new errors.ShareTokenNotFound
+      throw e
+    }
+    const { databaseId, shareTokenAuthKeyData, validationMessage } = response.data
 
     // decrypt ECDSA private key. if it fails, not using the correct shareToken
     let shareTokenEcdsaPrivateKey
@@ -705,12 +714,12 @@ class Connection {
       const shareTokenEcdsaPrivateKeyRaw = await crypto.aesGcm.decrypt(shareTokenEcdsaKeyEncryptionKey, shareTokenEncryptedEcdsaPrivateKey)
       shareTokenEcdsaPrivateKey = await crypto.ecdsa.getPrivateKeyFromRawPrivateKey(shareTokenEcdsaPrivateKeyRaw)
     } catch {
-      throw new errors.ShareTokenExpired
+      throw new errors.ShareTokenInvalid
     }
 
     // sign validation message sent by the server
     const signedValidationMessage = await crypto.ecdsa.sign(shareTokenEcdsaPrivateKey, base64.decode(validationMessage))
-    return { validationMessage, signedValidationMessage: base64.encode(signedValidationMessage) }
+    return { databaseId, validationMessage, signedValidationMessage: base64.encode(signedValidationMessage) }
   }
 }
 

@@ -65,7 +65,7 @@ class Connection {
     this.fileStorageRateLimiter = new TokenBucket(FILE_STORAGE_MAX_REQUESTS_PER_SECOND, FILE_STORAGE_TOKENS_REFILLED_PER_SECOND)
   }
 
-  openDatabase(databaseId, dbNameHash, bundleSeqNo, reopenAtSeqNo, isOwner, attribution, usedShareToken) {
+  openDatabase(databaseId, dbNameHash, bundleSeqNo, reopenAtSeqNo, isOwner, attribution, shareTokenReadWritePermissions) {
     this.databases[databaseId] = {
       bundleSeqNo: bundleSeqNo > 0 ? bundleSeqNo : -1,
       lastSeqNo: reopenAtSeqNo || 0,
@@ -74,7 +74,7 @@ class Connection {
       dbNameHash,
       isOwner,
       attribution,
-      usedShareToken,
+      shareTokenReadWritePermissions,
     }
   }
 
@@ -403,20 +403,19 @@ export default class Connections {
   }
 
   static openDatabase({ userId, connectionId, databaseId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner,
-    attribution, plaintextDbKey, shareTokenEncryptedDbKey, shareTokenEncryptionKeySalt }) {
+    attribution, plaintextDbKey, shareTokenEncryptedDbKey, shareTokenEncryptionKeySalt, shareTokenReadWritePermissions }) {
     if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId][connectionId]) return
 
     const conn = Connections.sockets[userId][connectionId]
 
     if (!conn.databases[databaseId]) {
-      const usedShareToken = shareTokenEncryptedDbKey ? true : false
-      conn.openDatabase(databaseId, dbNameHash, bundleSeqNo, reopenAtSeqNo, isOwner, attribution, usedShareToken)
+      conn.openDatabase(databaseId, dbNameHash, bundleSeqNo, reopenAtSeqNo, isOwner, attribution, shareTokenReadWritePermissions)
 
       if (!Connections.sockets[databaseId]) Connections.sockets[databaseId] = { numConnections: 0 }
       Connections.sockets[databaseId][connectionId] = userId
       Connections.sockets[databaseId].numConnections += 1
 
-      logger.child({ connectionId, databaseId, adminId: conn.adminId, encryptionMode: plaintextDbKey ? 'server-side' : 'end-to-end', usedShareToken }).info('Database opened')
+      logger.child({ connectionId, databaseId, adminId: conn.adminId, encryptionMode: plaintextDbKey ? 'server-side' : 'end-to-end', shareTokenReadWritePermissions }).info('Database opened')
     }
 
     conn.push(databaseId, dbNameHash, dbKey, reopenAtSeqNo, plaintextDbKey, shareTokenEncryptedDbKey, shareTokenEncryptionKeySalt)
@@ -432,12 +431,12 @@ export default class Connections {
     return conn.databases[databaseId] ? true : false
   }
 
-  static isDatabaseOpenWithShareToken(userId, connectionId, databaseId) {
+  static getShareTokenReadWritePermissionsFromConnection(userId, connectionId, databaseId) {
     if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId][connectionId]) return
 
     const conn = Connections.sockets[userId][connectionId]
 
-    return (conn.databases[databaseId] && conn.databases[databaseId].usedShareToken) ? true : false
+    return conn.databases[databaseId] && conn.databases[databaseId].shareTokenReadWritePermissions
   }
 
   static push(transaction) {
@@ -565,11 +564,13 @@ export default class Connections {
     return true
   }
 
-  static cacheShareTokenValidationMessage(userId, validationMessage) {
+  static cacheShareTokenReadWritePermissions(userId, validationMessage, shareTokenReadWritePermissions) {
     if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId].shareTokenValidationMessages) return
 
+    Connections.sockets[userId].shareTokenValidationMessages[validationMessage] = shareTokenReadWritePermissions
+
     // after CACHE_LIFE seconds, delete the validationMessage from the cache
-    Connections.sockets[userId].shareTokenValidationMessages[validationMessage] = setTimeout(() => {
+    setTimeout(() => {
       if (Connections.sockets && Connections.sockets[userId] && Connections.sockets[userId].shareTokenValidationMessages) {
         delete Connections.sockets[userId].shareTokenValidationMessages[validationMessage]
       }
@@ -578,9 +579,11 @@ export default class Connections {
     )
   }
 
-  static isShareTokenValidationMessageCached(userId, validationMessage) {
-    if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId].shareTokenValidationMessages ||
-      !Connections.sockets[userId].shareTokenValidationMessages[validationMessage]) return false
-    return true
+  static getShareTokenReadWritePermissionsFromCache(userId, validationMessage) {
+    const shareTokenReadWritePermissions = Connections.sockets && Connections.sockets[userId] &&
+      Connections.sockets[userId].shareTokenValidationMessages &&
+      Connections.sockets[userId].shareTokenValidationMessages[validationMessage]
+
+    return shareTokenReadWritePermissions
   }
 }

@@ -190,13 +190,13 @@ class ShareTokenInvalid extends Error {
   }
 }
 
-class ShareTokenExpired extends Error {
+class ShareTokenNotFound extends Error {
   constructor(...params) {
     super(...params)
 
-    this.name = 'ShareTokenExpired'
-    this.message = 'Share token expired. The database owner has generated a new share token.'
-    this.status = statusCodes['Forbidden']
+    this.name = 'ShareTokenNotFound'
+    this.message = 'Share token not found. Perhaps the database owner has generated a new share token.'
+    this.status = statusCodes['Not Found']
   }
 }
 
@@ -785,7 +785,7 @@ export default {
   DatabaseIdNotAllowedForOwnDatabase,
   DatabaseIdInvalidLength,
   ShareTokenInvalid,
-  ShareTokenExpired,
+  ShareTokenNotFound,
   ShareTokenNotAllowed,
   ShareTokenNotAllowedForOwnDatabase,
   ReadOnlyMustBeBoolean,

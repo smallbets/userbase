@@ -114,7 +114,7 @@ class UnverifiedTransaction {
 }
 
 class Database {
-  constructor(changeHandler, receivedMessage, shareTokenHkdfKey) {
+  constructor(changeHandler, receivedMessage, shareTokenId, shareTokenHkdfKey) {
     this.onChange = _setChangeHandler(changeHandler)
 
     this.items = {}
@@ -138,6 +138,8 @@ class Database {
     this.receivedMessage = receivedMessage
     this.usernamesByUserId = new Map()
     this.attributionEnabled = false
+
+    this.shareTokenId = shareTokenId
     this.shareTokenHkdfKey = shareTokenHkdfKey
 
     // Queue that ensures 'ApplyTransactions' executes one at a time
@@ -526,40 +528,41 @@ const _idempotentOpenDatabase = (database, changeHandler, receivedMessage) => {
   return false
 }
 
-const _getDatabaseIdFromShareToken = (shareTokenArrayBuffer) => {
-  const dbIdArrayBuffer = shareTokenArrayBuffer.slice(shareTokenArrayBuffer.byteLength - UUID_CHAR_LENGTH)
-  const databaseId = arrayBufferToString(dbIdArrayBuffer, true)
-  if (!databaseId || databaseId.length !== UUID_CHAR_LENGTH) throw new errors.ShareTokenInvalid
-  return databaseId
+const _getShareTokenIdFromShareToken = (shareTokenArrayBuffer) => {
+  const shareTokenIdArrayBuffer = shareTokenArrayBuffer.slice(0, UUID_CHAR_LENGTH)
+  const shareTokenId = arrayBufferToString(shareTokenIdArrayBuffer, true)
+  if (!shareTokenId || shareTokenId.length !== UUID_CHAR_LENGTH) throw new errors.ShareTokenInvalid
+  return shareTokenId
 }
 
-const _getDatabaseIdAndShareToken = (shareTokenResult) => {
+const _getShareTokenIdAndShareTokenSeed = (shareTokenResult) => {
   const shareTokenArrayBuffer = base64.decode(shareTokenResult)
-  const databaseId = _getDatabaseIdFromShareToken(shareTokenArrayBuffer)
-  const shareToken = shareTokenArrayBuffer.slice(0, shareTokenArrayBuffer.byteLength - UUID_CHAR_LENGTH)
-  return { databaseId, shareToken }
+  const shareTokenId = _getShareTokenIdFromShareToken(shareTokenArrayBuffer)
+  const shareTokenSeed = shareTokenArrayBuffer.slice(UUID_CHAR_LENGTH)
+  return { shareTokenId, shareTokenSeed }
 }
 
-const _openDatabaseByShareToken = async (shareTokenResult, changeHandler, receivedMessage) => {
-  let databaseIdAndShareToken, shareTokenHkdfKey
+const _openDatabaseByShareToken = async (shareToken, changeHandler, receivedMessage) => {
+  let shareTokenIdAndShareTokenSeed, shareTokenHkdfKey
   try {
-    databaseIdAndShareToken = _getDatabaseIdAndShareToken(shareTokenResult)
-    shareTokenHkdfKey = await crypto.hkdf.importHkdfKey(databaseIdAndShareToken.shareToken)
+    shareTokenIdAndShareTokenSeed = _getShareTokenIdAndShareTokenSeed(shareToken)
+    shareTokenHkdfKey = await crypto.hkdf.importHkdfKey(shareTokenIdAndShareTokenSeed.shareTokenSeed)
   } catch {
     throw new errors.ShareTokenInvalid
   }
-  const { databaseId } = databaseIdAndShareToken
+  const { shareTokenId } = shareTokenIdAndShareTokenSeed
 
-  const { validationMessage, signedValidationMessage } = await ws.authenticateShareToken(databaseId, shareTokenHkdfKey)
+  const { databaseId, validationMessage, signedValidationMessage } = await ws.authenticateShareToken(shareTokenId, shareTokenHkdfKey)
+  ws.state.shareTokenIdToDbId[shareTokenId] = databaseId
 
-  await _openDatabaseByDatabaseId(databaseId, changeHandler, receivedMessage, shareTokenHkdfKey, validationMessage, signedValidationMessage)
+  await _openDatabaseByDatabaseId(databaseId, changeHandler, receivedMessage, shareTokenId, shareTokenHkdfKey, validationMessage, signedValidationMessage)
 }
 
-const _openDatabaseByDatabaseId = async (databaseId, changeHandler, receivedMessage, shareTokenHkdfKey, validationMessage, signedValidationMessage) => {
+const _openDatabaseByDatabaseId = async (databaseId, changeHandler, receivedMessage, shareTokenId, shareTokenHkdfKey, validationMessage, signedValidationMessage) => {
   const database = ws.state.databasesByDbId[databaseId]
 
   if (!database) {
-    ws.state.databasesByDbId[databaseId] = new Database(changeHandler, receivedMessage, shareTokenHkdfKey)
+    ws.state.databasesByDbId[databaseId] = new Database(changeHandler, receivedMessage, shareTokenId, shareTokenHkdfKey)
   } else {
     if (_idempotentOpenDatabase(database, changeHandler, receivedMessage)) return
   }
@@ -757,7 +760,7 @@ const openDatabase = async (params) => {
       case 'DatabaseIdNotAllowedForOwnDatabase':
       case 'ShareTokenNotAllowed':
       case 'ShareTokenInvalid':
-      case 'ShareTokenExpired':
+      case 'ShareTokenNotFound':
       case 'ShareTokenNotAllowedForOwnDatabase':
       case 'DatabaseNotFound':
       case 'ChangeHandlerMissing':
@@ -783,12 +786,12 @@ const openDatabase = async (params) => {
 const getOpenDb = (dbName, databaseId, shareToken, encryptionMode = 'end-to-end') => {
   _validateEncryptionMode(encryptionMode)
 
-  const dbId = !dbName && (databaseId || _getDatabaseIdFromShareToken(base64.decode(shareToken)))
+  const shareTokenId = shareToken && _getShareTokenIdFromShareToken(base64.decode(shareToken))
 
   const dbNameHash = encryptionMode === 'server-side' ? dbName : ws.state.dbNameToHash[dbName]
   const database = dbName
     ? ws.state.databases[dbNameHash]
-    : ws.state.databasesByDbId[dbId]
+    : ws.state.databasesByDbId[databaseId || ws.state.shareTokenIdToDbId[shareTokenId]]
 
   if (!database || !database.init) throw new errors.DatabaseNotOpen
   return database
@@ -1866,9 +1869,9 @@ const _getShareToken = async (params, readOnly, encryptionMode) => {
     if (objectHasOwnProperty(params, 'requireVerified')) throw new errors.RequireVerifiedParamNotNecessary
     if (objectHasOwnProperty(params, 'resharingAllowed')) throw new errors.ResharingAllowedParamNotAllowed('when retrieving a share token')
 
-    // generate share token and associated keys
-    const shareToken = crypto.generateSeed()
-    const shareTokenHkdfKey = await crypto.hkdf.importHkdfKey(shareToken)
+    // generate share token seed and associated keys
+    const shareTokenSeed = crypto.generateSeed()
+    const shareTokenHkdfKey = await crypto.hkdf.importHkdfKey(shareTokenSeed)
 
     // generate share token encryption key
     const shareTokenEncryptionKeySalt = crypto.hkdf.generateSalt()
@@ -1895,12 +1898,15 @@ const _getShareToken = async (params, readOnly, encryptionMode) => {
         shareTokenEcdsaKeyEncryptionKeySalt: ecdsaKeyEncryptionKeySalt,
       }
     }
-    await ws.request(action, requestParams)
+    const shareTokenResponse = await ws.request(action, requestParams)
 
-    // append dbId to shareToken to get final shareToken to return to user, all in base64
-    const dbIdArrayBuffer = stringToArrayBuffer(database.dbId, true)
-    const shareTokenResult = base64.encode(appendBuffer(shareToken, dbIdArrayBuffer))
-    return shareTokenResult
+    // server generates unique ID
+    const { shareTokenId } = shareTokenResponse.data
+
+    // prepend shareTokenId to shareTokenSeed to get final shareToken to return to user, all in base64
+    const shareTokenIdArrayBuffer = stringToArrayBuffer(shareTokenId, true)
+    const shareToken = base64.encode(appendBuffer(shareTokenIdArrayBuffer, shareTokenSeed))
+    return shareToken
   } catch (e) {
     _parseGenericErrors(e)
 

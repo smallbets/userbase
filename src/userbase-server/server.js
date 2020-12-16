@@ -400,7 +400,7 @@ async function start(express, app, userbaseConfig = {}) {
                   break
                 }
                 case 'AuthenticateShareToken': {
-                  response = await db.authenticateShareToken(logChildObject, res.locals.user, params.databaseId)
+                  response = await db.authenticateShareToken(logChildObject, res.locals.user, params.shareTokenId)
                   break
                 }
                 case 'SaveDatabase': {
