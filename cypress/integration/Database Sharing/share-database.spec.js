@@ -609,6 +609,111 @@ describe('DB Sharing Tests', function () {
         await this.test.userbase.deleteUser()
       })
 
+      it('Sharing without opening first', async function () {
+        const recipient = await signUp(this.test.userbase)
+        const { verificationMessage } = await this.test.userbase.getVerificationMessage()
+        await this.test.userbase.signOut()
+
+        const sender = await signUp(this.test.userbase)
+        await this.test.userbase.verifyUser({ verificationMessage })
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        // sender inserts item into database
+        const testItem = 'hello world!'
+        const testItemId = 'test-id'
+        await this.test.userbase.insertItem({ databaseName, item: testItem, itemId: testItemId })
+
+        // sign out, sign back in
+        await this.test.userbase.signOut()
+        await this.test.userbase.signIn({ username: sender.username, password: sender.password, rememberMe: 'none' })
+
+        // sender shares database with recipient without opening first
+        await this.test.userbase.shareDatabase({ databaseName, username: recipient.username })
+        await this.test.userbase.signOut()
+
+        // recipient signs in and checks if can read the database
+        await this.test.userbase.signIn({ username: recipient.username, password: recipient.password, rememberMe: 'none' })
+
+        // recipient must find the database's databaseId using getDatabases() result
+        const { databases } = await this.test.userbase.getDatabases()
+        const db = databases[0]
+        const { databaseId } = db
+
+        let changeHandlerCallCount = 0
+        const changeHandler = function (items) {
+          expect(items, 'array passed to changeHandler').to.be.a('array')
+          expect(items, 'array passed to changeHandler').to.deep.equal([{
+            itemId: testItemId,
+            item: testItem,
+            createdBy: { username: sender.username, timestamp: items[0].createdBy.timestamp }
+          }])
+
+          changeHandlerCallCount += 1
+        }
+
+        await this.test.userbase.openDatabase({ databaseId, changeHandler })
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+
+        // clean up
+        await this.test.userbase.deleteUser()
+        await this.test.userbase.signIn({ username: sender.username, password: sender.password, rememberMe: 'none' })
+        await this.test.userbase.deleteUser()
+      })
+
+      it('Share by databaseId without opening first', async function () {
+        const recipient = await signUp(this.test.userbase)
+        const { verificationMessage } = await this.test.userbase.getVerificationMessage()
+        await this.test.userbase.signOut()
+
+        const sender = await signUp(this.test.userbase)
+        await this.test.userbase.verifyUser({ verificationMessage })
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        // sender inserts item into database
+        const testItem = 'hello world!'
+        const testItemId = 'test-id'
+        await this.test.userbase.insertItem({ databaseName, item: testItem, itemId: testItemId })
+
+        // get database's id
+        const { databases: [{ databaseId }] } = await this.test.userbase.getDatabases()
+
+        // sign out, sign back in
+        await this.test.userbase.signOut()
+        await this.test.userbase.signIn({ username: sender.username, password: sender.password, rememberMe: 'none' })
+
+        // sender shares database with recipient without opening
+        await this.test.userbase.shareDatabase({ databaseId, username: recipient.username })
+        await this.test.userbase.signOut()
+
+        // recipient signs in and checks if can read the database
+        await this.test.userbase.signIn({ username: recipient.username, password: recipient.password, rememberMe: 'none' })
+
+        // getDatabases() must be run before opening a database by its databaseId
+        await this.test.userbase.getDatabases()
+
+        let changeHandlerCallCount = 0
+        const changeHandler = function (items) {
+          expect(items, 'array passed to changeHandler').to.be.a('array')
+          expect(items, 'array passed to changeHandler').to.deep.equal([{
+            itemId: testItemId,
+            item: testItem,
+            createdBy: { username: sender.username, timestamp: items[0].createdBy.timestamp }
+          }])
+
+          changeHandlerCallCount += 1
+        }
+
+        await this.test.userbase.openDatabase({ databaseId, changeHandler })
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+
+        // clean up
+        await this.test.userbase.deleteUser()
+        await this.test.userbase.signIn({ username: sender.username, password: sender.password, rememberMe: 'none' })
+        await this.test.userbase.deleteUser()
+      })
+
     })
 
     describe('Failure Tests', function () {
@@ -1353,7 +1458,7 @@ describe('DB Sharing Tests', function () {
         await this.test.userbase.deleteUser()
       })
 
-      it('Calling twice overwrites share token', async function () {
+      it('Calling twice with same permissions overwrites share token', async function () {
         const sender = await signUp(this.test.userbase)
         await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
 
@@ -1392,9 +1497,9 @@ describe('DB Sharing Tests', function () {
           await this.test.userbase.openDatabase({ shareToken: firstShareToken.shareToken, changeHandler })
           throw new Error('should have failed')
         } catch (e) {
-          expect(e.name, 'error name').to.be.equal('ShareTokenExpired')
-          expect(e.message, 'error message').to.be.equal('Share token expired. The database owner has generated a new share token.')
-          expect(e.status, 'error status').to.be.equal(403)
+          expect(e.name, 'error name').to.be.equal('ShareTokenNotFound')
+          expect(e.message, 'error message').to.be.equal('Share token not found. Perhaps the database owner has generated a new share token.')
+          expect(e.status, 'error status').to.be.equal(404)
         }
 
         // clean up
@@ -1402,6 +1507,249 @@ describe('DB Sharing Tests', function () {
         await this.test.userbase.signIn({ username: sender.username, password: sender.password, rememberMe: 'none' })
         await this.test.userbase.deleteUser()
       })
+
+      it('Calling twice with different permissions', async function () {
+        const sender = await signUp(this.test.userbase)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        // sender gets 2 share tokens, a read only, and write
+        const readOnlyToken = await this.test.userbase.shareDatabase({ databaseName })
+        const writeToken = await this.test.userbase.shareDatabase({ databaseName, readOnly: false })
+        expect(readOnlyToken.shareToken, 'diff share tokens').to.not.eq(writeToken.shareToken)
+
+        // sender inserts item into database
+        const testItem = 'hello world!'
+        const testItemId = 'test-id'
+        await this.test.userbase.insertItem({ databaseName, item: testItem, itemId: testItemId })
+        await this.test.userbase.signOut()
+
+        // recipient signs up and checks if can read readOnly database, and write to write database
+        const recipient = await signUp(this.test.userbase)
+
+        let changeHandlerCallCount = 0
+        const changeHandler = function (items) {
+          expect(items, 'array passed to changeHandler').to.be.a('array')
+          expect(items, 'array passed to changeHandler').to.deep.equal([{
+            itemId: testItemId,
+            item: testItem,
+            createdBy: { username: sender.username, timestamp: items[0].createdBy.timestamp }
+          }])
+
+          changeHandlerCallCount += 1
+        }
+
+        await this.test.userbase.openDatabase({ shareToken: readOnlyToken.shareToken, changeHandler })
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+
+        // sign out and sign back in to open with second token
+        await this.test.userbase.signOut()
+        await this.test.userbase.signIn({ username: recipient.username, password: recipient.password, rememberMe: 'none' })
+
+        const updatedTestItem = 'Hello, world!'
+
+        let secondChandlerCallCount = 0
+        const secondChandler = function (items) {
+          if (secondChandlerCallCount === 1) {
+            expect(items, 'array passed to changeHandler').to.be.a('array')
+            expect(items, 'array passed to changeHandler').to.deep.equal([{
+              itemId: testItemId,
+              item: updatedTestItem,
+              createdBy: { username: sender.username, timestamp: items[0].createdBy.timestamp },
+              updatedBy: { username: recipient.username, timestamp: items[0].updatedBy.timestamp }
+            }])
+          }
+
+          secondChandlerCallCount += 1
+        }
+
+        await this.test.userbase.openDatabase({ shareToken: writeToken.shareToken, changeHandler: secondChandler })
+        await this.test.userbase.updateItem({ shareToken: writeToken.shareToken, item: updatedTestItem, itemId: testItemId })
+
+        expect(secondChandlerCallCount, 'second changeHandler called correct number of times').to.equal(2)
+
+        // clean up
+        await this.test.userbase.deleteUser()
+        await this.test.userbase.signIn({ username: sender.username, password: sender.password, rememberMe: 'none' })
+        await this.test.userbase.deleteUser()
+      })
+
+      it('Calling twice with same permissions overwrites share token, but does not affect existing share token with separte permissions', async function () {
+        const sender = await signUp(this.test.userbase)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        // sender gets 3 share tokens, a write token, and 2 read-only tokens. Write token and 2nd read-only should work
+        const writeToken = await this.test.userbase.shareDatabase({ databaseName, readOnly: false })
+
+        const firstReadOnlyShareToken = await this.test.userbase.shareDatabase({ databaseName })
+        const secondReadOnlyShareToken = await this.test.userbase.shareDatabase({ databaseName })
+        expect(firstReadOnlyShareToken.shareToken, 'diff share tokens').to.not.eq(secondReadOnlyShareToken.shareToken)
+
+        // sender inserts item into database
+        const testItem = 'hello world!'
+        const testItemId = 'test-id'
+        await this.test.userbase.insertItem({ databaseName, item: testItem, itemId: testItemId })
+        await this.test.userbase.signOut()
+
+        // recipient signs up and checks if can read the database
+        const recipient = await signUp(this.test.userbase)
+
+        let changeHandlerCallCount = 0
+        const changeHandler = function (items) {
+          expect(items, 'array passed to changeHandler').to.be.a('array')
+          expect(items, 'array passed to changeHandler').to.deep.equal([{
+            itemId: testItemId,
+            item: testItem,
+            createdBy: { username: sender.username, timestamp: items[0].createdBy.timestamp }
+          }])
+
+          changeHandlerCallCount += 1
+        }
+
+        await this.test.userbase.openDatabase({ shareToken: secondReadOnlyShareToken.shareToken, changeHandler })
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+
+        // sign out and sign back in to try with other tokens
+        await this.test.userbase.signOut()
+        await this.test.userbase.signIn({ username: recipient.username, password: recipient.password, rememberMe: 'none' })
+
+        // first read-only share token should not work
+        try {
+          await this.test.userbase.openDatabase({ shareToken: firstReadOnlyShareToken.shareToken, changeHandler })
+          throw new Error('should have failed')
+        } catch (e) {
+          expect(e.name, 'error name').to.be.equal('ShareTokenNotFound')
+          expect(e.message, 'error message').to.be.equal('Share token not found. Perhaps the database owner has generated a new share token.')
+          expect(e.status, 'error status').to.be.equal(404)
+        }
+
+        // write token should work
+        const updatedTestItem = 'Hello, world!'
+
+        let secondChandlerCallCount = 0
+        const secondChandler = function (items) {
+          if (secondChandlerCallCount === 1) {
+            expect(items, 'array passed to changeHandler').to.be.a('array')
+            expect(items, 'array passed to changeHandler').to.deep.equal([{
+              itemId: testItemId,
+              item: updatedTestItem,
+              createdBy: { username: sender.username, timestamp: items[0].createdBy.timestamp },
+              updatedBy: { username: recipient.username, timestamp: items[0].updatedBy.timestamp }
+            }])
+          }
+
+          secondChandlerCallCount += 1
+        }
+
+        await this.test.userbase.openDatabase({ shareToken: writeToken.shareToken, changeHandler: secondChandler })
+        await this.test.userbase.updateItem({ shareToken: writeToken.shareToken, item: updatedTestItem, itemId: testItemId })
+
+        expect(secondChandlerCallCount, 'second changeHandler called correct number of times').to.equal(2)
+
+        // clean up
+        await this.test.userbase.deleteUser()
+        await this.test.userbase.signIn({ username: sender.username, password: sender.password, rememberMe: 'none' })
+        await this.test.userbase.deleteUser()
+      })
+
+      it('Sharing without opening first', async function () {
+        const recipient = await signUp(this.test.userbase)
+        const { verificationMessage } = await this.test.userbase.getVerificationMessage()
+        await this.test.userbase.signOut()
+
+        const sender = await signUp(this.test.userbase)
+        await this.test.userbase.verifyUser({ verificationMessage })
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        // sender inserts item into database
+        const testItem = 'hello world!'
+        const testItemId = 'test-id'
+        await this.test.userbase.insertItem({ databaseName, item: testItem, itemId: testItemId })
+
+        // sign out, sign back in
+        await this.test.userbase.signOut()
+        await this.test.userbase.signIn({ username: sender.username, password: sender.password, rememberMe: 'none' })
+
+        // sender shares database without opening first
+        const { shareToken } = await this.test.userbase.shareDatabase({ databaseName })
+        await this.test.userbase.signOut()
+
+        // recipient signs in and checks if can read the database
+        await this.test.userbase.signIn({ username: recipient.username, password: recipient.password, rememberMe: 'none' })
+
+        let changeHandlerCallCount = 0
+        const changeHandler = function (items) {
+          expect(items, 'array passed to changeHandler').to.be.a('array')
+          expect(items, 'array passed to changeHandler').to.deep.equal([{
+            itemId: testItemId,
+            item: testItem,
+            createdBy: { username: sender.username, timestamp: items[0].createdBy.timestamp }
+          }])
+
+          changeHandlerCallCount += 1
+        }
+
+        await this.test.userbase.openDatabase({ shareToken, changeHandler })
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+
+        // clean up
+        await this.test.userbase.deleteUser()
+        await this.test.userbase.signIn({ username: sender.username, password: sender.password, rememberMe: 'none' })
+        await this.test.userbase.deleteUser()
+      })
+
+      it('Share by databaseId without opening first', async function () {
+        const recipient = await signUp(this.test.userbase)
+        const { verificationMessage } = await this.test.userbase.getVerificationMessage()
+        await this.test.userbase.signOut()
+
+        const sender = await signUp(this.test.userbase)
+        await this.test.userbase.verifyUser({ verificationMessage })
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        // sender inserts item into database
+        const testItem = 'hello world!'
+        const testItemId = 'test-id'
+        await this.test.userbase.insertItem({ databaseName, item: testItem, itemId: testItemId })
+
+        // get database's id
+        const { databases: [{ databaseId }] } = await this.test.userbase.getDatabases()
+
+        // sign out, sign back in
+        await this.test.userbase.signOut()
+        await this.test.userbase.signIn({ username: sender.username, password: sender.password, rememberMe: 'none' })
+
+        // sender shares database with recipient without opening
+        const { shareToken } = await this.test.userbase.shareDatabase({ databaseId })
+        await this.test.userbase.signOut()
+
+        // recipient signs in and checks if can read the database
+        await this.test.userbase.signIn({ username: recipient.username, password: recipient.password, rememberMe: 'none' })
+
+        let changeHandlerCallCount = 0
+        const changeHandler = function (items) {
+          expect(items, 'array passed to changeHandler').to.be.a('array')
+          expect(items, 'array passed to changeHandler').to.deep.equal([{
+            itemId: testItemId,
+            item: testItem,
+            createdBy: { username: sender.username, timestamp: items[0].createdBy.timestamp }
+          }])
+
+          changeHandlerCallCount += 1
+        }
+
+        await this.test.userbase.openDatabase({ shareToken, changeHandler })
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+
+        // clean up
+        await this.test.userbase.deleteUser()
+        await this.test.userbase.signIn({ username: sender.username, password: sender.password, rememberMe: 'none' })
+        await this.test.userbase.deleteUser()
+      })
+
     })
 
     describe('Failure Tests', function () {
