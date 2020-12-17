@@ -1,3 +1,7 @@
+## [2.6.0] - 2020-12-16
+### Added
+- shareDatabase() now returns a `shareToken` if no username is provided as a parameter. The `shareToken` can then be used by any user as a parameter to openDatabase(), insertItem(), updateItem(), deleteItem(), putTransaction(), uploadFile(), and getFile().
+
 ## [2.5.0] - 2020-12-09
 ### Added
 - purchaseSubscription() now accepts `priceId` or `planId` as parameters in case admin wants to offer multiple plans for users to choose from.
