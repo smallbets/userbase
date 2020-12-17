@@ -82,7 +82,8 @@ class Connection {
     this.state = state || {
       dbNameToHash: {},
       databases: {}, // used when openDatabase is called with databaseName
-      databasesByDbId: {} // used when openDatabase is called with databaseId
+      databasesByDbId: {}, // used when openDatabase is called with databaseId
+      shareTokenIdToDbId: {}, // used when openDatabase is called with shareToken
     }
 
     this.encryptionMode = encryptionMode
@@ -196,9 +197,12 @@ class Connection {
                 })
               }
 
-              const openingDatabase = message.dbNameHash && (message.dbKey || message.plaintextDbKey)
-              if (openingDatabase) {
-                const dbKeyString = message.plaintextDbKey || await crypto.aesGcm.decryptString(this.keys.encryptionKey, message.dbKey)
+              const openingDatabase = (message.dbNameHash && (message.dbKey || message.plaintextDbKey)) || message.shareTokenEncryptedDbKey
+              if (openingDatabase && (!database.dbKeyString || !database.dbKey)) {
+                const dbKeyString = message.plaintextDbKey || (message.dbKey
+                  ? await crypto.aesGcm.decryptString(this.keys.encryptionKey, message.dbKey)
+                  : await database.decryptShareTokenEncryptedDbKey(message.shareTokenEncryptedDbKey, message.shareTokenEncryptionKeySalt)
+                )
                 database.dbKeyString = dbKeyString
                 database.dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
               }
@@ -275,6 +279,8 @@ class Connection {
             case 'ResumeSubscription':
             case 'UpdatePaymentMethod':
             case 'ShareDatabase':
+            case 'ShareDatabaseToken':
+            case 'AuthenticateShareToken':
             case 'SaveDatabase':
             case 'ModifyDatabasePermissions':
             case 'VerifyUser':
@@ -349,7 +355,8 @@ class Connection {
             const state = currentState || {
               dbNameToHash: { ...this.state.dbNameToHash },
               databases: { ...this.state.databases },
-              databasesByDbId: { ...this.state.databasesByDbId }
+              databasesByDbId: { ...this.state.databasesByDbId },
+              shareTokenIdToDbId: { ...this.state.shareTokenIdToDbId },
             }
 
             // mark databases as uninitialized to prevent client from using them until they are reopened
@@ -405,8 +412,15 @@ class Connection {
         const database = this.state.databasesByDbId[databaseId]
 
         if (!database.init) {
+          const shareTokenHkdfKey = database.shareTokenHkdfKey
+
+          // if opened with shareToken, need to reauthenticate it
+          const shareTokenAuthData = shareTokenHkdfKey
+            ? await this.authenticateShareToken(database.shareTokenId, shareTokenHkdfKey)
+            : {}
+
           const action = 'OpenDatabaseByDatabaseId'
-          const params = { databaseId, reopenAtSeqNo: database.lastSeqNo }
+          const params = { databaseId, reopenAtSeqNo: database.lastSeqNo, ...shareTokenAuthData }
           openDatabasePromises.push(this.request(action, params))
         }
       }
@@ -675,6 +689,37 @@ class Connection {
     await this.setKeys(newSeedString)
 
     this.keys.init = true
+  }
+
+  async authenticateShareToken(shareTokenId, shareTokenHkdfKey) {
+    // retrieve shareToken auth key data in order to prove access to shareToken to server
+    const action = 'AuthenticateShareToken'
+    const params = { shareTokenId }
+
+    let response
+    try {
+      response = await this.request(action, params)
+    } catch (e) {
+      if (e.response && e.response.data === 'ShareTokenNotFound') throw new errors.ShareTokenNotFound
+      throw e
+    }
+    const { databaseId, shareTokenAuthKeyData, validationMessage } = response.data
+
+    // decrypt ECDSA private key. if it fails, not using the correct shareToken
+    let shareTokenEcdsaPrivateKey
+    try {
+      const shareTokenEcdsaKeyEncryptionKeySalt = base64.decode(shareTokenAuthKeyData.shareTokenEcdsaKeyEncryptionKeySalt)
+      const shareTokenEcdsaKeyEncryptionKey = await crypto.ecdsa.importEcdsaKeyEncryptionKeyFromMaster(shareTokenHkdfKey, shareTokenEcdsaKeyEncryptionKeySalt)
+      const shareTokenEncryptedEcdsaPrivateKey = base64.decode(shareTokenAuthKeyData.shareTokenEncryptedEcdsaPrivateKey)
+      const shareTokenEcdsaPrivateKeyRaw = await crypto.aesGcm.decrypt(shareTokenEcdsaKeyEncryptionKey, shareTokenEncryptedEcdsaPrivateKey)
+      shareTokenEcdsaPrivateKey = await crypto.ecdsa.getPrivateKeyFromRawPrivateKey(shareTokenEcdsaPrivateKeyRaw)
+    } catch {
+      throw new errors.ShareTokenInvalid
+    }
+
+    // sign validation message sent by the server
+    const signedValidationMessage = await crypto.ecdsa.sign(shareTokenEcdsaPrivateKey, base64.decode(validationMessage))
+    return { databaseId, validationMessage, signedValidationMessage: base64.encode(signedValidationMessage) }
   }
 }
 

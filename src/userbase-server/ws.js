@@ -10,7 +10,7 @@ import { getUserByUserId } from './user'
 const SECONDS_BEFORE_ROLLBACK_GAP_TRIGGERED = 1000 * 10 // 10s
 const TRANSACTION_SIZE_BUNDLE_TRIGGER = 1024 * 50 // 50 KB
 
-const FILE_ID_CACHE_LIFE = 60 * 1000 // 60s
+const CACHE_LIFE = 60 * 1000 // 60s
 
 const DATA_STORAGE_MAX_REQUESTS_PER_SECOND = 200
 const DATA_STORAGE_TOKENS_REFILLED_PER_SECOND = 20
@@ -65,7 +65,7 @@ class Connection {
     this.fileStorageRateLimiter = new TokenBucket(FILE_STORAGE_MAX_REQUESTS_PER_SECOND, FILE_STORAGE_TOKENS_REFILLED_PER_SECOND)
   }
 
-  openDatabase(databaseId, dbNameHash, bundleSeqNo, reopenAtSeqNo, isOwner, attribution) {
+  openDatabase(databaseId, dbNameHash, bundleSeqNo, reopenAtSeqNo, isOwner, attribution, shareTokenReadWritePermissions) {
     this.databases[databaseId] = {
       bundleSeqNo: bundleSeqNo > 0 ? bundleSeqNo : -1,
       lastSeqNo: reopenAtSeqNo || 0,
@@ -74,6 +74,7 @@ class Connection {
       dbNameHash,
       isOwner,
       attribution,
+      shareTokenReadWritePermissions,
     }
   }
 
@@ -81,7 +82,7 @@ class Connection {
     this.keyValidated = true
   }
 
-  async push(databaseId, dbNameHash, dbKey, reopenAtSeqNo, plaintextDbKey) {
+  async push(databaseId, dbNameHash, dbKey, reopenAtSeqNo, plaintextDbKey, shareTokenEncryptedDbKey, shareTokenEncryptionKeySalt) {
     const database = this.databases[databaseId]
     if (!database) return
 
@@ -98,11 +99,14 @@ class Connection {
 
     const reopeningDatabase = reopenAtSeqNo !== undefined
 
-    const openingDatabase = dbNameHash && !reopeningDatabase && (dbKey || plaintextDbKey)
+    // opening databse by name, by databaseId, or by shareToken
+    const openingDatabase = (dbNameHash || shareTokenEncryptedDbKey) && !reopeningDatabase && (dbKey || plaintextDbKey || shareTokenEncryptedDbKey)
     if (openingDatabase) {
       payload.dbNameHash = dbNameHash
       payload.dbKey = dbKey
       payload.plaintextDbKey = plaintextDbKey
+      payload.shareTokenEncryptedDbKey = shareTokenEncryptedDbKey
+      payload.shareTokenEncryptionKeySalt = shareTokenEncryptionKeySalt
     }
 
     let lastSeqNo = database.lastSeqNo
@@ -369,7 +373,7 @@ class Connection {
 export default class Connections {
   static register(userId, socket, clientId, adminId, appId) {
     if (!Connections.sockets) Connections.sockets = {}
-    if (!Connections.sockets[userId]) Connections.sockets[userId] = { numConnections: 0, fileIds: {} }
+    if (!Connections.sockets[userId]) Connections.sockets[userId] = { numConnections: 0, fileIds: {}, shareTokenValidationMessages: {} }
     if (!Connections.sockets[adminId]) Connections.sockets[adminId] = { numConnections: 0 }
     if (!Connections.sockets[appId]) Connections.sockets[appId] = { numConnections: 0 }
 
@@ -398,21 +402,23 @@ export default class Connections {
     return connection
   }
 
-  static openDatabase(userId, connectionId, databaseId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner, attribution, plaintextDbKey) {
+  static openDatabase({ userId, connectionId, databaseId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner,
+    attribution, plaintextDbKey, shareTokenEncryptedDbKey, shareTokenEncryptionKeySalt, shareTokenReadWritePermissions }) {
     if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId][connectionId]) return
 
     const conn = Connections.sockets[userId][connectionId]
 
     if (!conn.databases[databaseId]) {
-      conn.openDatabase(databaseId, dbNameHash, bundleSeqNo, reopenAtSeqNo, isOwner, attribution)
-      logger.child({ connectionId, databaseId, adminId: conn.adminId, encryptionMode: plaintextDbKey ? 'server-side' : 'end-to-end' }).info('Database opened')
+      conn.openDatabase(databaseId, dbNameHash, bundleSeqNo, reopenAtSeqNo, isOwner, attribution, shareTokenReadWritePermissions)
+
+      if (!Connections.sockets[databaseId]) Connections.sockets[databaseId] = { numConnections: 0 }
+      Connections.sockets[databaseId][connectionId] = userId
+      Connections.sockets[databaseId].numConnections += 1
+
+      logger.child({ connectionId, databaseId, adminId: conn.adminId, encryptionMode: plaintextDbKey ? 'server-side' : 'end-to-end', shareTokenReadWritePermissions }).info('Database opened')
     }
 
-    conn.push(databaseId, dbNameHash, dbKey, reopenAtSeqNo, plaintextDbKey)
-
-    if (!Connections.sockets[databaseId]) Connections.sockets[databaseId] = { numConnections: 0 }
-    Connections.sockets[databaseId][connectionId] = userId
-    Connections.sockets[databaseId].numConnections += 1
+    conn.push(databaseId, dbNameHash, dbKey, reopenAtSeqNo, plaintextDbKey, shareTokenEncryptedDbKey, shareTokenEncryptionKeySalt)
 
     return true
   }
@@ -423,6 +429,14 @@ export default class Connections {
     const conn = Connections.sockets[userId][connectionId]
 
     return conn.databases[databaseId] ? true : false
+  }
+
+  static getShareTokenReadWritePermissionsFromConnection(userId, connectionId, databaseId) {
+    if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId][connectionId]) return
+
+    const conn = Connections.sockets[userId][connectionId]
+
+    return conn.databases[databaseId] && conn.databases[databaseId].shareTokenReadWritePermissions
   }
 
   static push(transaction) {
@@ -452,7 +466,7 @@ export default class Connections {
         }
 
         // requery DDB anyway in case there are any lingering transactions that need to get pushed out
-        conn.push(transaction['database-id'])
+        conn.push(dbId)
       }
     }
   }
@@ -531,13 +545,13 @@ export default class Connections {
   static cacheFileId(userId, fileId) {
     if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId].fileIds) return
 
-    // after FILE_ID_CACHE_LIFE seconds, delete the fileId from the cache
+    // after CACHE_LIFE seconds, delete the fileId from the cache
     Connections.sockets[userId].fileIds[fileId] = setTimeout(() => {
       if (Connections.sockets && Connections.sockets[userId] && Connections.sockets[userId].fileIds) {
         delete Connections.sockets[userId].fileIds[fileId]
       }
     },
-      FILE_ID_CACHE_LIFE
+      CACHE_LIFE
     )
   }
 
@@ -548,5 +562,28 @@ export default class Connections {
     clearTimeout(Connections.sockets[userId].fileIds[fileId])
     this.cacheFileId(userId, fileId)
     return true
+  }
+
+  static cacheShareTokenReadWritePermissions(userId, validationMessage, shareTokenReadWritePermissions) {
+    if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId].shareTokenValidationMessages) return
+
+    Connections.sockets[userId].shareTokenValidationMessages[validationMessage] = shareTokenReadWritePermissions
+
+    // after CACHE_LIFE seconds, delete the validationMessage from the cache
+    setTimeout(() => {
+      if (Connections.sockets && Connections.sockets[userId] && Connections.sockets[userId].shareTokenValidationMessages) {
+        delete Connections.sockets[userId].shareTokenValidationMessages[validationMessage]
+      }
+    },
+      CACHE_LIFE
+    )
+  }
+
+  static getShareTokenReadWritePermissionsFromCache(userId, validationMessage) {
+    const shareTokenReadWritePermissions = Connections.sockets && Connections.sockets[userId] &&
+      Connections.sockets[userId].shareTokenValidationMessages &&
+      Connections.sockets[userId].shareTokenValidationMessages[validationMessage]
+
+    return shareTokenReadWritePermissions
   }
 }

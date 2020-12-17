@@ -6,7 +6,7 @@ import ws from './ws'
 import errors from './errors'
 import statusCodes from './statusCodes'
 import { byteSizeOfString, Queue, objectHasOwnProperty } from './utils'
-import { arrayBufferToString, stringToArrayBuffer } from './Crypto/utils'
+import { appendBuffer, arrayBufferToString, stringToArrayBuffer } from './Crypto/utils'
 import api from './api'
 import config from './config'
 
@@ -114,7 +114,7 @@ class UnverifiedTransaction {
 }
 
 class Database {
-  constructor(changeHandler, receivedMessage) {
+  constructor(changeHandler, receivedMessage, shareTokenId, shareTokenHkdfKey) {
     this.onChange = _setChangeHandler(changeHandler)
 
     this.items = {}
@@ -138,6 +138,9 @@ class Database {
     this.receivedMessage = receivedMessage
     this.usernamesByUserId = new Map()
     this.attributionEnabled = false
+
+    this.shareTokenId = shareTokenId
+    this.shareTokenHkdfKey = shareTokenHkdfKey
 
     // Queue that ensures 'ApplyTransactions' executes one at a time
     this.applyTransactionsQueue = new Queue()
@@ -486,6 +489,12 @@ class Database {
   getFileVersionNumber(itemId) {
     return this.items[itemId].file && this.items[itemId].file.__v
   }
+
+  async decryptShareTokenEncryptedDbKey(shareTokenEncryptedDbKey, shareTokenEncryptionKeySalt) {
+    const shareTokenEncryptionKey = await crypto.aesGcm.importKeyFromMaster(this.shareTokenHkdfKey, base64.decode(shareTokenEncryptionKeySalt))
+    const dbKeyString = await crypto.aesGcm.decryptString(shareTokenEncryptionKey, shareTokenEncryptedDbKey)
+    return dbKeyString
+  }
 }
 
 const _setChangeHandler = (changeHandler) => {
@@ -519,17 +528,47 @@ const _idempotentOpenDatabase = (database, changeHandler, receivedMessage) => {
   return false
 }
 
-const _openDatabaseByDatabaseId = async (databaseId, changeHandler, receivedMessage) => {
+const _getShareTokenIdFromShareToken = (shareTokenArrayBuffer) => {
+  const shareTokenIdArrayBuffer = shareTokenArrayBuffer.slice(0, UUID_CHAR_LENGTH)
+  const shareTokenId = arrayBufferToString(shareTokenIdArrayBuffer, true)
+  if (!shareTokenId || shareTokenId.length !== UUID_CHAR_LENGTH) throw new errors.ShareTokenInvalid
+  return shareTokenId
+}
+
+const _getShareTokenIdAndShareTokenSeed = (shareTokenResult) => {
+  const shareTokenArrayBuffer = base64.decode(shareTokenResult)
+  const shareTokenId = _getShareTokenIdFromShareToken(shareTokenArrayBuffer)
+  const shareTokenSeed = shareTokenArrayBuffer.slice(UUID_CHAR_LENGTH)
+  return { shareTokenId, shareTokenSeed }
+}
+
+const _openDatabaseByShareToken = async (shareToken, changeHandler, receivedMessage) => {
+  let shareTokenIdAndShareTokenSeed, shareTokenHkdfKey
+  try {
+    shareTokenIdAndShareTokenSeed = _getShareTokenIdAndShareTokenSeed(shareToken)
+    shareTokenHkdfKey = await crypto.hkdf.importHkdfKey(shareTokenIdAndShareTokenSeed.shareTokenSeed)
+  } catch {
+    throw new errors.ShareTokenInvalid
+  }
+  const { shareTokenId } = shareTokenIdAndShareTokenSeed
+
+  const { databaseId, validationMessage, signedValidationMessage } = await ws.authenticateShareToken(shareTokenId, shareTokenHkdfKey)
+  ws.state.shareTokenIdToDbId[shareTokenId] = databaseId
+
+  await _openDatabaseByDatabaseId(databaseId, changeHandler, receivedMessage, shareTokenId, shareTokenHkdfKey, validationMessage, signedValidationMessage)
+}
+
+const _openDatabaseByDatabaseId = async (databaseId, changeHandler, receivedMessage, shareTokenId, shareTokenHkdfKey, validationMessage, signedValidationMessage) => {
   const database = ws.state.databasesByDbId[databaseId]
 
   if (!database) {
-    ws.state.databasesByDbId[databaseId] = new Database(changeHandler, receivedMessage)
+    ws.state.databasesByDbId[databaseId] = new Database(changeHandler, receivedMessage, shareTokenId, shareTokenHkdfKey)
   } else {
     if (_idempotentOpenDatabase(database, changeHandler, receivedMessage)) return
   }
 
   const action = 'OpenDatabaseByDatabaseId'
-  const params = { databaseId }
+  const params = { databaseId, validationMessage, signedValidationMessage }
   await ws.request(action, params)
 }
 
@@ -556,11 +595,12 @@ const _openDatabase = async (changeHandler, params) => {
       timeout = setTimeout(() => reject(new Error('timeout')), 20000)
     })
 
+    const { dbNameHash, newDatabaseParams, databaseId, shareToken } = params
     try {
-      const { dbNameHash, newDatabaseParams, databaseId } = params
 
       if (dbNameHash) await _openDatabaseByNameHash(dbNameHash, newDatabaseParams, changeHandler, receivedMessage)
-      else await _openDatabaseByDatabaseId(databaseId, changeHandler, receivedMessage)
+      else if (databaseId) await _openDatabaseByDatabaseId(databaseId, changeHandler, receivedMessage)
+      else if (shareToken) await _openDatabaseByShareToken(shareToken, changeHandler, receivedMessage)
 
       await firstMessageFromWebSocket
     } catch (e) {
@@ -572,7 +612,8 @@ const _openDatabase = async (changeHandler, params) => {
         if (data === 'Database already creating') {
           throw new errors.DatabaseAlreadyOpening
         } else if (data === 'Database is owned by user') {
-          throw new errors.DatabaseIdNotAllowedForOwnDatabase
+          if (databaseId) throw new errors.DatabaseIdNotAllowedForOwnDatabase
+          else if (shareToken) throw new errors.ShareTokenNotAllowedForOwnDatabase
         } else if (data === 'Database key not found' || data === 'Database not found') {
           throw new errors.DatabaseNotFound
         }
@@ -648,6 +689,7 @@ const _validateDbInput = (params) => {
 
     _validateDbName(params.databaseName)
     if (objectHasOwnProperty(params, 'databaseId')) throw new errors.DatabaseIdNotAllowed
+    if (objectHasOwnProperty(params, 'shareToken')) throw new errors.ShareTokenNotAllowed
 
     // try to block usage of verified users database. If user works around this and modifies this database,
     // they could mess up the database for themself.
@@ -656,7 +698,12 @@ const _validateDbInput = (params) => {
     }
 
   } else if (objectHasOwnProperty(params, 'databaseId')) {
+
     _validateDbId(params.databaseId)
+    if (objectHasOwnProperty(params, 'shareToken')) throw new errors.ShareTokenNotAllowed
+
+  } else if (objectHasOwnProperty(params, 'shareToken')) {
+    if (typeof params.shareToken !== 'string') throw new errors.ShareTokenInvalid
   } else {
     throw new errors.DatabaseNameMissing
   }
@@ -673,7 +720,7 @@ const openDatabase = async (params) => {
     _validateDbInput(params)
     if (!objectHasOwnProperty(params, 'changeHandler')) throw new errors.ChangeHandlerMissing
 
-    const { databaseName, databaseId, changeHandler, encryptionMode = ws.encryptionMode } = params
+    const { databaseName, databaseId, shareToken, changeHandler, encryptionMode = ws.encryptionMode } = params
 
     if (typeof changeHandler !== 'function') throw new errors.ChangeHandlerMustBeFunction
     _validateEncryptionMode(encryptionMode)
@@ -689,9 +736,12 @@ const openDatabase = async (params) => {
 
       const openByDbNameHashParams = { dbNameHash, newDatabaseParams }
       await _openDatabase(changeHandler, openByDbNameHashParams)
-    } else {
+    } else if (databaseId) {
       const openByDbIdParams = { databaseId }
       await _openDatabase(changeHandler, openByDbIdParams)
+    } else {
+      const openByShareToken = { shareToken }
+      await _openDatabase(changeHandler, openByShareToken)
     }
   } catch (e) {
 
@@ -708,6 +758,10 @@ const openDatabase = async (params) => {
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
       case 'DatabaseIdNotAllowedForOwnDatabase':
+      case 'ShareTokenNotAllowed':
+      case 'ShareTokenInvalid':
+      case 'ShareTokenNotFound':
+      case 'ShareTokenNotAllowedForOwnDatabase':
       case 'DatabaseNotFound':
       case 'ChangeHandlerMissing':
       case 'ChangeHandlerMustBeFunction':
@@ -729,13 +783,15 @@ const openDatabase = async (params) => {
   }
 }
 
-const getOpenDb = (dbName, databaseId, encryptionMode = 'end-to-end') => {
+const getOpenDb = (dbName, databaseId, shareToken, encryptionMode = 'end-to-end') => {
   _validateEncryptionMode(encryptionMode)
+
+  const shareTokenId = shareToken && _getShareTokenIdFromShareToken(base64.decode(shareToken))
 
   const dbNameHash = encryptionMode === 'server-side' ? dbName : ws.state.dbNameToHash[dbName]
   const database = dbName
     ? ws.state.databases[dbNameHash]
-    : ws.state.databasesByDbId[databaseId]
+    : ws.state.databasesByDbId[databaseId || ws.state.shareTokenIdToDbId[shareTokenId]]
 
   if (!database || !database.init) throw new errors.DatabaseNotOpen
   return database
@@ -745,7 +801,7 @@ const insertItem = async (params) => {
   try {
     _validateDbInput(params)
 
-    const database = getOpenDb(params.databaseName, params.databaseId, params.encryptionMode || ws.encryptionMode)
+    const database = getOpenDb(params.databaseName, params.databaseId, params.shareToken, params.encryptionMode || ws.encryptionMode)
 
     const action = 'Insert'
     const insertParams = await _buildInsertParams(database, params)
@@ -766,6 +822,8 @@ const insertItem = async (params) => {
       case 'DatabaseIdCannotBeBlank':
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
+      case 'ShareTokenNotAllowed':
+      case 'ShareTokenInvalid':
       case 'DatabaseIsReadOnly':
       case 'EncryptionModeNotValid':
       case 'ServerSideEncryptionNotEnabledInClient':
@@ -818,7 +876,7 @@ const updateItem = async (params) => {
   try {
     _validateDbInput(params)
 
-    const database = getOpenDb(params.databaseName, params.databaseId, params.encryptionMode || ws.encryptionMode)
+    const database = getOpenDb(params.databaseName, params.databaseId, params.shareToken, params.encryptionMode || ws.encryptionMode)
 
     const action = 'Update'
     const updateParams = await _buildUpdateParams(database, params)
@@ -838,6 +896,8 @@ const updateItem = async (params) => {
       case 'DatabaseIdCannotBeBlank':
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
+      case 'ShareTokenNotAllowed':
+      case 'ShareTokenInvalid':
       case 'DatabaseIsReadOnly':
       case 'EncryptionModeNotValid':
       case 'ServerSideEncryptionNotEnabledInClient':
@@ -892,7 +952,7 @@ const deleteItem = async (params) => {
   try {
     _validateDbInput(params)
 
-    const database = getOpenDb(params.databaseName, params.databaseId, params.encryptionMode || ws.encryptionMode)
+    const database = getOpenDb(params.databaseName, params.databaseId, params.shareToken, params.encryptionMode || ws.encryptionMode)
 
     const action = 'Delete'
     const deleteParams = await _buildDeleteParams(database, params)
@@ -912,6 +972,8 @@ const deleteItem = async (params) => {
       case 'DatabaseIdCannotBeBlank':
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
+      case 'ShareTokenNotAllowed':
+      case 'ShareTokenInvalid':
       case 'DatabaseIsReadOnly':
       case 'EncryptionModeNotValid':
       case 'ServerSideEncryptionNotEnabledInClient':
@@ -959,11 +1021,11 @@ const putTransaction = async (params) => {
     _validateDbInput(params)
     if (!objectHasOwnProperty(params, 'operations')) throw new errors.OperationsMissing
 
-    const { databaseName, databaseId, operations, encryptionMode = ws.encryptionMode } = params
+    const { databaseName, databaseId, shareToken, operations, encryptionMode = ws.encryptionMode } = params
 
     if (!Array.isArray(operations)) throw new errors.OperationsMustBeArray
 
-    const database = getOpenDb(databaseName, databaseId, encryptionMode)
+    const database = getOpenDb(databaseName, databaseId, shareToken, encryptionMode)
 
     const action = 'BatchTransaction'
 
@@ -1018,6 +1080,8 @@ const putTransaction = async (params) => {
       case 'DatabaseIdCannotBeBlank':
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
+      case 'ShareTokenNotAllowed':
+      case 'ShareTokenInvalid':
       case 'DatabaseIsReadOnly':
       case 'EncryptionModeNotValid':
       case 'ServerSideEncryptionNotEnabledInClient':
@@ -1190,7 +1254,7 @@ const uploadFile = async (params) => {
   try {
     _validateUploadFile(params)
 
-    const database = getOpenDb(params.databaseName, params.databaseId, params.encryptionMode || ws.encryptionMode)
+    const database = getOpenDb(params.databaseName, params.databaseId, params.shareToken, params.encryptionMode || ws.encryptionMode)
     const { dbId } = database
 
     try {
@@ -1246,6 +1310,8 @@ const uploadFile = async (params) => {
       case 'DatabaseIdCannotBeBlank':
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
+      case 'ShareTokenNotAllowed':
+      case 'ShareTokenInvalid':
       case 'DatabaseIsReadOnly':
       case 'EncryptionModeNotValid':
       case 'ServerSideEncryptionNotEnabledInClient':
@@ -1371,7 +1437,7 @@ const getFile = async (params) => {
   try {
     _validateGetFileParams(params)
 
-    const database = getOpenDb(params.databaseName, params.databaseId, params.encryptionMode || ws.encryptionMode)
+    const database = getOpenDb(params.databaseName, params.databaseId, params.shareToken, params.encryptionMode || ws.encryptionMode)
     const { dbId } = database
     const { fileId, range } = params
 
@@ -1405,6 +1471,8 @@ const getFile = async (params) => {
       case 'DatabaseIdCannotBeBlank':
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
+      case 'ShareTokenNotAllowed':
+      case 'ShareTokenInvalid':
       case 'DatabaseIsReadOnly':
       case 'EncryptionModeNotValid':
       case 'ServerSideEncryptionNotEnabledInClient':
@@ -1658,6 +1726,8 @@ const getDatabases = async (params) => {
     const { encryptionKey, ecdhPrivateKey } = ws.keys
     const username = ws.session.username
 
+    if (params && objectHasOwnProperty(params, 'shareToken')) throw new errors.ShareTokenNotAllowed
+
     const encryptionMode = (params && params.encryptionMode) || ws.encryptionMode
     _validateEncryptionMode(encryptionMode)
 
@@ -1700,6 +1770,7 @@ const getDatabases = async (params) => {
       case 'DatabaseIdCannotBeBlank':
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
+      case 'ShareTokenNotAllowed':
       case 'EncryptionModeNotValid':
       case 'ServerSideEncryptionNotEnabledInClient':
       case 'UserMustChangePassword':
@@ -1718,8 +1789,8 @@ const _getDatabase = async (databaseName, databaseId, encryptionMode = 'end-to-e
 
   let database
   try {
-    // check if database is already open in memory
-    database = getOpenDb(databaseName, databaseId, encryptionMode)
+    // check if database is already open in memory. shareToken = null because not possible to pass shareToken here
+    database = getOpenDb(databaseName, databaseId, null, encryptionMode)
   } catch {
     // if not already open in memory, it's ok. Just get the values we need from backend
     const action = 'GetDatabases'
@@ -1780,14 +1851,168 @@ const _verifyDatabaseRecipientFingerprint = async (username, recipientFingerprin
   if (!verifiedRecipientFingerprint) throw new errors.UserNotVerified
 }
 
+const _getDatabaseEncryptionKey = async (database) => {
+  let dbKeyString
+  if (!database.dbKey) {
+    dbKeyString = database.plaintextDbKey || await crypto.aesGcm.decryptString(ws.keys.encryptionKey, database.encryptedDbKey)
+    database.dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
+  } else {
+    dbKeyString = await crypto.aesGcm.getKeyStringFromKey(database.dbKey)
+  }
+  return dbKeyString
+}
+
+const _getShareToken = async (params, readOnly, encryptionMode) => {
+  try {
+    const { databaseName, databaseId } = params
+
+    if (objectHasOwnProperty(params, 'requireVerified')) throw new errors.RequireVerifiedParamNotNecessary
+    if (objectHasOwnProperty(params, 'resharingAllowed')) throw new errors.ResharingAllowedParamNotAllowed('when retrieving a share token')
+
+    // generate share token seed and associated keys
+    const shareTokenSeed = crypto.generateSeed()
+    const shareTokenHkdfKey = await crypto.hkdf.importHkdfKey(shareTokenSeed)
+
+    // generate share token encryption key
+    const shareTokenEncryptionKeySalt = crypto.hkdf.generateSalt()
+    const shareTokenEncryptionKey = await crypto.aesGcm.importKeyFromMaster(shareTokenHkdfKey, shareTokenEncryptionKeySalt)
+
+    // encrypt the database key using shareTokenEncryptionKey
+    const database = await _getDatabase(databaseName, databaseId, encryptionMode)
+    const dbKeyString = await _getDatabaseEncryptionKey(database)
+    const shareTokenEncryptedDbKeyString = await crypto.aesGcm.encryptString(shareTokenEncryptionKey, dbKeyString)
+
+    // generate share token ECDSA key data
+    const { ecdsaPublicKey, encryptedEcdsaPrivateKey, ecdsaKeyEncryptionKeySalt } = await crypto.ecdsa.generateEcdsaKeyData(shareTokenHkdfKey)
+
+    const action = 'ShareDatabaseToken'
+    const requestParams = {
+      databaseId: database.dbId,
+      databaseNameHash: database.dbNameHash,
+      readOnly,
+      keyData: {
+        shareTokenEncryptedDbKey: shareTokenEncryptedDbKeyString,
+        shareTokenEncryptionKeySalt: base64.encode(shareTokenEncryptionKeySalt),
+        shareTokenPublicKey: ecdsaPublicKey,
+        shareTokenEncryptedEcdsaPrivateKey: encryptedEcdsaPrivateKey,
+        shareTokenEcdsaKeyEncryptionKeySalt: ecdsaKeyEncryptionKeySalt,
+      }
+    }
+    const shareTokenResponse = await ws.request(action, requestParams)
+
+    // server generates unique ID
+    const { shareTokenId } = shareTokenResponse.data
+
+    // prepend shareTokenId to shareTokenSeed to get final shareToken to return to user, all in base64
+    const shareTokenIdArrayBuffer = stringToArrayBuffer(shareTokenId, true)
+    const shareToken = base64.encode(appendBuffer(shareTokenIdArrayBuffer, shareTokenSeed))
+    return shareToken
+  } catch (e) {
+    _parseGenericErrors(e)
+
+    if (e.response && e.response.data) {
+      switch (e.response.data.message) {
+        case 'DatabaseNotFound': throw new errors.DatabaseNotFound
+        case 'ResharingNotAllowed': throw new errors.ResharingNotAllowed('Only the owner can generate a share token')
+      }
+    }
+
+    throw e
+  }
+}
+
+const _shareDatabaseWithUsername = async (params, readOnly, resharingAllowed, requireVerified, encryptionMode) => {
+  const { databaseName, databaseId } = params
+  const username = params.username.toLowerCase()
+
+  try {
+    // get recipient's public key to use to generate a shared key, and retrieve verified users list if requireVerified set to true
+    const [recipientPublicKey, verifiedUsers, database] = await Promise.all([
+      api.auth.getPublicKey(username),
+      requireVerified && _openVerifiedUsersDatabase(),
+      _getDatabase(databaseName, databaseId, encryptionMode),
+    ])
+
+    // recipient must have required keys so client can share database key
+    if (!recipientPublicKey.ecdhPublicKey || !recipientPublicKey.ecdsaPublicKey) throw new errors.UserUnableToReceiveDatabase
+
+    // compute recipient's fingerprint of ECDSA public key stored on server
+    const recipientRawEcdsaPublicKey = base64.decode(recipientPublicKey.ecdsaPublicKey)
+    const recipientFingerprint = await _getFingerprint(recipientRawEcdsaPublicKey)
+
+    // verify that the recipient is in the user's list of verified users
+    if (requireVerified) await _verifyDatabaseRecipientFingerprint(username, recipientFingerprint, verifiedUsers)
+
+    // verify recipient signed the ECDH public key that sender will be using to share database
+    const recipientEcdsaPublicKey = await crypto.ecdsa.getPublicKeyFromRawPublicKey(recipientRawEcdsaPublicKey)
+    const { signedEcdhPublicKey, ecdhPublicKey } = recipientPublicKey
+    const isVerified = await crypto.ecdsa.verify(recipientEcdsaPublicKey, base64.decode(signedEcdhPublicKey), base64.decode(ecdhPublicKey))
+
+    // this should never happen. If this happens, the server is serving conflicting keys and client should not sign anything
+    if (!isVerified) throw new errors.ServiceUnavailable
+
+    const recipientEcdhPublicKey = await crypto.ecdh.getPublicKeyFromRawPublicKey(base64.decode(recipientPublicKey.ecdhPublicKey))
+
+    // generate ephemeral ECDH key pair to ensure forward secrecy for future shares between users if shared key is leaked
+    const ephemeralEcdhKeyPair = await crypto.ecdh.generateKeyPair()
+    const rawEphemeralEcdhPublicKey = await crypto.ecdh.getRawPublicKeyFromPublicKey(ephemeralEcdhKeyPair.publicKey)
+    const signedEphemeralEcdhPublicKey = await crypto.ecdsa.sign(ws.keys.ecdsaPrivateKey, rawEphemeralEcdhPublicKey)
+
+    // compute shared key encryption key with recipient so can use it to encrypt database encryption key
+    const sharedKeyEncryptionKey = await crypto.ecdh.computeSharedKeyEncryptionKey(recipientEcdhPublicKey, ephemeralEcdhKeyPair.privateKey)
+
+    // encrypt the database encryption key using shared ephemeral ECDH key
+    const dbKeyString = await _getDatabaseEncryptionKey(database)
+    const sharedEncryptedDbKeyString = await crypto.aesGcm.encryptString(sharedKeyEncryptionKey, dbKeyString)
+
+    const action = 'ShareDatabase'
+    const requestParams = {
+      databaseId: database.dbId,
+      databaseNameHash: database.dbNameHash,
+      username,
+      readOnly,
+      resharingAllowed,
+      sharedEncryptedDbKey: sharedEncryptedDbKeyString,
+      ephemeralPublicKey: base64.encode(rawEphemeralEcdhPublicKey),
+      signedEphemeralPublicKey: base64.encode(signedEphemeralEcdhPublicKey),
+      sentSignature: await _signDbKeyAndFingerprint(database.dbKey, recipientFingerprint),
+      recipientEcdsaPublicKey: recipientPublicKey.ecdsaPublicKey
+    }
+    await ws.request(action, requestParams)
+  } catch (e) {
+    _parseGenericErrors(e)
+
+    if (e.response && e.response.data) {
+      switch (e.response.data.message) {
+        case 'SharingWithSelfNotAllowed':
+          throw new errors.SharingWithSelfNotAllowed
+        case 'DatabaseNotFound':
+          throw new errors.DatabaseNotFound
+        case 'ResharingNotAllowed':
+          throw new errors.ResharingNotAllowed('Must have permission to reshare the database with another user')
+        case 'ResharingWithWriteAccessNotAllowed':
+          throw new errors.ResharingWithWriteAccessNotAllowed
+        case 'UserNotFound':
+          throw new errors.UserNotFound
+        case 'DatabaseAlreadyShared':
+          // safe to return
+          return
+      }
+    }
+
+    throw e
+  }
+}
+
 const _validateUsername = (username) => {
   if (typeof username !== 'string') throw new errors.UsernameMustBeString
   if (username.length === 0) throw new errors.UsernameCannotBeBlank
 }
 
 const _validateDbSharingInput = (params) => {
-  if (!objectHasOwnProperty(params, 'username')) throw new errors.UsernameMissing
-  _validateUsername(params.username)
+  if (objectHasOwnProperty(params, 'shareToken')) throw new errors.ShareTokenNotAllowed
+
+  if (objectHasOwnProperty(params, 'username')) _validateUsername(params.username)
 
   if (objectHasOwnProperty(params, 'readOnly') && typeof params.readOnly !== 'boolean') {
     throw new errors.ReadOnlyMustBeBoolean
@@ -1807,99 +2032,18 @@ const shareDatabase = async (params) => {
     _validateDbInput(params)
     _validateDbSharingInput(params)
 
-    const { databaseName, databaseId, encryptionMode = ws.encryptionMode } = params
-    _validateEncryptionMode(encryptionMode)
-    const username = params.username.toLowerCase()
     const readOnly = objectHasOwnProperty(params, 'readOnly') ? params.readOnly : true
     const resharingAllowed = objectHasOwnProperty(params, 'resharingAllowed') ? params.resharingAllowed : false
     const requireVerified = objectHasOwnProperty(params, 'requireVerified') ? params.requireVerified : true
 
-    try {
-      // get recipient's public key to use to generate a shared key, and retrieve verified users list if requireVerified set to true
-      const [recipientPublicKey, verifiedUsers] = await Promise.all([
-        api.auth.getPublicKey(username),
-        requireVerified && _openVerifiedUsersDatabase()
-      ])
+    const encryptionMode = params.encryptionMode || ws.encryptionMode
+    _validateEncryptionMode(encryptionMode)
 
-      // recipient must have required keys so client can share database key
-      if (!recipientPublicKey.ecdhPublicKey || !recipientPublicKey.ecdsaPublicKey) throw new errors.UserUnableToReceiveDatabase
+    let result = {}
+    if (objectHasOwnProperty(params, 'username')) await _shareDatabaseWithUsername(params, readOnly, resharingAllowed, requireVerified, encryptionMode)
+    else result.shareToken = await _getShareToken(params, readOnly, encryptionMode)
 
-      // compute recipient's fingerprint of ECDSA public key stored on server
-      const recipientRawEcdsaPublicKey = base64.decode(recipientPublicKey.ecdsaPublicKey)
-      const recipientFingerprint = await _getFingerprint(recipientRawEcdsaPublicKey)
-
-      // verify that the recipient is in the user's list of verified users
-      if (requireVerified) await _verifyDatabaseRecipientFingerprint(username, recipientFingerprint, verifiedUsers)
-
-      // verify recipient signed the ECDH public key that sender will be using to share database
-      const recipientEcdsaPublicKey = await crypto.ecdsa.getPublicKeyFromRawPublicKey(recipientRawEcdsaPublicKey)
-      const { signedEcdhPublicKey, ecdhPublicKey } = recipientPublicKey
-      const isVerified = await crypto.ecdsa.verify(recipientEcdsaPublicKey, base64.decode(signedEcdhPublicKey), base64.decode(ecdhPublicKey))
-
-      // this should never happen. If this happens, the server is serving conflicting keys and client should not sign anything
-      if (!isVerified) throw new errors.ServiceUnavailable
-
-      const recipientEcdhPublicKey = await crypto.ecdh.getPublicKeyFromRawPublicKey(base64.decode(recipientPublicKey.ecdhPublicKey))
-
-      // generate ephemeral ECDH key pair to ensure forward secrecy for future shares between users if shared key is leaked
-      const ephemeralEcdhKeyPair = await crypto.ecdh.generateKeyPair()
-      const rawEphemeralEcdhPublicKey = await crypto.ecdh.getRawPublicKeyFromPublicKey(ephemeralEcdhKeyPair.publicKey)
-      const signedEphemeralEcdhPublicKey = await crypto.ecdsa.sign(ws.keys.ecdsaPrivateKey, rawEphemeralEcdhPublicKey)
-
-      // compute shared key encryption key with recipient so can use it to encrypt database encryption key
-      const sharedKeyEncryptionKey = await crypto.ecdh.computeSharedKeyEncryptionKey(recipientEcdhPublicKey, ephemeralEcdhKeyPair.privateKey)
-
-      // get the database encryption key
-      const database = await _getDatabase(databaseName, databaseId, encryptionMode)
-      let dbKeyString
-      if (!database.dbKey) {
-        dbKeyString = database.plaintextDbKey || await crypto.aesGcm.decryptString(ws.keys.encryptionKey, database.encryptedDbKey)
-        database.dbKey = await crypto.aesGcm.getKeyFromKeyString(dbKeyString)
-      } else {
-        dbKeyString = await crypto.aesGcm.getKeyStringFromKey(database.dbKey)
-      }
-
-      // encrypt the database encryption key using shared ephemeral ECDH key
-      const sharedEncryptedDbKeyString = await crypto.aesGcm.encryptString(sharedKeyEncryptionKey, dbKeyString)
-
-      const action = 'ShareDatabase'
-      const requestParams = {
-        databaseId: database.dbId,
-        databaseNameHash: database.dbNameHash,
-        username,
-        readOnly,
-        resharingAllowed,
-        sharedEncryptedDbKey: sharedEncryptedDbKeyString,
-        ephemeralPublicKey: base64.encode(rawEphemeralEcdhPublicKey),
-        signedEphemeralPublicKey: base64.encode(signedEphemeralEcdhPublicKey),
-        sentSignature: await _signDbKeyAndFingerprint(database.dbKey, recipientFingerprint),
-        recipientEcdsaPublicKey: recipientPublicKey.ecdsaPublicKey
-      }
-      await ws.request(action, requestParams)
-    } catch (e) {
-      _parseGenericErrors(e)
-
-      if (e.response && e.response.data) {
-        switch (e.response.data.message) {
-          case 'SharingWithSelfNotAllowed':
-            throw new errors.SharingWithSelfNotAllowed
-          case 'DatabaseNotFound':
-            throw new errors.DatabaseNotFound
-          case 'ResharingNotAllowed':
-            throw new errors.ResharingNotAllowed
-          case 'ResharingWithWriteAccessNotAllowed':
-            throw new errors.ResharingWithWriteAccessNotAllowed
-          case 'UserNotFound':
-            throw new errors.UserNotFound
-          case 'DatabaseAlreadyShared':
-            // safe to return
-            return
-        }
-      }
-
-      throw e
-    }
-
+    return result
   } catch (e) {
 
     switch (e.name) {
@@ -1913,17 +2057,19 @@ const shareDatabase = async (params) => {
       case 'DatabaseIdCannotBeBlank':
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
+      case 'ShareTokenNotAllowed':
       case 'DatabaseNotFound':
       case 'EncryptionModeNotValid':
       case 'ServerSideEncryptionNotEnabledInClient':
-      case 'UsernameMissing':
       case 'UsernameCannotBeBlank':
       case 'UsernameMustBeString':
       case 'ReadOnlyMustBeBoolean':
       case 'ResharingAllowedMustBeBoolean':
       case 'ResharingNotAllowed':
       case 'ResharingWithWriteAccessNotAllowed':
+      case 'ResharingAllowedParamNotAllowed':
       case 'RequireVerifiedMustBeBoolean':
+      case 'RequireVerifiedParamNotNecessary':
       case 'SharingWithSelfNotAllowed':
       case 'UserMustChangePassword':
       case 'UserNotSignedIn':
@@ -1945,13 +2091,15 @@ const modifyDatabasePermissions = async (params) => {
     _validateDbInput(params)
     _validateDbSharingInput(params)
 
+    if (!objectHasOwnProperty(params, 'username')) throw new errors.UsernameMissing
+
     if (objectHasOwnProperty(params, 'revoke')) {
       if (typeof params.revoke !== 'boolean') throw new errors.RevokeMustBeBoolean
 
       // readOnly and resharingAllowed booleans have no use if revoking database from user
       if (params.revoke) {
         if (objectHasOwnProperty(params, 'readOnly')) throw new errors.ReadOnlyParamNotAllowed
-        if (objectHasOwnProperty(params, 'resharingAllowed')) throw new errors.ResharingAllowedParamNotAllowed
+        if (objectHasOwnProperty(params, 'resharingAllowed')) throw new errors.ResharingAllowedParamNotAllowed('when revoking access to a database')
       }
     } else if (!objectHasOwnProperty(params, 'readOnly') && !objectHasOwnProperty(params, 'resharingAllowed')) {
       throw new errors.ParamsMissing
@@ -2010,6 +2158,7 @@ const modifyDatabasePermissions = async (params) => {
       case 'DatabaseIdCannotBeBlank':
       case 'DatabaseIdInvalidLength':
       case 'DatabaseIdNotAllowed':
+      case 'ShareTokenNotAllowed':
       case 'DatabaseNotFound':
       case 'EncryptionModeNotValid':
       case 'ServerSideEncryptionNotEnabledInClient':

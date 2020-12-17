@@ -64,6 +64,8 @@ const accessTokenIndex = 'AccessTokenIndex'
 const userIdIndex = 'UserIdIndex'
 const appIdIndex = 'AppIdIndex'
 const authTokenIndex = 'AuthTokenIndex'
+const shareTokenIdReadOnlyIndex = 'ShareTokenIdReadOnlyIndex'
+const shareTokenIdWriteIndex = 'ShareTokenIdWriteIndex'
 const subscriptionPlanIndex = 'SubscriptionPlanIndex'
 const userDatabaseIdIndex = 'UserDatabaseIdIndex'
 
@@ -72,6 +74,8 @@ exports.accessTokenIndex = accessTokenIndex
 exports.userIdIndex = userIdIndex
 exports.appIdIndex = appIdIndex
 exports.authTokenIndex = authTokenIndex
+exports.shareTokenIdReadOnlyIndex = shareTokenIdReadOnlyIndex
+exports.shareTokenIdWriteIndex = shareTokenIdWriteIndex
 exports.subscriptionPlanIndex = subscriptionPlanIndex
 exports.userDatabaseIdIndex = userDatabaseIdIndex
 
@@ -292,13 +296,31 @@ async function setupDdb() {
   // the database table holds a record per database
   const databaseTableParams = {
     AttributeDefinitions: [
-      { AttributeName: 'database-id', AttributeType: 'S' }
+      { AttributeName: 'database-id', AttributeType: 'S' },
+      { AttributeName: 'share-token-id-read-only', AttributeType: 'S' },
+      { AttributeName: 'share-token-id-write', AttributeType: 'S' },
     ],
     KeySchema: [
       { AttributeName: 'database-id', KeyType: 'HASH' },
     ],
     BillingMode: 'PAY_PER_REQUEST',
     TableName: databaseTableName,
+    GlobalSecondaryIndexes: [
+      {
+        IndexName: shareTokenIdReadOnlyIndex,
+        KeySchema: [
+          { AttributeName: 'share-token-id-read-only', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' }
+      },
+      {
+        IndexName: shareTokenIdWriteIndex,
+        KeySchema: [
+          { AttributeName: 'share-token-id-write', KeyType: 'HASH' }
+        ],
+        Projection: { ProjectionType: 'ALL' }
+      }
+    ]
   }
 
   // the user database table holds a record for each user database relationship

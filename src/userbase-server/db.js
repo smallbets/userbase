@@ -26,6 +26,8 @@ const HOURS_IN_A_DAY = 24
 const SECONDS_IN_A_DAY = 60 * 60 * HOURS_IN_A_DAY
 const MS_IN_A_DAY = SECONDS_IN_A_DAY * 1000
 
+const VALIDATION_MESSAGE_LENGTH = 16
+
 const getS3DbStateKey = (databaseId, bundleSeqNo) => `${databaseId}/${bundleSeqNo}`
 const getS3DbWritersKey = (databaseId, bundleSeqNo) => `${databaseId}/writers/${bundleSeqNo}`
 const getS3FileChunkKey = (databaseId, fileId, chunkNumber) => `${databaseId}/${fileId}/${chunkNumber}`
@@ -215,14 +217,14 @@ exports.openDatabase = async function (user, app, admin, connectionId, dbNameHas
     }
     if (!database) return responseBuilder.errorResponse(statusCodes['Not Found'], 'Database not found')
 
-    const dbId = database['database-id']
+    const databaseId = database['database-id']
     const bundleSeqNo = database['bundle-seq-no']
     const dbKey = database['encrypted-db-key']
     const attribution = database['attribution']
     const plaintextDbKey = database['plaintext-db-key']
 
     const isOwner = true
-    if (connections.openDatabase(userId, connectionId, dbId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner, attribution, plaintextDbKey)) {
+    if (connections.openDatabase({ userId, connectionId, databaseId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner, attribution, plaintextDbKey })) {
       return responseBuilder.successResponse('Success!')
     } else {
       throw new Error('Unable to open database')
@@ -233,7 +235,23 @@ exports.openDatabase = async function (user, app, admin, connectionId, dbNameHas
   }
 }
 
-exports.openDatabaseByDatabaseId = async function (userAtSignIn, app, admin, connectionId, databaseId, reopenAtSeqNo) {
+const _validateAuthTokenSignature = (userId, database, validationMessage, signedValidationMessage) => {
+  const shareTokenReadWritePermissions = connections.getShareTokenReadWritePermissionsFromCache(userId, validationMessage)
+  if (!shareTokenReadWritePermissions) throw {
+    status: statusCodes['Unauthorized'],
+    error: 'RequestExpired'
+  }
+
+  const shareTokenPublicKey = database['share-token-public-key-' + shareTokenReadWritePermissions]
+  if (!crypto.ecdsa.verify(Buffer.from(validationMessage, 'base64'), shareTokenPublicKey, signedValidationMessage)) throw {
+    status: statusCodes['Unauthorized'],
+    error: 'ShareTokenInvalid'
+  }
+
+  return shareTokenReadWritePermissions
+}
+
+exports.openDatabaseByDatabaseId = async function (userAtSignIn, app, admin, connectionId, databaseId, validationMessage, signedValidationMessage, reopenAtSeqNo) {
   let userId
   try {
     if (!databaseId) throw { status: statusCodes['Bad Request'], error: 'Missing database ID' }
@@ -248,28 +266,38 @@ exports.openDatabaseByDatabaseId = async function (userAtSignIn, app, admin, con
       userController.getUserByUserId(userId),
     ])
 
-    if (!db || !userDb || !user) throw { status: statusCodes['Not Found'], error: 'Database not found' }
+    if (!db || !user || (!userDb && !validationMessage)) throw { status: statusCodes['Not Found'], error: 'Database not found' }
 
     // Not allowing developers to use databaseId's to interact with databases owned by the user keeps the current concurrency model safe.
     const isOwner = db['owner-id'] === userId
     if (isOwner) throw { status: statusCodes['Forbidden'], error: 'Database is owned by user' }
 
-    const database = { ...db, ...userDb }
-    const dbNameHash = database['database-name-hash']
-    const bundleSeqNo = database['bundle-seq-no']
-    const dbKey = database['encrypted-db-key']
-    const attribution = database['attribution']
-    const plaintextDbKey = database['plaintext-db-key']
+    const bundleSeqNo = db['bundle-seq-no']
+    const attribution = db['attribution']
+    const plaintextDbKey = db['plaintext-db-key']
+    const connectionParams = { userId, connectionId, databaseId, bundleSeqNo, reopenAtSeqNo, isOwner, attribution, plaintextDbKey }
+    if (validationMessage) {
+      const shareTokenReadWritePermissions = _validateAuthTokenSignature(userId, db, validationMessage, signedValidationMessage)
 
-    // user must call getDatabases() first to set the db key
-    if (!dbKey && !plaintextDbKey) throw { status: statusCodes['Not Found'], error: 'Database key not found' }
+      connectionParams.shareTokenEncryptedDbKey = db['share-token-encrypted-db-key-' + shareTokenReadWritePermissions]
+      connectionParams.shareTokenEncryptionKeySalt = db['share-token-encryption-key-salt-' + shareTokenReadWritePermissions]
+      connectionParams.shareTokenReadWritePermissions = shareTokenReadWritePermissions
+    } else {
+      connectionParams.dbNameHash = userDb['database-name-hash']
+      const dbKey = userDb['encrypted-db-key']
 
-    // user must have the correct public key saved to access database
-    if (!plaintextDbKey && database['recipient-ecdsa-public-key'] !== user['ecdsa-public-key']) throw {
-      status: statusCodes['Not Found'], error: 'Database not found'
+      // user must call getDatabases() first to set the db key
+      if (!dbKey && !plaintextDbKey) throw { status: statusCodes['Not Found'], error: 'Database key not found' }
+      connectionParams.dbKey = dbKey
+      connectionParams.plaintextDbKey = plaintextDbKey
+
+      // user must have the correct public key saved to access database
+      if (!plaintextDbKey && userDb['recipient-ecdsa-public-key'] !== user['ecdsa-public-key']) throw {
+        status: statusCodes['Not Found'], error: 'Database not found'
+      }
     }
 
-    if (connections.openDatabase(userId, connectionId, databaseId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner, attribution, plaintextDbKey)) {
+    if (connections.openDatabase(connectionParams)) {
       return responseBuilder.successResponse('Success!')
     } else {
       throw new Error('Unable to open database')
@@ -622,13 +650,22 @@ const _incrementSeqNo = async function (transaction, databaseId) {
   }
 }
 
-const putTransaction = async function (transaction, userId, databaseId) {
+const putTransaction = async function (transaction, userId, connectionId, databaseId) {
+  if (!connections.isDatabaseOpen(userId, connectionId, databaseId)) throw {
+    status: statusCodes['Bad Request'],
+    error: { name: 'DatabaseNotOpen' }
+  }
+
+  const shareTokenReadWritePermissions = connections.getShareTokenReadWritePermissionsFromConnection(userId, connectionId, databaseId)
+
   // can be determined now, but not needed until later
   const userPromise = userController.getUserByUserId(userId)
 
-  // make both requests async to keep the time for successful putTransaction low
-  const [userDb] = await Promise.all([
-    _getUserDatabaseByUserIdAndDatabaseId(userId, databaseId),
+  // incrementeSeqNo is only thing that needs to be done here, but making requests async to keep the
+  // time for successful putTransaction low
+  const [userDb, db] = await Promise.all([
+    !shareTokenReadWritePermissions && _getUserDatabaseByUserIdAndDatabaseId(userId, databaseId),
+    shareTokenReadWritePermissions && findDatabaseByDatabaseId(databaseId),
     _incrementSeqNo(transaction, databaseId)
   ])
 
@@ -637,12 +674,12 @@ const putTransaction = async function (transaction, userId, databaseId) {
   transaction['user-id'] = userId
 
   try {
-    if (!userDb) {
+    if (!userDb && !db) {
       throw {
         status: statusCodes['Not Found'],
         error: { name: 'DatabaseNotFound' }
       }
-    } else if (userDb['read-only']) {
+    } else if (shareTokenReadWritePermissions ? shareTokenReadWritePermissions === 'read-only' : userDb['read-only']) {
       throw {
         status: statusCodes['Forbidden'],
         error: { name: 'DatabaseIsReadOnly' }
@@ -674,10 +711,10 @@ const putTransaction = async function (transaction, userId, databaseId) {
   transaction['username'] = (await userPromise).username
 
   // notify all websocket connections that there's a database change
-  connections.push(transaction, userId)
+  connections.push(transaction)
 
   // broadcast transaction to all peers so they also push to their connected clients
-  peers.broadcastTransaction(transaction, userId)
+  peers.broadcastTransaction(transaction, userId, connectionId)
 
   return transaction['sequence-no']
 }
@@ -708,10 +745,6 @@ const doCommand = async function (command, userId, connectionId, databaseId, key
   if (!databaseId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
   if (!key) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing item key')
 
-  if (!connections.isDatabaseOpen(userId, connectionId, databaseId)) {
-    return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Database not open')
-  }
-
   const transaction = {
     'database-id': databaseId,
     key,
@@ -737,7 +770,7 @@ const doCommand = async function (command, userId, connectionId, databaseId, key
   }
 
   try {
-    const sequenceNo = await putTransaction(transaction, userId, databaseId)
+    const sequenceNo = await putTransaction(transaction, userId, connectionId, databaseId)
     return responseBuilder.successResponse({ sequenceNo })
   } catch (e) {
     const message = `Failed to ${command}`
@@ -763,10 +796,6 @@ exports.batchTransaction = async function (userId, connectionId, databaseId, ope
     error: 'OperationsExceedLimit',
     limit: MAX_OPERATIONS_IN_TX
   })
-
-  if (!connections.isDatabaseOpen(userId, connectionId, databaseId)) {
-    return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Database not open')
-  }
 
   const ops = []
   for (let i = 0; i < operations.length; i++) {
@@ -795,7 +824,7 @@ exports.batchTransaction = async function (userId, connectionId, databaseId, ope
       operations: ops
     }
 
-    const sequenceNo = await putTransaction(transaction, userId, databaseId)
+    const sequenceNo = await putTransaction(transaction, userId, connectionId, databaseId)
     return responseBuilder.successResponse({ sequenceNo })
   } catch (e) {
     const message = 'Failed to batch transaction'
@@ -943,8 +972,11 @@ exports.generateFileId = async function (logChildObject, userId, connectionId, d
       return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Database not open')
     }
 
-    const userDb = await _getUserDatabaseByUserIdAndDatabaseId(userId, databaseId)
-    if (userDb['read-only']) {
+    const shareTokenReadWritePermissions = connections.getShareTokenReadWritePermissionsFromConnection(userId, connectionId, databaseId)
+
+    const userDb = !shareTokenReadWritePermissions && await _getUserDatabaseByUserIdAndDatabaseId(userId, databaseId)
+
+    if (!shareTokenReadWritePermissions ? userDb['read-only'] : shareTokenReadWritePermissions === 'read-only') {
       throw {
         status: statusCodes['Forbidden'],
         error: { message: 'DatabaseIsReadOnly' }
@@ -1118,6 +1150,23 @@ const _validateShareDatabase = async function (sender, dbId, dbNameHash, recipie
   return { database, senderUserDb, recipient }
 }
 
+const _validateShareDatabaseToken = async function (sender, dbId, dbNameHash) {
+  const [database, senderUserDb] = await Promise.all([
+    findDatabaseByDatabaseId(dbId),
+    _getUserDatabase(sender['user-id'], dbNameHash),
+  ])
+
+  if (!database || !senderUserDb || senderUserDb['database-id'] !== dbId) throw {
+    status: statusCodes['Not Found'],
+    error: { message: 'DatabaseNotFound' }
+  }
+
+  if (database['owner-id'] !== sender['user-id']) throw {
+    status: statusCodes['Forbidden'],
+    error: { message: 'ResharingNotAllowed' }
+  }
+}
+
 const _buildSharedUserDatabaseParams = (userId, dbId, readOnly, resharingAllowed, senderId, sharedEncryptedDbKey, wrappedDbKey,
   ephemeralPublicKey, signedEphemeralPublicKey, ecdsaPublicKey, sentSignature, recipientEcdsaPublicKey) => {
   // user will only be able to open the database using database ID. Only requirement is that this value is unique
@@ -1198,6 +1247,145 @@ exports.shareDatabase = async function (logChildObject, sender, dbId, dbNameHash
       return responseBuilder.errorResponse(e.status, e.error)
     } else {
       return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to share database')
+    }
+  }
+}
+
+exports.shareDatabaseToken = async function (logChildObject, sender, dbId, dbNameHash, readOnly, keyData) {
+  try {
+    if (typeof readOnly !== 'boolean') throw {
+      status: statusCodes['Bad Request'],
+      error: { message: 'ReadOnlyMustBeBoolean' }
+    }
+
+    await _validateShareDatabaseToken(sender, dbId, dbNameHash)
+
+    const {
+      shareTokenEncryptedDbKey,
+      shareTokenEncryptionKeySalt,
+      shareTokenPublicKey,
+      shareTokenEncryptedEcdsaPrivateKey,
+      shareTokenEcdsaKeyEncryptionKeySalt,
+    } = keyData
+
+    const shareTokenReadWritePermissions = readOnly ? 'read-only' : 'write'
+    const shareTokenId = uuidv4()
+
+    const params = {
+      TableName: setup.databaseTableName,
+      Key: {
+        'database-id': dbId,
+      },
+      UpdateExpression: `SET
+        #shareTokenId = :shareTokenId,
+        #shareTokenEncryptedDbKey = :shareTokenEncryptedDbKey,
+        #shareTokenEncryptionKeySalt = :shareTokenEncryptionKeySalt,
+        #shareTokenPublicKey = :shareTokenPublicKey,
+        #shareTokenEncryptedEcdsaPrivateKey = :shareTokenEncryptedEcdsaPrivateKey,
+        #shareTokenEcdsaKeyEncryptionKeySalt = :shareTokenEcdsaKeyEncryptionKeySalt
+      `,
+      ExpressionAttributeNames: {
+        '#shareTokenId': 'share-token-id-' + shareTokenReadWritePermissions,
+        '#shareTokenEncryptedDbKey': 'share-token-encrypted-db-key-' + shareTokenReadWritePermissions,
+        '#shareTokenEncryptionKeySalt': 'share-token-encryption-key-salt-' + shareTokenReadWritePermissions,
+        '#shareTokenPublicKey': 'share-token-public-key-' + shareTokenReadWritePermissions,
+        '#shareTokenEncryptedEcdsaPrivateKey': 'share-token-encrypted-ecdsa-private-key-' + shareTokenReadWritePermissions,
+        '#shareTokenEcdsaKeyEncryptionKeySalt': 'share-token-ecdsa-key-encryption-key-salt-' + shareTokenReadWritePermissions,
+      },
+      ExpressionAttributeValues: {
+        ':shareTokenId': shareTokenId,
+        ':shareTokenEncryptedDbKey': shareTokenEncryptedDbKey,
+        ':shareTokenEncryptionKeySalt': shareTokenEncryptionKeySalt,
+        ':shareTokenPublicKey': shareTokenPublicKey,
+        ':shareTokenEncryptedEcdsaPrivateKey': shareTokenEncryptedEcdsaPrivateKey,
+        ':shareTokenEcdsaKeyEncryptionKeySalt': shareTokenEcdsaKeyEncryptionKeySalt,
+      }
+    }
+
+    const ddbClient = connection.ddbClient()
+    await ddbClient.update(params).promise()
+
+    return responseBuilder.successResponse({ shareTokenId })
+  } catch (e) {
+    logChildObject.err = e
+
+    if (e.status && e.error) {
+      return responseBuilder.errorResponse(e.status, e.error)
+    } else {
+      return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to share database token')
+    }
+  }
+}
+
+const _findDatabaseByShareTokenId = async (shareTokenId) => {
+  const params = {
+    TableName: setup.databaseTableName,
+    KeyConditionExpression: '#shareTokenId = :shareTokenId',
+    Select: 'ALL_ATTRIBUTES'
+  }
+
+  const readOnlyParams = {
+    ...params,
+    IndexName: setup.shareTokenIdReadOnlyIndex,
+    ExpressionAttributeNames: {
+      '#shareTokenId': 'share-token-id-read-only',
+    },
+    ExpressionAttributeValues: {
+      ':shareTokenId': shareTokenId,
+    },
+  }
+
+  const writeParams = {
+    ...params,
+    IndexName: setup.shareTokenIdWriteIndex,
+    ExpressionAttributeNames: {
+      '#shareTokenId': 'share-token-id-write',
+    },
+    ExpressionAttributeValues: {
+      ':shareTokenId': shareTokenId,
+    },
+  }
+
+  const ddbClient = connection.ddbClient()
+  const [readOnlyResponse, writeResponse] = await Promise.all([
+    ddbClient.query(readOnlyParams).promise(),
+    ddbClient.query(writeParams).promise(),
+  ])
+
+  if (readOnlyResponse.Items.length === 0 && writeResponse.Items.length === 0) return null
+  return readOnlyResponse.Items[0] || writeResponse.Items[0]
+}
+
+exports.authenticateShareToken = async function (logChildObject, user, shareTokenId) {
+  try {
+    const database = await _findDatabaseByShareTokenId(shareTokenId)
+
+    if (!database) throw {
+      status: statusCodes['Not Found'],
+      error: 'ShareTokenNotFound'
+    }
+
+    const shareTokenReadWritePermissions = database['share-token-id-read-only'] === shareTokenId ? 'read-only' : 'write'
+
+    const shareTokenAuthKeyData = {
+      shareTokenEncryptedEcdsaPrivateKey: database['share-token-encrypted-ecdsa-private-key-' + shareTokenReadWritePermissions],
+      shareTokenEcdsaKeyEncryptionKeySalt: database['share-token-ecdsa-key-encryption-key-salt-' + shareTokenReadWritePermissions],
+    }
+
+    // user must sign this message to open the database with share token
+    const validationMessage = crypto.randomBytes(VALIDATION_MESSAGE_LENGTH).toString('base64')
+
+    // cache the read-write permissions keyed by validation message so server can validate access to share token on open
+    connections.cacheShareTokenReadWritePermissions(user['user-id'], validationMessage, shareTokenReadWritePermissions)
+
+    return responseBuilder.successResponse({ databaseId: database['database-id'], shareTokenAuthKeyData, validationMessage })
+  } catch (e) {
+    logChildObject.err = e
+
+    if (e.status && e.error) {
+      return responseBuilder.errorResponse(e.status, e.error)
+    } else {
+      return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to get database share token auth data')
     }
   }
 }

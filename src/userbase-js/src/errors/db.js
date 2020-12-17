@@ -180,6 +180,46 @@ class DatabaseIdInvalidLength extends Error {
   }
 }
 
+class ShareTokenInvalid extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'ShareTokenInvalid'
+    this.message = 'Share token invalid.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class ShareTokenNotFound extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'ShareTokenNotFound'
+    this.message = 'Share token not found. Perhaps the database owner has generated a new share token.'
+    this.status = statusCodes['Not Found']
+  }
+}
+
+class ShareTokenNotAllowed extends Error {
+  constructor(reason, ...params) {
+    super(reason, ...params)
+
+    this.name = 'ShareTokenNotAllowed'
+    this.message = 'Share token not allowed.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class ShareTokenNotAllowedForOwnDatabase extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'ShareTokenNotAllowedForOwnDatabase'
+    this.message = "Tried to open the user's own database using its shareToken rather than its databaseName. The shareToken should only be used to open databases shared from other users."
+    this.status = statusCodes['Forbidden']
+  }
+}
+
 class ReadOnlyMustBeBoolean extends Error {
   constructor(...params) {
     super(...params)
@@ -201,11 +241,11 @@ class ReadOnlyParamNotAllowed extends Error {
 }
 
 class ResharingAllowedParamNotAllowed extends Error {
-  constructor(...params) {
-    super(...params)
+  constructor(reason, ...params) {
+    super(reason, ...params)
 
     this.name = 'ResharingAllowedParamNotAllowed'
-    this.message = 'Resharing allowed parameter not allowed when revoking access to a database.'
+    this.message = `Resharing allowed parameter not allowed ${reason}.`
     this.status = statusCodes['Bad Request']
   }
 }
@@ -221,11 +261,11 @@ class ResharingAllowedMustBeBoolean extends Error {
 }
 
 class ResharingNotAllowed extends Error {
-  constructor(...params) {
-    super(...params)
+  constructor(reason, ...params) {
+    super(reason, ...params)
 
     this.name = 'ResharingNotAllowed'
-    this.message = 'Resharing not allowed. Must have permission to reshare the database with another user.'
+    this.message = `Resharing not allowed. ${reason}.`
     this.status = statusCodes['Forbidden']
   }
 }
@@ -296,6 +336,16 @@ class RequireVerifiedMustBeBoolean extends Error {
 
     this.name = 'RequireVerifiedMustBeBoolean'
     this.message = 'Require verified value must be a boolean.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
+class RequireVerifiedParamNotNecessary extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'RequireVerifiedParamNotNecessary'
+    this.message = 'Require verified parameter not necessary when sharing database without a username.'
     this.status = statusCodes['Bad Request']
   }
 }
@@ -734,6 +784,10 @@ export default {
   DatabaseIdNotAllowed,
   DatabaseIdNotAllowedForOwnDatabase,
   DatabaseIdInvalidLength,
+  ShareTokenInvalid,
+  ShareTokenNotFound,
+  ShareTokenNotAllowed,
+  ShareTokenNotAllowedForOwnDatabase,
   ReadOnlyMustBeBoolean,
   ReadOnlyParamNotAllowed,
   ResharingAllowedMustBeBoolean,
@@ -746,6 +800,7 @@ export default {
   ModifyingPermissionsNotAllowed,
   GrantingWriteAccessNotAllowed,
   RequireVerifiedMustBeBoolean,
+  RequireVerifiedParamNotNecessary,
   RevokeMustBeBoolean,
   ChangeHandlerMissing,
   ChangeHandlerMustBeFunction,

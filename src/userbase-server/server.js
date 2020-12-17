@@ -217,7 +217,9 @@ async function start(express, app, userbaseConfig = {}) {
                       res.locals.admin,
                       connectionId,
                       params.databaseId,
-                      params.reopenAtSeqNo
+                      params.validationMessage,
+                      params.signedValidationMessage,
+                      params.reopenAtSeqNo,
                     )
                   break
                 }
@@ -384,6 +386,21 @@ async function start(express, app, userbaseConfig = {}) {
                     params.sentSignature,
                     params.recipientEcdsaPublicKey,
                   )
+                  break
+                }
+                case 'ShareDatabaseToken': {
+                  response = await db.shareDatabaseToken(
+                    logChildObject,
+                    res.locals.user,
+                    params.databaseId,
+                    params.databaseNameHash,
+                    params.readOnly,
+                    params.keyData
+                  )
+                  break
+                }
+                case 'AuthenticateShareToken': {
+                  response = await db.authenticateShareToken(logChildObject, res.locals.user, params.shareTokenId)
                   break
                 }
                 case 'SaveDatabase': {
@@ -691,15 +708,16 @@ async function start(express, app, userbaseConfig = {}) {
     internalServer.post('/internal/notify-transaction', (req, res) => {
       const transaction = req.body.transaction
       const userId = req.body.userId
+      const connectionId = req.body.connectionId
 
       let logChildObject
       try {
-        logChildObject = { userId, databaseId: transaction['database-id'], seqNo: transaction['seq-no'], req: trimReq(req) }
+        logChildObject = { userId, connectionId, databaseId: transaction['database-id'], seqNo: transaction['seq-no'], req: trimReq(req) }
         logger
           .child(logChildObject)
           .info('Received internal notification to update db')
 
-        connections.push(transaction, userId)
+        connections.push(transaction)
       } catch (e) {
         const msg = 'Error pushing internal transaction to connected clients'
         logger.child({ ...logChildObject, err: e }).error(msg)

@@ -13,7 +13,7 @@ export default class Peers {
     return notifications
   }
 
-  static async broadcastTransaction(transaction, userId) {
+  static async broadcastTransaction(transaction, userId, connectionId) {
     // best effort notify all other peers of transaction
     const notify = async (ipAddress) => {
       try {
@@ -22,14 +22,15 @@ export default class Peers {
           uri: `http://${ipAddress}:9000/internal/notify-transaction`,
           body: {
             transaction,
-            userId
+            userId,
+            connectionId,
           },
           json: true
         }).promise()
 
       } catch (e) {
         logger
-          .child({ userId, databaseId: transaction['database-id'], ipAddress, err: e })
+          .child({ databaseId: transaction['database-id'], userId, connectionId, ipAddress, err: e })
           .warn('Failed to notify db update')
       }
     }

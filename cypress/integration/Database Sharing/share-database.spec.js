@@ -29,7 +29,7 @@ const signUp = async (userbase) => {
 describe('DB Sharing Tests', function () {
   const databaseName = 'test-db'
 
-  describe('Share Database', function () {
+  describe('Share Database with username', function () {
 
     describe('Sucess Tests', function () {
       beforeEach(function () { beforeEachHook() })
@@ -609,6 +609,111 @@ describe('DB Sharing Tests', function () {
         await this.test.userbase.deleteUser()
       })
 
+      it('Sharing without opening first', async function () {
+        const recipient = await signUp(this.test.userbase)
+        const { verificationMessage } = await this.test.userbase.getVerificationMessage()
+        await this.test.userbase.signOut()
+
+        const sender = await signUp(this.test.userbase)
+        await this.test.userbase.verifyUser({ verificationMessage })
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        // sender inserts item into database
+        const testItem = 'hello world!'
+        const testItemId = 'test-id'
+        await this.test.userbase.insertItem({ databaseName, item: testItem, itemId: testItemId })
+
+        // sign out, sign back in
+        await this.test.userbase.signOut()
+        await this.test.userbase.signIn({ username: sender.username, password: sender.password, rememberMe: 'none' })
+
+        // sender shares database with recipient without opening first
+        await this.test.userbase.shareDatabase({ databaseName, username: recipient.username })
+        await this.test.userbase.signOut()
+
+        // recipient signs in and checks if can read the database
+        await this.test.userbase.signIn({ username: recipient.username, password: recipient.password, rememberMe: 'none' })
+
+        // recipient must find the database's databaseId using getDatabases() result
+        const { databases } = await this.test.userbase.getDatabases()
+        const db = databases[0]
+        const { databaseId } = db
+
+        let changeHandlerCallCount = 0
+        const changeHandler = function (items) {
+          expect(items, 'array passed to changeHandler').to.be.a('array')
+          expect(items, 'array passed to changeHandler').to.deep.equal([{
+            itemId: testItemId,
+            item: testItem,
+            createdBy: { username: sender.username, timestamp: items[0].createdBy.timestamp }
+          }])
+
+          changeHandlerCallCount += 1
+        }
+
+        await this.test.userbase.openDatabase({ databaseId, changeHandler })
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+
+        // clean up
+        await this.test.userbase.deleteUser()
+        await this.test.userbase.signIn({ username: sender.username, password: sender.password, rememberMe: 'none' })
+        await this.test.userbase.deleteUser()
+      })
+
+      it('Share by databaseId without opening first', async function () {
+        const recipient = await signUp(this.test.userbase)
+        const { verificationMessage } = await this.test.userbase.getVerificationMessage()
+        await this.test.userbase.signOut()
+
+        const sender = await signUp(this.test.userbase)
+        await this.test.userbase.verifyUser({ verificationMessage })
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        // sender inserts item into database
+        const testItem = 'hello world!'
+        const testItemId = 'test-id'
+        await this.test.userbase.insertItem({ databaseName, item: testItem, itemId: testItemId })
+
+        // get database's id
+        const { databases: [{ databaseId }] } = await this.test.userbase.getDatabases()
+
+        // sign out, sign back in
+        await this.test.userbase.signOut()
+        await this.test.userbase.signIn({ username: sender.username, password: sender.password, rememberMe: 'none' })
+
+        // sender shares database with recipient without opening
+        await this.test.userbase.shareDatabase({ databaseId, username: recipient.username })
+        await this.test.userbase.signOut()
+
+        // recipient signs in and checks if can read the database
+        await this.test.userbase.signIn({ username: recipient.username, password: recipient.password, rememberMe: 'none' })
+
+        // getDatabases() must be run before opening a database by its databaseId
+        await this.test.userbase.getDatabases()
+
+        let changeHandlerCallCount = 0
+        const changeHandler = function (items) {
+          expect(items, 'array passed to changeHandler').to.be.a('array')
+          expect(items, 'array passed to changeHandler').to.deep.equal([{
+            itemId: testItemId,
+            item: testItem,
+            createdBy: { username: sender.username, timestamp: items[0].createdBy.timestamp }
+          }])
+
+          changeHandlerCallCount += 1
+        }
+
+        await this.test.userbase.openDatabase({ databaseId, changeHandler })
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+
+        // clean up
+        await this.test.userbase.deleteUser()
+        await this.test.userbase.signIn({ username: sender.username, password: sender.password, rememberMe: 'none' })
+        await this.test.userbase.deleteUser()
+      })
+
     })
 
     describe('Failure Tests', function () {
@@ -724,7 +829,7 @@ describe('DB Sharing Tests', function () {
         }
 
         try {
-          await this.test.userbase.putTransaction({ databaseId, operations: [{ command: 'Insert', item: testItem, itemId: testItemId }] })
+          await this.test.userbase.putTransaction({ databaseId, operations: [{ command: 'Delete', itemId: testItemId }] })
           throw new Error('Should have failed')
         } catch (e) {
           expectedError(e)
@@ -1104,22 +1209,6 @@ describe('DB Sharing Tests', function () {
           expect(e.name, 'error name').to.equal('DatabaseIdNotAllowedForOwnDatabase')
           expect(e.message, 'error message').to.match(/Tried to open the user's own database using its databaseId/)
           expect(e.status, 'error status').to.be.equal(403)
-        }
-
-        // clean up
-        await this.test.userbase.deleteUser()
-      })
-
-      it('Username missing', async function () {
-        await signUp(this.test.userbase)
-
-        try {
-          await this.test.userbase.shareDatabase({ databaseName })
-          throw new Error('Should have failed')
-        } catch (e) {
-          expect(e.name, 'error name').to.be.equal('UsernameMissing')
-          expect(e.message, 'error message').to.be.equal('Username missing.')
-          expect(e.status, 'error status').to.be.equal(400)
         }
 
         // clean up
