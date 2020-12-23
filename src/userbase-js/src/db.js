@@ -146,7 +146,7 @@ class Database {
     this.applyTransactionsQueue = new Queue()
   }
 
-  async applyTransactions(transactions) {
+  async applyTransactions(transactions, ownerId) {
     for (let i = 0; i < transactions.length; i++) {
       const transaction = transactions[i]
       const seqNo = transaction.seqNo
@@ -157,7 +157,7 @@ class Database {
         continue
       }
 
-      const transactionCode = await this.applyTransaction(this.dbKey, transaction)
+      const transactionCode = await this.applyTransaction(this.dbKey, transaction, ownerId)
       this.lastSeqNo = seqNo
 
       for (let j = 0; j < this.unverifiedTransactions.length; j++) {
@@ -201,7 +201,7 @@ class Database {
     this.lastSeqNo = bundleSeqNo
   }
 
-  async applyTransaction(key, transaction) {
+  async applyTransaction(key, transaction, ownerId) {
     const seqNo = transaction.seqNo
     const command = transaction.command
 
@@ -211,6 +211,7 @@ class Database {
         const itemId = record.id
         const item = record.item
         const createdBy = this.attributionFromTransaction(transaction)
+        const writeAccess = transaction.writeAccess
 
         try {
           this.validateInsert(itemId)
@@ -218,7 +219,7 @@ class Database {
           return transactionCode
         }
 
-        return this.applyInsert(itemId, seqNo, item, createdBy)
+        return this.applyInsert(itemId, seqNo, item, createdBy, writeAccess)
       }
 
       case 'Update': {
@@ -227,23 +228,25 @@ class Database {
         const item = record.item
         const updatedBy = this.attributionFromTransaction(transaction)
         const __v = record.__v
+        const writeAccess = transaction.writeAccess
 
         try {
-          this.validateUpdateOrDelete(itemId, __v)
+          this.validateUpdate(itemId, __v, updatedBy, ownerId, writeAccess, 'updateItem')
         } catch (transactionCode) {
           return transactionCode
         }
 
-        return this.applyUpdate(itemId, item, updatedBy, __v)
+        return this.applyUpdate(itemId, item, __v, updatedBy, writeAccess)
       }
 
       case 'Delete': {
         const record = await crypto.aesGcm.decryptJson(key, transaction.record)
         const itemId = record.id
+        const deletedBy = this.attributionFromTransaction(transaction)
         const __v = record.__v
 
         try {
-          this.validateUpdateOrDelete(itemId, __v)
+          this.validateUpdateOrDelete(itemId, __v, deletedBy, ownerId, 'deleteItem')
         } catch (transactionCode) {
           return transactionCode
         }
@@ -262,7 +265,7 @@ class Database {
         const records = await Promise.all(recordPromises)
 
         try {
-          this.validateBatchTransaction(batch, records)
+          this.validateBatchTransaction(batch, records, attribution, ownerId)
         } catch (transactionCode) {
           return transactionCode
         }
@@ -283,7 +286,7 @@ class Database {
         const fileUploadedBy = this.attributionFromTransaction(transaction)
 
         try {
-          this.validateUploadFile(itemId, fileVersion)
+          this.validateUploadFile(itemId, fileVersion, fileUploadedBy, ownerId, 'uploadFile')
         } catch (transactionCode) {
           return transactionCode
         }
@@ -317,26 +320,70 @@ class Database {
     }
   }
 
-  validateUpdateOrDelete(itemId, __v) {
-    if (!this.items[itemId]) {
-      throw new errors.ItemDoesNotExist
+  validateUpdate(itemId, __v, updatedBy, ownerId, writeAccess, command) {
+    this.validateUpdateOrDelete(itemId, __v, updatedBy, ownerId, command)
+
+    // writeAccess can only be set or removed by either the item creator or database owner
+    const item = this.items[itemId]
+    const { createdBy } = item
+
+    if (writeAccess || writeAccess === false) {
+      if (!createdBy) return // if no attribution on item set, can't set write access
+      const createdByUserId = createdBy.userId
+      const updatedByUserId = updatedBy.userId
+
+      if (createdByUserId !== updatedByUserId && updatedByUserId !== ownerId) {
+        throw new errors.WriteAccessParamNotAllowed
+      }
     }
+  }
+
+  validateUpdateOrDelete(itemId, __v, attribution, ownerId, command) {
+    const item = this.items[itemId]
+    if (!item) throw new errors.ItemDoesNotExist
 
     const currentVersion = this.getItemVersionNumber(itemId)
     if (__v <= currentVersion) {
       throw new errors.ItemUpdateConflict
     }
+
+    this.validateAccessPermissions(item, attribution, ownerId, command)
   }
 
-  validateUploadFile(itemId, __v) {
-    if (!this.items[itemId]) {
-      throw new errors.ItemDoesNotExist
-    }
+  validateUploadFile(itemId, __v, fileUploadedBy, ownerId, command) {
+    const item = this.items[itemId]
+    if (!item) throw new errors.ItemDoesNotExist
 
     const currentVersion = this.getFileVersionNumber(itemId)
 
     if (__v <= currentVersion) {
       throw new errors.FileUploadConflict
+    }
+
+    this.validateAccessPermissions(item, fileUploadedBy, ownerId, command)
+  }
+
+  validateAccessPermissions(item, attribution, ownerId, command) {
+    const { createdBy, writeAccess } = item
+    if (createdBy && attribution && writeAccess) {
+      const createdByUserId = createdBy.userId
+      const modifiedByUserId = attribution.userId
+
+      let userIsAuthorized = false
+      const { onlyCreator, users } = writeAccess
+
+      if (modifiedByUserId === ownerId) {
+        userIsAuthorized = true
+      } else if (onlyCreator && modifiedByUserId === createdByUserId) {
+        userIsAuthorized = true
+      } else if (!onlyCreator && users) {
+        for (const { userId } of users) {
+          userIsAuthorized = modifiedByUserId === userId
+          if (userIsAuthorized) break
+        }
+      }
+
+      if (!userIsAuthorized) throw new errors.TransactionUnauthorized(command)
     }
   }
 
@@ -344,7 +391,7 @@ class Database {
     return objectHasOwnProperty(this.items, itemId)
   }
 
-  applyInsert(itemId, seqNo, record, createdBy, operationIndex) {
+  applyInsert(itemId, seqNo, record, createdBy, writeAccess, operationIndex) {
     const item = { seqNo }
     if (typeof operationIndex === 'number') item.operationIndex = operationIndex
 
@@ -352,16 +399,37 @@ class Database {
       ...item,
       record,
       createdBy,
+      writeAccess,
       __v: 0
     }
     this.itemsIndex.insert({ ...item, itemId })
+
+    if (writeAccess && writeAccess.users) {
+      for (const { userId, username } of writeAccess.users) {
+        this.usernamesByUserId.set(userId, username)
+      }
+    }
+
     return success
   }
 
-  applyUpdate(itemId, record, updatedBy, __v) {
+  applyUpdate(itemId, record, __v, updatedBy, writeAccess) {
     this.items[itemId].record = record
     this.items[itemId].updatedBy = updatedBy
     this.items[itemId].__v = __v
+
+    if (writeAccess === false) {
+      delete this.items[itemId].writeAccess
+    } else if (writeAccess) {
+      this.items[itemId].writeAccess = writeAccess
+
+      if (writeAccess.users) {
+        for (const { userId, username } of writeAccess.users) {
+          this.usernamesByUserId.set(userId, username)
+        }
+      }
+    }
+
     return success
   }
 
@@ -389,11 +457,12 @@ class Database {
     return success
   }
 
-  validateBatchTransaction(batch, records) {
+  validateBatchTransaction(batch, records, attribution, ownerId) {
     const uniqueItemIds = {}
 
     for (let i = 0; i < batch.length; i++) {
       const operation = batch[i]
+      const { command, writeAccess } = operation
 
       const itemId = records[i].id
       const __v = records[i].__v
@@ -401,14 +470,17 @@ class Database {
       if (uniqueItemIds[itemId]) throw new errors.OperationsConflict
       uniqueItemIds[itemId] = true
 
-      switch (operation.command) {
+      switch (command) {
         case 'Insert':
           this.validateInsert(itemId)
           break
 
         case 'Update':
+          this.validateUpdate(itemId, __v, attribution, ownerId, writeAccess, command)
+          break
+
         case 'Delete':
-          this.validateUpdateOrDelete(itemId, __v)
+          this.validateUpdateOrDelete(itemId, __v, attribution, ownerId, command)
           break
       }
     }
@@ -421,14 +493,15 @@ class Database {
       const itemId = records[i].id
       const item = records[i].item
       const __v = records[i].__v
+      const writeAccess = operation.writeAccess
 
       switch (operation.command) {
         case 'Insert':
-          this.applyInsert(itemId, seqNo, item, attribution, i)
+          this.applyInsert(itemId, seqNo, item, attribution, writeAccess, i)
           break
 
         case 'Update':
-          this.applyUpdate(itemId, item, attribution, __v)
+          this.applyUpdate(itemId, item, __v, attribution, writeAccess)
           break
 
         case 'Delete':
@@ -457,12 +530,16 @@ class Database {
       const itemId = this.itemsIndex.array[i].itemId
       const record = this.items[itemId].record
       const item = { itemId, item: record }
+
+      // set file metadata
       if (this.items[itemId].file) {
         const { fileId, fileName, fileSize } = this.items[itemId].file
         item.fileId = fileId
         item.fileName = fileName
         item.fileSize = fileSize
       }
+
+      // set attribution metadata
       for (const prop of ['createdBy', 'updatedBy', 'fileUploadedBy']) {
         if (this.items[itemId][prop]) {
           const { timestamp, userId } = this.items[itemId][prop]
@@ -475,6 +552,23 @@ class Database {
           }
           item[prop] = attribution
         }
+      }
+
+      // set write access permissions
+      if (this.items[itemId].writeAccess) {
+        const { onlyCreator, users } = this.items[itemId].writeAccess
+        const writeAccess = {}
+        if (onlyCreator) writeAccess.onlyCreator = onlyCreator
+
+        if (users) {
+          writeAccess.users = []
+          for (const { userId } of users) {
+            const username = this.usernamesByUserId.get(userId)
+            if (username) writeAccess.users.push({ username })
+          }
+        }
+
+        item.writeAccess = writeAccess
       }
 
       result.push(item)
@@ -851,7 +945,7 @@ const insertItem = async (params) => {
 const _buildInsertParams = async (database, params) => {
   if (!objectHasOwnProperty(params, 'item')) throw new errors.ItemMissing
 
-  const { item, itemId } = params
+  const { item, itemId, writeAccess } = params
 
   if (objectHasOwnProperty(params, 'itemId')) {
     if (typeof itemId !== 'string') throw new errors.ItemIdMustBeString
@@ -869,7 +963,7 @@ const _buildInsertParams = async (database, params) => {
   const itemRecord = { id, item }
   const encryptedItem = await crypto.aesGcm.encryptJson(database.dbKey, itemRecord)
 
-  return { itemKey, encryptedItem }
+  return { itemKey, encryptedItem, writeAccess }
 }
 
 const updateItem = async (params) => {
@@ -910,6 +1004,8 @@ const updateItem = async (params) => {
       case 'ItemTooLarge':
       case 'ItemDoesNotExist':
       case 'ItemUpdateConflict':
+      case 'WriteAccessParamNotAllowed':
+      case 'TransactionUnauthorized':
       case 'UserMustChangePassword':
       case 'UserNotSignedIn':
       case 'UserNotFound':
@@ -928,7 +1024,9 @@ const _buildUpdateParams = async (database, params) => {
   if (!objectHasOwnProperty(params, 'item')) throw new errors.ItemMissing
   if (!objectHasOwnProperty(params, 'itemId')) throw new errors.ItemIdMissing
 
-  const { item, itemId } = params
+  if (!params.writeAccess && objectHasOwnProperty(params, 'writeAccess')) params.writeAccess = false // marks writeAccess for deletion
+
+  const { item, itemId, writeAccess } = params
 
   if (typeof itemId !== 'string') throw new errors.ItemIdMustBeString
   if (itemId.length === 0) throw new errors.ItemIdCannotBeBlank
@@ -945,7 +1043,7 @@ const _buildUpdateParams = async (database, params) => {
   const itemRecord = { id: itemId, item, __v: currentVersion + 1 }
   const encryptedItem = await crypto.aesGcm.encryptJson(database.dbKey, itemRecord)
 
-  return { itemKey, encryptedItem }
+  return { itemKey, encryptedItem, writeAccess }
 }
 
 const deleteItem = async (params) => {
@@ -983,6 +1081,7 @@ const deleteItem = async (params) => {
       case 'ItemIdTooLong':
       case 'ItemDoesNotExist':
       case 'ItemUpdateConflict':
+      case 'TransactionUnauthorized':
       case 'UserMustChangePassword':
       case 'UserNotSignedIn':
       case 'UserNotFound':
@@ -1100,6 +1199,8 @@ const putTransaction = async (params) => {
       case 'ItemAlreadyExists':
       case 'ItemDoesNotExist':
       case 'ItemUpdateConflict':
+      case 'WriteAccessParamNotAllowed':
+      case 'TransactionUnauthorized':
       case 'UserMustChangePassword':
       case 'UserNotSignedIn':
       case 'UserNotFound':
@@ -1134,8 +1235,12 @@ const postTransaction = async (database, action, params) => {
   } catch (e) {
     _parseGenericErrors(e)
 
-    if (e.response && e.response.data.name === 'DatabaseIsReadOnly') {
-      throw new errors.DatabaseIsReadOnly
+    if (e.response) {
+      if (e.response.data.name === 'DatabaseIsReadOnly') {
+        throw new errors.DatabaseIsReadOnly
+      } else if (e.response.data.message === 'UserNotFound') {
+        throw new errors.UserNotFound(e.response.data.username)
+      }
     }
 
     throw e
@@ -1320,6 +1425,7 @@ const uploadFile = async (params) => {
       case 'ItemIdCannotBeBlank':
       case 'ItemIdTooLong':
       case 'ItemDoesNotExist':
+      case 'TransactionUnauthorized':
       case 'FileMustBeFile':
       case 'FileCannotBeEmpty':
       case 'FileMissing':

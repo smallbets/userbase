@@ -227,7 +227,7 @@ class Connection {
               }
 
               const newTransactions = message.transactionLog
-              await database.applyTransactions(newTransactions)
+              await database.applyTransactions(newTransactions, message.ownerId)
 
               if (!database.init) {
                 database.dbId = dbId
