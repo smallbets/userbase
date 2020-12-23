@@ -375,5 +375,82 @@ describe('Attribution Tests', function () {
       await this.test.userbase.signIn({ username: friend.username, password: friend.password, rememberMe: 'none' })
       await this.test.userbase.deleteUser()
     })
+
+    // must check the server to verify reading bundle from S3 and not DDB
+    it('Attribution is preserved after bundling and changing username', async function () {
+      const friend = await signUp(this.test.userbase)
+      const { verificationMessage } = await this.test.userbase.getVerificationMessage()
+      await this.test.userbase.signOut()
+
+      // creator makes db with one item
+      const creator = await signUp(this.test.userbase)
+      await this.test.userbase.verifyUser({ verificationMessage })
+      await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+      await this.test.userbase.insertItem({ databaseName, item: 'first-item', itemId: 'first-item-id' })
+      await this.test.userbase.shareDatabase({ databaseName, username: friend.username, readOnly: false })
+      await this.test.userbase.signOut()
+
+      // friend inserts a bunch of items to trigger a bundle
+      await this.test.userbase.signIn({ username: friend.username, password: friend.password, rememberMe: 'none' })
+      const { databases: [{ databaseId }] } = await this.test.userbase.getDatabases()
+
+      const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
+      const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
+      expect(numItemsNeededToTriggerBundle, 'items needed to trigger bundle').to.be.lte(10) // max operations allowed in tx
+
+      const largeString = getStringOfByteLength(ITEM_SIZE)
+      const operations = []
+      for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
+        operations.push({ command: 'Insert', item: largeString, itemId: i.toString() })
+      }
+
+      await this.test.userbase.openDatabase({ databaseId, changeHandler: () => { } })
+      await this.test.userbase.putTransaction({ databaseId, operations })
+
+      // give the friend sufficient time to finish the bundle
+      const THREE_SECONDS = 3 * 1000
+      await wait(THREE_SECONDS)
+
+      // change friend's username
+      const newUsername = 'test-user-' + getRandomString()
+      await this.test.userbase.updateUser({ username: newUsername })
+      friend.username = newUsername
+
+      // switch back to creator and check attribution
+      await this.test.userbase.signOut()
+      await this.test.userbase.signIn({ username: creator.username, password: creator.password, rememberMe: 'none' })
+
+      let changeHandlerCallCount = 0
+      let successful
+
+      const changeHandler = function (items) {
+        changeHandlerCallCount += 1
+
+        expect(items, 'array passed to changeHandler').to.have.lengthOf(numItemsNeededToTriggerBundle + 1)
+
+        const firstItem = items[0]
+        const { createdBy } = firstItem
+        expect(createdBy).to.be.an('object').that.has.all.keys('username', 'timestamp')
+        expect(createdBy.username).to.equal(creator.username)
+
+        for (let i = 0; i < numItemsNeededToTriggerBundle; i++) {
+          const insertedItem = items[i + 1]
+          const { createdBy } = insertedItem
+          expect(createdBy).to.be.an('object').that.has.all.keys('username', 'timestamp')
+          expect(createdBy.username).to.equal(friend.username)
+        }
+
+        successful = true
+      }
+
+      await this.test.userbase.openDatabase({ databaseName, changeHandler })
+
+      expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+      expect(successful, 'successful state').to.be.true
+
+      await this.test.userbase.deleteUser()
+      await this.test.userbase.signIn({ username: friend.username, password: friend.password, rememberMe: 'none' })
+      await this.test.userbase.deleteUser()
+    })
   })
 })
