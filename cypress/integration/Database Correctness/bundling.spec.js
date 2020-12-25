@@ -1,4 +1,4 @@
-import { getRandomString, getStringOfByteLength, wait, readBlobAsText } from '../../support/utils'
+import { getRandomString, getStringOfByteLength, wait, readBlobAsText, getRandomStringOfByteLength } from '../../support/utils'
 
 const beforeEachHook = function () {
   cy.visit('./cypress/integration/index.html').then(async function (win) {
@@ -476,30 +476,32 @@ describe('DB Correctness Tests', function () {
       it('Bundle transaction log 5 times with 5 sequential large Userbase transactions', async function () {
         const numBundles = 5
 
-        const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
-        const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
-        expect(numItemsNeededToTriggerBundle, 'items needed to tigger bundle').to.be.lte(10) // max operations allowed in tx
-
-        const largeString = getStringOfByteLength(ITEM_SIZE)
+        const ITEM_SIZE = 8 * 1024
+        const MAX_TRANSACTIONS = 10
+        expect(ITEM_SIZE * MAX_TRANSACTIONS, 'should be greater than bundle trigger').to.be.greaterThan(BUNDLE_SIZE)
 
         let changeHandlerCallCount = 0
         let successful
+
+        let globalOperations = []
 
         const changeHandler = function (items) {
           changeHandlerCallCount += 1
 
           if (changeHandlerCallCount === 1 + numBundles) {
-            expect(items, 'array passed to changeHandler').to.have.lengthOf(numBundles * numItemsNeededToTriggerBundle)
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(numBundles * MAX_TRANSACTIONS)
 
             for (let i = 0; i < numBundles; i++) {
-              for (let j = 0; j < numItemsNeededToTriggerBundle; j++) {
-                const itemIndex = (i * numItemsNeededToTriggerBundle) + j
+              for (let j = 0; j < MAX_TRANSACTIONS; j++) {
+                const itemIndex = (i * MAX_TRANSACTIONS) + j
 
                 const insertedItem = items[itemIndex]
                 expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
 
                 const { item, itemId } = insertedItem
-                expect(item, 'item in items array passed to changeHandler').to.equal(largeString)
+
+                const expectedItem = globalOperations[i][j].item
+                expect(item === expectedItem, 'item in items array passed to changeHandler').to.be.true
                 expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(itemIndex.toString())
               }
             }
@@ -512,10 +514,11 @@ describe('DB Correctness Tests', function () {
 
         for (let i = 0; i < numBundles; i++) {
           const operations = []
-          for (let j = 0; j < numItemsNeededToTriggerBundle; j++) {
-            const itemId = ((i * numItemsNeededToTriggerBundle) + j).toString()
-            operations.push({ command: 'Insert', item: largeString, itemId: itemId })
+          for (let j = 0; j < MAX_TRANSACTIONS; j++) {
+            const itemId = ((i * MAX_TRANSACTIONS) + j).toString()
+            operations.push({ command: 'Insert', item: getRandomStringOfByteLength(ITEM_SIZE), itemId: itemId })
           }
+          globalOperations.push(operations)
           await this.test.userbase.putTransaction({ databaseName, operations })
         }
 
@@ -526,52 +529,90 @@ describe('DB Correctness Tests', function () {
       })
 
       // must check the server logs to verify bundling occurs
-      it('Read from bundled transaction after 5 sequential large Userbase transactions', async function () {
-        const numBundles = 5
+      it('Read from bundled transaction after 36 sequential large Userbase transactions', async function () {
+        const numBundles = 36 // 36 ensures the bundle will also be chunked
 
-        const ITEM_SIZE = 5 * 1024 // can be anything so long as BUNDLE_SIZE / ITEM_SIZE < 10
-        const numItemsNeededToTriggerBundle = BUNDLE_SIZE / ITEM_SIZE
-        expect(numItemsNeededToTriggerBundle, 'items needed to trigger bundle').to.be.lte(10) // max operations allowed in tx
+        const ITEM_SIZE = 8 * 1024
+        const MAX_TRANSACTIONS = 10
+        expect(ITEM_SIZE * MAX_TRANSACTIONS, 'should be greater than bundle trigger').to.be.greaterThan(BUNDLE_SIZE)
 
-        const largeString = getStringOfByteLength(ITEM_SIZE)
+        let globalOperations = []
 
-        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+        let changeHandlerCallCount = 0
+        let successful = false
+        let changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (changeHandlerCallCount === 1 + numBundles) {
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(numBundles * MAX_TRANSACTIONS)
+
+            for (let i = 0; i < numBundles; i++) {
+              for (let j = 0; j < MAX_TRANSACTIONS; j++) {
+                const itemIndex = (i * MAX_TRANSACTIONS) + j
+
+                const insertedItem = items[itemIndex]
+
+                // don't use expects because they take too long and there are too many
+                if (Object.keys(insertedItem).length !== 3) throw new Error('item in items array passed to changeHandler incorrect length')
+                const { item, itemId, createdBy } = insertedItem
+
+                if (!item || !itemId || !createdBy) throw new Error('item in items array passed to changeHandler missing keys')
+
+                const expectedItem = globalOperations[i][j].item
+                if (item !== expectedItem) throw new Error('item in items array passed to changeHandler')
+                if (itemId !== itemIndex.toString()) throw new Error('item ID of item in items array passed to changeHandler')
+              }
+            }
+
+            successful = true
+          }
+        }
+
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
 
         for (let i = 0; i < numBundles; i++) {
           const operations = []
-          for (let j = 0; j < numItemsNeededToTriggerBundle; j++) {
-            const itemId = ((i * numItemsNeededToTriggerBundle) + j).toString()
-            operations.push({ command: 'Insert', item: largeString, itemId: itemId })
+          for (let j = 0; j < MAX_TRANSACTIONS; j++) {
+            const itemId = ((i * MAX_TRANSACTIONS) + j).toString()
+            operations.push({ command: 'Insert', item: getRandomStringOfByteLength(ITEM_SIZE), itemId: itemId })
           }
+          globalOperations.push(operations)
           await this.test.userbase.putTransaction({ databaseName, operations })
         }
 
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1 + numBundles)
+        expect(successful, 'successful state').to.be.true
+
         // give client sufficient time to finish the bundle
-        const THREE_SECONDS = 3 * 1000
-        await wait(THREE_SECONDS)
+        const TEN_SECONDS = 10 * 1000
+        await wait(TEN_SECONDS)
 
         await this.test.userbase.signOut()
         await this.test.userbase.signIn({ username: this.test.username, password: this.test.password, rememberMe: 'none' })
 
-        let changeHandlerCallCount = 0
-        let successful
-
-        const changeHandler = function (items) {
+        changeHandlerCallCount = 0
+        successful = false
+        changeHandler = function (items) {
           changeHandlerCallCount += 1
 
           if (changeHandlerCallCount === 1) {
-            expect(items, 'array passed to changeHandler').to.have.lengthOf(numBundles * numItemsNeededToTriggerBundle)
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(numBundles * MAX_TRANSACTIONS)
 
             for (let i = 0; i < numBundles; i++) {
-              for (let j = 0; j < numItemsNeededToTriggerBundle; j++) {
-                const itemIndex = (i * numItemsNeededToTriggerBundle) + j
+              for (let j = 0; j < MAX_TRANSACTIONS; j++) {
+                const itemIndex = (i * MAX_TRANSACTIONS) + j
 
                 const insertedItem = items[itemIndex]
-                expect(insertedItem, 'item in items array passed to changeHandler').to.be.an('object').that.has.all.keys('item', 'itemId', 'createdBy')
 
-                const { item, itemId } = insertedItem
-                expect(item, 'item in items array passed to changeHandler').to.equal(largeString)
-                expect(itemId, 'item ID of item in items array passed to changeHandler').to.equal(itemIndex.toString())
+                // don't use expects because they take too long and there are too many
+                if (Object.keys(insertedItem).length !== 3) throw new Error('item in items array passed to changeHandler incorrect length')
+                const { item, itemId, createdBy } = insertedItem
+
+                if (!item || !itemId || !createdBy) throw new Error('item in items array passed to changeHandler missing keys')
+
+                const expectedItem = globalOperations[i][j].item
+                if (item !== expectedItem) throw new Error('item in items array passed to changeHandler')
+                if (itemId !== itemIndex.toString()) throw new Error('item ID of item in items array passed to changeHandler')
               }
             }
 
