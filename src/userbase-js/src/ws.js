@@ -654,7 +654,7 @@ class Connection {
     const compressedString = arrayBufferToString(compressedArrayBuffer)
     const bundle = LZString.decompress(compressedString)
 
-    delete bundleChunks[bundleSeqNo]
+    delete database.bundleChunks[bundleSeqNo]
 
     return JSON.parse(bundle)
   }
