@@ -552,15 +552,15 @@ describe('DB Correctness Tests', function () {
 
                 const insertedItem = items[itemIndex]
 
-                // don't use expects because they take too long and there are too many
-                if (Object.keys(insertedItem).length !== 3) throw new Error('item in items array passed to changeHandler incorrect length')
+                // only use expects on failure because there are too many and they take too long to load in DOM
+                if (Object.keys(insertedItem).length !== 3) expect(true, 'item in items array passed to changeHandler incorrect length').to.be.false
                 const { item, itemId, createdBy } = insertedItem
 
-                if (!item || !itemId || !createdBy) throw new Error('item in items array passed to changeHandler missing keys')
+                if (!item || !itemId || !createdBy) expect(true, 'item in items array passed to changeHandler missing keys').to.be.false
 
                 const expectedItem = globalOperations[i][j].item
-                if (item !== expectedItem) throw new Error('item in items array passed to changeHandler')
-                if (itemId !== itemIndex.toString()) throw new Error('item ID of item in items array passed to changeHandler')
+                if (item !== expectedItem) expect(true, 'item in items array passed to changeHandler').to.be.false
+                if (itemId !== itemIndex.toString()) expect(true, 'item ID of item in items array passed to changeHandler').to.be.false
               }
             }
 
@@ -604,15 +604,15 @@ describe('DB Correctness Tests', function () {
 
                 const insertedItem = items[itemIndex]
 
-                // don't use expects because they take too long and there are too many
-                if (Object.keys(insertedItem).length !== 3) throw new Error('item in items array passed to changeHandler incorrect length')
+                // only use expects on failure because there are too many and they take too long to load in DOM
+                if (Object.keys(insertedItem).length !== 3) expect(true, 'item in items array passed to changeHandler incorrect length').to.be.false
                 const { item, itemId, createdBy } = insertedItem
 
-                if (!item || !itemId || !createdBy) throw new Error('item in items array passed to changeHandler missing keys')
+                if (!item || !itemId || !createdBy) expect(true, 'item in items array passed to changeHandler missing keys').to.be.false
 
                 const expectedItem = globalOperations[i][j].item
-                if (item !== expectedItem) throw new Error('item in items array passed to changeHandler')
-                if (itemId !== itemIndex.toString()) throw new Error('item ID of item in items array passed to changeHandler')
+                if (item !== expectedItem) expect(true, 'item in items array passed to changeHandler').to.be.false
+                if (itemId !== itemIndex.toString()) expect(true, 'item ID of item in items array passed to changeHandler').to.be.false
               }
             }
 
