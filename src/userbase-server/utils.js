@@ -43,6 +43,7 @@ export const estimateSizeOfDdbItem = (item) => {
         bytes += 1 // The size of a null attribute or a Boolean attribute is(length of attribute name) + (1 byte).
         break
       case 'object':
+        if (!value) continue // null values
         if (value.type === 'Buffer') {
           bytes += value.data.length // The size of a binary attribute is (length of attribute name) + (number of raw bytes).
         } else {
