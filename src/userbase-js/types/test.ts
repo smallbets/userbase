@@ -172,6 +172,12 @@ insertItem({ databaseName: 'tdb', item: { name: 'tname' } })
 // $ExpectType Promise<void>
 insertItem({ databaseName: 'tdb', item: { name: 'tname' }, itemId: 'tid' })
 
+// $ExpectType Promise<void>
+insertItem({ databaseName: 'tdb', item: { name: 'tname' }, writeAccess: { users: [{ username: 'tuser' }] } })
+
+// $ExpectType Promise<void>
+insertItem({ databaseName: 'tdb', item: { name: 'tname' }, writeAccess: { onlyCreator: true } })
+
 // $ExpectError
 insertItem({ databaseName: 'tdb', item: { name: 'tname' }, itemId: 1 })
 
@@ -180,6 +186,12 @@ insertItem({ item: { name: 'tname' } })
 
 // $ExpectType Promise<void>
 updateItem({ databaseName: 'tdb', item: { name: 'tname' }, itemId: 'tid' })
+
+// $ExpectType Promise<void>
+updateItem({ databaseName: 'tdb', item: { name: 'tname' }, itemId: 'tid', writeAccess: { onlyCreator: true } })
+
+// $ExpectType Promise<void>
+updateItem({ databaseName: 'tdb', item: { name: 'tname' }, itemId: 'tid', writeAccess: false })
 
 // $ExpectError
 updateItem({ databaseName: 'tdb', item: { name: 'tname' } })
@@ -205,7 +217,9 @@ putTransaction({
   operations: [
     { command: 'Insert', item: { name: 'tname' } },
     { command: 'Update', item: { name: 'tname' }, itemId: 'tid' },
-    { command: 'Delete', itemId: 'tid' }
+    { command: 'Delete', itemId: 'tid' },
+    { command: 'Insert', item: { name: 'tname' }, writeAccess: { onlyCreator: true } },
+    { command: 'Update', item: { name: 'tname' }, itemId: 'tid', writeAccess: false },
   ]
 })
 

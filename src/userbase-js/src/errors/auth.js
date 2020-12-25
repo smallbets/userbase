@@ -212,8 +212,10 @@ class UserNotSignedIn extends Error {
 }
 
 class UserNotFound extends Error {
-  constructor(...params) {
-    super(...params)
+  constructor(username, ...params) {
+    super(username, ...params)
+
+    if (username) this.username = username
 
     this.name = 'UserNotFound'
     this.message = 'User not found.'

@@ -770,6 +770,26 @@ class ProgressHandlerMustBeFunction extends Error {
   }
 }
 
+class TransactionUnauthorized extends Error {
+  constructor(command, ...params) {
+    super(command, ...params)
+
+    this.name = 'TransactionUnauthorized'
+    this.message = `Calling '${command}' on this item is unauthorized.`
+    this.status = statusCodes['Forbidden']
+  }
+}
+
+class WriteAccessParamNotAllowed extends Error {
+  constructor(command, ...params) {
+    super(command, ...params)
+
+    this.name = 'WriteAccessParamNotAllowed'
+    this.message = `Write access parameter not allowed. Only the item creator or database owner can change an item's write access settings.`
+    this.status = statusCodes['Forbidden']
+  }
+}
+
 export default {
   DatabaseNameMissing,
   DatabaseNameCannotBeBlank,
@@ -848,4 +868,6 @@ export default {
   VerificationMessageInvalid,
   VerifyingSelfNotAllowed,
   ProgressHandlerMustBeFunction,
+  TransactionUnauthorized,
+  WriteAccessParamNotAllowed,
 }
