@@ -67,7 +67,7 @@ class Connection {
     this.fileStorageRateLimiter = new TokenBucket(FILE_STORAGE_MAX_REQUESTS_PER_SECOND, FILE_STORAGE_TOKENS_REFILLED_PER_SECOND)
   }
 
-  openDatabase(databaseId, dbNameHash, bundleSeqNo, numChunks, reopenAtSeqNo, isOwner, attribution, shareTokenReadWritePermissions) {
+  openDatabase(databaseId, dbNameHash, bundleSeqNo, numChunks, reopenAtSeqNo, isOwner, ownerId, attribution, shareTokenReadWritePermissions) {
     this.databases[databaseId] = {
       bundleSeqNo: bundleSeqNo > 0 ? bundleSeqNo : -1,
       numChunks,
@@ -76,6 +76,7 @@ class Connection {
       init: reopenAtSeqNo !== undefined, // ensures server sends the dbNameHash & key on first ever push, not reopen
       dbNameHash,
       isOwner,
+      ownerId,
       attribution,
       shareTokenReadWritePermissions,
     }
@@ -95,6 +96,7 @@ class Connection {
       dbId: databaseId,
       dbNameHash: database.dbNameHash,
       isOwner: database.isOwner,
+      ownerId: database.ownerId,
       writers: database.attribution
         ? []
         : undefined,
@@ -115,7 +117,8 @@ class Connection {
     let lastSeqNo = database.lastSeqNo
     const bundleSeqNo = database.bundleSeqNo
 
-    const writerUserIds = new Set()
+    const userIds = new Set() // used for database writers AND writeAccess permissions
+    const writerUserIds = []
 
     if (bundleSeqNo > 0 && database.lastSeqNo === 0) {
       payload.bundleSeqNo = bundleSeqNo
@@ -136,7 +139,8 @@ class Connection {
 
       if (writers) {
         for (const userId of writers.split(',')) {
-          writerUserIds.add(userId)
+          userIds.add(userId)
+          writerUserIds.push(userId)
         }
       } else if (database.attribution) {
         throw new Error('Missing database bundle writers list')
@@ -171,14 +175,15 @@ class Connection {
           if (database.lastSeqNo < lastSeqNoInBatch) {
 
             for (let i = 0; i < transactionLogResponse.Items.length && !gapInSeqNo; i++) {
+              const transaction = transactionLogResponse.Items[i]
 
               // if there's a gap in sequence numbers and past rollback buffer, rollback all transactions in gap
-              gapInSeqNo = transactionLogResponse.Items[i]['sequence-no'] > lastSeqNo + 1
-              const secondsSinceCreation = gapInSeqNo && new Date() - new Date(transactionLogResponse.Items[i]['creation-date'])
+              gapInSeqNo = transaction['sequence-no'] > lastSeqNo + 1
+              const secondsSinceCreation = gapInSeqNo && new Date() - new Date(transaction['creation-date'])
 
               // waiting gives opportunity for item to insert into DDB
               if (gapInSeqNo && secondsSinceCreation > SECONDS_BEFORE_ROLLBACK_GAP_TRIGGERED) {
-                const rolledBackTransactions = await this.rollback(lastSeqNo, transactionLogResponse.Items[i]['sequence-no'], databaseId, ddbClient)
+                const rolledBackTransactions = await this.rollback(lastSeqNo, transaction['sequence-no'], databaseId, ddbClient)
 
                 for (let j = 0; j < rolledBackTransactions.length; j++) {
 
@@ -193,20 +198,42 @@ class Connection {
                 continue
               }
 
-              lastSeqNo = transactionLogResponse.Items[i]['sequence-no']
+              lastSeqNo = transaction['sequence-no']
 
               // add transaction to the result set if have not sent it to client yet
-              if (transactionLogResponse.Items[i]['sequence-no'] > database.lastSeqNo) {
-                ddbTransactionLog.push(transactionLogResponse.Items[i])
-                if (database.attribution && transactionLogResponse.Items[i].command !== 'Rollback') {
-                  const userId = transactionLogResponse.Items[i]['user-id']
+              if (transaction['sequence-no'] > database.lastSeqNo) {
+                ddbTransactionLog.push(transaction)
+
+                if (database.attribution && transaction.command !== 'Rollback') {
+                  const userId = transaction['user-id']
                   if (userId == null) {
                     throw new Error('Database has attribution, but no user-id on transaction')
                   }
-                  writerUserIds.add(userId)
+
+                  userIds.add(userId)
+                  writerUserIds.push(userId)
+
+                  // check for users set via write access
+                  const { command } = transaction
+                  if (command === 'Insert' || command === 'Update') {
+                    const writeAccess = transaction['write-access']
+                    if (writeAccess && writeAccess.users) {
+                      for (const userIdWithWriteAccess of writeAccess.users) {
+                        userIds.add(userIdWithWriteAccess)
+                      }
+                    }
+                  } else if (command === 'BatchTransaction') {
+                    for (const op of transaction.operations) {
+                      const { writeAccess } = op
+                      if (writeAccess && writeAccess.users) {
+                        for (const userIdWithWriteAccess of writeAccess.users) {
+                          userIds.add(userIdWithWriteAccess)
+                        }
+                      }
+                    }
+                  }
                 }
               }
-
             }
           }
         }
@@ -220,16 +247,26 @@ class Connection {
       throw new Error(e)
     }
 
+    const usersByUserId = {}
     if (database.attribution) {
-      await Promise.all([...writerUserIds].map(getUserByUserId))
-        .then(users => {
-          for (const user of users) {
-            if (!user) continue
-            if (user['deleted']) continue
-            const { 'user-id': userId, username } = user
-            payload.writers.push({ userId, username })
-          }
-        })
+      // get all the users
+      const users = await Promise.all([...userIds].map(getUserByUserId))
+
+      // set users by userId
+      for (const user of users) {
+        if (!user || user['deleted']) continue
+        const { 'user-id': userId } = user
+        usersByUserId[userId] = user
+      }
+
+      // set the writers
+      for (const writerUserId of writerUserIds) {
+        const user = usersByUserId[writerUserId]
+        if (user) {
+          const { 'user-id': userId, username } = user
+          payload.writers.push({ userId, username })
+        }
+      }
     }
 
     if (openingDatabase && database.lastSeqNo !== 0) {
@@ -280,7 +317,7 @@ class Connection {
       return
     }
 
-    this.sendPayload(payload, ddbTransactionLog, database)
+    this.sendPayload(payload, ddbTransactionLog, database, usersByUserId)
   }
 
   async rollback(lastSeqNo, thisSeqNo, databaseId, ddbClient) {
@@ -311,7 +348,7 @@ class Connection {
     return rolledBackTransactions
   }
 
-  sendPayload(payload, ddbTransactionLog, database) {
+  sendPayload(payload, ddbTransactionLog, database, usersByUserId) {
     let size = 0
 
     // only send transactions that have not been sent to client yet
@@ -328,9 +365,38 @@ class Connection {
       .map(transaction => {
         size += estimateSizeOfDdbItem(transaction)
 
+        const { command } = transaction
+        const operations = transaction['operations']
+        const writeAccess = transaction['write-access']
+
+        // set write access usernames using userId
+        if (usersByUserId) {
+          if (command === 'Insert' || command === 'Update') {
+            if (writeAccess && writeAccess.users) {
+              const finalUsers = []
+              for (const userIdWithWriteAccess of writeAccess.users) {
+                const user = usersByUserId[userIdWithWriteAccess]
+                if (user) finalUsers.push({ userId: user['user-id'], username: user['username'] })
+              }
+              writeAccess.users = finalUsers
+            }
+          } else if (command === 'BatchTransaction') {
+            for (const op of transaction.operations) {
+              if (op.writeAccess && op.writeAccess.users) {
+                const finalUsers = []
+                for (const userIdWithWriteAccess of op.writeAccess.users) {
+                  const user = usersByUserId[userIdWithWriteAccess]
+                  if (user) finalUsers.push({ userId: user['user-id'], username: user['username'] })
+                }
+                op.writeAccess.users = finalUsers
+              }
+            }
+          }
+        }
+
         return {
           seqNo: transaction['sequence-no'],
-          command: transaction['command'],
+          command,
           key: transaction['key'],
           record: transaction['record'],
           timestamp: transaction['creation-date'],
@@ -338,8 +404,9 @@ class Connection {
           fileMetadata: transaction['file-metadata'],
           fileId: transaction['file-id'],
           fileEncryptionKey: transaction['file-encryption-key'],
-          operations: transaction['operations'],
-          dbId: transaction['database-id']
+          dbId: transaction['database-id'],
+          operations,
+          writeAccess,
         }
       })
 
@@ -458,14 +525,14 @@ export default class Connections {
     return connection
   }
 
-  static openDatabase({ userId, connectionId, databaseId, bundleSeqNo, numChunks, dbNameHash, dbKey, reopenAtSeqNo, isOwner,
+  static openDatabase({ userId, connectionId, databaseId, bundleSeqNo, numChunks, dbNameHash, dbKey, reopenAtSeqNo, isOwner, ownerId,
     attribution, plaintextDbKey, shareTokenEncryptedDbKey, shareTokenEncryptionKeySalt, shareTokenReadWritePermissions }) {
     if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId][connectionId]) return
 
     const conn = Connections.sockets[userId][connectionId]
 
     if (!conn.databases[databaseId]) {
-      conn.openDatabase(databaseId, dbNameHash, bundleSeqNo, numChunks, reopenAtSeqNo, isOwner, attribution, shareTokenReadWritePermissions)
+      conn.openDatabase(databaseId, dbNameHash, bundleSeqNo, numChunks, reopenAtSeqNo, isOwner, ownerId, attribution, shareTokenReadWritePermissions)
 
       if (!Connections.sockets[databaseId]) Connections.sockets[databaseId] = { numConnections: 0 }
       Connections.sockets[databaseId][connectionId] = userId
@@ -513,6 +580,7 @@ export default class Connections {
             dbId,
             dbNameHash: database.dbNameHash,
             isOwner: database.isOwner,
+            ownerId: database.ownerId,
             writers: database['attribution']
               ? [{ userId: transaction['user-id'], username: transaction['username'] }]
               : undefined

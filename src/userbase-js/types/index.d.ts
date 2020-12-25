@@ -69,12 +69,14 @@ export interface InsertOperation {
   command: 'Insert'
   itemId?: string
   item: any
+  writeAccess?: AccessControl
 }
 
 export interface UpdateOperation {
   command: 'Update'
   itemId: string
   item: any
+  writeAccess?: AccessControl | null | false | undefined
 }
 
 export interface DeleteOperation {
@@ -91,12 +93,18 @@ export interface Item {
   fileName?: string
   fileSize?: number
   fileUploadedBy?: Attribution
+  writeAccess?: AccessControl
 }
 
 export interface Attribution {
   timestamp: Date
   username?: string
   userDeleted?: boolean
+}
+
+export interface AccessControl {
+  onlyCreator?: boolean
+  users?: [{ username?: string }]
 }
 
 export interface FileResult {
@@ -128,7 +136,7 @@ export interface Userbase {
 
   signOut(): Promise<void>
 
-  updateUser(params: { username?: string, currentPassword?: string, newPassword?: string, email?: string | null, profile?: UserProfile | null }): Promise<void>
+  updateUser(params: { username?: string, currentPassword?: string, newPassword?: string, email?: string | null | false | undefined, profile?: UserProfile | null | false | undefined }): Promise<void>
 
   deleteUser(): Promise<void>
 
@@ -138,9 +146,9 @@ export interface Userbase {
 
   getDatabases(params?: databaseNameXorId): Promise<DatabasesResult>
 
-  insertItem(params: databaseNameXorIdXorShareToken & { item: any, itemId?: string }): Promise<void>
+  insertItem(params: databaseNameXorIdXorShareToken & { item: any, itemId?: string, writeAccess?: AccessControl }): Promise<void>
 
-  updateItem(params: databaseNameXorIdXorShareToken & { item: any, itemId: string }): Promise<void>
+  updateItem(params: databaseNameXorIdXorShareToken & { item: any, itemId: string, writeAccess?: AccessControl | null | false | undefined }): Promise<void>
 
   deleteItem(params: databaseNameXorIdXorShareToken & { itemId: string }): Promise<void>
 

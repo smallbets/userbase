@@ -261,14 +261,14 @@ async function start(express, app, userbaseConfig = {}) {
                 case 'Delete': {
                   response = conn.rateLimiter.atCapacity()
                     ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
-                    : await db.doCommand(
-                      action,
+                    : await db.doCommand({
+                      command: action,
                       userId,
+                      appId,
                       connectionId,
-                      params.dbId,
-                      params.itemKey,
-                      params.encryptedItem
-                    )
+                      databaseId: params.dbId,
+                      ...params
+                    })
                   break
                 }
                 case 'BatchTransaction': {
@@ -319,6 +319,7 @@ async function start(express, app, userbaseConfig = {}) {
                   response = await db.completeFileUpload(
                     logChildObject,
                     userId,
+                    appId,
                     connectionId,
                     params.dbId,
                     params.fileId,

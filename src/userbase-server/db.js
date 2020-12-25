@@ -28,6 +28,8 @@ const MS_IN_A_DAY = SECONDS_IN_A_DAY * 1000
 
 const VALIDATION_MESSAGE_LENGTH = 16
 
+const MAX_USERS_ALLOWED_FOR_ACCESS_CONTROL = 10
+
 const getS3DbStateKey = (databaseId, bundleSeqNo) => `${databaseId}/${bundleSeqNo}`
 const getS3DbWritersKey = (databaseId, bundleSeqNo) => `${databaseId}/writers/${bundleSeqNo}`
 const getS3FileChunkKey = (databaseId, fileId, chunkNumber) => `${databaseId}/${fileId}/${chunkNumber}`
@@ -226,9 +228,10 @@ exports.openDatabase = async function (user, app, admin, connectionId, dbNameHas
     const plaintextDbKey = database['plaintext-db-key']
 
     const isOwner = true
+    const ownerId = userId
     if (connections.openDatabase({
       userId, connectionId, databaseId, bundleSeqNo, numChunks, dbNameHash, dbKey,
-      reopenAtSeqNo, isOwner, attribution, plaintextDbKey
+      reopenAtSeqNo, isOwner, ownerId, attribution, plaintextDbKey
     })) {
       return responseBuilder.successResponse('Success!')
     } else {
@@ -281,7 +284,10 @@ exports.openDatabaseByDatabaseId = async function (userAtSignIn, app, admin, con
     const numChunks = db['num-chunks']
     const attribution = db['attribution']
     const plaintextDbKey = db['plaintext-db-key']
-    const connectionParams = { userId, connectionId, databaseId, bundleSeqNo, numChunks, reopenAtSeqNo, isOwner, attribution, plaintextDbKey }
+    const connectionParams = {
+      userId, connectionId, databaseId, bundleSeqNo, numChunks, reopenAtSeqNo,
+      isOwner, ownerId: db['owner-id'], attribution, plaintextDbKey
+    }
     if (validationMessage) {
       const shareTokenReadWritePermissions = _validateAuthTokenSignature(userId, db, validationMessage, signedValidationMessage)
 
@@ -629,6 +635,107 @@ exports.getUserDatabaseByDatabaseId = async function (logChildObject, userId, da
   return response
 }
 
+const _setUserForWriteAccess = function (username, userPromiseIndexes, users) {
+  const promiseIndex = userPromiseIndexes[username]
+  const user = users[promiseIndex]
+
+  if (!user || user['deleted']) throw {
+    status: statusCodes['Not Found'],
+    error: { message: 'UserNotFound', username }
+  }
+
+  return { userId: user['user-id'], username }
+}
+
+const _getUsersForWriteAccess = function (users, appId, userPromises, userPromiseIndexes) {
+  if (users.length > MAX_USERS_ALLOWED_FOR_ACCESS_CONTROL) throw {
+    status: statusCodes['Bad Request'],
+    error: { message: 'WriteAccessUsersExceedMax', max: MAX_USERS_ALLOWED_FOR_ACCESS_CONTROL }
+  }
+
+  for (const u of users) {
+    const username = u.username.toLowerCase()
+    if (typeof userPromiseIndexes[username] !== 'number') {
+      userPromiseIndexes[username] = userPromises.push(userController.getUser(appId, username)) - 1
+    }
+  }
+}
+
+const _prepareTransactionForStorage = function (transaction) {
+  const { command } = transaction
+  if (command === 'Insert' || command === 'Update') {
+    const writeAccess = transaction['write-access']
+    if (writeAccess) {
+      return {
+        ...transaction,
+        ['write-access']: {
+          ...writeAccess,
+          users: writeAccess.users
+            ? writeAccess.users.map(u => u.userId) // only need to store array of user ID's
+            : undefined
+        }
+      }
+    }
+  } else if (command === 'BatchTransaction') {
+    return {
+      ...transaction,
+      operations: transaction.operations.map(op => {
+        const { writeAccess } = op
+        return {
+          ...op,
+          writeAccess: (writeAccess && writeAccess.users)
+            ? {
+              ...writeAccess,
+              users: writeAccess.users.map(u => u.userId) // only need to store array of user ID's
+            }
+            : writeAccess
+        }
+      })
+    }
+  }
+  return transaction
+}
+
+const _setUsersForWriteAccess = async function (transaction, appId) {
+  const { command } = transaction
+
+  const userPromises = []
+  const userPromiseIndexes = {}
+
+  if (command === 'Insert' || command === 'Update') {
+    const writeAccess = transaction['write-access']
+
+    if (writeAccess && writeAccess.users) {
+      _getUsersForWriteAccess(writeAccess.users, appId, userPromises, userPromiseIndexes)
+      const users = await Promise.all(userPromises)
+      transaction['write-access'].users = writeAccess.users.map(u => _setUserForWriteAccess(u.username.toLowerCase(), userPromiseIndexes, users))
+    }
+  } else if (command === 'BatchTransaction') {
+    const { operations } = transaction
+    for (const op of operations) {
+      const users = op.writeAccess && op.writeAccess.users
+      if (users && (op.command === 'Insert' || op.command === 'Update')) {
+        _getUsersForWriteAccess(users, appId, userPromises, userPromiseIndexes)
+      }
+    }
+
+    const users = await Promise.all(userPromises)
+
+    transaction.operations = operations.map(op => {
+      const { writeAccess } = op
+      return (writeAccess && writeAccess.users)
+        ? {
+          ...op,
+          writeAccess: {
+            ...writeAccess,
+            users: writeAccess.users.map(u => _setUserForWriteAccess(u.username.toLowerCase(), userPromiseIndexes, users))
+          }
+        }
+        : { ...op }
+    })
+  }
+}
+
 const _incrementSeqNo = async function (transaction, databaseId) {
   const incrementSeqNoParams = {
     TableName: setup.databaseTableName,
@@ -656,7 +763,7 @@ const _incrementSeqNo = async function (transaction, databaseId) {
   }
 }
 
-const putTransaction = async function (transaction, userId, connectionId, databaseId) {
+const putTransaction = async function (transaction, userId, connectionId, databaseId, appId) {
   if (!connections.isDatabaseOpen(userId, connectionId, databaseId)) throw {
     status: statusCodes['Bad Request'],
     error: { name: 'DatabaseNotOpen' }
@@ -672,6 +779,7 @@ const putTransaction = async function (transaction, userId, connectionId, databa
   const [userDb, db] = await Promise.all([
     !shareTokenReadWritePermissions && _getUserDatabaseByUserIdAndDatabaseId(userId, databaseId),
     shareTokenReadWritePermissions && findDatabaseByDatabaseId(databaseId),
+    _setUsersForWriteAccess(transaction, appId),
     _incrementSeqNo(transaction, databaseId)
   ])
 
@@ -695,7 +803,7 @@ const putTransaction = async function (transaction, userId, connectionId, databa
       // write the transaction using the next sequence number
       const params = {
         TableName: setup.transactionsTableName,
-        Item: transaction,
+        Item: _prepareTransactionForStorage(transaction),
         ConditionExpression: 'attribute_not_exists(#databaseId)',
         ExpressionAttributeNames: {
           '#databaseId': 'database-id'
@@ -747,36 +855,43 @@ const rollbackAttempt = async function (transaction, ddbClient) {
   }
 }
 
-const doCommand = async function (command, userId, connectionId, databaseId, key, record, fileId, fileEncryptionKey, fileMetadata) {
+const doCommand = async function ({ command, userId, appId, connectionId, databaseId, itemKey, encryptedItem, writeAccess,
+  fileId, fileEncryptionKey, fileMetadata }) {
   if (!databaseId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
-  if (!key) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing item key')
+  if (!itemKey) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing item key')
 
   const transaction = {
     'database-id': databaseId,
-    key,
+    key: itemKey,
     command,
   }
 
-  switch (command) {
-    case 'Insert':
-    case 'Update':
-    case 'Delete': {
-      transaction.record = record
-      break
-    }
-    case 'UploadFile': {
-      transaction['file-id'] = fileId
-      transaction['file-encryption-key'] = fileEncryptionKey
-      transaction['file-metadata'] = fileMetadata
-      break
-    }
-    default: {
-      throw new Error('Unknown command')
-    }
-  }
-
   try {
-    const sequenceNo = await putTransaction(transaction, userId, connectionId, databaseId)
+    switch (command) {
+      case 'Insert':
+      case 'Update': {
+        transaction.record = encryptedItem
+        if (writeAccess || writeAccess === false) {
+          transaction['write-access'] = writeAccess
+        }
+        break
+      }
+      case 'Delete': {
+        transaction.record = encryptedItem
+        break
+      }
+      case 'UploadFile': {
+        transaction['file-id'] = fileId
+        transaction['file-encryption-key'] = fileEncryptionKey
+        transaction['file-metadata'] = fileMetadata
+        break
+      }
+      default: {
+        throw new Error('Unknown command')
+      }
+    }
+
+    const sequenceNo = await putTransaction(transaction, userId, connectionId, databaseId, appId)
     return responseBuilder.successResponse({ sequenceNo })
   } catch (e) {
     const message = `Failed to ${command}`
@@ -809,6 +924,7 @@ exports.batchTransaction = async function (userId, connectionId, databaseId, ope
     const key = operation.itemKey
     const record = operation.encryptedItem
     const command = operation.command
+    const writeAccess = operation.writeAccess
 
     if (!key) return responseBuilder.errorResponse(statusCodes['Bad Request'], `Operation ${i} missing item key`)
     if (!record) return responseBuilder.errorResponse(statusCodes['Bad Request'], `Operation ${i} missing record`)
@@ -817,7 +933,8 @@ exports.batchTransaction = async function (userId, connectionId, databaseId, ope
     ops.push({
       key,
       record,
-      command
+      command,
+      writeAccess,
     })
   }
 
@@ -1187,7 +1304,7 @@ exports.uploadFileChunk = async function (logChildObject, userId, connectionId, 
   }
 }
 
-exports.completeFileUpload = async function (logChildObject, userId, connectionId, databaseId, fileId, fileEncryptionKey, itemKey, fileMetadata) {
+exports.completeFileUpload = async function (logChildObject, userId, appId, connectionId, databaseId, fileId, fileEncryptionKey, itemKey, fileMetadata) {
   try {
     logChildObject.databaseId = databaseId
     logChildObject.fileId = fileId
@@ -1195,8 +1312,8 @@ exports.completeFileUpload = async function (logChildObject, userId, connectionI
     _validateFileUpload(userId, connectionId, databaseId, fileId)
 
     // places transaction in transaction log to attach file to an item
-    const nullRecord = null
-    const response = await doCommand('UploadFile', userId, connectionId, databaseId, itemKey, nullRecord, fileId, fileEncryptionKey, fileMetadata)
+    const command = 'UploadFile'
+    const response = await doCommand({ command, userId, appId, connectionId, databaseId, itemKey, fileId, fileEncryptionKey, fileMetadata })
     return response
   } catch (e) {
     logChildObject.err = e
