@@ -372,9 +372,7 @@ class Database {
       let userIsAuthorized = false
       const { onlyCreator, users } = writeAccess
 
-      if (modifiedByUserId === ownerId) {
-        userIsAuthorized = true
-      } else if (onlyCreator && modifiedByUserId === createdByUserId) {
+      if (modifiedByUserId === ownerId || modifiedByUserId === createdByUserId) {
         userIsAuthorized = true
       } else if (!onlyCreator && users) {
         for (const { userId } of users) {

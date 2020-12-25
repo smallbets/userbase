@@ -524,6 +524,7 @@ export default class Connections {
             dbId,
             dbNameHash: database.dbNameHash,
             isOwner: database.isOwner,
+            ownerId: database.ownerId,
             writers: database['attribution']
               ? [{ userId: transaction['user-id'], username: transaction['username'] }]
               : undefined
