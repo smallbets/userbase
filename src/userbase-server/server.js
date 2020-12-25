@@ -278,9 +278,22 @@ async function start(express, app, userbaseConfig = {}) {
                   break
                 }
                 case 'Bundle': {
+                  // old clients < userbase-js v2.7.0
                   response = conn.rateLimiter.atCapacity()
                     ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
                     : await db.bundleTransactionLog(userId, connectionId, params.dbId, params.seqNo, params.bundle, params.writers)
+                  break
+                }
+                case 'UploadBundleChunk': {
+                  response = conn.rateLimiter.atCapacity()
+                    ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
+                    : await db.uploadBundleChunk(userId, connectionId, params.dbId, params.seqNo, params.chunkNumber, params.chunk)
+                  break
+                }
+                case 'CompleteBundleUpload': {
+                  response = conn.rateLimiter.atCapacity()
+                    ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
+                    : await db.completeBundleUpload(userId, connectionId, params.dbId, params.seqNo, params.writers, params.numChunks)
                   break
                 }
                 case 'GenerateFileId': {

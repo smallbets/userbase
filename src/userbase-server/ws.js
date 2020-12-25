@@ -19,6 +19,8 @@ const DATA_STORAGE_TOKENS_REFILLED_PER_SECOND = 20
 const FILE_STORAGE_MAX_REQUESTS_PER_SECOND = 200
 const FILE_STORAGE_TOKENS_REFILLED_PER_SECOND = 200
 
+const BUNDLE_CHUNK_BATCH_SIZE = 10
+
 // Rate limiter. Enforces a max of <capacity> requests per second. Once a token is taken from
 // the bucket, it is refilled at a rate of 1 per second.
 //
@@ -65,9 +67,10 @@ class Connection {
     this.fileStorageRateLimiter = new TokenBucket(FILE_STORAGE_MAX_REQUESTS_PER_SECOND, FILE_STORAGE_TOKENS_REFILLED_PER_SECOND)
   }
 
-  openDatabase(databaseId, dbNameHash, bundleSeqNo, reopenAtSeqNo, isOwner, attribution, shareTokenReadWritePermissions) {
+  openDatabase(databaseId, dbNameHash, bundleSeqNo, numChunks, reopenAtSeqNo, isOwner, attribution, shareTokenReadWritePermissions) {
     this.databases[databaseId] = {
       bundleSeqNo: bundleSeqNo > 0 ? bundleSeqNo : -1,
+      numChunks,
       lastSeqNo: reopenAtSeqNo || 0,
       transactionLogSize: 0,
       init: reopenAtSeqNo !== undefined, // ensures server sends the dbNameHash & key on first ever push, not reopen
@@ -115,10 +118,22 @@ class Connection {
     const writerUserIds = new Set()
 
     if (bundleSeqNo > 0 && database.lastSeqNo === 0) {
-      const { bundle, writers } = await db.getBundle(databaseId, bundleSeqNo, database.attribution)
       payload.bundleSeqNo = bundleSeqNo
-      payload.bundle = bundle
       lastSeqNo = bundleSeqNo
+
+      let writers
+      if (database.numChunks) {
+        // tell client to wait for all bundle chunks to load
+        payload.waitForFullBundle = true
+        this.pushBundleChunks(database, databaseId)
+        writers = database.attribution && await db.getBundleWriters(databaseId, bundleSeqNo)
+      } else {
+        // old clients < userbase-js v2.7.0
+        const bundleResult = await db.getBundle(databaseId, bundleSeqNo, database.attribution)
+        payload.bundle = bundleResult.bundle
+        writers = bundleResult.writers
+      }
+
       if (writers) {
         for (const userId of writers.split(',')) {
           writerUserIds.add(userId)
@@ -243,7 +258,7 @@ class Connection {
         const msg = JSON.stringify(payload)
         this.socket.send(msg)
 
-        if (payload.bundle) {
+        if (payload.bundle || payload.waitForFullBundle) {
           database.lastSeqNo = payload.bundleSeqNo
         }
 
@@ -368,6 +383,47 @@ class Connection {
       })
       .info('Sent transactions to client')
   }
+
+  async pushBundleChunks(database, databaseId) {
+    const { dbNameHash, isOwner, bundleSeqNo, numChunks } = database
+
+    // send chunks in batches of BUNDLE_CHUNK_BATCH_SIZE
+    let batch = []
+    let payloads = []
+
+    for (let chunkNo = 0; chunkNo < numChunks; chunkNo++) {
+      const payload = {
+        route: 'DownloadBundleChunk',
+        dbId: databaseId,
+        dbNameHash,
+        isOwner,
+        bundleSeqNo,
+      }
+
+      if (chunkNo === 0) payload.isFirstChunk = true
+      if (chunkNo === numChunks - 1) payload.isFinalChunk = true
+
+      batch.push(db.getBundleChunk(databaseId, bundleSeqNo, chunkNo))
+      payloads.push(payload)
+
+      if (batch === BUNDLE_CHUNK_BATCH_SIZE || payload.isFinalChunk) {
+        const chunks = await Promise.all(batch)
+
+        for (let j = 0; j < payloads.length; j++) {
+          const payloadWithChunk = payloads[j]
+          payloadWithChunk.chunk = chunks[j]
+          this.socket.send(JSON.stringify(payloadWithChunk))
+
+          logger
+            .child({ ...payloadWithChunk, databaseId, chunkNo: j, chunk: undefined })
+            .info('Sent bundle chunk to client')
+        }
+
+        batch = []
+        payloads = []
+      }
+    }
+  }
 }
 
 export default class Connections {
@@ -402,14 +458,14 @@ export default class Connections {
     return connection
   }
 
-  static openDatabase({ userId, connectionId, databaseId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner,
+  static openDatabase({ userId, connectionId, databaseId, bundleSeqNo, numChunks, dbNameHash, dbKey, reopenAtSeqNo, isOwner,
     attribution, plaintextDbKey, shareTokenEncryptedDbKey, shareTokenEncryptionKeySalt, shareTokenReadWritePermissions }) {
     if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId][connectionId]) return
 
     const conn = Connections.sockets[userId][connectionId]
 
     if (!conn.databases[databaseId]) {
-      conn.openDatabase(databaseId, dbNameHash, bundleSeqNo, reopenAtSeqNo, isOwner, attribution, shareTokenReadWritePermissions)
+      conn.openDatabase(databaseId, dbNameHash, bundleSeqNo, numChunks, reopenAtSeqNo, isOwner, attribution, shareTokenReadWritePermissions)
 
       if (!Connections.sockets[databaseId]) Connections.sockets[databaseId] = { numConnections: 0 }
       Connections.sockets[databaseId][connectionId] = userId

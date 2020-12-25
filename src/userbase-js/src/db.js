@@ -144,6 +144,8 @@ class Database {
 
     // Queue that ensures 'ApplyTransactions' executes one at a time
     this.applyTransactionsQueue = new Queue()
+
+    this.bundleChunks = {}
   }
 
   async applyTransactions(transactions) {

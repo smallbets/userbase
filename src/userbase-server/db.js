@@ -31,6 +31,7 @@ const VALIDATION_MESSAGE_LENGTH = 16
 const getS3DbStateKey = (databaseId, bundleSeqNo) => `${databaseId}/${bundleSeqNo}`
 const getS3DbWritersKey = (databaseId, bundleSeqNo) => `${databaseId}/writers/${bundleSeqNo}`
 const getS3FileChunkKey = (databaseId, fileId, chunkNumber) => `${databaseId}/${fileId}/${chunkNumber}`
+const getS3DbStateChunkKey = (databaseId, bundleSeqNo, chunkNo) => `${databaseId}/${bundleSeqNo}/${chunkNo}`
 
 const _buildUserDatabaseParams = (userId, dbNameHash, dbId, encryptedDbKey, readOnly, resharingAllowed) => {
   return {
@@ -219,12 +220,16 @@ exports.openDatabase = async function (user, app, admin, connectionId, dbNameHas
 
     const databaseId = database['database-id']
     const bundleSeqNo = database['bundle-seq-no']
+    const numChunks = database['num-chunks']
     const dbKey = database['encrypted-db-key']
     const attribution = database['attribution']
     const plaintextDbKey = database['plaintext-db-key']
 
     const isOwner = true
-    if (connections.openDatabase({ userId, connectionId, databaseId, bundleSeqNo, dbNameHash, dbKey, reopenAtSeqNo, isOwner, attribution, plaintextDbKey })) {
+    if (connections.openDatabase({
+      userId, connectionId, databaseId, bundleSeqNo, numChunks, dbNameHash, dbKey,
+      reopenAtSeqNo, isOwner, attribution, plaintextDbKey
+    })) {
       return responseBuilder.successResponse('Success!')
     } else {
       throw new Error('Unable to open database')
@@ -273,9 +278,10 @@ exports.openDatabaseByDatabaseId = async function (userAtSignIn, app, admin, con
     if (isOwner) throw { status: statusCodes['Forbidden'], error: 'Database is owned by user' }
 
     const bundleSeqNo = db['bundle-seq-no']
+    const numChunks = db['num-chunks']
     const attribution = db['attribution']
     const plaintextDbKey = db['plaintext-db-key']
-    const connectionParams = { userId, connectionId, databaseId, bundleSeqNo, reopenAtSeqNo, isOwner, attribution, plaintextDbKey }
+    const connectionParams = { userId, connectionId, databaseId, bundleSeqNo, numChunks, reopenAtSeqNo, isOwner, attribution, plaintextDbKey }
     if (validationMessage) {
       const shareTokenReadWritePermissions = _validateAuthTokenSignature(userId, db, validationMessage, signedValidationMessage)
 
@@ -920,6 +926,101 @@ exports.bundleTransactionLog = async function (userId, connectionId, databaseId,
   }
 }
 
+exports.uploadBundleChunk = async function (userId, connectionId, databaseId, seqNo, chunkNumber, chunk) {
+  let logChildObject = {}
+  try {
+    logChildObject = { userId, connectionId, databaseId, seqNo, chunkNumber }
+
+    const bundleSeqNo = Number(seqNo)
+    const chunkNo = Number(chunkNumber)
+
+    if (!bundleSeqNo) throw { status: statusCodes['Bad Request'], message: `Missing bundle sequence number` }
+
+    if (!connections.isDatabaseOpen(userId, connectionId, databaseId)) {
+      throw { status: statusCodes['Bad Request'], message: 'Database not open' }
+    }
+
+    const database = await findDatabaseByDatabaseId(databaseId)
+    if (!database) throw { status: statusCodes['Not Found'], message: 'Database not found' }
+
+    const lastBundleSeqNo = database['bundle-seq-no']
+    if (lastBundleSeqNo >= bundleSeqNo) {
+      throw { status: statusCodes['Bad Request'], message: 'Bundle sequence no must be greater than current bundle' }
+    }
+
+    const dbStateParams = {
+      Bucket: setup.getDbStatesBucketName(),
+      Key: getS3DbStateChunkKey(databaseId, bundleSeqNo, chunkNo),
+      Body: Buffer.from(stringToArrayBuffer(chunk)) // storing as the string doesn't work. gets messed up in the conversion
+    }
+    await setup.s3().upload(dbStateParams).promise()
+
+    logger.child(logChildObject).info('Uploaded bundle chunk')
+    return responseBuilder.successResponse({})
+  } catch (e) {
+    logChildObject.err = e
+
+    if (e.status && e.error) return responseBuilder.errorResponse(e.status, e.error.message)
+    else return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to upload bundle chunk')
+  }
+}
+
+exports.completeBundleUpload = async function (userId, connectionId, databaseId, seqNo, writersString, numChunks) {
+  let logChildObject = {}
+  try {
+    logChildObject = { userId, connectionId, databaseId, seqNo, numChunks }
+    const bundleSeqNo = Number(seqNo)
+    if (!bundleSeqNo) throw { status: statusCodes['Bad Request'], message: `Missing bundle sequence number` }
+
+    if (!connections.isDatabaseOpen(userId, connectionId, databaseId)) {
+      throw { status: statusCodes['Bad Request'], message: 'Database not open' }
+    }
+
+    const database = await findDatabaseByDatabaseId(databaseId)
+    if (!database) throw { status: statusCodes['Not Found'], message: 'Database not found' }
+
+    const lastBundleSeqNo = database['bundle-seq-no']
+    if (lastBundleSeqNo >= bundleSeqNo) {
+      throw { status: statusCodes['Bad Request'], message: 'Bundle sequence no must be greater than current bundle' }
+    }
+
+    const dbWritersParams = {
+      Bucket: setup.getDbStatesBucketName(),
+      Key: getS3DbWritersKey(databaseId, bundleSeqNo),
+      Body: writersString
+    }
+    await setup.s3().upload(dbWritersParams).promise()
+
+    const bundleParams = {
+      TableName: setup.databaseTableName,
+      Key: {
+        'database-id': databaseId
+      },
+      UpdateExpression: 'set #bundleSeqNo = :bundleSeqNo, #numChunks = :numChunks',
+      ConditionExpression: '(attribute_not_exists(#bundleSeqNo) or #bundleSeqNo < :bundleSeqNo)',
+      ExpressionAttributeNames: {
+        '#bundleSeqNo': 'bundle-seq-no',
+        '#numChunks': 'num-chunks',
+      },
+      ExpressionAttributeValues: {
+        ':bundleSeqNo': bundleSeqNo,
+        ':numChunks': numChunks
+      }
+    }
+
+    const ddbClient = connection.ddbClient()
+    await ddbClient.update(bundleParams).promise()
+
+    logger.child(logChildObject).info('Completed bundling database')
+    return responseBuilder.successResponse({})
+  } catch (e) {
+    logChildObject.err = e
+
+    if (e.status && e.error) return responseBuilder.errorResponse(e.status, e.error.message)
+    else return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to upload bundle chunk')
+  }
+}
+
 exports.getBundle = async function (databaseId, bundleSeqNo, useAttribution) {
   if (!bundleSeqNo) {
     return responseBuilder.errorResponse(statusCodes['Bad Request'], `Missing bundle sequence number`)
@@ -961,6 +1062,40 @@ exports.getBundle = async function (databaseId, bundleSeqNo, useAttribution) {
 
   } catch (e) {
     return responseBuilder.errorResponse(statusCodes['Internal Server Error'], `Failed to query db state with ${e}`)
+  }
+}
+
+exports.getBundleWriters = async function (databaseId, bundleSeqNo) {
+  if (!bundleSeqNo) {
+    throw new Error('Missing bundle sequence number')
+  }
+
+  try {
+    const writersParams = {
+      Bucket: setup.getDbStatesBucketName(),
+      Key: getS3DbWritersKey(databaseId, bundleSeqNo)
+    }
+
+    const writersObject = await setup.s3().getObject(writersParams).promise()
+    return writersObject.Body.toString()
+  } catch (e) {
+    throw new Error(`Failed to get bundle writers with ${e}`)
+  }
+}
+
+exports.getBundleChunk = async function (databaseId, bundleSeqNo, chunkNo) {
+  if (!bundleSeqNo) throw new Error(`Missing bundle sequence number`)
+
+  try {
+    const params = {
+      Bucket: setup.getDbStatesBucketName(),
+      Key: getS3DbStateChunkKey(databaseId, bundleSeqNo, chunkNo)
+    }
+
+    const bundleChunkObject = await setup.s3().getObject(params).promise()
+    return arrayBufferToString(new Uint8Array(bundleChunkObject.Body).buffer)
+  } catch (e) {
+    throw new Error(`Failed to query db state chunk with ${e}`)
   }
 }
 
