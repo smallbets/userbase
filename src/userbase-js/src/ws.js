@@ -227,7 +227,7 @@ class Connection {
                 }
 
                 // rebuild bundle from the chunks
-                const bundle = await this.rebuildBundle(database, message.bundleSeqNo)
+                const bundle = await this.rebuildBundle(database, message.bundleSeqNo, message.encryptedBundleEncryptionKey)
                 await database.applyBundle(bundle, message.bundleSeqNo)
 
               } else if (message.bundle) {
@@ -641,16 +641,19 @@ class Connection {
     return response
   }
 
-  async rebuildBundle(database, bundleSeqNo) {
+  async rebuildBundle(database, bundleSeqNo, encryptedBundleEncryptionKey) {
     const bundleChunks = []
     for (let i = 0; i < database.bundleChunks[bundleSeqNo].length; i++) {
       const chunk = database.bundleChunks[bundleSeqNo][i]
       const chunkArrayBuffer = stringToArrayBuffer(chunk)
       bundleChunks.push(chunkArrayBuffer)
     }
-
     const bundleArrayBuffer = appendBuffers(bundleChunks).buffer
-    const compressedArrayBuffer = await crypto.aesGcm.decrypt(database.dbKey, bundleArrayBuffer)
+
+    const bundleEncryptionKeyRaw = await crypto.aesGcm.decrypt(database.dbKey, base64.decode(encryptedBundleEncryptionKey))
+    const bundleEncryptionKey = await crypto.aesGcm.getKeyFromRawKey(bundleEncryptionKeyRaw)
+
+    const compressedArrayBuffer = await crypto.aesGcm.decrypt(bundleEncryptionKey, bundleArrayBuffer)
     const compressedString = arrayBufferToString(compressedArrayBuffer)
     const bundle = await decompress(compressedString)
 
@@ -707,21 +710,16 @@ class Connection {
 
     const plaintextString = JSON.stringify(bundle)
 
-    const itemKeyPromises = []
-    for (let i = 0; i < bundle.itemsIndex.length; i++) {
-      const itemId = bundle.itemsIndex[i].itemId
-      itemKeyPromises.push(crypto.hmac.signString(this.keys.hmacKey, itemId))
-    }
-    const itemKeys = await Promise.all(itemKeyPromises)
-
-    const compressedString = LZString.compress(plaintextString)
+    const compressedString = await compress(plaintextString)
     const compressedArrayBuffer = stringToArrayBuffer(compressedString)
-    const bundleArrayBuffer = await crypto.aesGcm.encrypt(dbKey, compressedArrayBuffer)
+
+    const [bundleEncryptionKey, encryptedBundleEncryptionKey] = await crypto.aesGcm.generateAndEncryptKeyEncryptionKey(dbKey)
+    const bundleArrayBuffer = await crypto.aesGcm.encrypt(bundleEncryptionKey, compressedArrayBuffer)
 
     const numChunks = await this.uploadBundle(dbId, lastSeqNo, bundleArrayBuffer)
 
     const action = 'CompleteBundleUpload'
-    const params = { dbId, seqNo: lastSeqNo, keys: itemKeys, writers, numChunks }
+    const params = { dbId, seqNo: lastSeqNo, writers, numChunks, encryptedBundleEncryptionKey: base64.encode(encryptedBundleEncryptionKey) }
     await this.request(action, params)
   }
 

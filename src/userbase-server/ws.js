@@ -67,10 +67,11 @@ class Connection {
     this.fileStorageRateLimiter = new TokenBucket(FILE_STORAGE_MAX_REQUESTS_PER_SECOND, FILE_STORAGE_TOKENS_REFILLED_PER_SECOND)
   }
 
-  openDatabase(databaseId, dbNameHash, bundleSeqNo, numChunks, reopenAtSeqNo, isOwner, ownerId, attribution, shareTokenReadWritePermissions) {
+  openDatabase(databaseId, dbNameHash, bundleSeqNo, numChunks, encryptedBundleEncryptionKey, reopenAtSeqNo, isOwner, ownerId, attribution, shareTokenReadWritePermissions) {
     this.databases[databaseId] = {
       bundleSeqNo: bundleSeqNo > 0 ? bundleSeqNo : -1,
       numChunks,
+      encryptedBundleEncryptionKey,
       lastSeqNo: reopenAtSeqNo || 0,
       transactionLogSize: 0,
       init: reopenAtSeqNo !== undefined, // ensures server sends the dbNameHash & key on first ever push, not reopen
@@ -128,6 +129,8 @@ class Connection {
       if (database.numChunks) {
         // tell client to wait for all bundle chunks to load
         payload.waitForFullBundle = true
+        payload.encryptedBundleEncryptionKey = database.encryptedBundleEncryptionKey
+
         this.pushBundleChunks(database, databaseId)
         writers = database.attribution && await db.getBundleWriters(databaseId, bundleSeqNo)
       } else {

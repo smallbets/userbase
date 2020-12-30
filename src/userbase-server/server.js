@@ -293,7 +293,8 @@ async function start(express, app, userbaseConfig = {}) {
                 case 'CompleteBundleUpload': {
                   response = conn.rateLimiter.atCapacity()
                     ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
-                    : await db.completeBundleUpload(userId, connectionId, params.dbId, params.seqNo, params.writers, params.numChunks)
+                    : await db.completeBundleUpload(userId, connectionId, params.dbId, params.seqNo, params.writers, params.numChunks,
+                      params.encryptedBundleEncryptionKey)
                   break
                 }
                 case 'GenerateFileId': {

@@ -223,6 +223,7 @@ exports.openDatabase = async function (user, app, admin, connectionId, dbNameHas
     const databaseId = database['database-id']
     const bundleSeqNo = database['bundle-seq-no']
     const numChunks = database['num-chunks']
+    const encryptedBundleEncryptionKey = database['encrypted-bundle-encryption-key']
     const dbKey = database['encrypted-db-key']
     const attribution = database['attribution']
     const plaintextDbKey = database['plaintext-db-key']
@@ -230,8 +231,8 @@ exports.openDatabase = async function (user, app, admin, connectionId, dbNameHas
     const isOwner = true
     const ownerId = userId
     if (connections.openDatabase({
-      userId, connectionId, databaseId, bundleSeqNo, numChunks, dbNameHash, dbKey,
-      reopenAtSeqNo, isOwner, ownerId, attribution, plaintextDbKey
+      userId, connectionId, databaseId, bundleSeqNo, numChunks, encryptedBundleEncryptionKey,
+      dbNameHash, dbKey, reopenAtSeqNo, isOwner, ownerId, attribution, plaintextDbKey
     })) {
       return responseBuilder.successResponse('Success!')
     } else {
@@ -282,11 +283,12 @@ exports.openDatabaseByDatabaseId = async function (userAtSignIn, app, admin, con
 
     const bundleSeqNo = db['bundle-seq-no']
     const numChunks = db['num-chunks']
+    const encryptedBundleEncryptionKey = db['encrypted-bundle-encryption-key']
     const attribution = db['attribution']
     const plaintextDbKey = db['plaintext-db-key']
     const connectionParams = {
-      userId, connectionId, databaseId, bundleSeqNo, numChunks, reopenAtSeqNo,
-      isOwner, ownerId: db['owner-id'], attribution, plaintextDbKey
+      userId, connectionId, databaseId, bundleSeqNo, numChunks, encryptedBundleEncryptionKey,
+      reopenAtSeqNo, isOwner, ownerId: db['owner-id'], attribution, plaintextDbKey
     }
     if (validationMessage) {
       const shareTokenReadWritePermissions = _validateAuthTokenSignature(userId, db, validationMessage, signedValidationMessage)
@@ -1113,15 +1115,17 @@ exports.completeBundleUpload = async function (userId, connectionId, databaseId,
       Key: {
         'database-id': databaseId
       },
-      UpdateExpression: 'set #bundleSeqNo = :bundleSeqNo, #numChunks = :numChunks',
+      UpdateExpression: 'set #bundleSeqNo = :bundleSeqNo, #numChunks = :numChunks, #encryptedBundleEncryptionKey = :encryptedBundleEncryptionKey',
       ConditionExpression: '(attribute_not_exists(#bundleSeqNo) or #bundleSeqNo < :bundleSeqNo)',
       ExpressionAttributeNames: {
         '#bundleSeqNo': 'bundle-seq-no',
         '#numChunks': 'num-chunks',
+        '#encryptedBundleEncryptionKey': 'encrypted-bundle-encryption-key',
       },
       ExpressionAttributeValues: {
         ':bundleSeqNo': bundleSeqNo,
-        ':numChunks': numChunks
+        ':numChunks': numChunks,
+        ':encryptedBundleEncryptionKey': encryptedBundleEncryptionKey,
       }
     }
 

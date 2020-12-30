@@ -189,6 +189,13 @@ const getPasswordBasedEncryptionKey = async (hkdfKey, salt) => {
   return encryptionKey
 }
 
+const generateAndEncryptKeyEncryptionKey = async (key) => {
+  const keyEncryptionKey = await generateKey()
+  const keyEncryptionKeyRaw = await getRawKeyFromKey(keyEncryptionKey)
+  const encryptedKeyEncryptionKey = await encrypt(key, keyEncryptionKeyRaw)
+  return [keyEncryptionKey, encryptedKeyEncryptionKey]
+}
+
 export default {
   getEncryptionKeyParams,
   getCiphertextParams,
@@ -207,6 +214,7 @@ export default {
   decryptJson,
   decryptString,
   getPasswordBasedEncryptionKey,
+  generateAndEncryptKeyEncryptionKey,
   RAW_KEY_TYPE,
   KEY_WILL_BE_USED_TO,
 }
