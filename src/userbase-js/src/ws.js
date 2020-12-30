@@ -1,6 +1,5 @@
 import base64 from 'base64-arraybuffer'
 import uuidv4 from 'uuid/v4'
-import LZString from 'lz-string'
 import localData from './localData'
 import crypto from './Crypto'
 import { getWsUrl } from './utils'
@@ -8,6 +7,7 @@ import statusCodes from './statusCodes'
 import config from './config'
 import errors from './errors'
 import { appendBuffers, arrayBufferToString, stringToArrayBuffer } from './Crypto/utils'
+import { compress, decompress } from './worker'
 
 const wsAlreadyConnected = 'Web Socket already connected'
 
@@ -235,7 +235,7 @@ class Connection {
                 const bundleSeqNo = message.bundleSeqNo
                 const base64Bundle = message.bundle
                 const compressedString = await crypto.aesGcm.decryptString(database.dbKey, base64Bundle)
-                const plaintextString = LZString.decompress(compressedString)
+                const plaintextString = await decompress(compressedString)
                 const bundle = JSON.parse(plaintextString)
 
                 await database.applyBundle(bundle, bundleSeqNo)
@@ -652,7 +652,7 @@ class Connection {
     const bundleArrayBuffer = appendBuffers(bundleChunks).buffer
     const compressedArrayBuffer = await crypto.aesGcm.decrypt(database.dbKey, bundleArrayBuffer)
     const compressedString = arrayBufferToString(compressedArrayBuffer)
-    const bundle = LZString.decompress(compressedString)
+    const bundle = await decompress(compressedString)
 
     delete database.bundleChunks[bundleSeqNo]
 
