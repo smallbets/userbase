@@ -476,9 +476,9 @@ describe('DB Correctness Tests', function () {
       it('Bundle transaction log 5 times with 5 sequential large Userbase transactions', async function () {
         const numBundles = 5
 
-        const ITEM_SIZE = 8 * 1024
+        const ITEM_SIZE = 5 * 1024
         const MAX_TRANSACTIONS = 10
-        expect(ITEM_SIZE * MAX_TRANSACTIONS, 'should be greater than bundle trigger').to.be.greaterThan(BUNDLE_SIZE)
+        expect(ITEM_SIZE * MAX_TRANSACTIONS, 'should be greater than bundle trigger').to.be.gte(BUNDLE_SIZE)
 
         let changeHandlerCallCount = 0
         let successful
@@ -529,12 +529,12 @@ describe('DB Correctness Tests', function () {
       })
 
       // must check the server logs to verify bundling occurs
-      it('Read from bundled transaction after 36 sequential large Userbase transactions', async function () {
-        const numBundles = 36 // 36 ensures the bundle will also be chunked
+      it('Read from bundled transaction after 5 sequential large Userbase transactions', async function () {
+        const numBundles = 5
 
-        const ITEM_SIZE = 8 * 1024
+        const ITEM_SIZE = 5 * 1024
         const MAX_TRANSACTIONS = 10
-        expect(ITEM_SIZE * MAX_TRANSACTIONS, 'should be greater than bundle trigger').to.be.greaterThan(BUNDLE_SIZE)
+        expect(ITEM_SIZE * MAX_TRANSACTIONS, 'should be greater than bundle trigger').to.be.gte(BUNDLE_SIZE)
 
         let globalOperations = []
 
@@ -1022,6 +1022,103 @@ describe('DB Correctness Tests', function () {
           }
 
           successful = true
+        }
+
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+        expect(successful, 'successful state').to.be.true
+
+        await this.test.userbase.deleteUser()
+      })
+
+      // must check the server logs to verify bundling and reading from bundle. Failing to bundle is ok
+      it('Read from bundled transaction after 50 concurrent large Userbase transactions', async function () {
+        const numBundles = 50 // makes sure bundle is split into chunks
+
+        const ITEM_SIZE = 5 * 1024
+        const MAX_TRANSACTIONS = 10
+        expect(ITEM_SIZE * MAX_TRANSACTIONS, 'should be greater than bundle trigger').to.be.gte(BUNDLE_SIZE)
+
+        let globalOperations = []
+
+        let changeHandlerCallCount = 0
+        let successful = false
+        let changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (changeHandlerCallCount === 1 + numBundles) {
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(numBundles * MAX_TRANSACTIONS)
+
+            for (let i = 0; i < items.length; i++) {
+              const insertedItem = items[i]
+
+              // only use expects on failure because there are too many and they take too long to load in DOM
+              if (Object.keys(insertedItem).length !== 3) expect(true, 'item in items array passed to changeHandler incorrect length').to.be.false
+              const { item, itemId, createdBy } = insertedItem
+
+              if (!item || !itemId || !createdBy) expect(true, 'item in items array passed to changeHandler missing keys').to.be.false
+
+              const expectedItem = globalOperations[itemId].item
+              if (item !== expectedItem) expect(true, 'item in items array passed to changeHandler').to.be.false
+              if (globalOperations[itemId].seen !== 0) expect(true, 'item should not already be seen').to.be.false
+              globalOperations[itemId].seen = 1
+            }
+
+            successful = true
+          }
+        }
+
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+
+        const transactions = []
+        for (let i = 0; i < numBundles; i++) {
+          const operations = []
+          for (let j = 0; j < MAX_TRANSACTIONS; j++) {
+            const itemId = ((i * MAX_TRANSACTIONS) + j).toString()
+            const item = getRandomStringOfByteLength(ITEM_SIZE)
+            operations.push({ command: 'Insert', item, itemId: itemId })
+            globalOperations[itemId] = { item, seen: 0 }
+          }
+          transactions.push(this.test.userbase.putTransaction({ databaseName, operations }))
+        }
+        await Promise.all(transactions)
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1 + numBundles)
+        expect(successful, 'successful state').to.be.true
+
+        // give client sufficient time to finish the bundle
+        const TEN_SECONDS = 10 * 1000
+        await wait(TEN_SECONDS)
+
+        await this.test.userbase.signOut()
+        await this.test.userbase.signIn({ username: this.test.username, password: this.test.password, rememberMe: 'none' })
+
+        changeHandlerCallCount = 0
+        successful = false
+        changeHandler = function (items) {
+          changeHandlerCallCount += 1
+
+          if (changeHandlerCallCount === 1) {
+            expect(items, 'array passed to changeHandler').to.have.lengthOf(numBundles * MAX_TRANSACTIONS)
+
+            for (let i = 0; i < items.length; i++) {
+              const insertedItem = items[i]
+
+              // only use expects on failure because there are too many and they take too long to load in DOM
+              if (Object.keys(insertedItem).length !== 3) expect(true, 'item in items array passed to changeHandler incorrect length').to.be.false
+              const { item, itemId, createdBy } = insertedItem
+
+              if (!item || !itemId || !createdBy) expect(true, 'item in items array passed to changeHandler missing keys').to.be.false
+
+              const expectedItem = globalOperations[itemId].item
+              if (item !== expectedItem) expect(true, 'item in items array passed to changeHandler').to.be.false
+              if (globalOperations[itemId].seen !== 1) expect(true, 'item should not already be seen').to.be.false
+              globalOperations[itemId].seen = 2
+            }
+
+            successful = true
+          }
         }
 
         await this.test.userbase.openDatabase({ databaseName, changeHandler })

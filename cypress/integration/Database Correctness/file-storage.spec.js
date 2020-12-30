@@ -485,9 +485,9 @@ describe('File Storage', function () {
           progressHandlerCallCount += 1
           totalBytes = bytesTransferred
 
-          const isFinalChunk = progressHandlerCallCount === (TOTAL_MB * 2) + 1
+          const isLastChunk = progressHandlerCallCount === (TOTAL_MB * 2) + 1
 
-          const expectedBytesTransferred = isFinalChunk
+          const expectedBytesTransferred = isLastChunk
             ? (progressHandlerCallCount - 1) * 1024 * 512 + 1
             : progressHandlerCallCount * 1024 * 512
 
