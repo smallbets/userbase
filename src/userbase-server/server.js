@@ -278,9 +278,23 @@ async function start(express, app, userbaseConfig = {}) {
                   break
                 }
                 case 'Bundle': {
+                  // old clients < userbase-js v2.7.0
                   response = conn.rateLimiter.atCapacity()
                     ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
                     : await db.bundleTransactionLog(userId, connectionId, params.dbId, params.seqNo, params.bundle, params.writers)
+                  break
+                }
+                case 'InitBundleUpload': {
+                  response = conn.rateLimiter.atCapacity()
+                    ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
+                    : await db.initBundleUpload(userId, connectionId, params.dbId, params.seqNo)
+                  break
+                }
+                case 'CompleteBundleUpload': {
+                  response = conn.rateLimiter.atCapacity()
+                    ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
+                    : await db.completeBundleUpload(userId, connectionId, params.dbId, params.seqNo, params.writers, params.numChunks,
+                      params.encryptedBundleEncryptionKey)
                   break
                 }
                 case 'GenerateFileId': {
@@ -631,6 +645,7 @@ async function start(express, app, userbaseConfig = {}) {
         : res.send('Not a websocket!')
     )
     v1Api.get('/public-key', userController.getPublicKey)
+    v1Api.post('/bundle-chunk', db.uploadBundleChunk)
 
     // Userbase admin API
     app.use(express.static(path.join(__dirname + adminPanelDir)))

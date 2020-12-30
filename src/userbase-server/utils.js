@@ -43,6 +43,7 @@ export const estimateSizeOfDdbItem = (item) => {
         bytes += 1 // The size of a null attribute or a Boolean attribute is(length of attribute name) + (1 byte).
         break
       case 'object':
+        if (!value) continue // null values
         if (value.type === 'Buffer') {
           bytes += value.data.length // The size of a binary attribute is (length of attribute name) + (number of raw bytes).
         } else {
@@ -95,6 +96,8 @@ export const arrayBufferToString = (buf) => {
 
   return result
 }
+
+export const bufferToUint16Array = (buf) => new Uint16Array(buf.buffer, buf.byteOffset, buf.byteLength / Uint16Array.BYTES_PER_ELEMENT)
 
 export const getMsUntil1AmPst = () => {
   const time = new Date()

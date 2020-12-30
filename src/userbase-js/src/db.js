@@ -7,7 +7,7 @@ import errors from './errors'
 import statusCodes from './statusCodes'
 import { byteSizeOfString, Queue, objectHasOwnProperty } from './utils'
 import { appendBuffer, arrayBufferToString, stringToArrayBuffer } from './Crypto/utils'
-import api from './api'
+import authApi from './api/auth'
 import config from './config'
 
 const success = 'Success'
@@ -144,6 +144,8 @@ class Database {
 
     // Queue that ensures 'ApplyTransactions' executes one at a time
     this.applyTransactionsQueue = new Queue()
+
+    this.bundleChunks = {}
   }
 
   async applyTransactions(transactions, ownerId) {
@@ -684,7 +686,7 @@ const _openDatabase = async (changeHandler, params) => {
     let timeout
     const firstMessageFromWebSocket = new Promise((resolve, reject) => {
       receivedMessage = resolve
-      timeout = setTimeout(() => reject(new Error('timeout')), 20000)
+      timeout = setTimeout(() => reject(new Error('timeout')), 30000)
     })
 
     const { dbNameHash, newDatabaseParams, databaseId, shareToken } = params
@@ -1284,7 +1286,7 @@ const _uploadChunk = async (batch, chunk, dbId, fileId, fileEncryptionKey, chunk
   const plaintextChunk = await _readBlob(chunk)
 
   // encrypt each chunk with new encryption key to maintain lower usage of file encryption key
-  const [chunkEncryptionKey, encryptedChunkEncryptionKey] = await _generateAndEncryptKeyEncryptionKey(fileEncryptionKey)
+  const [chunkEncryptionKey, encryptedChunkEncryptionKey] = await crypto.aesGcm.generateAndEncryptKeyEncryptionKey(fileEncryptionKey)
   const encryptedChunk = await crypto.aesGcm.encrypt(chunkEncryptionKey, plaintextChunk)
 
   const uploadChunkParams = {
@@ -1339,13 +1341,6 @@ const _buildFileMetadata = async (params, database) => {
   return { itemKey, fileMetadata }
 }
 
-const _generateAndEncryptKeyEncryptionKey = async (key) => {
-  const keyEncryptionKey = await crypto.aesGcm.generateKey()
-  const keyEncryptionKeyRaw = await crypto.aesGcm.getRawKeyFromKey(keyEncryptionKey)
-  const encryptedKeyEncryptionKey = await crypto.aesGcm.encrypt(key, keyEncryptionKeyRaw)
-  return [keyEncryptionKey, encryptedKeyEncryptionKey]
-}
-
 const _validateUploadFile = (params) => {
   _validateDbInput(params)
   if (objectHasOwnProperty(params, 'progressHandler') && typeof params.progressHandler !== 'function') {
@@ -1364,7 +1359,7 @@ const uploadFile = async (params) => {
       const { itemKey, fileMetadata } = await _buildFileMetadata(params, database)
 
       // generate a new key particular to this file to maintain lower usage of dbKey
-      const [fileEncryptionKey, encryptedFileEncryptionKey] = await _generateAndEncryptKeyEncryptionKey(database.dbKey)
+      const [fileEncryptionKey, encryptedFileEncryptionKey] = await crypto.aesGcm.generateAndEncryptKeyEncryptionKey(database.dbKey)
       const encryptedFileMetadata = await crypto.aesGcm.encryptJson(fileEncryptionKey, fileMetadata)
 
       // server generates unique file identifier
@@ -2032,7 +2027,7 @@ const _shareDatabaseWithUsername = async (params, readOnly, resharingAllowed, re
   try {
     // get recipient's public key to use to generate a shared key, and retrieve verified users list if requireVerified set to true
     const [recipientPublicKey, verifiedUsers, database] = await Promise.all([
-      api.auth.getPublicKey(username),
+      authApi.getPublicKey(username),
       requireVerified && _openVerifiedUsersDatabase(),
       _getDatabase(databaseName, databaseId, encryptionMode),
     ])

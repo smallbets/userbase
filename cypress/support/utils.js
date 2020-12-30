@@ -1,8 +1,16 @@
 export const getRandomString = () => Math.random().toString().substring(2)
 
-export const getStringOfByteLength = (byteLength) => {
-  const BYTES_IN_STRING = 2
-  return 'a'.repeat(byteLength / BYTES_IN_STRING)
+const BYTES_IN_STRING = 2
+
+export const getStringOfByteLength = (byteLength) => 'a'.repeat(byteLength / BYTES_IN_STRING)
+
+export const getRandomStringOfByteLength = (byteLength) => {
+  const numRandomStrings = byteLength / (getRandomString().length * BYTES_IN_STRING)
+  let string = ''
+  for (let i = 0; i < numRandomStrings; i++) {
+    string += getRandomString()
+  }
+  return string
 }
 
 export const wait = (ms) => new Promise(resolve => {
