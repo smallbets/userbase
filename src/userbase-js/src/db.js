@@ -7,7 +7,7 @@ import errors from './errors'
 import statusCodes from './statusCodes'
 import { byteSizeOfString, Queue, objectHasOwnProperty } from './utils'
 import { appendBuffer, arrayBufferToString, stringToArrayBuffer } from './Crypto/utils'
-import api from './api'
+import authApi from './api/auth'
 import config from './config'
 
 const success = 'Success'
@@ -686,7 +686,7 @@ const _openDatabase = async (changeHandler, params) => {
     let timeout
     const firstMessageFromWebSocket = new Promise((resolve, reject) => {
       receivedMessage = resolve
-      timeout = setTimeout(() => reject(new Error('timeout')), 20000)
+      timeout = setTimeout(() => reject(new Error('timeout')), 30000)
     })
 
     const { dbNameHash, newDatabaseParams, databaseId, shareToken } = params
@@ -2027,7 +2027,7 @@ const _shareDatabaseWithUsername = async (params, readOnly, resharingAllowed, re
   try {
     // get recipient's public key to use to generate a shared key, and retrieve verified users list if requireVerified set to true
     const [recipientPublicKey, verifiedUsers, database] = await Promise.all([
-      api.auth.getPublicKey(username),
+      authApi.getPublicKey(username),
       requireVerified && _openVerifiedUsersDatabase(),
       _getDatabase(databaseName, databaseId, encryptionMode),
     ])

@@ -3,7 +3,7 @@ import aesGcm from './aes-gcm'
 import hkdf from './hkdf'
 import sha256 from './sha-256'
 import { hexStringToArrayBuffer } from './utils'
-import api from '../api'
+import authApi from '../api/auth'
 
 const KEY_IS_EXTRACTABLE = true
 const KEY_WILL_BE_USED_TO = ['encrypt'] // unused
@@ -20,7 +20,7 @@ const getServerPublicKey = async () => {
   if (serverPublicKey) {
     return serverPublicKey
   } else {
-    serverPublicKey = await api.auth.getServerPublicKey() // eslint-disable-line require-atomic-updates
+    serverPublicKey = await authApi.getServerPublicKey() // eslint-disable-line require-atomic-updates
     return serverPublicKey
   }
 }

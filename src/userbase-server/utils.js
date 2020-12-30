@@ -97,6 +97,8 @@ export const arrayBufferToString = (buf) => {
   return result
 }
 
+export const bufferToUint16Array = (buf) => new Uint16Array(buf.buffer, buf.byteOffset, buf.byteLength / Uint16Array.BYTES_PER_ELEMENT)
+
 export const getMsUntil1AmPst = () => {
   const time = new Date()
 

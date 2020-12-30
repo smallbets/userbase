@@ -15,6 +15,8 @@ import {
   getTtl,
   stringToArrayBuffer,
   arrayBufferToString,
+  bufferToUint16Array,
+  truncateSessionId,
 } from './utils'
 import crypto from './crypto'
 
@@ -27,8 +29,13 @@ const SECONDS_IN_A_DAY = 60 * 60 * HOURS_IN_A_DAY
 const MS_IN_A_DAY = SECONDS_IN_A_DAY * 1000
 
 const VALIDATION_MESSAGE_LENGTH = 16
+const ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID = 16
+const BASE_64_STRING_LENGTH_FOR_32_BYTES = 44
 
 const MAX_USERS_ALLOWED_FOR_ACCESS_CONTROL = 10
+
+const ONE_KB = 1024
+const KB_512 = 512 * ONE_KB
 
 const getS3DbStateKey = (databaseId, bundleSeqNo) => `${databaseId}/${bundleSeqNo}`
 const getS3DbWritersKey = (databaseId, bundleSeqNo) => `${databaseId}/writers/${bundleSeqNo}`
@@ -1045,19 +1052,95 @@ exports.bundleTransactionLog = async function (userId, connectionId, databaseId,
   }
 }
 
-exports.uploadBundleChunk = async function (userId, connectionId, databaseId, seqNo, chunkNumber, chunk) {
+exports.initBundleUpload = async function (userId, connectionId, databaseId, bundleSeqNo) {
   let logChildObject = {}
   try {
-    logChildObject = { userId, connectionId, databaseId, seqNo, chunkNumber }
+    logChildObject = { userId, connectionId, databaseId, bundleSeqNo }
+    logger.child(logChildObject).info('Initializing bundle upload')
+
+    if (!databaseId) throw { status: statusCodes['Bad Request'], error: { message: 'Missing database id' } }
+
+    if (!connections.isDatabaseOpen(userId, connectionId, databaseId)) {
+      return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Database not open')
+    }
+
+    const database = await findDatabaseByDatabaseId(databaseId)
+    if (!database) throw { status: statusCodes['Not Found'], message: 'Database not found' }
+
+    const lastBundleSeqNo = database['bundle-seq-no']
+    if (lastBundleSeqNo >= bundleSeqNo) {
+      throw { status: statusCodes['Bad Request'], message: 'Bundle sequence no must be greater than current bundle' }
+    }
+
+    // generate a new unique token for this bundle upload
+    const token = crypto
+      .randomBytes(ACCEPTABLE_RANDOM_BYTES_FOR_SAFE_SESSION_ID * 2)
+      .toString('base64')
+
+    // cache the token so server knows user is in the process of uploading this bundle
+    connections.cacheToken(userId, token + databaseId + bundleSeqNo)
+    logChildObject.token = truncateSessionId(token)
+
+    logger.child(logChildObject).info('Initialized bundle upload')
+
+    return responseBuilder.successResponse({ token })
+  } catch (e) {
+    logChildObject.err = e
+
+    logger.child(logChildObject).warn('Failed to init bundle upload')
+
+    if (e.status && e.error) return responseBuilder.errorResponse(e.status, e.error.message)
+    else return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to init bundle upload')
+  }
+}
+
+const _validateBundleUploadTokenHeader = (logChildObject, req, res) => {
+  try {
+    const authorizationHeader = req.get('authorization')
+    if (!authorizationHeader) throw 'Authorization header missing.'
+
+    const authorizationHeaderValues = authorizationHeader.split(' ')
+    const authType = authorizationHeaderValues[0]
+    if (!authType || authType !== 'Bearer') throw 'Authorization scheme must be of type Bearer.'
+
+    const token = authorizationHeaderValues[1]
+    logChildObject.token = truncateSessionId(token)
+
+    if (!token) throw 'Token missing.'
+    if (token.length !== BASE_64_STRING_LENGTH_FOR_32_BYTES) throw 'Token is incorrect length.'
+
+    return token
+  } catch (e) {
+    res.set('WWW-Authenticate', 'Bearer realm="Upload bundle chunk"')
+
+    throw {
+      status: statusCodes['Bad Request'],
+      error: { message: e }
+    }
+  }
+}
+
+exports.uploadBundleChunk = async function (req, res) {
+  let logChildObject = {}
+  try {
+    const { userId, databaseId, chunkNumber, seqNo } = req.query
+    logChildObject = { userId, databaseId, chunkNumber, bundleSeqNo: seqNo }
+
+    const token = _validateBundleUploadTokenHeader(logChildObject, req, res)
 
     const bundleSeqNo = Number(seqNo)
     const chunkNo = Number(chunkNumber)
 
     if (!bundleSeqNo) throw { status: statusCodes['Bad Request'], message: `Missing bundle sequence number` }
 
-    if (!connections.isDatabaseOpen(userId, connectionId, databaseId)) {
-      throw { status: statusCodes['Bad Request'], message: 'Database not open' }
+    if (!connections.isTokenCached(userId, token + databaseId + bundleSeqNo)) {
+      throw { status: statusCodes['Bad Request'], message: 'Token expired' }
     }
+
+    const contentLength = Number(req.headers['content-length'])
+    logChildObject.chunkSize = contentLength
+    if (!contentLength) throw { status: statusCodes['Bad Request'], message: 'Missing chunk' }
+    else if (contentLength > KB_512) throw { status: statusCodes['Bad Request'], message: 'Chunk too large' }
 
     const database = await findDatabaseByDatabaseId(databaseId)
     if (!database) throw { status: statusCodes['Not Found'], message: 'Database not found' }
@@ -1070,21 +1153,24 @@ exports.uploadBundleChunk = async function (userId, connectionId, databaseId, se
     const dbStateParams = {
       Bucket: setup.getDbStatesBucketName(),
       Key: getS3DbStateChunkKey(databaseId, bundleSeqNo, chunkNo),
-      Body: Buffer.from(stringToArrayBuffer(chunk)) // storing as the string doesn't work. gets messed up in the conversion
+      Body: req
     }
     await setup.s3().upload(dbStateParams).promise()
 
     logger.child(logChildObject).info('Uploaded bundle chunk')
-    return responseBuilder.successResponse({})
+    return res.status(statusCodes['Success']).send()
   } catch (e) {
     logChildObject.err = e
 
-    if (e.status && e.error) return responseBuilder.errorResponse(e.status, e.error.message)
-    else return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to upload bundle chunk')
+    logger.child(logChildObject).warn('Failed to upload bundle chunk')
+
+    if (e.status && e.error) return res.status(e.status).send(e.error.message)
+    else return res.status(statusCodes['Internal Server Error']).send('Failed to upload bundle chunk')
   }
 }
 
-exports.completeBundleUpload = async function (userId, connectionId, databaseId, seqNo, writersString, numChunks) {
+exports.completeBundleUpload = async function (userId, connectionId, databaseId, seqNo, writersString, numChunks,
+  encryptedBundleEncryptionKey) {
   let logChildObject = {}
   try {
     logChildObject = { userId, connectionId, databaseId, seqNo, numChunks }
@@ -1137,8 +1223,10 @@ exports.completeBundleUpload = async function (userId, connectionId, databaseId,
   } catch (e) {
     logChildObject.err = e
 
+    logger.child(logChildObject).warn('Failed to complete bundle upload')
+
     if (e.status && e.error) return responseBuilder.errorResponse(e.status, e.error.message)
-    else return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to upload bundle chunk')
+    else return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to complete bundle upload')
   }
 }
 
@@ -1214,7 +1302,10 @@ exports.getBundleChunk = async function (databaseId, bundleSeqNo, chunkNo) {
     }
 
     const bundleChunkObject = await setup.s3().getObject(params).promise()
-    return arrayBufferToString(new Uint8Array(bundleChunkObject.Body).buffer)
+
+    // conversion to Uint16Array before converting to string ensures string encoding
+    // takes up same number of bytes as array buffer
+    return arrayBufferToString(bufferToUint16Array(bundleChunkObject.Body))
   } catch (e) {
     throw new Error(`Failed to query db state chunk with ${e}`)
   }
@@ -1244,7 +1335,7 @@ exports.generateFileId = async function (logChildObject, userId, connectionId, d
     logChildObject.fileId = fileId
 
     // cache the file ID so server knows user is in the process of uploading this file
-    connections.cacheFileId(userId, fileId)
+    connections.cacheToken(userId, fileId)
 
     return responseBuilder.successResponse({ fileId })
   } catch (e) {
@@ -1263,7 +1354,7 @@ const _validateFileUpload = (userId, connectionId, databaseId, fileId) => {
   }
 
   // server makes sure user is already in the process of uploading this exact file
-  if (!connections.isFileIdCached(userId, fileId)) {
+  if (!connections.isTokenCached(userId, fileId)) {
     throw { status: statusCodes['Not Found'], error: { message: 'File not found' } }
   }
 }

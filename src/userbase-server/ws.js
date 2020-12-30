@@ -468,15 +468,16 @@ class Connection {
         dbNameHash,
         isOwner,
         bundleSeqNo,
+        chunkNo,
       }
 
       if (chunkNo === 0) payload.isFirstChunk = true
-      if (chunkNo === numChunks - 1) payload.isFinalChunk = true
+      if (chunkNo === numChunks - 1) payload.isLastChunk = true
 
       batch.push(db.getBundleChunk(databaseId, bundleSeqNo, chunkNo))
       payloads.push(payload)
 
-      if (batch === BUNDLE_CHUNK_BATCH_SIZE || payload.isFinalChunk) {
+      if (batch.length === BUNDLE_CHUNK_BATCH_SIZE || payload.isLastChunk) {
         const chunks = await Promise.all(batch)
 
         for (let j = 0; j < payloads.length; j++) {
@@ -485,7 +486,7 @@ class Connection {
           this.socket.send(JSON.stringify(payloadWithChunk))
 
           logger
-            .child({ ...payloadWithChunk, databaseId, chunkNo: j, chunk: undefined })
+            .child({ ...payloadWithChunk, databaseId, chunk: undefined })
             .info('Sent bundle chunk to client')
         }
 
@@ -499,7 +500,7 @@ class Connection {
 export default class Connections {
   static register(userId, socket, clientId, adminId, appId) {
     if (!Connections.sockets) Connections.sockets = {}
-    if (!Connections.sockets[userId]) Connections.sockets[userId] = { numConnections: 0, fileIds: {}, shareTokenValidationMessages: {} }
+    if (!Connections.sockets[userId]) Connections.sockets[userId] = { numConnections: 0, tokens: {}, shareTokenValidationMessages: {} }
     if (!Connections.sockets[adminId]) Connections.sockets[adminId] = { numConnections: 0 }
     if (!Connections.sockets[appId]) Connections.sockets[appId] = { numConnections: 0 }
 
@@ -528,14 +529,14 @@ export default class Connections {
     return connection
   }
 
-  static openDatabase({ userId, connectionId, databaseId, bundleSeqNo, numChunks, dbNameHash, dbKey, reopenAtSeqNo, isOwner, ownerId,
+  static openDatabase({ userId, connectionId, databaseId, bundleSeqNo, numChunks, encryptedBundleEncryptionKey, dbNameHash, dbKey, reopenAtSeqNo, isOwner, ownerId,
     attribution, plaintextDbKey, shareTokenEncryptedDbKey, shareTokenEncryptionKeySalt, shareTokenReadWritePermissions }) {
     if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId][connectionId]) return
 
     const conn = Connections.sockets[userId][connectionId]
 
     if (!conn.databases[databaseId]) {
-      conn.openDatabase(databaseId, dbNameHash, bundleSeqNo, numChunks, reopenAtSeqNo, isOwner, ownerId, attribution, shareTokenReadWritePermissions)
+      conn.openDatabase(databaseId, dbNameHash, bundleSeqNo, numChunks, encryptedBundleEncryptionKey, reopenAtSeqNo, isOwner, ownerId, attribution, shareTokenReadWritePermissions)
 
       if (!Connections.sockets[databaseId]) Connections.sockets[databaseId] = { numConnections: 0 }
       Connections.sockets[databaseId][connectionId] = userId
@@ -669,25 +670,25 @@ export default class Connections {
     }
   }
 
-  static cacheFileId(userId, fileId) {
-    if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId].fileIds) return
+  static cacheToken(userId, token) {
+    if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId].tokens) return
 
-    // after CACHE_LIFE seconds, delete the fileId from the cache
-    Connections.sockets[userId].fileIds[fileId] = setTimeout(() => {
-      if (Connections.sockets && Connections.sockets[userId] && Connections.sockets[userId].fileIds) {
-        delete Connections.sockets[userId].fileIds[fileId]
+    // after CACHE_LIFE seconds, delete the token from the cache
+    Connections.sockets[userId].tokens[token] = setTimeout(() => {
+      if (Connections.sockets && Connections.sockets[userId] && Connections.sockets[userId].tokens) {
+        delete Connections.sockets[userId].tokens[token]
       }
     },
       CACHE_LIFE
     )
   }
 
-  static isFileIdCached(userId, fileId) {
-    if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId].fileIds || !Connections.sockets[userId].fileIds[fileId]) return false
+  static isTokenCached(userId, token) {
+    if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId].tokens || !Connections.sockets[userId].tokens[token]) return false
 
     // reset the cache
-    clearTimeout(Connections.sockets[userId].fileIds[fileId])
-    this.cacheFileId(userId, fileId)
+    clearTimeout(Connections.sockets[userId].tokens[token])
+    this.cacheToken(userId, token)
     return true
   }
 

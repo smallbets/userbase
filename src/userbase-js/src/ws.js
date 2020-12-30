@@ -8,6 +8,7 @@ import config from './config'
 import errors from './errors'
 import { appendBuffers, arrayBufferToString, stringToArrayBuffer } from './Crypto/utils'
 import { compress, decompress } from './worker'
+import { uploadBundleChunk } from './api/db'
 
 const wsAlreadyConnected = 'Web Socket already connected'
 
@@ -266,7 +267,7 @@ class Connection {
             }
 
             case 'DownloadBundleChunk': {
-              const { dbId, dbNameHash, isOwner, bundleSeqNo, isFirstChunk, isFinalChunk, chunk } = message
+              const { dbId, dbNameHash, isOwner, bundleSeqNo, isFirstChunk, isLastChunk, chunk } = message
 
               // if owner, must have opened the database via databaseName
               const database = isOwner
@@ -279,7 +280,7 @@ class Connection {
 
               database.bundleChunks[bundleSeqNo].push(chunk)
 
-              if (isFinalChunk) {
+              if (isLastChunk) {
                 if (database.finishedWaitingForBundle) database.finishedWaitingForBundle()
                 else database.finishedWaitingForBundle = true
               }
@@ -304,7 +305,7 @@ class Connection {
             case 'Update':
             case 'Delete':
             case 'BatchTransaction':
-            case 'UploadBundleChunk':
+            case 'InitBundleUpload':
             case 'CompleteBundleUpload':
             case 'GenerateFileId':
             case 'UploadFileChunk':
@@ -663,18 +664,20 @@ class Connection {
   }
 
   async uploadBundle(dbId, seqNo, bundleArrayBuffer) {
+    const action = 'InitBundleUpload'
+    const params = { dbId, seqNo }
+    const initResponse = await this.request(action, params)
+    const { token } = initResponse.data
+
     let position = 0
     let chunkNumber = 0
     let batch = [] // will use this to send chunks to server in batches of BUNDLE_CHUNKS_PER_BATCH
 
     while (position < bundleArrayBuffer.byteLength) {
-      // read a chunk at a time to keep memory overhead low
-      const chunkArrayBuffer = bundleArrayBuffer.slice(position, position + BUNDLE_CHUNK_SIZE)
-      const chunk = arrayBufferToString(chunkArrayBuffer)
+      const chunk = bundleArrayBuffer.slice(position, position + BUNDLE_CHUNK_SIZE)
 
-      const action = 'UploadBundleChunk'
-      const params = { dbId, seqNo, chunkNumber, chunk }
-      batch.push(this.request(action, params))
+      // using XHR to send binary data because Safari has trouble with string encoding over WebSocket
+      batch.push(uploadBundleChunk(token, this.session.userId, dbId, seqNo, chunkNumber, chunk))
 
       if (batch.length === BUNDLE_CHUNKS_PER_BATCH) {
         await Promise.all(batch)

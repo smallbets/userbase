@@ -1,5 +1,5 @@
 import base64 from 'base64-arraybuffer'
-import api from './api'
+import authApi from './api/auth'
 import ws from './ws'
 import crypto from './Crypto'
 import localData from './localData'
@@ -229,7 +229,7 @@ const _generateKeysAndSignUp = async (username, password, seed, email, profile, 
   const { ecKeyData, keySalts } = await _generateKeys(seed)
 
   try {
-    const session = await api.auth.signUp(
+    const session = await authApi.signUp(
       username,
       passwordToken,
       ecKeyData,
@@ -373,7 +373,7 @@ const _getSeedStringFromPasswordBasedBackup = async (passwordHkdfKey, passwordBa
 
 const _signInWrapper = async (username, passwordToken, sessionLength) => {
   try {
-    const apiSignInResult = await api.auth.signIn(username, passwordToken, sessionLength)
+    const apiSignInResult = await authApi.signIn(username, passwordToken, sessionLength)
     return apiSignInResult
   } catch (e) {
     _parseGenericErrors(e)
@@ -392,7 +392,7 @@ const _signInWrapper = async (username, passwordToken, sessionLength) => {
 
 const _getPasswordSaltsOverRestEndpoint = async (username) => {
   try {
-    const passwordSalts = await api.auth.getPasswordSalts(username)
+    const passwordSalts = await authApi.getPasswordSalts(username)
     return passwordSalts
   } catch (e) {
     _parseGenericErrors(e)
@@ -582,7 +582,7 @@ const signInWithSession = async (appId, sessionLength) => {
 
     let apiSignInWithSessionResult
     try {
-      apiSignInWithSessionResult = await api.auth.signInWithSession(sessionId, sessionLength)
+      apiSignInWithSessionResult = await authApi.signInWithSession(sessionId, sessionLength)
     } catch (e) {
       _parseGenericErrors(e)
       _parseSessionLengthError(e)

@@ -284,10 +284,10 @@ async function start(express, app, userbaseConfig = {}) {
                     : await db.bundleTransactionLog(userId, connectionId, params.dbId, params.seqNo, params.bundle, params.writers)
                   break
                 }
-                case 'UploadBundleChunk': {
+                case 'InitBundleUpload': {
                   response = conn.rateLimiter.atCapacity()
                     ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
-                    : await db.uploadBundleChunk(userId, connectionId, params.dbId, params.seqNo, params.chunkNumber, params.chunk)
+                    : await db.initBundleUpload(userId, connectionId, params.dbId, params.seqNo)
                   break
                 }
                 case 'CompleteBundleUpload': {
@@ -645,6 +645,7 @@ async function start(express, app, userbaseConfig = {}) {
         : res.send('Not a websocket!')
     )
     v1Api.get('/public-key', userController.getPublicKey)
+    v1Api.post('/bundle-chunk', db.uploadBundleChunk)
 
     // Userbase admin API
     app.use(express.static(path.join(__dirname + adminPanelDir)))
