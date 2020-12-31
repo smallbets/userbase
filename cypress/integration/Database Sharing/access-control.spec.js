@@ -186,6 +186,45 @@ describe('DB Sharing Tests', function () {
         await this.test.userbase.deleteUser()
       })
 
+      it('Give recipient write access via transaction', async function () {
+        const recipient = await signUp(this.test.userbase)
+        await this.test.userbase.signOut()
+
+        const sender = await signUp(this.test.userbase)
+
+        const testItem = 'hello world!'
+        const testItemId = 'test-id'
+        const writeAccess = { users: [{ username: recipient.username }] }
+
+        let changeHandlerCallCount = 0
+        const changeHandler = function (items) {
+          expect(items, 'array passed to changeHandler').to.be.a('array')
+
+          if (changeHandlerCallCount) {
+            const expectedItem = {
+              itemId: testItemId,
+              item: testItem,
+              writeAccess,
+              createdBy: { username: sender.username, timestamp: items[0].createdBy.timestamp },
+            }
+            expect(items, 'array passed to changeHandler').to.deep.equal([expectedItem])
+          }
+
+          changeHandlerCallCount += 1
+        }
+
+        // insert with write access into database
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+        await this.test.userbase.putTransaction({ databaseName, operations: [{ command: 'Insert', item: testItem, itemId: testItemId, writeAccess }] })
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
+
+        // clean up
+        await this.test.userbase.deleteUser()
+        await this.test.userbase.signIn({ username: recipient.username, password: recipient.password, rememberMe: 'none' })
+        await this.test.userbase.deleteUser()
+      })
+
       it('Recipient can update item', async function () {
         const recipient = await signUp(this.test.userbase)
         await this.test.userbase.signOut()
@@ -198,6 +237,54 @@ describe('DB Sharing Tests', function () {
         const testItemId = 'test-id'
         const writeAccess = { users: [{ username: recipient.username }] }
         await this.test.userbase.insertItem({ databaseName, item: testItem, itemId: testItemId, writeAccess })
+
+        // sender gets database share token
+        const { shareToken } = await this.test.userbase.shareDatabase({ databaseName, readOnly: false })
+
+        await this.test.userbase.signOut()
+
+        // recipient signs in and checks if can update the item
+        await this.test.userbase.signIn({ username: recipient.username, password: recipient.password, rememberMe: 'none' })
+
+        let changeHandlerCallCount = 0
+        const changeHandler = function (items) {
+          expect(items, 'array passed to changeHandler').to.be.a('array')
+
+          const expectedItem = {
+            itemId: testItemId,
+            item: testItem + (changeHandlerCallCount === 0 ? '' : '!'),
+            writeAccess,
+            createdBy: { username: sender.username, timestamp: items[0].createdBy.timestamp },
+          }
+          if (changeHandlerCallCount === 1) expectedItem.updatedBy = { username: recipient.username, timestamp: items[0].updatedBy.timestamp }
+          expect(items, 'array passed to changeHandler').to.deep.equal([expectedItem])
+
+          changeHandlerCallCount += 1
+        }
+
+        await this.test.userbase.openDatabase({ shareToken, changeHandler })
+        await this.test.userbase.updateItem({ shareToken, item: testItem + '!', itemId: testItemId })
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(2)
+
+        // clean up
+        await this.test.userbase.deleteUser()
+        await this.test.userbase.signIn({ username: sender.username, password: sender.password, rememberMe: 'none' })
+        await this.test.userbase.deleteUser()
+      })
+
+      it('Recipient can update item after being given write access via transaction', async function () {
+        const recipient = await signUp(this.test.userbase)
+        await this.test.userbase.signOut()
+
+        const sender = await signUp(this.test.userbase)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        // insert, then update item with write access into database
+        const testItem = 'hello world!'
+        const testItemId = 'test-id'
+        const writeAccess = { users: [{ username: recipient.username }] }
+        await this.test.userbase.putTransaction({ databaseName, operations: [{ command: 'Insert', item: testItem, itemId: testItemId, writeAccess }] })
 
         // sender gets database share token
         const { shareToken } = await this.test.userbase.shareDatabase({ databaseName, readOnly: false })

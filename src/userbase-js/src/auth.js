@@ -163,9 +163,9 @@ const _validateSignUpOrSignInInput = (params) => {
   }
 }
 
-const _generatePasswordToken = async (password, seed) => {
+const _generatePasswordToken = async (password, seed, passwordHashAlgo) => {
   const passwordSalt = crypto.scrypt.generateSalt()
-  const passwordHash = await crypto.scrypt.hash(password, passwordSalt)
+  const passwordHash = await crypto.scrypt.hash(password, passwordSalt, passwordHashAlgo)
 
   const passwordHkdfKey = await crypto.hkdf.importHkdfKeyFromString(passwordHash)
 
@@ -219,12 +219,12 @@ const _generateKeys = async (seed) => {
   return { ecKeyData, keySalts }
 }
 
-const _generateKeysAndSignUp = async (username, password, seed, email, profile, sessionLength) => {
+const _generateKeysAndSignUp = async (username, password, seed, passwordHashAlgo, email, profile, sessionLength) => {
   const {
     passwordToken,
     passwordSalts,
     passwordBasedBackup
-  } = await _generatePasswordToken(password, seed)
+  } = await _generatePasswordToken(password, seed, passwordHashAlgo)
 
   const { ecKeyData, keySalts } = await _generateKeys(seed)
 
@@ -273,7 +273,7 @@ const signUp = async (params) => {
   try {
     _validateSignUpInput(params)
 
-    const { password, profile, rememberMe = 'session' } = params
+    const { password, profile, passwordHashAlgo, rememberMe = 'session' } = params
 
     const username = params.username.toLowerCase()
     const email = params.email && params.email.toLowerCase()
@@ -283,7 +283,7 @@ const signUp = async (params) => {
 
     const sessionLength = _calculateSessionLengthMs(params.sessionLength)
 
-    const { sessionId, creationDate, expirationDate, userId, authToken } = await _generateKeysAndSignUp(username, password, seed, email, profile, sessionLength)
+    const { sessionId, creationDate, expirationDate, userId, authToken } = await _generateKeysAndSignUp(username, password, seed, passwordHashAlgo, email, profile, sessionLength)
     const session = { username, userId, sessionId, creationDate, expirationDate, authToken }
 
     const seedString = base64.encode(seed)
@@ -417,10 +417,10 @@ const _getPasswordSaltsOverWebSocket = async () => {
   }
 }
 
-const _rebuildPasswordToken = async (password, passwordSalts) => {
+const _rebuildPasswordToken = async (password, passwordSalts, passwordHashAlgo) => {
   const { passwordSalt, passwordTokenSalt } = passwordSalts
 
-  const passwordHash = await crypto.scrypt.hash(password, new Uint8Array(base64.decode(passwordSalt)))
+  const passwordHash = await crypto.scrypt.hash(password, new Uint8Array(base64.decode(passwordSalt)), passwordHashAlgo)
   const passwordHkdfKey = await crypto.hkdf.importHkdfKeyFromString(passwordHash)
   const passwordToken = await crypto.hkdf.getPasswordToken(passwordHkdfKey, base64.decode(passwordTokenSalt))
 
@@ -432,12 +432,12 @@ const signIn = async (params) => {
     _validateSignUpOrSignInInput(params)
 
     const username = params.username.toLowerCase()
-    const { password, rememberMe = 'session' } = params
+    const { password, passwordHashAlgo, rememberMe = 'session' } = params
 
     const appId = config.getAppId()
 
     const passwordSalts = await _getPasswordSaltsOverRestEndpoint(username)
-    const { passwordHkdfKey, passwordToken } = await _rebuildPasswordToken(password, passwordSalts)
+    const { passwordHkdfKey, passwordToken } = await _rebuildPasswordToken(password, passwordSalts, passwordHashAlgo)
 
     const sessionLength = _calculateSessionLengthMs(params.sessionLength)
 
@@ -659,7 +659,7 @@ const _buildUpdateUserParams = async (params, newSeed) => {
     ])
 
     // current password
-    const { passwordToken } = await _rebuildPasswordToken(params.currentPassword, currentPasswordSalts)
+    const { passwordToken } = await _rebuildPasswordToken(params.currentPassword, currentPasswordSalts, params.passwordHashAlgo)
     params.currentPasswordToken = passwordToken
     delete params.currentPassword
 

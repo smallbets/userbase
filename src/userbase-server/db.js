@@ -670,41 +670,6 @@ const _getUsersForWriteAccess = function (users, appId, userPromises, userPromis
   }
 }
 
-const _prepareTransactionForStorage = function (transaction) {
-  const { command } = transaction
-  if (command === 'Insert' || command === 'Update') {
-    const writeAccess = transaction['write-access']
-    if (writeAccess) {
-      return {
-        ...transaction,
-        ['write-access']: {
-          ...writeAccess,
-          users: writeAccess.users
-            ? writeAccess.users.map(u => u.userId) // only need to store array of user ID's
-            : undefined
-        }
-      }
-    }
-  } else if (command === 'BatchTransaction') {
-    return {
-      ...transaction,
-      operations: transaction.operations.map(op => {
-        const { writeAccess } = op
-        return {
-          ...op,
-          writeAccess: (writeAccess && writeAccess.users)
-            ? {
-              ...writeAccess,
-              users: writeAccess.users.map(u => u.userId) // only need to store array of user ID's
-            }
-            : writeAccess
-        }
-      })
-    }
-  }
-  return transaction
-}
-
 const _setUsersForWriteAccess = async function (transaction, appId) {
   const { command } = transaction
 
@@ -712,12 +677,12 @@ const _setUsersForWriteAccess = async function (transaction, appId) {
   const userPromiseIndexes = {}
 
   if (command === 'Insert' || command === 'Update') {
-    const writeAccess = transaction['write-access']
+    const { writeAccess } = transaction
 
     if (writeAccess && writeAccess.users) {
       _getUsersForWriteAccess(writeAccess.users, appId, userPromises, userPromiseIndexes)
       const users = await Promise.all(userPromises)
-      transaction['write-access'].users = writeAccess.users.map(u => _setUserForWriteAccess(u.username.toLowerCase(), userPromiseIndexes, users))
+      transaction.writeAccess.users = writeAccess.users.map(u => _setUserForWriteAccess(u.username.toLowerCase(), userPromiseIndexes, users))
     }
   } else if (command === 'BatchTransaction') {
     const { operations } = transaction
@@ -772,7 +737,7 @@ const _incrementSeqNo = async function (transaction, databaseId) {
   }
 }
 
-const putTransaction = async function (transaction, userId, connectionId, databaseId, appId) {
+const putTransaction = async function (transaction, userId, appId, connectionId, databaseId) {
   if (!connections.isDatabaseOpen(userId, connectionId, databaseId)) throw {
     status: statusCodes['Bad Request'],
     error: { name: 'DatabaseNotOpen' }
@@ -812,7 +777,7 @@ const putTransaction = async function (transaction, userId, connectionId, databa
       // write the transaction using the next sequence number
       const params = {
         TableName: setup.transactionsTableName,
-        Item: _prepareTransactionForStorage(transaction),
+        Item: transaction,
         ConditionExpression: 'attribute_not_exists(#databaseId)',
         ExpressionAttributeNames: {
           '#databaseId': 'database-id'
@@ -881,7 +846,7 @@ const doCommand = async function ({ command, userId, appId, connectionId, databa
       case 'Update': {
         transaction.record = encryptedItem
         if (writeAccess || writeAccess === false) {
-          transaction['write-access'] = writeAccess
+          transaction.writeAccess = writeAccess
         }
         break
       }
@@ -900,7 +865,7 @@ const doCommand = async function ({ command, userId, appId, connectionId, databa
       }
     }
 
-    const sequenceNo = await putTransaction(transaction, userId, connectionId, databaseId, appId)
+    const sequenceNo = await putTransaction(transaction, userId, appId, connectionId, databaseId)
     return responseBuilder.successResponse({ sequenceNo })
   } catch (e) {
     const message = `Failed to ${command}`
@@ -918,7 +883,7 @@ const doCommand = async function ({ command, userId, appId, connectionId, databa
 }
 exports.doCommand = doCommand
 
-exports.batchTransaction = async function (userId, connectionId, databaseId, operations) {
+exports.batchTransaction = async function (userId, appId, connectionId, databaseId, operations) {
   if (!databaseId) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database id')
   if (!operations || !operations.length) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing operations')
 
@@ -956,11 +921,11 @@ exports.batchTransaction = async function (userId, connectionId, databaseId, ope
       operations: ops
     }
 
-    const sequenceNo = await putTransaction(transaction, userId, connectionId, databaseId)
+    const sequenceNo = await putTransaction(transaction, userId, appId, connectionId, databaseId)
     return responseBuilder.successResponse({ sequenceNo })
   } catch (e) {
     const message = 'Failed to batch transaction'
-    const logChildObject = { userId, databaseId, connectionId }
+    const logChildObject = { userId, databaseId, connectionId, appId }
 
     if (e.status && e.error) {
       logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).info(message)

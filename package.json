@@ -35,7 +35,7 @@
     "rm:server": "cd ./src/userbase-server && rm -rf node_modules package-lock.json",
     "rm:poc": "cd ./src/proof-of-concept && rm -rf node_modules package-lock.json",
     "rm:all": "npm-run-all -p rm:root rm:sdk rm:server rm:poc",
-    "build:userbase-js:npm": "cd src/userbase-js && npm-run-all -p build:esm build:cjs",
+    "build:userbase-js:npm": "cd src/userbase-js && npm-run-all -p build:esm build:cjs build:window",
     "patch:userbase-js:npm": "cd src/userbase-js && npm run patch",
     "publish:userbase-js:npm": "cd src/userbase-js && npm publish",
     "build:userbase-server:npm": "npm-run-all -p transpile:userbase-server:npm build:admin-panel && npm run copy:admin-panel:to-npm-build",

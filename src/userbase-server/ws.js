@@ -118,8 +118,7 @@ class Connection {
     let lastSeqNo = database.lastSeqNo
     const bundleSeqNo = database.bundleSeqNo
 
-    const userIds = new Set() // used for database writers AND writeAccess permissions
-    const writerUserIds = []
+    const writerUserIds = new Set() // used for database writers AND writeAccess permissions
 
     if (bundleSeqNo > 0 && database.lastSeqNo === 0) {
       payload.bundleSeqNo = bundleSeqNo
@@ -142,8 +141,7 @@ class Connection {
 
       if (writers) {
         for (const userId of writers.split(',')) {
-          userIds.add(userId)
-          writerUserIds.push(userId)
+          writerUserIds.add(userId)
         }
       } else if (database.attribution) {
         throw new Error('Missing database bundle writers list')
@@ -208,29 +206,30 @@ class Connection {
                 ddbTransactionLog.push(transaction)
 
                 if (database.attribution && transaction.command !== 'Rollback') {
+                  // get transaction writer
                   const userId = transaction['user-id']
                   if (userId == null) {
                     throw new Error('Database has attribution, but no user-id on transaction')
                   }
-
-                  userIds.add(userId)
-                  writerUserIds.push(userId)
+                  writerUserIds.add(userId)
 
                   // check for users set via write access
                   const { command } = transaction
                   if (command === 'Insert' || command === 'Update') {
-                    const writeAccess = transaction['write-access']
+                    const { writeAccess } = transaction
                     if (writeAccess && writeAccess.users) {
-                      for (const userIdWithWriteAccess of writeAccess.users) {
-                        userIds.add(userIdWithWriteAccess)
+                      for (const userWithWriteAccess of writeAccess.users) {
+                        const userIdWithWriteAccess = userWithWriteAccess.userId
+                        writerUserIds.add(userIdWithWriteAccess)
                       }
                     }
                   } else if (command === 'BatchTransaction') {
                     for (const op of transaction.operations) {
                       const { writeAccess } = op
                       if (writeAccess && writeAccess.users) {
-                        for (const userIdWithWriteAccess of writeAccess.users) {
-                          userIds.add(userIdWithWriteAccess)
+                        for (const userWithWriteAccess of writeAccess.users) {
+                          const userIdWithWriteAccess = userWithWriteAccess.userId
+                          writerUserIds.add(userIdWithWriteAccess)
                         }
                       }
                     }
@@ -250,25 +249,15 @@ class Connection {
       throw new Error(e)
     }
 
-    const usersByUserId = {}
     if (database.attribution) {
       // get all the users
-      const users = await Promise.all([...userIds].map(getUserByUserId))
-
-      // set users by userId
-      for (const user of users) {
-        if (!user || user['deleted']) continue
-        const { 'user-id': userId } = user
-        usersByUserId[userId] = user
-      }
+      const users = await Promise.all([...writerUserIds].map(getUserByUserId))
 
       // set the writers
-      for (const writerUserId of writerUserIds) {
-        const user = usersByUserId[writerUserId]
-        if (user) {
-          const { 'user-id': userId, username } = user
-          payload.writers.push({ userId, username })
-        }
+      for (const user of users) {
+        if (!user || user['deleted']) continue
+        const { 'user-id': userId, username } = user
+        payload.writers.push({ userId, username })
       }
     }
 
@@ -320,7 +309,7 @@ class Connection {
       return
     }
 
-    this.sendPayload(payload, ddbTransactionLog, database, usersByUserId)
+    this.sendPayload(payload, ddbTransactionLog, database)
   }
 
   async rollback(lastSeqNo, thisSeqNo, databaseId, ddbClient) {
@@ -351,7 +340,7 @@ class Connection {
     return rolledBackTransactions
   }
 
-  sendPayload(payload, ddbTransactionLog, database, usersByUserId) {
+  sendPayload(payload, ddbTransactionLog, database) {
     let size = 0
 
     // only send transactions that have not been sent to client yet
@@ -368,38 +357,9 @@ class Connection {
       .map(transaction => {
         size += estimateSizeOfDdbItem(transaction)
 
-        const { command } = transaction
-        const operations = transaction['operations']
-        const writeAccess = transaction['write-access']
-
-        // set write access usernames using userId
-        if (usersByUserId) {
-          if (command === 'Insert' || command === 'Update') {
-            if (writeAccess && writeAccess.users) {
-              const finalUsers = []
-              for (const userIdWithWriteAccess of writeAccess.users) {
-                const user = usersByUserId[userIdWithWriteAccess]
-                if (user) finalUsers.push({ userId: user['user-id'], username: user['username'] })
-              }
-              writeAccess.users = finalUsers
-            }
-          } else if (command === 'BatchTransaction') {
-            for (const op of transaction.operations) {
-              if (op.writeAccess && op.writeAccess.users) {
-                const finalUsers = []
-                for (const userIdWithWriteAccess of op.writeAccess.users) {
-                  const user = usersByUserId[userIdWithWriteAccess]
-                  if (user) finalUsers.push({ userId: user['user-id'], username: user['username'] })
-                }
-                op.writeAccess.users = finalUsers
-              }
-            }
-          }
-        }
-
         return {
           seqNo: transaction['sequence-no'],
-          command,
+          command: transaction['command'],
           key: transaction['key'],
           record: transaction['record'],
           timestamp: transaction['creation-date'],
@@ -408,8 +368,8 @@ class Connection {
           fileId: transaction['file-id'],
           fileEncryptionKey: transaction['file-encryption-key'],
           dbId: transaction['database-id'],
-          operations,
-          writeAccess,
+          operations: transaction['operations'],
+          writeAccess: transaction.writeAccess,
         }
       })
 

@@ -1,4 +1,4 @@
-import scrypt from 'scrypt-js'
+import scryptJs from 'scrypt-js'
 import base64 from 'base64-arraybuffer'
 import { stringToArrayBuffer } from './utils'
 
@@ -33,8 +33,7 @@ import { stringToArrayBuffer } from './utils'
 const N = 16384 // 16mb
 const r = 8
 const p = 1
-
-const HASH_LENGTH = 32
+const dkLen = 32
 
 /**
  * NIST recommendation:
@@ -48,9 +47,9 @@ const HASH_LENGTH = 32
 const SALT_LENGTH = 16
 const generateSalt = () => window.crypto.getRandomValues(new Uint8Array(SALT_LENGTH))
 
-const hash = async (passwordString, salt) => {
+const hash = async (passwordString, salt, passwordHashAlgo = scryptJs.scrypt) => {
   const passwordArrayBuffer = new Uint8Array(stringToArrayBuffer(passwordString))
-  const passwordHash = await scrypt.scrypt(passwordArrayBuffer, salt, N, r, p, HASH_LENGTH)
+  const passwordHash = await passwordHashAlgo(passwordArrayBuffer, salt, N, r, p, dkLen)
   return base64.encode(passwordHash)
 }
 
