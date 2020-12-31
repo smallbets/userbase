@@ -274,7 +274,7 @@ async function start(express, app, userbaseConfig = {}) {
                 case 'BatchTransaction': {
                   response = conn.rateLimiter.atCapacity()
                     ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
-                    : await db.batchTransaction(userId, connectionId, params.dbId, params.operations)
+                    : await db.batchTransaction(userId, appId, connectionId, params.dbId, params.operations)
                   break
                 }
                 case 'Bundle': {
