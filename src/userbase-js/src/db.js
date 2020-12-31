@@ -1038,8 +1038,8 @@ const _buildUpdateParams = async (database, params) => {
   if (!itemString) throw new errors.ItemInvalid
   if (byteSizeOfString(itemString) > MAX_ITEM_BYTES) throw new errors.ItemTooLarge(MAX_ITEM_KB)
 
-  const itemKey = await crypto.hmac.signString(ws.keys.hmacKey, itemId)
   const currentVersion = database.getItemVersionNumber(itemId)
+  const itemKey = await crypto.hmac.signString(ws.keys.hmacKey, itemId)
   const itemRecord = { id: itemId, item, __v: currentVersion + 1 }
   const encryptedItem = await crypto.aesGcm.encryptJson(database.dbKey, itemRecord)
 
@@ -1107,8 +1107,8 @@ const _buildDeleteParams = async (database, params) => {
 
   if (!database.itemExists(itemId)) throw new errors.ItemDoesNotExist
 
-  const itemKey = await crypto.hmac.signString(ws.keys.hmacKey, itemId)
   const currentVersion = database.getItemVersionNumber(itemId)
+  const itemKey = await crypto.hmac.signString(ws.keys.hmacKey, itemId)
   const itemRecord = { id: itemId, __v: currentVersion + 1 }
   const encryptedItem = await crypto.aesGcm.encryptJson(database.dbKey, itemRecord)
 

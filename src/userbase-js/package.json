@@ -35,10 +35,11 @@
   "version": "2.6.0",
   "scripts": {
     "prepublishOnly": "npm run build",
-    "build": "npm run build:esm && npm run build:cjs && npm run build:umd",
+    "build": "npm run build:esm && npm run build:cjs && npm run build:umd && npm run build:window",
     "build:esm": "rm -rf lib && babel src --out-dir lib",
     "build:cjs": "webpack --mode production --config webpack.cjs.js",
     "build:umd": "webpack --mode production --config webpack.umd.js",
+    "build:window": "webpack --mode production --config webpack.window.js",
     "patch": "printf 'Input patch commit message: ' && read message && npm version patch -m '$message'",
     "size": "size-limit",
     "test:types": "dtslint types",

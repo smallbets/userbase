@@ -1,3 +1,18 @@
+## [2.7.0] - 2020-12-30
+### Added
+- insertItem() now accepts a `writeAccess` object as a parameter, allowing item creators to set access controls on items. The accepted properties to `writeAccess` are a boolean `onlyCreator`, and an array of `users`. `onlyCreator` set to true means only the item creator can update or delete the item. Users provided to the `users` array are the only users allowed to update or delete the item.
+- updateItem() can be used to update the `writeAccess` set on an item, or remove it by providing a falsey value as the `writeAccess` param.
+- putTransaction() accepts Insert and Update commands that set or modify an item's `writeAccess` value.
+- database owners have root privilegs on all items created in a database, regardless of whatever `writeAccess` value is set on the item.
+- signUp(), signIn(), updateUser() now accept a `passwordHashAlgo` as a parameter, allowing plugins to provide another hashing algorithm. Implemented with a Cordova plugin in mind.
+- a webpack bundle that explicitly sets Userbase on the window object. Implemented with a Cordova plugin in mind.
+
+### Changed
+- When a user inserts many items into a database, the database will now load much quicker the next time the user opens the database.
+
+### Fixed
+- The DOM won't freeze when a user loads a database with many items.
+
 ## [2.6.0] - 2020-12-16
 ### Added
 - shareDatabase() now returns a `shareToken` if no username is provided as a parameter. The `shareToken` can then be used by any user as a parameter to openDatabase(), insertItem(), updateItem(), deleteItem(), putTransaction(), uploadFile(), and getFile().

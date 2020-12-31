@@ -521,6 +521,30 @@ describe('Sign In Tests', function () {
       await this.test.userbase.deleteUser()
     })
 
+    it('UsernameOrPasswordMismatch', async function () {
+      const username = 'test-user-' + getRandomString()
+      const password = getRandomString()
+      await this.test.userbase.signUp({
+        username,
+        password,
+        rememberMe: 'none'
+      })
+      await this.test.userbase.signOut()
+
+      try {
+        await this.test.userbase.signIn({ username, password: password + 1 })
+        throw new Error('should have failed')
+      } catch (e) {
+        expect(e.status, 'error status').to.equal(401)
+        expect(e.name, 'error name').to.equal('UsernameOrPasswordMismatch')
+        expect(e.message, 'error message').to.equal('Username or password mismatch.')
+      }
+
+      // clean up
+      await this.test.userbase.signIn({ username, password, rememberMe: 'none' })
+      await this.test.userbase.deleteUser()
+    })
+
   })
 
 })
