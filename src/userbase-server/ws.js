@@ -21,6 +21,8 @@ const FILE_STORAGE_TOKENS_REFILLED_PER_SECOND = 200
 
 const BUNDLE_CHUNK_BATCH_SIZE = 10
 
+const USERBASE_JS_VERSION_TAG_MAX_LEN = 50
+
 // Rate limiter. Enforces a max of <capacity> requests per second. Once a token is taken from
 // the bucket, it is refilled at a rate of 1 per second.
 //
@@ -53,18 +55,29 @@ class TokenBucket {
 }
 
 class Connection {
-  constructor(userId, socket, clientId, adminId, appId) {
+  constructor(userId, socket, clientId, adminId, appId, userbaseJsVersion) {
     this.userId = userId
     this.socket = socket
     this.clientId = clientId
     this.id = uuidv4()
     this.adminId = adminId
     this.appId = appId
+
+    this.userbaseJsVersion = (typeof userbaseJsVersion === 'string' && userbaseJsVersion.length < USERBASE_JS_VERSION_TAG_MAX_LEN)
+      ? userbaseJsVersion
+      : undefined
+
     this.databases = {}
     this.keyValidated = false
 
     this.rateLimiter = new TokenBucket(DATA_STORAGE_MAX_REQUESTS_PER_SECOND, DATA_STORAGE_TOKENS_REFILLED_PER_SECOND)
     this.fileStorageRateLimiter = new TokenBucket(FILE_STORAGE_MAX_REQUESTS_PER_SECOND, FILE_STORAGE_TOKENS_REFILLED_PER_SECOND)
+  }
+
+  // only userbase-js >= 2.7.0 can read and write bundle in chunks
+  clientCanReadAndWriteBundleChunks() {
+    const userbaseJsVersion = this.userbaseJsVersion && this.userbaseJsVersion.split('.').map(v => Number(v))
+    return userbaseJsVersion && (userbaseJsVersion[0] > 2 || (userbaseJsVersion[0] === 2 && userbaseJsVersion[1] >= 7))
   }
 
   openDatabase(databaseId, dbNameHash, bundleSeqNo, numChunks, encryptedBundleEncryptionKey, reopenAtSeqNo, isOwner, ownerId, attribution, shareTokenReadWritePermissions) {
@@ -120,31 +133,39 @@ class Connection {
 
     const writerUserIds = new Set() // used for database writers AND writeAccess permissions
 
+    // send the bundle if one exists and haven't sent any transactions over the WebSocket yet
     if (bundleSeqNo > 0 && database.lastSeqNo === 0) {
-      payload.bundleSeqNo = bundleSeqNo
-      lastSeqNo = bundleSeqNo
 
-      let writers
-      if (database.numChunks) {
-        // tell client to wait for all bundle chunks to load
-        payload.waitForFullBundle = true
-        payload.encryptedBundleEncryptionKey = database.encryptedBundleEncryptionKey
+      // if using userbase-js < v2.7.0, but there is a bundle stored in chunks, then require clients
+      // query the entire transaction log in DDB because they won't be able to read the bundle in chunks
+      const bundleIsStoredInChunks = database.numChunks
+      if (this.clientCanReadAndWriteBundleChunks() || !bundleIsStoredInChunks) {
+        payload.bundleSeqNo = bundleSeqNo
+        lastSeqNo = bundleSeqNo
 
-        this.pushBundleChunks(database, databaseId)
-        writers = database.attribution && await db.getBundleWriters(databaseId, bundleSeqNo)
-      } else {
-        // old clients < userbase-js v2.7.0
-        const bundleResult = await db.getBundle(databaseId, bundleSeqNo, database.attribution)
-        payload.bundle = bundleResult.bundle
-        writers = bundleResult.writers
-      }
+        let writers
+        // userbase-js >= v2.7.0 has the bundle stored in chunks
+        if (bundleIsStoredInChunks) {
+          // tell client to wait for all bundle chunks to load
+          payload.waitForFullBundle = true
+          payload.encryptedBundleEncryptionKey = database.encryptedBundleEncryptionKey
 
-      if (writers) {
-        for (const userId of writers.split(',')) {
-          writerUserIds.add(userId)
+          this.pushBundleChunks(database, databaseId)
+          writers = database.attribution && await db.getBundleWriters(databaseId, bundleSeqNo)
+        } else {
+          // old clients < userbase-js v2.7.0
+          const bundleResult = await db.getBundle(databaseId, bundleSeqNo, database.attribution)
+          payload.bundle = bundleResult.bundle
+          writers = bundleResult.writers
         }
-      } else if (database.attribution) {
-        throw new Error('Missing database bundle writers list')
+
+        if (writers) {
+          for (const userId of writers.split(',')) {
+            writerUserIds.add(userId)
+          }
+        } else if (database.attribution) {
+          throw new Error('Missing database bundle writers list')
+        }
       }
     }
 
@@ -253,12 +274,43 @@ class Connection {
       // get all the users
       const users = await Promise.all([...writerUserIds].map(getUserByUserId))
 
+      const userIds = {}
+
       // set the writers
       for (const user of users) {
         if (!user || user['deleted']) continue
         const { 'user-id': userId, username } = user
         payload.writers.push({ userId, username })
+        userIds[userId] = username
       }
+
+      // set write access users to current usernames
+      ddbTransactionLog.forEach((transaction, i) => {
+        const { command } = transaction
+        if (command === 'Insert' || command === 'Update') {
+          const { writeAccess } = transaction
+          if (writeAccess && writeAccess.users) {
+            const finalUsers = []
+            for (const userWithWriteAccess of writeAccess.users) {
+              const username = userIds[userWithWriteAccess.userId]
+              if (username) finalUsers.push({ ...userWithWriteAccess, username })
+            }
+            ddbTransactionLog[i].writeAccess.users = finalUsers
+          }
+        } else if (command === 'BatchTransaction') {
+          transaction.operations.forEach((op, j) => {
+            const { writeAccess } = op
+            if (writeAccess && writeAccess.users) {
+              const finalUsers = []
+              for (const userWithWriteAccess of writeAccess.users) {
+                const username = userIds[userWithWriteAccess.userId]
+                if (username) finalUsers.push({ ...userWithWriteAccess, username })
+              }
+              ddbTransactionLog[i].operations[j].writeAccess.users = finalUsers
+            }
+          })
+        }
+      })
     }
 
     if (openingDatabase && database.lastSeqNo !== 0) {
@@ -382,6 +434,8 @@ class Connection {
 
     let msg
     const buildBundle = database.transactionLogSize + size >= TRANSACTION_SIZE_BUNDLE_TRIGGER
+      && this.clientCanReadAndWriteBundleChunks() // only clients >= 2.7.0 can build bundles now
+
     if (buildBundle) {
       msg = JSON.stringify({ ...payload, transactionLog, buildBundle: true })
       this.socket.send(msg)
@@ -458,7 +512,7 @@ class Connection {
 }
 
 export default class Connections {
-  static register(userId, socket, clientId, adminId, appId) {
+  static register(userId, socket, clientId, adminId, appId, userbaseJsVersion) {
     if (!Connections.sockets) Connections.sockets = {}
     if (!Connections.sockets[userId]) Connections.sockets[userId] = { numConnections: 0, tokens: {}, shareTokenValidationMessages: {} }
     if (!Connections.sockets[adminId]) Connections.sockets[adminId] = { numConnections: 0 }
@@ -468,12 +522,12 @@ export default class Connections {
     if (!Connections.uniqueClients[clientId]) {
       Connections.uniqueClients[clientId] = true
     } else {
-      logger.child({ userId, clientId, adminId }).warn('User attempted to open multiple socket connections from client')
+      logger.child({ userId, clientId, appId, adminId, userbaseJsVersion }).warn('User attempted to open multiple socket connections from client')
       socket.close(statusCodes['Client Already Connected'])
       return false
     }
 
-    const connection = new Connection(userId, socket, clientId, adminId, appId)
+    const connection = new Connection(userId, socket, clientId, adminId, appId, userbaseJsVersion)
 
     Connections.sockets[userId][connection.id] = connection
     Connections.sockets[userId].numConnections += 1
@@ -484,7 +538,7 @@ export default class Connections {
     Connections.sockets[appId][connection.id] = userId
     Connections.sockets[appId].numConnections += 1
 
-    logger.child({ connectionId: connection.id, userId, clientId, adminId, appId }).info('WebSocket connected')
+    logger.child({ connectionId: connection.id, userId, clientId, adminId, appId, userbaseJsVersion }).info('WebSocket connected')
 
     return connection
   }
@@ -502,7 +556,8 @@ export default class Connections {
       Connections.sockets[databaseId][connectionId] = userId
       Connections.sockets[databaseId].numConnections += 1
 
-      logger.child({ connectionId, databaseId, adminId: conn.adminId, encryptionMode: plaintextDbKey ? 'server-side' : 'end-to-end', shareTokenReadWritePermissions }).info('Database opened')
+      const { userbaseJsVersion, appId, adminId } = conn
+      logger.child({ connectionId, userbaseJsVersion, databaseId, userId, appId, adminId, reopenAtSeqNo, encryptionMode: plaintextDbKey ? 'server-side' : 'end-to-end', shareTokenReadWritePermissions }).info('Database opened')
     }
 
     conn.push(databaseId, dbNameHash, dbKey, reopenAtSeqNo, plaintextDbKey, shareTokenEncryptedDbKey, shareTokenEncryptionKeySalt)
