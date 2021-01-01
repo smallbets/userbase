@@ -274,12 +274,43 @@ class Connection {
       // get all the users
       const users = await Promise.all([...writerUserIds].map(getUserByUserId))
 
+      const userIds = {}
+
       // set the writers
       for (const user of users) {
         if (!user || user['deleted']) continue
         const { 'user-id': userId, username } = user
         payload.writers.push({ userId, username })
+        userIds[userId] = username
       }
+
+      // set write access users to current usernames
+      ddbTransactionLog.forEach((transaction, i) => {
+        const { command } = transaction
+        if (command === 'Insert' || command === 'Update') {
+          const { writeAccess } = transaction
+          if (writeAccess && writeAccess.users) {
+            const finalUsers = []
+            for (const userWithWriteAccess of writeAccess.users) {
+              const username = userIds[userWithWriteAccess.userId]
+              if (username) finalUsers.push({ ...userWithWriteAccess, username })
+            }
+            ddbTransactionLog[i].writeAccess.users = finalUsers
+          }
+        } else if (command === 'BatchTransaction') {
+          transaction.operations.forEach((op, j) => {
+            const { writeAccess } = op
+            if (writeAccess && writeAccess.users) {
+              const finalUsers = []
+              for (const userWithWriteAccess of writeAccess.users) {
+                const username = userIds[userWithWriteAccess.userId]
+                if (username) finalUsers.push({ ...userWithWriteAccess, username })
+              }
+              ddbTransactionLog[i].operations[j].writeAccess.users = finalUsers
+            }
+          })
+        }
+      })
     }
 
     if (openingDatabase && database.lastSeqNo !== 0) {

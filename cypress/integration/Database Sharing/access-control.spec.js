@@ -817,6 +817,56 @@ describe('DB Sharing Tests', function () {
         await this.test.userbase.signIn({ username: recipient.username, password: recipient.password, rememberMe: 'none' })
         await this.test.userbase.deleteUser()
       })
+
+      it('Write access users setting remains after changing name', async function () {
+        const recipient = await signUp(this.test.userbase)
+        await this.test.userbase.signOut()
+
+        const user = await signUp(this.test.userbase)
+
+        // insert, then update item with write access into database
+        const testItem = 'hello world!'
+        const testItemId = 'test-id'
+        const writeAccess = { users: [{ username: recipient.username }] }
+
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+        await this.test.userbase.insertItem({ databaseName, item: testItem, itemId: testItemId, writeAccess })
+        await this.test.userbase.signOut()
+
+        // update recipient's username
+        await this.test.userbase.signIn({ username: recipient.username, password: recipient.password, rememberMe: 'none' })
+        const newUsername = 'test-user-' + getRandomString()
+        await this.test.userbase.updateUser({ username: newUsername })
+        recipient.username = newUsername
+        await this.test.userbase.signOut()
+
+        // sign back in and check that write access correctly reflects new username
+        await this.test.userbase.signIn({ username: user.username, password: user.password, rememberMe: 'none' })
+
+        let changeHandlerCallCount = 0
+        const changeHandler = function (items) {
+          expect(items, 'array passed to changeHandler').to.be.a('array').with.lengthOf(1)
+
+          const item = items[0]
+          expect(item, 'first item').to.deep.equal({
+            itemId: testItemId,
+            item: testItem,
+            writeAccess: { users: [{ username: recipient.username }] },
+            createdBy: { username: user.username, timestamp: item.createdBy.timestamp },
+          })
+
+          changeHandlerCallCount += 1
+        }
+
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+
+        // clean up
+        await this.test.userbase.deleteUser()
+        await this.test.userbase.signIn({ username: recipient.username, password: recipient.password, rememberMe: 'none' })
+        await this.test.userbase.deleteUser()
+      })
     })
 
     describe('Failure Tests', function () {
