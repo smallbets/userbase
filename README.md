@@ -38,6 +38,8 @@ The easiest way to start using Userbase is to follow our [Quickstart](https://us
 
 ## Development
 
+<i>This section is for those who want to host the Userbase stack themselves. For the full serverless experience, head over to our [Quickstart](https://userbase.com/docs/) guide to get started.</i>
+
 ### Configure the AWS credentials
 Running the Userbase server requires an AWS account. You just need to provide your AWS credentials and the server will automatically create all the AWS resources it needs. To run the app locally, simply put your AWS credentials in `~/.aws/credentials` under a profile called `encrypted`:
 

@@ -32,7 +32,7 @@
     "type": "git",
     "url": "git+https://github.com/encrypted-dev/userbase.git"
   },
-  "version": "2.6.0",
+  "version": "2.7.0",
   "scripts": {
     "prepublishOnly": "npm run build",
     "build": "npm run build:esm && npm run build:cjs && npm run build:umd && npm run build:window",
