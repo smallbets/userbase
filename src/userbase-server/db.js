@@ -189,12 +189,16 @@ const getDatabase = async function (userId, dbNameHash) {
   return { ...userDb, ...database }
 }
 
-exports.openDatabase = async function (user, app, admin, connectionId, dbNameHash, newDatabaseParams, reopenAtSeqNo) {
-  if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
-  if (reopenAtSeqNo && typeof reopenAtSeqNo !== 'number') return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Reopen at seq no must be number')
-  const userId = user['user-id']
-
+exports.openDatabase = async function (logChildObject, user, app, admin, connectionId, dbNameHash, newDatabaseParams, reopenAtSeqNo) {
   try {
+    if (!dbNameHash) return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Missing database name hash')
+    if (reopenAtSeqNo && typeof reopenAtSeqNo !== 'number') return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Reopen at seq no must be number')
+    const userId = user['user-id']
+
+    logChildObject.dbNameHash = dbNameHash
+    logChildObject.reopenAtSeqNo = reopenAtSeqNo
+    logger.child(logChildObject).info('Opening database by name')
+
     try {
       userController.validatePayment(user, app, admin)
     } catch (e) {
@@ -235,6 +239,10 @@ exports.openDatabase = async function (user, app, admin, connectionId, dbNameHas
     const attribution = database['attribution']
     const plaintextDbKey = database['plaintext-db-key']
 
+    logChildObject.databaseId = databaseId
+    logChildObject.bundleSeqNo = bundleSeqNo
+    logChildObject.numChunks = numChunks
+
     const isOwner = true
     const ownerId = userId
     if (connections.openDatabase({
@@ -246,7 +254,9 @@ exports.openDatabase = async function (user, app, admin, connectionId, dbNameHas
       throw new Error('Unable to open database')
     }
   } catch (e) {
-    logger.error(`Failed to open database for user ${userId} with ${e}`)
+    logChildObject.err = e
+    logChildObject.status = statusCodes['Internal Server Error']
+    logger.child(logChildObject).error('Failed to open database by name')
     return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to open database')
   }
 }
@@ -267,12 +277,16 @@ const _validateAuthTokenSignature = (userId, database, validationMessage, signed
   return shareTokenReadWritePermissions
 }
 
-exports.openDatabaseByDatabaseId = async function (userAtSignIn, app, admin, connectionId, databaseId, validationMessage, signedValidationMessage, reopenAtSeqNo) {
+exports.openDatabaseByDatabaseId = async function (logChildObject, userAtSignIn, app, admin, connectionId, databaseId, validationMessage, signedValidationMessage, reopenAtSeqNo) {
   let userId
   try {
     if (!databaseId) throw { status: statusCodes['Bad Request'], error: 'Missing database ID' }
     if (reopenAtSeqNo && typeof reopenAtSeqNo !== 'number') throw { status: statusCodes['Bad Request'], error: 'Reopen at seq no must be number' }
     userId = userAtSignIn['user-id']
+
+    logChildObject.databaseId = databaseId
+    logChildObject.reopenAtSeqNo = reopenAtSeqNo
+    logger.child(logChildObject).info('Opening database by database ID')
 
     userController.validatePayment(userAtSignIn, app, admin)
 
@@ -293,6 +307,10 @@ exports.openDatabaseByDatabaseId = async function (userAtSignIn, app, admin, con
     const encryptedBundleEncryptionKey = db['encrypted-bundle-encryption-key']
     const attribution = db['attribution']
     const plaintextDbKey = db['plaintext-db-key']
+
+    logChildObject.bundleSeqNo = bundleSeqNo
+    logChildObject.numChunks = numChunks
+
     const connectionParams = {
       userId, connectionId, databaseId, bundleSeqNo, numChunks, encryptedBundleEncryptionKey,
       reopenAtSeqNo, isOwner, ownerId: db['owner-id'], attribution, plaintextDbKey
@@ -325,7 +343,6 @@ exports.openDatabaseByDatabaseId = async function (userAtSignIn, app, admin, con
     }
   } catch (e) {
     const message = 'Failed to open database by database ID'
-    const logChildObject = { userId, databaseId, connectionId, appId: app['app-id'], admin: admin['admin-id'] }
 
     if (e.status && e.error) {
       logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).info(message)
@@ -935,85 +952,6 @@ exports.batchTransaction = async function (userId, appId, connectionId, database
       logger.child({ ...logChildObject, statusCode, err: e }).warn(message)
       return responseBuilder.errorResponse(statusCode, message)
     }
-  }
-}
-
-exports.bundleTransactionLog = async function (userId, connectionId, databaseId, seqNo, bundle, writersString) {
-  const bundleSeqNo = Number(seqNo)
-
-  if (!bundleSeqNo) {
-    return responseBuilder.errorResponse(statusCodes['Bad Request'], `Missing bundle sequence number`)
-  }
-
-  try {
-    if (!connections.isDatabaseOpen(userId, connectionId, databaseId)) {
-      return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Database not open')
-    }
-
-    const clientIncludedWriters = !!writersString
-    const databaseRequiresWriters = connections.sockets[userId][connectionId].databases[databaseId].attribution
-    if (clientIncludedWriters && !databaseRequiresWriters) {
-      return responseBuilder.errorResponse(statusCodes['Bad Request'], "This is an older database without attribution enabled, but the client sent writer data.")
-    } else if (!clientIncludedWriters && databaseRequiresWriters) {
-      return responseBuilder.errorResponse(statusCodes['Bad Request'], "This database has attribution enabled, but the client did not send writers data with its bundle. Maybe it's an older version?")
-    }
-
-    const database = await findDatabaseByDatabaseId(databaseId)
-    if (!database) return responseBuilder.errorResponse(statusCodes['Not Found'], 'Database not found')
-
-    const lastBundleSeqNo = database['bundle-seq-no']
-    if (lastBundleSeqNo >= bundleSeqNo) {
-      return responseBuilder.errorResponse(statusCodes['Bad Request'], 'Bundle sequence no must be greater than current bundle')
-    }
-
-    logger.info(`Uploading db ${databaseId}'s state to S3 at bundle seq no ${bundleSeqNo}...`)
-    const s3 = setup.s3()
-    const promises = []
-
-    const dbStateParams = {
-      Bucket: setup.getDbStatesBucketName(),
-      Key: getS3DbStateKey(databaseId, bundleSeqNo),
-      Body: bundle
-    }
-
-    promises.push(s3.upload(dbStateParams).promise())
-
-    if (clientIncludedWriters) {
-      const dbWritersParams = {
-        Bucket: setup.getDbStatesBucketName(),
-        Key: getS3DbWritersKey(databaseId, bundleSeqNo),
-        Body: writersString
-      }
-
-      promises.push(s3.upload(dbWritersParams).promise())
-    }
-
-    await Promise.all(promises)
-
-    const bundleParams = {
-      TableName: setup.databaseTableName,
-      Key: {
-        'database-id': databaseId
-      },
-      UpdateExpression: 'set #bundleSeqNo = :bundleSeqNo',
-      ConditionExpression: '(attribute_not_exists(#bundleSeqNo) or #bundleSeqNo < :bundleSeqNo)',
-      ExpressionAttributeNames: {
-        '#bundleSeqNo': 'bundle-seq-no',
-      },
-      ExpressionAttributeValues: {
-        ':bundleSeqNo': bundleSeqNo,
-      }
-    }
-
-    const ddbClient = connection.ddbClient()
-    await ddbClient.update(bundleParams).promise()
-
-    logger.info(`Set bundle sequence number ${bundleSeqNo} on database ${databaseId}...`)
-
-    return responseBuilder.successResponse({})
-  } catch (e) {
-    logger.error(`Failed to bundle database ${databaseId} at sequence number ${bundleSeqNo} with ${e}`)
-    return responseBuilder.errorResponse(statusCodes['Internal Server Error'], 'Failed to bundle')
   }
 }
 

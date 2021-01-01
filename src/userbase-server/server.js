@@ -91,7 +91,7 @@ async function start(express, app, userbaseConfig = {}) {
       const userbaseJsVersion = req.query.userbaseJsVersion
       const sessionId = req.query.sessionId && truncateSessionId(req.query.sessionId)
 
-      const conn = connections.register(userId, ws, clientId, adminId, appId)
+      const conn = connections.register(userId, ws, clientId, adminId, appId, userbaseJsVersion)
       if (conn) {
         const connectionId = conn.id
 
@@ -198,6 +198,7 @@ async function start(express, app, userbaseConfig = {}) {
                   response = conn.rateLimiter.atCapacity()
                     ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
                     : await db.openDatabase(
+                      logChildObject,
                       res.locals.user,
                       res.locals.app,
                       res.locals.admin,
@@ -212,6 +213,7 @@ async function start(express, app, userbaseConfig = {}) {
                   response = conn.rateLimiter.atCapacity()
                     ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
                     : await db.openDatabaseByDatabaseId(
+                      logChildObject,
                       res.locals.user,
                       res.locals.app,
                       res.locals.admin,
@@ -279,9 +281,7 @@ async function start(express, app, userbaseConfig = {}) {
                 }
                 case 'Bundle': {
                   // old clients < userbase-js v2.7.0
-                  response = conn.rateLimiter.atCapacity()
-                    ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
-                    : await db.bundleTransactionLog(userId, connectionId, params.dbId, params.seqNo, params.bundle, params.writers)
+                  response = responseBuilder.errorResponse(statusCodes['Gone'], 'Deprecated. Update to latest version of userbase-js.')
                   break
                 }
                 case 'InitBundleUpload': {
