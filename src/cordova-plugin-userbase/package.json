@@ -1,0 +1,40 @@
+{
+  "name": "cordova-plugin-userbase",
+  "version": "1.0.0",
+  "description": "A Userbase plugin for cordova apps in iOS and Android.",
+  "cordova": {
+    "id": "cordova-plugin-userbase",
+    "platforms": [
+      "android",
+      "ios"
+    ]
+  },
+  "keywords": [
+    "ecosystem:cordova",
+    "cordova-android",
+    "cordova-ios",
+    "userbase",
+    "userbase-js",
+    "cordova",
+    "security",
+    "encryption",
+    "end-to-end encryption"
+  ],
+  "main": "www/userbase.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/encrypted-dev/userbase.git"
+  },
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/encrypted-dev/userbase/issues"
+  },
+  "homepage": "https://github.com/encrypted-dev/userbase",
+  "dependencies": {
+    "userbase-js": "^2.7.0"
+  },
+  "engines": {
+    "cordova": ">=3.0.0"
+  },
+  "author": "Justin Berman"
+}

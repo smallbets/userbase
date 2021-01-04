@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    id="cordova-plugin-userbase"
+    version="0.0.1">
+
+    <name>UserbasePlugin</name>
+    <author>Userbase</author>
+
+    <description>
+        A Userbase plugin for Cordova apps in iOS and Android.
+    </description>
+
+    <license>MIT</license>
+
+    <keywords>userbase, encryption</keywords>
+
+    <hook type="before_plugin_install" src="scripts/npmInstall.js" />
+    <js-module src="../../node_modules/userbase-js/dist/window.userbase.js" name="userbase-js">
+    </js-module>
+
+    <js-module src="www/userbase.js" name="userbase">
+        <runs/>
+    </js-module>
+
+    <engines>
+        <engine name="cordova" version=">=3.0.0" />
+    </engines>
+
+    <platform name="ios">
+        <config-file target="config.xml" parent="/*">
+            <feature name="ScryptPlugin">
+                <param name="ios-package" value="ScryptPlugin"/>
+            </feature>
+        </config-file>
+        <source-file src="src/ios/ScryptPlugin.m" />
+        <header-file src="src/ios/ScryptPlugin.h" />
+
+        <header-file src="src/libscrypt/crypto_scrypt-hexconvert.h" target-dir="src/ios"/>
+        <header-file src="src/libscrypt/libscrypt.h" target-dir="src/ios"/>
+        <header-file src="src/libscrypt/b64.h" target-dir="src/ios"/>
+        <header-file src="src/libscrypt/sha256.h" target-dir="src/ios"/>
+        <header-file src="src/libscrypt/slowequals.h" target-dir="src/ios"/>
+        <header-file src="src/libscrypt/sysendian.h" target-dir="src/ios"/>
+        <header-file src="src/libscrypt/android.h" target-dir="src/ios"/>
+
+        <source-file src="src/libscrypt/b64.c" target-dir="src/ios"/>
+        <source-file src="src/libscrypt/crypto-mcf.c" target-dir="src/ios"/>
+        <source-file src="src/libscrypt/crypto_scrypt-check.c" target-dir="src/ios"/>
+        <source-file src="src/libscrypt/crypto_scrypt-hash.c" target-dir="src/ios"/>
+        <source-file src="src/libscrypt/crypto_scrypt-hexconvert.c" target-dir="src/ios"/>
+        <source-file src="src/libscrypt/crypto_scrypt-nosse.c" target-dir="src/ios"/>
+        <source-file src="src/libscrypt/crypto-scrypt-saltgen.c" target-dir="src/ios"/>
+        <source-file src="src/libscrypt/sha256.c" target-dir="src/ios"/>
+        <source-file src="src/libscrypt/slowequals.c" target-dir="src/ios"/>
+    </platform>
+
+    <platform name="android">
+        <config-file target="res/xml/config.xml" parent="/*">
+            <feature name="ScryptPlugin" >
+                <param name="android-package" value="com.crypho.plugins.ScryptPlugin"/>
+            </feature>
+        </config-file>
+
+        <config-file target="AndroidManifest.xml" parent="/manifest">
+            <uses-sdk   android:minSdkVersion="19" android:targetSdkVersion="19"/>
+        </config-file>
+
+        <source-file src="src/android/com/crypho/plugins/ScryptPlugin.java" target-dir="src/com/crypho/plugins/"/>
+
+        <source-file src="libs/arm64-v8a/libscrypt_crypho.so" target-dir="src/main/jniLibs/arm64-v8a/"/>
+        <source-file src="libs/armeabi-v7a/libscrypt_crypho.so" target-dir="src/main/jniLibs/armeabi-v7a/"/>
+        <source-file src="libs/x86/libscrypt_crypho.so" target-dir="src/main/jniLibs/x86/"/>
+        <source-file src="libs/x86_64/libscrypt_crypho.so" target-dir="src/main/jniLibs/x86_64/"/>
+    </platform>
+</plugin>
