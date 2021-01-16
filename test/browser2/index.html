@@ -216,6 +216,63 @@
       })
   }
 
+  const test6 = (testNum) => {
+    console.log(`%cTest ${testNum}: Browser 1 waits for Browser 2 to insert item that triggers bundling process so they race to bundle, then reads from bundle`, 'font-size: large')
+
+    const { username, password } = USERS[testNum - 1]
+
+    userbase.init({ appId })
+
+    wait(SIGN_UP_DELAY)
+      .then(() => {
+        userbase.signIn({ username, password, rememberMe })
+          .then(() => {
+            console.log('Signed in...')
+
+            userbase.openDatabase({ databaseName, changeHandler: () => { } })
+              .then(() => {
+                const operations = getOperationsThatTriggerBundle()
+
+                userbase.putTransaction({ databaseName, operations })
+                  .then(() => {
+                    console.log('Giving client time to finish bundle...')
+                    wait(10000).then(() => {
+                      userbase.signOut()
+                        .then(() => {
+                          userbase.signIn({ username, password, rememberMe })
+                            .then(() => {
+                              userbase.openDatabase({
+                                databaseName, changeHandler: function (items) {
+                                  assert(items.length, operations.length, 'array len')
+                                  for (let i = 0; i < items.length; i++) {
+                                    assert(items[i].itemId, i.toString(), 'item id')
+                                    assert(items[i].item, operations[i].item, 'item')
+                                  }
+
+                                  console.log('Check server to make sure read from bundle!')
+
+                                  completedTest(testNum, userbase)
+                                }
+                              })
+                                .catch((e) => console.assert(false, e))
+                            })
+                            .catch((e) => console.assert(false, e))
+                        })
+                        .catch((e) => console.assert(false, e))
+
+                    })
+
+                  })
+                  .catch((e) => console.assert(false, e))
+
+              })
+              .catch((e) => console.assert(false, e))
+
+          })
+          .catch((e) => console.assert(false, e))
+      })
+  }
+
   if (!location.hash) console.log('%cBrowser 2', 'font-size: x-large; font-weight: bold;')
 
   switch (location.hash) {
@@ -237,6 +294,10 @@
 
     case '#test5':
       test5(5)
+      break
+
+    case '#test6':
+      test6(6)
       break
 
     case '#complete':

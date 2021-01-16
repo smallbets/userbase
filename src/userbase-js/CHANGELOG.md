@@ -1,3 +1,14 @@
+## [2.7.2] - 2021-01-15
+### Fixed
+- Bundling process (the process that gets triggered when a user has lots of items in a database to speed up database load time) now uploads correctly when concurrent connections attempt to bundle the same database. A race condition was introduced (now fixed) with the optimizations to the bundling process in v2.7.0.
+
+## [2.7.1] - 2021-01-13
+### Added
+- Failsafe alerts when reading from a bundle fails unexpectedly.
+
+### Changed
+- Increased allowed time until database operations timeout to increase reliability on slower internet connections.
+
 ## [2.7.0] - 2020-12-30
 ### Added
 - insertItem() now accepts a `writeAccess` object as a parameter, allowing item creators to set access controls on items. The accepted properties to `writeAccess` are a boolean `onlyCreator`, and an array of `users`. `onlyCreator` set to true means only the item creator can update or delete the item. Users provided to the `users` array are the only users allowed to update or delete the item.

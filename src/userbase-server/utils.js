@@ -139,3 +139,12 @@ export const nextPageTokenToLastEvaluatedKey = (nextPageToken, validateLastEvalu
 }
 
 export const wait = (ms) => new Promise((resolve) => setTimeout(() => resolve(), ms))
+
+// only userbase-js >= 2.7.2 can read and write bundle in chunks
+export const clientCanReadAndWriteBundleChunks = (userbaseJsVersion) => {
+  const version = userbaseJsVersion && userbaseJsVersion.split('.').map(v => Number(v))
+  return version && (version[0] > 2 ||
+    (version[0] === 2 && version[1] > 7) ||
+    (version[0] === 2 && version[1] === 7 && version[2] >= 2)
+  )
+}

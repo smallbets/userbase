@@ -432,6 +432,72 @@
       .catch((e) => console.assert(false, e))
   }
 
+  const test6 = (testNum) => {
+    console.log(`%cTest ${testNum}: Browser 1 waits for Browser 2 to insert item that triggers bundling process so they race to bundle, then reads from bundle`, 'font-size: large')
+
+    userbase.init({ appId })
+
+    const { username, password } = USERS[testNum - 1]
+
+    userbase.signUp({ username, password, rememberMe })
+      .then(() => {
+        console.log('Signed up...')
+
+        // set up a promise to wait for another session to insert tx
+        let resolveFirstInsert
+        const waitForFirstInsert = new Promise(resolve => {
+          resolveFirstInsert = resolve
+        })
+
+        let database = []
+        let called = 0
+        let changeHandler = (items) => {
+          database = items
+          called += 1
+
+          if (called === 2) {
+            resolveFirstInsert()
+          }
+        }
+
+        // open the database immediately after signing up
+        userbase.openDatabase({ databaseName, changeHandler })
+          .then(() => {
+
+            console.log('Waiting for first insert...')
+            waitForFirstInsert
+              .then(() => {
+                console.log('Giving client time to finish bundle...')
+                wait(10000).then(() => {
+                  userbase.signOut()
+                    .then(() => {
+                      userbase.signIn({ username, password, rememberMe })
+                        .then(() => {
+                          userbase.openDatabase({
+                            databaseName, changeHandler: function (items) {
+                              assert(items.length, 10, 'array len')
+                              for (let i = 0; i < items.length; i++) {
+                                assert(items[i].itemId, i.toString(), 'item id')
+                              }
+
+                              console.log('Check server to make sure read from bundle!')
+
+                              completedTest(testNum, userbase)
+                            }
+                          })
+                            .catch((e) => console.assert(false, e))
+                        })
+                        .catch((e) => console.assert(false, e))
+                    })
+                    .catch((e) => console.assert(false, e))
+                })
+              })
+          })
+          .catch((e) => console.assert(false, e))
+      })
+      .catch((e) => console.assert(false, e))
+  }
+
   switch (location.hash) {
     case '':
       console.log('%cBrowser 1', 'font-size: x-large; font-weight: bold;')
@@ -452,6 +518,10 @@
 
     case '#test5':
       test5(5)
+      break
+
+    case '#test6':
+      test6(6)
       break
 
     case '#complete':

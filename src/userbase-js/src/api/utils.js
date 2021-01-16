@@ -39,9 +39,9 @@ const handleResponse = (xhr, resolve, reject) => {
   }
 }
 
-export const processXhr = (xhr, resolve, reject) => {
-  xhr.timeout = TEN_SECONDS_MS
+export const processXhr = (xhr, resolve, reject, timeout = TEN_SECONDS_MS) => {
+  xhr.timeout = timeout
   xhr.onload = () => handleResponse(xhr, resolve, reject)
   xhr.onerror = () => reject(new errors.ServiceUnavailable)
-  xhr.ontimeout = () => reject(new TimeoutError(TEN_SECONDS_MS))
+  xhr.ontimeout = () => reject(new TimeoutError(timeout))
 }

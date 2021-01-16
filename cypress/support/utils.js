@@ -13,6 +13,17 @@ export const getRandomStringOfByteLength = (byteLength) => {
   return string
 }
 
+export const getOperationsThatTriggerBundle = () => {
+  const ITEM_SIZE = 5 * 1024
+  const MAX_TRANSACTIONS = 10
+
+  const operations = []
+  for (let i = 0; i < MAX_TRANSACTIONS; i++) {
+    operations.push({ command: 'Insert', item: getRandomStringOfByteLength(ITEM_SIZE), itemId: i.toString() })
+  }
+  return operations
+}
+
 export const wait = (ms) => new Promise(resolve => {
   setTimeout(() => resolve(), ms)
 })
