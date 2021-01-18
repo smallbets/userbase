@@ -1,0 +1,30 @@
+{
+  "name": "userbase-js-node",
+  "version": "0.0.0",
+  "description": "Userbase JS SDK for node",
+  "homepage": "https://github.com/smallbets/userbase/tree/master/src/userbase-js-node",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/smallbets/userbase.git"
+  },
+  "main": "index.js",
+  "license": "MIT",
+  "typings": "index.d.ts",
+  "bugs": {
+    "url": "https://github.com/smallbets/userbase/issues"
+  },
+  "dependencies": {
+    "@peculiar/webcrypto": "^1.1.4",
+    "atob": "^2.1.2",
+    "blob-polyfill": "^4.0.20200601",
+    "btoa": "^1.2.1",
+    "domexception": "^2.0.1",
+    "isomorphic-ws": "^4.0.1",
+    "node-localstorage": "^2.1.6",
+    "userbase-js": "^2.7.3",
+    "web-file-polyfill": "^1.0.1",
+    "web-worker": "^1.0.0",
+    "ws": "^7.4.2",
+    "xhr2": "^0.2.0"
+  }
+}
