@@ -1,3 +1,12 @@
+## [2.7.3] - 2021-01-18
+### Added
+- Support for a new `userbase-js` compatible package that targets node.
+- Cleaner error handling in bundle process.
+
+### Fixed
+- Defensive try catches when validating items so that a malicious or buggy client can't make an honest client crash by inserting improperly encrypted items into a database.
+- Signing in with a temporary password working smoothly, rather than throw ServiceUnavailable.
+
 ## [2.7.2] - 2021-01-17
 ### Fixed
 - Bundling process (the process that gets triggered when a user has lots of items in a database to speed up database load time) now uploads correctly when concurrent connections attempt to bundle the same database. A race condition was introduced (now fixed) with the optimizations to the bundling process in v2.7.0.

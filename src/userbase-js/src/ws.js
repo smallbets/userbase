@@ -34,12 +34,13 @@ class RequestFailed extends Error {
 }
 
 class WebSocketError extends Error {
-  constructor(message, username, ...params) {
+  constructor(message, username, e, ...params) {
     super(...params)
 
     this.name = 'WebSocket error'
     this.message = message
     this.username = username
+    this.e = e
   }
 }
 
@@ -346,7 +347,7 @@ class Connection {
         } catch (e) {
           if (!this.connectionResolved) {
             this.close()
-            reject(new WebSocketError(e.message, session.username))
+            reject(new WebSocketError(e.message, session.username, e))
           } else {
             console.warn('Error handling message: ', e)
           }
@@ -368,11 +369,13 @@ class Connection {
           this.reconnecting = true
           await this.reconnect(resolve, reject, session, this.seedString || seedString, rememberMe, changePassword, delay, !this.reconnected && state)
         } else if (e.code === statusCodes['Client Already Connected']) {
-          reject(new WebSocketError(wsAlreadyConnected, session.username))
+          reject(new WebSocketError(wsAlreadyConnected, session.username, e))
         } else {
           this.init()
         }
       }
+
+      ws.onerror = () => { } // no-op so node WS implementation doesn't throw not found
     })
   }
 
@@ -417,7 +420,10 @@ class Connection {
             this.reconnected = true
 
             // only reopen databases on the first call to reconnect()
-            if (!currentState) await this.reopenDatabases(dbsToReopen, dbsToReopenById, 1000)
+            if (!currentState) {
+              await this.reopenDatabases(dbsToReopen, dbsToReopenById, 1000)
+              console.log('Reconnected!')
+            }
 
             resolve(result)
           } catch (e) {
