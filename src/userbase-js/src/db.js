@@ -214,91 +214,86 @@ class Database {
 
     switch (command) {
       case 'Insert': {
-        const record = await crypto.aesGcm.decryptJson(key, transaction.record)
-        const itemId = record.id
-        const item = record.item
-        const createdBy = this.attributionFromTransaction(transaction)
-        const writeAccess = transaction.writeAccess
-
         try {
+          const record = await crypto.aesGcm.decryptJson(key, transaction.record)
+          const itemId = record.id
+          const item = record.item
+          const createdBy = this.attributionFromTransaction(transaction)
+          const writeAccess = transaction.writeAccess
+
           this.validateInsert(itemId)
+          return this.applyInsert(itemId, seqNo, item, createdBy, writeAccess)
         } catch (transactionCode) {
           return transactionCode
         }
-
-        return this.applyInsert(itemId, seqNo, item, createdBy, writeAccess)
       }
 
       case 'Update': {
-        const record = await crypto.aesGcm.decryptJson(key, transaction.record)
-        const itemId = record.id
-        const item = record.item
-        const updatedBy = this.attributionFromTransaction(transaction)
-        const __v = record.__v
-        const writeAccess = transaction.writeAccess
-
         try {
+          const record = await crypto.aesGcm.decryptJson(key, transaction.record)
+          const itemId = record.id
+          const item = record.item
+          const updatedBy = this.attributionFromTransaction(transaction)
+          const __v = record.__v
+          const writeAccess = transaction.writeAccess
+
           this.validateUpdate(itemId, __v, updatedBy, ownerId, writeAccess, 'updateItem')
+          return this.applyUpdate(itemId, item, __v, updatedBy, writeAccess)
         } catch (transactionCode) {
           return transactionCode
         }
-
-        return this.applyUpdate(itemId, item, __v, updatedBy, writeAccess)
       }
 
       case 'Delete': {
-        const record = await crypto.aesGcm.decryptJson(key, transaction.record)
-        const itemId = record.id
-        const deletedBy = this.attributionFromTransaction(transaction)
-        const __v = record.__v
-
         try {
+          const record = await crypto.aesGcm.decryptJson(key, transaction.record)
+          const itemId = record.id
+          const deletedBy = this.attributionFromTransaction(transaction)
+          const __v = record.__v
+
           this.validateUpdateOrDelete(itemId, __v, deletedBy, ownerId, 'deleteItem')
+          return this.applyDelete(itemId)
         } catch (transactionCode) {
           return transactionCode
         }
-
-        return this.applyDelete(itemId)
       }
 
       case 'BatchTransaction': {
-        const batch = transaction.operations
-        const attribution = this.attributionFromTransaction(transaction)
-        const recordPromises = []
-
-        for (const operation of batch) {
-          recordPromises.push(operation.record && crypto.aesGcm.decryptJson(key, operation.record))
-        }
-        const records = await Promise.all(recordPromises)
-
         try {
+          const batch = transaction.operations
+          const attribution = this.attributionFromTransaction(transaction)
+          const recordPromises = []
+
+          for (const operation of batch) {
+            recordPromises.push(operation.record && crypto.aesGcm.decryptJson(key, operation.record))
+          }
+          const records = await Promise.all(recordPromises)
+
           this.validateBatchTransaction(batch, records, attribution, ownerId)
+          return this.applyBatchTransaction(seqNo, batch, records, attribution)
         } catch (transactionCode) {
           return transactionCode
         }
-
-        return this.applyBatchTransaction(seqNo, batch, records, attribution)
       }
 
       case 'UploadFile': {
-        const fileEncryptionKeyRaw = await crypto.aesGcm.decrypt(key, base64.decode(transaction.fileEncryptionKey))
-        const fileEncryptionKey = await crypto.aesGcm.getKeyFromRawKey(fileEncryptionKeyRaw)
-        const fileEncryptionKeyString = await crypto.aesGcm.getKeyStringFromKey(fileEncryptionKey)
-        const fileMetadata = await crypto.aesGcm.decryptJson(fileEncryptionKey, transaction.fileMetadata)
-
-        const itemId = fileMetadata.itemId
-        const fileVersion = fileMetadata.__v
-        const { fileName, fileSize, fileType } = fileMetadata
-        const fileId = transaction.fileId
-        const fileUploadedBy = this.attributionFromTransaction(transaction)
-
         try {
+          const fileEncryptionKeyRaw = await crypto.aesGcm.decrypt(key, base64.decode(transaction.fileEncryptionKey))
+          const fileEncryptionKey = await crypto.aesGcm.getKeyFromRawKey(fileEncryptionKeyRaw)
+          const fileEncryptionKeyString = await crypto.aesGcm.getKeyStringFromKey(fileEncryptionKey)
+          const fileMetadata = await crypto.aesGcm.decryptJson(fileEncryptionKey, transaction.fileMetadata)
+
+          const itemId = fileMetadata.itemId
+          const fileVersion = fileMetadata.__v
+          const { fileName, fileSize, fileType } = fileMetadata
+          const fileId = transaction.fileId
+          const fileUploadedBy = this.attributionFromTransaction(transaction)
+
           this.validateUploadFile(itemId, fileVersion, fileUploadedBy, ownerId, 'uploadFile')
+          return this.applyUploadFile(itemId, fileUploadedBy, fileVersion, fileEncryptionKey, fileEncryptionKeyString, fileName, fileId, fileSize, fileType)
         } catch (transactionCode) {
           return transactionCode
         }
-
-        return this.applyUploadFile(itemId, fileUploadedBy, fileVersion, fileEncryptionKey, fileEncryptionKeyString, fileName, fileId, fileSize, fileType)
       }
 
       case 'Rollback': {
