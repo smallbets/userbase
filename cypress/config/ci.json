@@ -3,11 +3,6 @@
     "endpoint": "http://localhost:8080/v1",
     "appId": "004b7892-785a-450c-aa8a-1a66cff23d6e",
     "dbName": "test",
-    "serverSideEncryptionModeAppId": "server-side-app-id",
-    "RETRIES": 2
-  },
-  "firefoxGcInterval": {
-    "runMode": null,
-    "openMode": null
+    "serverSideEncryptionModeAppId": "server-side-app-id"
   }
 }
