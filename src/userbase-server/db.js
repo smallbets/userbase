@@ -973,6 +973,10 @@ exports.initBundleUpload = async function (userId, connectionId, databaseId, bun
       throw { status: statusCodes['Bad Request'], message: 'Bundle sequence no must be greater than current bundle' }
     }
 
+    if (database['owner-id'] !== userId) {
+      throw { status: statusCodes['Forbidden'], message: 'Only owner can bundle' }
+    }
+
     // generate a new unique ID for this bundle upload
     const bundleId = uuidv4()
 
