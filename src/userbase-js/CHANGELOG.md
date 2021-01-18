@@ -1,4 +1,4 @@
-## [2.7.2] - 2021-01-15
+## [2.7.2] - 2021-01-17
 ### Fixed
 - Bundling process (the process that gets triggered when a user has lots of items in a database to speed up database load time) now uploads correctly when concurrent connections attempt to bundle the same database. A race condition was introduced (now fixed) with the optimizations to the bundling process in v2.7.0.
 

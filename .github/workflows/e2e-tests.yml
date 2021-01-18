@@ -11,9 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        browser: ['chrome', 'firefox']
-        # run 8 copies of the current job in parallel
-        containers: [1, 2, 3, 4, 5, 6, 7, 8]
+        # browser: ['chrome', 'firefox'] // can't use firefox until https://github.com/cypress-io/cypress/issues/14600 is fixed
+        browser: ['chrome']
+        # run 10 copies of the current job in parallel
+        containers: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     steps:
       - uses: actions/setup-node@v1
         with:
