@@ -684,7 +684,12 @@ class Connection {
       batch.push(uploadBundleChunk(userId, dbId, seqNo, bundleId, chunkNumber, chunk))
 
       if (batch.length === BUNDLE_CHUNKS_PER_BATCH) {
-        await Promise.all(batch)
+        try {
+          await Promise.all(batch)
+        } catch {
+          // ok to fail - bundling is just an optimization
+          return 0
+        }
         batch = []
       }
 
@@ -692,7 +697,12 @@ class Connection {
       position += BUNDLE_CHUNK_SIZE
     }
 
-    await Promise.all(batch)
+    try {
+      await Promise.all(batch)
+    } catch {
+      // ok to fail - bundling is just an optimization
+      return 0
+    }
 
     return chunkNumber
   }
@@ -700,7 +710,13 @@ class Connection {
   async initBundleUpload(dbId, seqNo, dbKey) {
     const action = 'InitBundleUpload'
     const params = { dbId, seqNo }
-    const initResponse = await this.request(action, params)
+    let initResponse
+    try {
+      initResponse = await this.request(action, params)
+    } catch {
+      // ok to fail - bundling is just an optimization
+      return {}
+    }
     const { bundleId } = initResponse.data
 
     const [bundleEncryptionKey, encryptedBundleEncryptionKey] = await crypto.aesGcm.generateAndEncryptKeyEncryptionKey(dbKey)
@@ -758,6 +774,7 @@ class Connection {
       : undefined
 
     const { bundleId, bundleEncryptionKey, encryptedBundleEncryptionKey } = await this.initBundleUpload(dbId, lastSeqNo, dbKey)
+    if (!bundleId) return
 
     const [compressedBeforeEncryption, compressedPlaintextMetadataString] = await Promise.all([
       compress(bundle.encrypted),
@@ -772,10 +789,16 @@ class Connection {
     const bundleArrayBuffer = stringToArrayBuffer(JSON.stringify(bundle))
 
     const numChunks = await this.uploadBundle(userId, dbId, lastSeqNo, bundleId, bundleArrayBuffer)
+    if (!numChunks) return
 
     const action = 'CompleteBundleUpload'
     const params = { dbId, seqNo: lastSeqNo, bundleId, writers, numChunks, encryptedBundleEncryptionKey }
-    await this.request(action, params)
+    try {
+      await this.request(action, params)
+    } catch {
+      // ok to fail - bundling is just an optimization
+      return
+    }
   }
 
   buildUserResult({ username, userId, authToken, email, profile, protectedProfile, usedTempPassword, changePassword, passwordChanged, userData }) {
