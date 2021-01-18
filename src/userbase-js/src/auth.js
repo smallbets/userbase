@@ -456,7 +456,7 @@ const signIn = async (params) => {
       let seedStringFromBackup
       if (!savedSeedString && usedTempPassword) {
         throw new errors.KeyNotFound(KEY_NOT_FOUND_ON_SIGN_IN)
-      } else {
+      } else if (!usedTempPassword) {
         // always use seed from backup in case it's changed and local copy is out of date
         seedStringFromBackup = await _getSeedStringFromPasswordBasedBackup(passwordHkdfKey, passwordBasedBackup)
         localData.saveSeedString(rememberMe, appId, username, seedStringFromBackup)
