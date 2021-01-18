@@ -18,7 +18,8 @@ const importKeyFromMaster = async (masterKey, salt) => {
       name: ALGORITHM_NAME,
       hash: {
         name: sha256.HASH_ALGORITHM_NAME
-      }
+      },
+      length: 512 // need to explicitly set length for WebCrypto node polyfill (see: https://github.com/PeculiarVentures/webcrypto-core/issues/31)
     },
     KEY_IS_EXTRACTABLE,
     KEY_WILL_BE_USED_TO_SIGN
@@ -34,7 +35,8 @@ const importKeyFromRawBits = async (rawBits) => {
       name: ALGORITHM_NAME,
       hash: {
         name: sha256.HASH_ALGORITHM_NAME
-      }
+      },
+      length: 256 // need to explicitly set length for WebCrypto node polyfill (see: https://github.com/PeculiarVentures/webcrypto-core/issues/31)
     },
     KEY_IS_EXTRACTABLE,
     KEY_WILL_BE_USED_TO_SIGN_AND_VERIFY

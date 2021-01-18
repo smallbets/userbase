@@ -5,5 +5,9 @@
   "chromeWebSecurity": false,
   "projectId": "uokg4h",
   "watchForFileChanges": false,
-  "video": false
+  "video": false,
+  "retries": {
+    "runMode": 2,
+    "openMode": 0
+  }
 }
