@@ -1087,8 +1087,8 @@ describe('DB Correctness Tests', function () {
         expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1 + numBundles)
         expect(successful, 'successful state').to.be.true
 
-        // give client sufficient time to finish the bundle
-        const TEN_SECONDS = 10 * 1000
+        console.log('Giving client sufficent time to bundle...')
+        const TEN_SECONDS = 20 * 1000
         await wait(TEN_SECONDS)
 
         await this.test.userbase.signOut()

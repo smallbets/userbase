@@ -18,6 +18,8 @@ const MAX_RETRY_DELAY = 1000 * 30
 const BUNDLE_CHUNK_SIZE = 1024 * 512 // 512kb
 const BUNDLE_CHUNKS_PER_BATCH = 10
 
+const WS_REQUEST_TIMEOUT = 30 * 1000
+
 const clientId = uuidv4() // only 1 client ID per browser tab (assumes code does not reload)
 
 class RequestFailed extends Error {
@@ -228,18 +230,13 @@ class Connection {
                 }
 
                 // rebuild bundle from the chunks
-                const bundle = await this.rebuildBundle(database, message.bundleSeqNo, message.encryptedBundleEncryptionKey)
-                await database.applyBundle(bundle, message.bundleSeqNo)
-
-              } else if (message.bundle) {
-                // legacy clients receiving the large bundle from server
-                const bundleSeqNo = message.bundleSeqNo
-                const base64Bundle = message.bundle
-                const compressedString = await crypto.aesGcm.decryptString(database.dbKey, base64Bundle)
-                const plaintextString = await decompress(compressedString)
-                const bundle = JSON.parse(plaintextString)
-
-                await database.applyBundle(bundle, bundleSeqNo)
+                try {
+                  const bundle = await this.rebuildBundle(database, message.bundleSeqNo, message.encryptedBundleEncryptionKey)
+                  await database.applyBundle(bundle, message.bundleSeqNo)
+                } catch (e) {
+                  window.alert(`Oops! Something went wrong. Please contact the site administrator with this issue (${dbId}).\n\n` + e)
+                  throw e
+                }
               }
 
               const newTransactions = message.transactionLog
@@ -276,6 +273,7 @@ class Connection {
 
               if (!database) throw new Error('Missing database')
 
+              // assumes server will always send first chunk first, and last chunk last
               if (isFirstChunk) database.bundleChunks[bundleSeqNo] = []
 
               database.bundleChunks[bundleSeqNo].push(chunk)
@@ -635,7 +633,7 @@ class Connection {
       this.requests[requestId].promiseResolve = resolve
       this.requests[requestId].promiseReject = reject
 
-      setTimeout(() => { reject(new Error('timeout')) }, 20000)
+      setTimeout(() => { reject(new Error('timeout')) }, WS_REQUEST_TIMEOUT)
     })
 
     delete this.requests[requestId]
@@ -651,24 +649,30 @@ class Connection {
     }
     const bundleArrayBuffer = appendBuffers(bundleChunks).buffer
 
+    const { encrypted, plaintextMetadata } = JSON.parse(arrayBufferToString(bundleArrayBuffer))
+
     const bundleEncryptionKeyRaw = await crypto.aesGcm.decrypt(database.dbKey, base64.decode(encryptedBundleEncryptionKey))
     const bundleEncryptionKey = await crypto.aesGcm.getKeyFromRawKey(bundleEncryptionKeyRaw)
 
-    const compressedArrayBuffer = await crypto.aesGcm.decrypt(bundleEncryptionKey, bundleArrayBuffer)
-    const compressedString = arrayBufferToString(compressedArrayBuffer)
-    const bundle = await decompress(compressedString)
+    const decrypted = await crypto.aesGcm.decrypt(bundleEncryptionKey, stringToArrayBuffer(encrypted))
+    const decryptedString = arrayBufferToString(decrypted)
+
+    const [decompressedEncrypted, decompressedPlaintextMetdata] = await Promise.all([
+      decompress(decryptedString),
+      decompress(plaintextMetadata),
+    ])
+
+    const bundle = {
+      ...JSON.parse(decompressedEncrypted),
+      ...JSON.parse(decompressedPlaintextMetdata),
+    }
 
     delete database.bundleChunks[bundleSeqNo]
 
-    return JSON.parse(bundle)
+    return bundle
   }
 
-  async uploadBundle(dbId, seqNo, bundleArrayBuffer) {
-    const action = 'InitBundleUpload'
-    const params = { dbId, seqNo }
-    const initResponse = await this.request(action, params)
-    const { token } = initResponse.data
-
+  async uploadBundle(userId, dbId, seqNo, bundleId, bundleArrayBuffer) {
     let position = 0
     let chunkNumber = 0
     let batch = [] // will use this to send chunks to server in batches of BUNDLE_CHUNKS_PER_BATCH
@@ -677,7 +681,7 @@ class Connection {
       const chunk = bundleArrayBuffer.slice(position, position + BUNDLE_CHUNK_SIZE)
 
       // using XHR to send binary data because Safari has trouble with string encoding over WebSocket
-      batch.push(uploadBundleChunk(token, this.session.userId, dbId, seqNo, chunkNumber, chunk))
+      batch.push(uploadBundleChunk(userId, dbId, seqNo, bundleId, chunkNumber, chunk))
 
       if (batch.length === BUNDLE_CHUNKS_PER_BATCH) {
         await Promise.all(batch)
@@ -693,36 +697,84 @@ class Connection {
     return chunkNumber
   }
 
+  async initBundleUpload(dbId, seqNo, dbKey) {
+    const action = 'InitBundleUpload'
+    const params = { dbId, seqNo }
+    const initResponse = await this.request(action, params)
+    const { bundleId } = initResponse.data
+
+    const [bundleEncryptionKey, encryptedBundleEncryptionKey] = await crypto.aesGcm.generateAndEncryptKeyEncryptionKey(dbKey)
+
+    return { bundleId, bundleEncryptionKey, encryptedBundleEncryptionKey: base64.encode(encryptedBundleEncryptionKey) }
+  }
+
+  orderedItems(items, itemsIndex) {
+    const orderedItemsArray = []
+    for (let i = 0; i < itemsIndex.array.length; i++) {
+      const itemId = itemsIndex.array[i].itemId
+      orderedItemsArray.push(items[itemId])
+    }
+    return orderedItemsArray
+  }
+
+  prepareBundle(database) {
+    const {
+      items,
+      itemsIndex,
+      itemsPlaintextMetadata,
+    } = database
+
+    const bundle = {
+      // these values are all provided as input values to SDK, or generated by SDK - will compress, then encrypt
+      encrypted: JSON.stringify({
+        items: this.orderedItems(items, itemsIndex),
+        itemsIndex: itemsIndex.array,
+      }),
+
+      // these are values the server has access to and can modify - will compress, but no need to encrypt and risk CRIME
+      plaintextMetadata: JSON.stringify({
+        itemsPlaintextMetadata: this.orderedItems(itemsPlaintextMetadata, itemsIndex),
+      }),
+    }
+
+    return bundle
+  }
+
   async buildBundle(database) {
     const dbId = database.dbId
     const lastSeqNo = database.lastSeqNo
     const dbKey = database.dbKey
+    const userId = this.session.userId
 
     // Client will only attempt to bundle at a particular seqNo a single time. This prevents server from spamming
     // client with buildBundle to maliciously get the client to re-use an IV in AES-GCM and reveal the dbKey
     if (database.bundledAtSeqNo && database.bundledAtSeqNo >= lastSeqNo) return
     else database.bundledAtSeqNo = lastSeqNo
 
-    const bundle = {
-      items: database.items,
-      itemsIndex: database.itemsIndex.array
-    }
+    const bundle = this.prepareBundle(database)
+
     const writers = database.attributionEnabled
       ? [...database.usernamesByUserId.keys()].join(',')
       : undefined
 
-    const plaintextString = JSON.stringify(bundle)
+    const { bundleId, bundleEncryptionKey, encryptedBundleEncryptionKey } = await this.initBundleUpload(dbId, lastSeqNo, dbKey)
 
-    const compressedString = await compress(plaintextString)
-    const compressedArrayBuffer = stringToArrayBuffer(compressedString)
+    const [compressedBeforeEncryption, compressedPlaintextMetadataString] = await Promise.all([
+      compress(bundle.encrypted),
+      compress(bundle.plaintextMetadata),
+    ])
 
-    const [bundleEncryptionKey, encryptedBundleEncryptionKey] = await crypto.aesGcm.generateAndEncryptKeyEncryptionKey(dbKey)
-    const bundleArrayBuffer = await crypto.aesGcm.encrypt(bundleEncryptionKey, compressedArrayBuffer)
+    const compressedArrayBufferBeforeEncryption = stringToArrayBuffer(compressedBeforeEncryption)
+    const encryptedItems = await crypto.aesGcm.encrypt(bundleEncryptionKey, compressedArrayBufferBeforeEncryption)
 
-    const numChunks = await this.uploadBundle(dbId, lastSeqNo, bundleArrayBuffer)
+    bundle.encrypted = arrayBufferToString(encryptedItems)
+    bundle.plaintextMetadata = compressedPlaintextMetadataString
+    const bundleArrayBuffer = stringToArrayBuffer(JSON.stringify(bundle))
+
+    const numChunks = await this.uploadBundle(userId, dbId, lastSeqNo, bundleId, bundleArrayBuffer)
 
     const action = 'CompleteBundleUpload'
-    const params = { dbId, seqNo: lastSeqNo, writers, numChunks, encryptedBundleEncryptionKey: base64.encode(encryptedBundleEncryptionKey) }
+    const params = { dbId, seqNo: lastSeqNo, bundleId, writers, numChunks, encryptedBundleEncryptionKey }
     await this.request(action, params)
   }
 

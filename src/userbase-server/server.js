@@ -15,7 +15,7 @@ import appController from './app'
 import connections from './ws'
 import statusCodes from './statusCodes'
 import responseBuilder from './responseBuilder'
-import { trimReq, truncateSessionId, wait } from './utils'
+import { trimReq, truncateSessionId, wait, clientCanReadAndWriteBundleChunks } from './utils'
 import stripe from './stripe'
 
 const adminPanelDir = '/admin-panel/dist'
@@ -285,15 +285,19 @@ async function start(express, app, userbaseConfig = {}) {
                   break
                 }
                 case 'InitBundleUpload': {
-                  response = conn.rateLimiter.atCapacity()
-                    ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
-                    : await db.initBundleUpload(userId, connectionId, params.dbId, params.seqNo)
+                  if (clientCanReadAndWriteBundleChunks(userbaseJsVersion)) {
+                    response = conn.rateLimiter.atCapacity()
+                      ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
+                      : await db.initBundleUpload(userId, connectionId, params.dbId, params.seqNo)
+                  } else {
+                    response = responseBuilder.errorResponse(statusCodes['Gone'], 'Update to latest version of userbase-js to bundle.')
+                  }
                   break
                 }
                 case 'CompleteBundleUpload': {
                   response = conn.rateLimiter.atCapacity()
                     ? responseBuilder.errorResponse(statusCodes['Too Many Requests'], { retryDelay: 1000 })
-                    : await db.completeBundleUpload(userId, connectionId, params.dbId, params.seqNo, params.writers, params.numChunks,
+                    : await db.completeBundleUpload(userId, connectionId, params.dbId, params.seqNo, params.bundleId, params.writers, params.numChunks,
                       params.encryptedBundleEncryptionKey)
                   break
                 }

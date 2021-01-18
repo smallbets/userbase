@@ -31,6 +31,8 @@ const ENCRYPTION_MODE_OPTIONS = {
   'server-side': true
 }
 
+const TX_TIMEOUT = 30 * 1000
+
 const _checkSignedInState = () => {
   if (ws.reconnecting) throw new errors.Reconnecting
   if (!ws.keys.init && ws.changePassword) throw new errors.UserMustChangePassword
@@ -80,7 +82,7 @@ class UnverifiedTransaction {
       this.promiseResolve = resolve
       this.promiseReject = reject
 
-      setTimeout(() => { reject(new Error('timeout')) }, 20000)
+      setTimeout(() => { reject(new Error('timeout')) }, TX_TIMEOUT)
     })
 
     this.verifyPromise()
@@ -118,6 +120,7 @@ class Database {
     this.onChange = _setChangeHandler(changeHandler)
 
     this.items = {}
+    this.itemsPlaintextMetadata = {}
     this.fileIds = {}
 
     const compareItems = (a, b) => {
@@ -189,7 +192,8 @@ class Database {
     for (let i = 0; i < bundle.itemsIndex.length; i++) {
       const itemIndex = bundle.itemsIndex[i]
       const itemId = bundle.itemsIndex[i].itemId
-      const item = bundle.items[itemId]
+      const item = bundle.items[i]
+      const itemsPlaintextMetadata = bundle.itemsPlaintextMetadata[i]
 
       if (item.file && item.file.fileEncryptionKeyString) {
         item.file.fileEncryptionKey = await crypto.aesGcm.getKeyFromKeyString(item.file.fileEncryptionKeyString)
@@ -197,6 +201,7 @@ class Database {
       }
 
       this.items[itemId] = item
+      this.itemsPlaintextMetadata[itemId] = itemsPlaintextMetadata
       this.itemsIndex.insert(itemIndex)
     }
 
@@ -326,8 +331,7 @@ class Database {
     this.validateUpdateOrDelete(itemId, __v, updatedBy, ownerId, command)
 
     // writeAccess can only be set or removed by either the item creator or database owner
-    const item = this.items[itemId]
-    const { createdBy } = item
+    const { createdBy } = this.itemsPlaintextMetadata[itemId]
 
     if (writeAccess || writeAccess === false) {
       if (!createdBy) return // if no attribution on item set, can't set write access
@@ -349,7 +353,7 @@ class Database {
       throw new errors.ItemUpdateConflict
     }
 
-    this.validateAccessPermissions(item, attribution, ownerId, command)
+    this.validateAccessPermissions(itemId, attribution, ownerId, command)
   }
 
   validateUploadFile(itemId, __v, fileUploadedBy, ownerId, command) {
@@ -362,11 +366,11 @@ class Database {
       throw new errors.FileUploadConflict
     }
 
-    this.validateAccessPermissions(item, fileUploadedBy, ownerId, command)
+    this.validateAccessPermissions(itemId, fileUploadedBy, ownerId, command)
   }
 
-  validateAccessPermissions(item, attribution, ownerId, command) {
-    const { createdBy, writeAccess } = item
+  validateAccessPermissions(itemId, attribution, ownerId, command) {
+    const { createdBy, writeAccess } = this.itemsPlaintextMetadata[itemId]
     if (createdBy && attribution && writeAccess) {
       const createdByUserId = createdBy.userId
       const modifiedByUserId = attribution.userId
@@ -398,9 +402,11 @@ class Database {
     this.items[itemId] = {
       ...item,
       record,
+      __v: 0
+    }
+    this.itemsPlaintextMetadata[itemId] = {
       createdBy,
       writeAccess,
-      __v: 0
     }
     this.itemsIndex.insert({ ...item, itemId })
 
@@ -415,13 +421,14 @@ class Database {
 
   applyUpdate(itemId, record, __v, updatedBy, writeAccess) {
     this.items[itemId].record = record
-    this.items[itemId].updatedBy = updatedBy
     this.items[itemId].__v = __v
 
+    this.itemsPlaintextMetadata[itemId].updatedBy = updatedBy
+
     if (writeAccess === false) {
-      delete this.items[itemId].writeAccess
+      delete this.itemsPlaintextMetadata[itemId].writeAccess
     } else if (writeAccess) {
-      this.items[itemId].writeAccess = writeAccess
+      this.itemsPlaintextMetadata[itemId].writeAccess = writeAccess
 
       if (writeAccess.users) {
         for (const { userId, username } of writeAccess.users) {
@@ -446,7 +453,7 @@ class Database {
       fileEncryptionKeyString,
       __v,
     }
-    this.items[itemId].fileUploadedBy = fileUploadedBy
+    this.itemsPlaintextMetadata[itemId].fileUploadedBy = fileUploadedBy
     this.fileIds[fileId] = itemId
     return success
   }
@@ -454,6 +461,7 @@ class Database {
   applyDelete(itemId) {
     this.itemsIndex.remove(this.items[itemId])
     delete this.items[itemId]
+    delete this.itemsPlaintextMetadata[itemId]
     return success
   }
 
@@ -541,8 +549,8 @@ class Database {
 
       // set attribution metadata
       for (const prop of ['createdBy', 'updatedBy', 'fileUploadedBy']) {
-        if (this.items[itemId][prop]) {
-          const { timestamp, userId } = this.items[itemId][prop]
+        if (this.itemsPlaintextMetadata[itemId][prop]) {
+          const { timestamp, userId } = this.itemsPlaintextMetadata[itemId][prop]
           const attribution = { timestamp }
           const username = this.usernamesByUserId.get(userId)
           if (username == null) {
@@ -555,8 +563,8 @@ class Database {
       }
 
       // set write access permissions
-      if (this.items[itemId].writeAccess) {
-        const { onlyCreator, users } = this.items[itemId].writeAccess
+      if (this.itemsPlaintextMetadata[itemId].writeAccess) {
+        const { onlyCreator, users } = this.itemsPlaintextMetadata[itemId].writeAccess
         const writeAccess = {}
         if (onlyCreator) writeAccess.onlyCreator = onlyCreator
 
@@ -686,7 +694,7 @@ const _openDatabase = async (changeHandler, params) => {
     let timeout
     const firstMessageFromWebSocket = new Promise((resolve, reject) => {
       receivedMessage = resolve
-      timeout = setTimeout(() => reject(new Error('timeout')), 30000)
+      timeout = setTimeout(() => reject(new Error('timeout')), TX_TIMEOUT)
     })
 
     const { dbNameHash, newDatabaseParams, databaseId, shareToken } = params

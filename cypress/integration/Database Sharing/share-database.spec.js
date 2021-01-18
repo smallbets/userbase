@@ -1,4 +1,4 @@
-import { getRandomString } from '../../support/utils'
+import { getOperationsThatTriggerBundle, wait, getRandomString } from '../../support/utils'
 
 const beforeEachHook = function () {
   cy.visit('./cypress/integration/index.html').then(async function (win) {
@@ -711,6 +711,112 @@ describe('DB Sharing Tests', function () {
         // clean up
         await this.test.userbase.deleteUser()
         await this.test.userbase.signIn({ username: sender.username, password: sender.password, rememberMe: 'none' })
+        await this.test.userbase.deleteUser()
+      })
+
+      it('Owner bundles database, then recipient reads from database', async function () {
+        const recipient = await signUp(this.test.userbase)
+        await this.test.userbase.signOut()
+
+        const sender = await signUp(this.test.userbase)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+        const operations = getOperationsThatTriggerBundle()
+        await this.test.userbase.putTransaction({ databaseName, operations })
+
+        console.log('Give client time to finish bundle...')
+        await wait(5000)
+
+        // sender shares database with recipient
+        await this.test.userbase.shareDatabase({ databaseName, username: recipient.username, requireVerified: false })
+        await this.test.userbase.signOut()
+
+        // recipient signs in and checks if can read the database
+        await this.test.userbase.signIn({ username: recipient.username, password: recipient.password, rememberMe: 'none' })
+
+        // recipient must find the database's databaseId using getDatabases() result
+        const { databases } = await this.test.userbase.getDatabases()
+        const db = databases[0]
+        const { databaseId } = db
+
+        let changeHandlerCallCount = 0
+        const changeHandler = function (items) {
+          expect(items, 'array passed to changeHandler').to.be.a('array').to.have.lengthOf(operations.length)
+
+          for (let i = 0; i < items.length; i++) {
+            const { item, itemId } = operations[i]
+            expect(items[i], 'item passed to change handler').to.deep.equal({
+              itemId,
+              item,
+              createdBy: { username: sender.username, timestamp: items[i].createdBy.timestamp }
+            })
+          }
+
+          changeHandlerCallCount += 1
+        }
+
+        await this.test.userbase.openDatabase({ databaseId, changeHandler })
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+
+        // clean up
+        await this.test.userbase.deleteUser()
+        await this.test.userbase.signIn({ username: sender.username, password: sender.password, rememberMe: 'none' })
+        await this.test.userbase.deleteUser()
+      })
+
+      it('Recipient bundles database, then owner reads from database', async function () {
+        const recipient = await signUp(this.test.userbase)
+        await this.test.userbase.signOut()
+
+        const sender = await signUp(this.test.userbase)
+        await this.test.userbase.openDatabase({ databaseName, changeHandler: () => { } })
+
+        // sender shares database with recipient
+        await this.test.userbase.shareDatabase({ databaseName, username: recipient.username, requireVerified: false, readOnly: false })
+        await this.test.userbase.signOut()
+
+        // recipient signs in and checks if can read the database
+        await this.test.userbase.signIn({ username: recipient.username, password: recipient.password, rememberMe: 'none' })
+
+        // recipient must find the database's databaseId using getDatabases() result
+        const { databases } = await this.test.userbase.getDatabases()
+        const db = databases[0]
+        const { databaseId } = db
+
+        await this.test.userbase.openDatabase({ databaseId, changeHandler: () => { } })
+        const operations = getOperationsThatTriggerBundle()
+        await this.test.userbase.putTransaction({ databaseId, operations })
+
+        console.log('Give client time to finish bundle...')
+        await wait(5000)
+        await this.test.userbase.signOut()
+
+        // sender signs back in and reads
+        await this.test.userbase.signIn({ username: sender.username, password: sender.password, rememberMe: 'none' })
+
+        let changeHandlerCallCount = 0
+        const changeHandler = function (items) {
+          expect(items, 'array passed to changeHandler').to.be.a('array').to.have.lengthOf(operations.length)
+
+          for (let i = 0; i < items.length; i++) {
+            const { item, itemId } = operations[i]
+            expect(items[i], 'item passed to change handler').to.deep.equal({
+              itemId,
+              item,
+              createdBy: { username: recipient.username, timestamp: items[i].createdBy.timestamp }
+            })
+          }
+
+          changeHandlerCallCount += 1
+        }
+
+        await this.test.userbase.openDatabase({ databaseName, changeHandler })
+
+        expect(changeHandlerCallCount, 'changeHandler called correct number of times').to.equal(1)
+
+        // clean up
+        await this.test.userbase.deleteUser()
+        await this.test.userbase.signIn({ username: recipient.username, password: recipient.password, rememberMe: 'none' })
         await this.test.userbase.deleteUser()
       })
 

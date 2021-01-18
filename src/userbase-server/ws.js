@@ -3,11 +3,11 @@ import setup from './setup'
 import uuidv4 from 'uuid/v4'
 import db from './db'
 import logger from './logger'
-import { estimateSizeOfDdbItem } from './utils'
+import { estimateSizeOfDdbItem, clientCanReadAndWriteBundleChunks } from './utils'
 import statusCodes from './statusCodes'
 import { getUserByUserId } from './user'
 
-const SECONDS_BEFORE_ROLLBACK_GAP_TRIGGERED = 1000 * 10 // 10s
+const SECONDS_BEFORE_ROLLBACK_GAP_TRIGGERED = 30 * 1000
 const TRANSACTION_SIZE_BUNDLE_TRIGGER = 1024 * 50 // 50 KB
 
 const CACHE_LIFE = 60 * 1000 // 60s
@@ -74,15 +74,10 @@ class Connection {
     this.fileStorageRateLimiter = new TokenBucket(FILE_STORAGE_MAX_REQUESTS_PER_SECOND, FILE_STORAGE_TOKENS_REFILLED_PER_SECOND)
   }
 
-  // only userbase-js >= 2.7.0 can read and write bundle in chunks
-  clientCanReadAndWriteBundleChunks() {
-    const userbaseJsVersion = this.userbaseJsVersion && this.userbaseJsVersion.split('.').map(v => Number(v))
-    return userbaseJsVersion && (userbaseJsVersion[0] > 2 || (userbaseJsVersion[0] === 2 && userbaseJsVersion[1] >= 7))
-  }
-
-  openDatabase(databaseId, dbNameHash, bundleSeqNo, numChunks, encryptedBundleEncryptionKey, reopenAtSeqNo, isOwner, ownerId, attribution, shareTokenReadWritePermissions) {
+  openDatabase(databaseId, dbNameHash, bundleSeqNo, bundleId, numChunks, encryptedBundleEncryptionKey, reopenAtSeqNo, isOwner, ownerId, attribution, shareTokenReadWritePermissions) {
     this.databases[databaseId] = {
       bundleSeqNo: bundleSeqNo > 0 ? bundleSeqNo : -1,
+      bundleId,
       numChunks,
       encryptedBundleEncryptionKey,
       lastSeqNo: reopenAtSeqNo || 0,
@@ -131,33 +126,39 @@ class Connection {
     let lastSeqNo = database.lastSeqNo
     const bundleSeqNo = database.bundleSeqNo
 
+    const logChildObject = {
+      connectionId: this.id,
+      userId: this.userId,
+      adminId: this.adminId,
+      userbaseJsVersion: this.userbaseJsVersion,
+      openingDatabase: openingDatabase ? true : false,
+      reopenAtSeqNo,
+      databaseId,
+      lastSeqNo,
+      bundleSeqNo,
+      bundleId: database.bundleId,
+      numChunks: database.numChunks,
+      clientCanReadAndWriteBundleChunks: clientCanReadAndWriteBundleChunks(this.userbaseJsVersion),
+      bundlingDisabled: process.env['sm.BUNDLING_DISABLED']
+    }
+
     const writerUserIds = new Set() // used for database writers AND writeAccess permissions
 
     // send the bundle if one exists and haven't sent any transactions over the WebSocket yet
     if (bundleSeqNo > 0 && database.lastSeqNo === 0) {
+      logger.child(logChildObject).info('Retrieving database bundle')
 
-      // if using userbase-js < v2.7.0, but there is a bundle stored in chunks, then require clients
-      // query the entire transaction log in DDB because they won't be able to read the bundle in chunks
-      const bundleIsStoredInChunks = database.numChunks
-      if (this.clientCanReadAndWriteBundleChunks() || !bundleIsStoredInChunks) {
+      if (!process.env['sm.BUNDLING_DISABLED'] && clientCanReadAndWriteBundleChunks(this.userbaseJsVersion)) {
         payload.bundleSeqNo = bundleSeqNo
         lastSeqNo = bundleSeqNo
 
-        let writers
-        // userbase-js >= v2.7.0 has the bundle stored in chunks
-        if (bundleIsStoredInChunks) {
-          // tell client to wait for all bundle chunks to load
-          payload.waitForFullBundle = true
-          payload.encryptedBundleEncryptionKey = database.encryptedBundleEncryptionKey
+        // tell client to wait for all bundle chunks to load
+        payload.waitForFullBundle = true
+        payload.encryptedBundleEncryptionKey = database.encryptedBundleEncryptionKey
+        logChildObject.waitForFullBundle = true
 
-          this.pushBundleChunks(database, databaseId)
-          writers = database.attribution && await db.getBundleWriters(databaseId, bundleSeqNo)
-        } else {
-          // old clients < userbase-js v2.7.0
-          const bundleResult = await db.getBundle(databaseId, bundleSeqNo, database.attribution)
-          payload.bundle = bundleResult.bundle
-          writers = bundleResult.writers
-        }
+        this.pushBundleChunks(database, databaseId, logChildObject)
+        const writers = database.attribution && await db.getBundleWriters(databaseId, bundleSeqNo)
 
         if (writers) {
           for (const userId of writers.split(',')) {
@@ -266,7 +267,7 @@ class Connection {
       } while (params.ExclusiveStartKey && !gapInSeqNo)
 
     } catch (e) {
-      logger.warn(`Failed to push to ${databaseId} with ${e}`)
+      logger.child({ ...logChildObject, err: e }).warn('Failed to push to database')
       throw new Error(e)
     }
 
@@ -314,22 +315,19 @@ class Connection {
     }
 
     if (openingDatabase && database.lastSeqNo !== 0) {
-      logger
-        .child({ databaseId, connectionId: this.id })
+      logger.child(logChildObject)
         .warn('When opening database, must send client entire transaction log from tip')
       return
     }
 
     if (reopeningDatabase && database.lastSeqNo !== reopenAtSeqNo) {
-      logger
-        .child({ databaseId, connectionId: this.id })
+      logger.child(logChildObject)
         .warn('When reopening database, must send client entire transaction log from requested seq no')
       return
     }
 
     if (!openingDatabase && !database.init) {
-      logger
-        .child({ databaseId, connectionId: this.id })
+      logger.child(logChildObject)
         .warn('Must finish opening database before sending transactions to client')
       return
     }
@@ -347,10 +345,7 @@ class Connection {
 
         logger
           .child({
-            connectionId: this.id,
-            userId: this.userId,
-            adminId: this.adminId,
-            databaseId: payload.dbId,
+            ...logChildObject,
             route: payload.route,
             size: msg.length,
             bundleSeqNo: payload.bundleSeqNo,
@@ -434,7 +429,8 @@ class Connection {
 
     let msg
     const buildBundle = database.transactionLogSize + size >= TRANSACTION_SIZE_BUNDLE_TRIGGER
-      && this.clientCanReadAndWriteBundleChunks() // only clients >= 2.7.0 can build bundles now
+      && clientCanReadAndWriteBundleChunks(this.userbaseJsVersion)
+      && !process.env['sm.BUNDLING_DISABLED']
 
     if (buildBundle) {
       msg = JSON.stringify({ ...payload, transactionLog, buildBundle: true })
@@ -461,6 +457,7 @@ class Connection {
         size: msg.length,
         bundleSeqNo: payload.bundleSeqNo,
         transactionLogSize: database.transactionLogSize,
+        waitForFullBundle: payload.waitForFullBundle,
         buildBundle,
         startSeqNo,
         endSeqNo
@@ -468,8 +465,8 @@ class Connection {
       .info('Sent transactions to client')
   }
 
-  async pushBundleChunks(database, databaseId) {
-    const { dbNameHash, isOwner, bundleSeqNo, numChunks } = database
+  async pushBundleChunks(database, databaseId, logChildObject) {
+    const { dbNameHash, isOwner, bundleSeqNo, bundleId, numChunks } = database
 
     // send chunks in batches of BUNDLE_CHUNK_BATCH_SIZE
     let batch = []
@@ -488,7 +485,7 @@ class Connection {
       if (chunkNo === 0) payload.isFirstChunk = true
       if (chunkNo === numChunks - 1) payload.isLastChunk = true
 
-      batch.push(db.getBundleChunk(databaseId, bundleSeqNo, chunkNo))
+      batch.push(db.getBundleChunk(databaseId, bundleSeqNo, bundleId, chunkNo))
       payloads.push(payload)
 
       if (batch.length === BUNDLE_CHUNK_BATCH_SIZE || payload.isLastChunk) {
@@ -500,7 +497,7 @@ class Connection {
           this.socket.send(JSON.stringify(payloadWithChunk))
 
           logger
-            .child({ ...payloadWithChunk, databaseId, chunk: undefined })
+            .child({ ...logChildObject, ...payloadWithChunk, chunk: undefined })
             .info('Sent bundle chunk to client')
         }
 
@@ -543,14 +540,14 @@ export default class Connections {
     return connection
   }
 
-  static openDatabase({ userId, connectionId, databaseId, bundleSeqNo, numChunks, encryptedBundleEncryptionKey, dbNameHash, dbKey, reopenAtSeqNo, isOwner, ownerId,
+  static openDatabase({ userId, connectionId, databaseId, bundleSeqNo, bundleId, numChunks, encryptedBundleEncryptionKey, dbNameHash, dbKey, reopenAtSeqNo, isOwner, ownerId,
     attribution, plaintextDbKey, shareTokenEncryptedDbKey, shareTokenEncryptionKeySalt, shareTokenReadWritePermissions }) {
     if (!Connections.sockets || !Connections.sockets[userId] || !Connections.sockets[userId][connectionId]) return
 
     const conn = Connections.sockets[userId][connectionId]
 
     if (!conn.databases[databaseId]) {
-      conn.openDatabase(databaseId, dbNameHash, bundleSeqNo, numChunks, encryptedBundleEncryptionKey, reopenAtSeqNo, isOwner, ownerId, attribution, shareTokenReadWritePermissions)
+      conn.openDatabase(databaseId, dbNameHash, bundleSeqNo, bundleId, numChunks, encryptedBundleEncryptionKey, reopenAtSeqNo, isOwner, ownerId, attribution, shareTokenReadWritePermissions)
 
       if (!Connections.sockets[databaseId]) Connections.sockets[databaseId] = { numConnections: 0 }
       Connections.sockets[databaseId][connectionId] = userId
