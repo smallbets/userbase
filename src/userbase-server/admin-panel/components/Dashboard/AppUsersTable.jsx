@@ -8,15 +8,12 @@ import UnknownError from '../Admin/UnknownError'
 import { formatDate, formatSize } from '../../utils'
 import { ProfileTable } from './ProfileTable'
 import { StripeDataTable } from './StripeDataTable'
-import { STRIPE_CLIENT_ID, getStripeState } from '../../config'
+import { STRIPE_CLIENT_ID, FREE_PLAN_USERS_LIMIT, getStripeState } from '../../config'
 import EncryptionModeModal from './EncryptionModeModal'
 
-// admin must have an active Userbase subscripion & active payments add-on subscription to enable prod payments
-const prodPaymentsAllowed = ({ paymentStatus, cancelSaasSubscriptionAt, paymentsAddOnSubscriptionStatus, cancelPaymentsAddOnSubscriptionAt }) => {
-  return (
-    paymentStatus === 'active' && !cancelSaasSubscriptionAt &&
-    paymentsAddOnSubscriptionStatus === 'active' && !cancelPaymentsAddOnSubscriptionAt
-  )
+// admin must have an active Userbase subscripion to enable prod payments
+const prodPaymentsAllowed = ({ paymentStatus, cancelSaasSubscriptionAt }) => {
+  return paymentStatus === 'active' && !cancelSaasSubscriptionAt
 }
 
 export default class AppUsersTable extends Component {
@@ -654,8 +651,8 @@ export default class AppUsersTable extends Component {
 
             {
               !adminLogic.saasSubscriptionNotActive(admin) ? <div />
-                : <div className='text-left mb-4 text-red-600 font-normal'>
-                  Your account is limited to 1 app and 3 users. <a href="#edit-account">Remove this limit</a> with a Userbase subscription.
+                : <div className='text-left mb-4 text-orange-600 font-normal'>
+                  The Starter plan is limited to 1 app and {FREE_PLAN_USERS_LIMIT} users. <a href="#edit-account">Remove this limit</a> with a Userbase subscription.
                 </div>
             }
 
@@ -924,8 +921,8 @@ export default class AppUsersTable extends Component {
 
           {
             prodPaymentsAllowed(admin) ? <div />
-              : <div className='text-left mb-6 text-red-600 font-normal'>
-                Your account is limited to test payments. <a href="#edit-account">Remove this limit</a> with {adminLogic.saasSubscriptionNotActive(admin) ? 'a Userbase subscription and' : ''} the payments portal add-on.
+              : <div className='text-left mb-6 text-orange-600 font-normal'>
+                The Starter plan is limited to test payments. <a href="#edit-account">Remove this limit</a> with a Userbase subscription.
               </div>
           }
 

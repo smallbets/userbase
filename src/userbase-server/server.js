@@ -696,9 +696,6 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.post('/stripe/storage-plan', admin.authenticateAdmin, admin.subscribeToStoragePlan)
     v1Admin.post('/stripe/cancel-storage-subscription', admin.authenticateAdmin, admin.cancelStorageSubscription)
     v1Admin.post('/stripe/resume-storage-subscription', admin.authenticateAdmin, admin.resumeStorageSubscription)
-    v1Admin.post('/stripe/payments-add-on', admin.authenticateAdmin, admin.subscribeToPaymentsAddOn)
-    v1Admin.post('/stripe/cancel-payments-add-on', admin.authenticateAdmin, admin.cancelPaymentsAddOnSubscription)
-    v1Admin.post('/stripe/resume-payments-add-on', admin.authenticateAdmin, admin.resumePaymentsAddOnSubscription)
 
     // endpoints for admin to use payment portal to accept payments from their users
     v1Admin.post('/stripe/connection/:authorizationCode', admin.authenticateAdmin, admin.completeStripeConnection)

@@ -7,6 +7,7 @@ import adminLogic from '../Admin/logic'
 import UnknownError from '../Admin/UnknownError'
 import { formatSize } from '../../utils'
 import EncryptionModeModal from './EncryptionModeModal'
+import { FREE_PLAN_USERS_LIMIT } from '../../config'
 
 export default class Dashboard extends Component {
   constructor(props) {
@@ -195,8 +196,8 @@ export default class Dashboard extends Component {
 
               {
                 (!adminLogic.saasSubscriptionNotActive(admin)) ? <div />
-                  : <div className='text-left mb-4 text-red-600 font-normal'>
-                    Your account is limited to 1 app and 3 users. <a href="#edit-account">Remove this limit</a> with a Userbase subscription.
+                  : <div className='text-left mb-4 text-orange-600 font-normal'>
+                    The Starter plan is limited to 1 app and {FREE_PLAN_USERS_LIMIT} users. <a href="#edit-account">Remove this limit</a> with a Userbase subscription.
                 </div>
               }
 

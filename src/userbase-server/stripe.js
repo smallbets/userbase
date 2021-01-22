@@ -42,22 +42,32 @@ const getProdConnectWebhookSecret = () => {
   return prodConnectWebhookSecret
 }
 
+// $49 per year
 const getStripeSaasSubscriptionPlanId = () => {
   const saasSubscriptionPlanId = process.env['sm.STRIPE_SAAS_SUBSCRIPTION_PLAN_ID']
   if (!saasSubscriptionPlanId) throw new Error('Missing Stripe SaaS subscription plan ID')
   return saasSubscriptionPlanId
 }
 
-const getStripeStoragePlanId = () => {
-  const storagePlanId = process.env['sm.STRIPE_STORAGE_PLAN_ID_1_TB']
-  if (!storagePlanId) throw new Error('Missing Stripe storage plan ID')
-  return storagePlanId
+// $89 per year
+const getStripeSaasSubscriptionPlan2Id = () => {
+  const saasSubscriptionPlanId = process.env['sm.STRIPE_SAAS_SUBSCRIPTION_PLAN_2_ID']
+  if (!saasSubscriptionPlanId) throw new Error('Missing Stripe SaaS subscription plan 2 ID')
+  return saasSubscriptionPlanId
 }
 
-const getStripePaymentsAddOnPlanId = () => {
-  const paymentsAddOnPlanId = process.env['sm.STRIPE_PAYMENTS_ADD_ON_PLAN_ID']
-  if (!paymentsAddOnPlanId) throw new Error('Missing Stripe payments add-on plan ID')
-  return paymentsAddOnPlanId
+// $99 per year
+const getStripeStoragePlan100GbId = () => {
+  const storagePlan100GbId = process.env['sm.STRIPE_STORAGE_PLAN_ID_100_GB']
+  if (!storagePlan100GbId) throw new Error('Missing Stripe 100 GB storage plan ID')
+  return storagePlan100GbId
+}
+
+// $299 per year
+const getStripeStoragePlan1TbId = () => {
+  const storagePlan1TbId = process.env['sm.STRIPE_STORAGE_PLAN_ID_1_TB']
+  if (!storagePlan1TbId) throw new Error('Missing Stripe 1 TB storage plan ID')
+  return storagePlan1TbId
 }
 
 const _setSubscriptionDefaultPaymentMethod = async function (subscription, payment_method, stripeAccount, useTestClient) {
@@ -334,8 +344,9 @@ const WEBHOOK_OPTIONS = {
 export default {
   getClient,
   getStripeSaasSubscriptionPlanId,
-  getStripeStoragePlanId,
-  getStripePaymentsAddOnPlanId,
+  getStripeSaasSubscriptionPlan2Id,
+  getStripeStoragePlan100GbId,
+  getStripeStoragePlan1TbId,
   convertStripeTimestamptToIsoString,
   handleWebhook,
   deleteSubscription,

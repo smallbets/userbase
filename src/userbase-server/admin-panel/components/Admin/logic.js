@@ -237,11 +237,14 @@ const resumeSaasSubscription = async () => {
   }
 }
 
-const buyStoragePlan = async () => {
+const buyStoragePlan = async (plan) => {
   try {
     const response = await axios({
       method: 'POST',
       url: `/${VERSION}/admin/stripe/storage-plan/`,
+      data: {
+        plan
+      },
       timeout: TEN_SECONDS_MS
     })
     return response.data
@@ -271,45 +274,6 @@ const resumeStorageSubscription = async () => {
       timeout: TEN_SECONDS_MS
     })
     return response.data
-  } catch (e) {
-    errorHandler(e)
-  }
-}
-
-const buyAddOn = async () => {
-  try {
-    const paymentsAddOnStatusResponse = await axios({
-      method: 'POST',
-      url: `/${VERSION}/admin/stripe/payments-add-on`,
-      timeout: TEN_SECONDS_MS
-    })
-    return paymentsAddOnStatusResponse.data
-  } catch (e) {
-    errorHandler(e)
-  }
-}
-
-const cancelPaymentsAddOnSubscription = async () => {
-  try {
-    const cancelResponse = await axios({
-      method: 'POST',
-      url: `/${VERSION}/admin/stripe/cancel-payments-add-on`,
-      timeout: TEN_SECONDS_MS
-    })
-    const cancelPaymentsAddOnSubscriptionAt = cancelResponse.data
-    return cancelPaymentsAddOnSubscriptionAt
-  } catch (e) {
-    errorHandler(e)
-  }
-}
-
-const resumePaymentsAddOnSubscription = async () => {
-  try {
-    await axios({
-      method: 'POST',
-      url: `/${VERSION}/admin/stripe/resume-payments-add-on`,
-      timeout: TEN_SECONDS_MS
-    })
   } catch (e) {
     errorHandler(e)
   }
@@ -430,9 +394,6 @@ export default {
   buyStoragePlan,
   cancelStorageSubscription,
   resumeStorageSubscription,
-  buyAddOn,
-  cancelPaymentsAddOnSubscription,
-  resumePaymentsAddOnSubscription,
   getAdminAccount,
   getAccessTokens,
   generateAccessToken,

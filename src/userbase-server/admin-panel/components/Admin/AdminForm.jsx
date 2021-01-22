@@ -54,7 +54,7 @@ export default class AdminForm extends Component {
   }
 
   async handleSubmit(event) {
-    const { formType, handleUpdateAccount, upgrade, enablePayments, enableStoragePlan1 } = this.props
+    const { formType, handleUpdateAccount, upgrade, enablePayments, enableStoragePlan100Gb, enableStoragePlan1Tb } = this.props
     const { email, password, fullName, receiveEmailUpdates } = this.state
     event.preventDefault()
 
@@ -70,7 +70,7 @@ export default class AdminForm extends Component {
         return console.error('Unknown form type')
       }
 
-      window.location.hash = (upgrade || enablePayments || enableStoragePlan1) ? 'edit-account' : ''
+      window.location.hash = (upgrade || enablePayments || enableStoragePlan100Gb || enableStoragePlan1Tb) ? 'edit-account' : ''
     } catch (e) {
       if (this._isMounted) this.setState({ error: e.message, loading: false })
     }
@@ -255,5 +255,6 @@ AdminForm.propTypes = {
   handleUpdateAccount: func,
   upgrade: bool,
   enablePayments: bool,
-  enableStoragePlan1: bool,
+  enableStoragePlan100Gb: bool,
+  enableStoragePlan1Tb: bool,
 }

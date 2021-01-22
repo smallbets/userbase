@@ -35,7 +35,7 @@ const MAX_PROFILE_OBJECT_KEY_CHAR_LENGTH = 20
 const MAX_PROFILE_OBJECT_VALUE_CHAR_LENGTH = 1000
 const MAX_PROFILE_OBJECT_KEYS = 100
 
-const LIMIT_NUM_TRIAL_USERS = 3
+const LIMIT_NUM_TRIAL_USERS = 100
 
 const MAX_INCORRECT_PASSWORD_GUESSES = 25
 
@@ -844,7 +844,7 @@ const _buildStripeData = (user, app, admin) => {
     stripeAccountId &&
 
     // make sure paid for payments feature, or that didn't need to pay
-    ((app['payments-mode'] === 'prod' && adminController.prodPaymentsEnabled(admin)) || app['payments-mode'] !== 'prod') &&
+    ((app['payments-mode'] === 'prod' && adminController.prodPaymentsAllowed(admin)) || app['payments-mode'] !== 'prod') &&
 
     // default paymentsMode to 'test' so long as above conditions are met
     (app['payments-mode'] || 'test')
@@ -2384,7 +2384,7 @@ exports.createSubscriptionPaymentSession = async function (logChildObject, app, 
     }
 
     let subscriptionPlanId, subscriptionStatus, cancelSubscriptionAt, customerId
-    if (app['payments-mode'] === 'prod' && adminController.prodPaymentsEnabled(admin)) {
+    if (app['payments-mode'] === 'prod' && adminController.prodPaymentsAllowed(admin)) {
       subscriptionPlanId = providedPlanId || providedPriceId || app['prod-subscription-plan-id']
       subscriptionStatus = user['prod-subscription-status']
       cancelSubscriptionAt = user['prod-cancel-subscription-at']
@@ -2576,8 +2576,8 @@ const _getTrialExpirationDate = (user, app, paymentsMode) => {
 exports.validatePayment = function (user, app, admin) {
   if (!app['payment-required']) return
 
-  // payments mode set to prod but subscriptions not paid for gets same functional treatment as disabled payments mode
-  if (app['payments-mode'] === 'prod' && !adminController.prodPaymentsEnabled(admin)) return
+  // payments mode set to prod but subscription not paid for gets same functional treatment as disabled payments mode
+  if (app['payments-mode'] === 'prod' && !adminController.prodPaymentsAllowed(admin)) return
 
   const paymentsMode = app['payments-mode'] === 'prod' ? 'prod' : 'test'
 
