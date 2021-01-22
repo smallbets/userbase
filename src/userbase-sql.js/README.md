@@ -50,7 +50,7 @@ Or, you can include it with a `<script>` tag:
 
 #### Set the App ID
 
-In your admin account, you will find a Trial app. Get its App ID, and then in your browser code, initialize userbase-sql.js with it.
+In your admin account, you will find a Starter app. Get its App ID, and then in your browser code, initialize userbase-sql.js with it.
 
 ```
 await userbaseSqlJs.init({ appId: 'YOUR_APP_ID' })

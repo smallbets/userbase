@@ -111,7 +111,7 @@ describe('GetApp', function () {
 
             expect(response.body, 'app keys').to.have.keys(['appId', 'appName', 'creationDate', 'paymentsMode', 'encryptionMode'])
             expect(response.body.appId, 'app appId').to.eq(appId)
-            expect(response.body.appName, 'app name').to.eq('Trial')
+            expect(response.body.appName, 'app name').to.eq('Starter App')
             expect(response.body.paymentsMode, 'paymentsMode').to.eq('disabled')
             expect(response.body.encryptionMode, 'encryptionMode').to.eq('end-to-end')
 
@@ -661,7 +661,7 @@ describe('ListApps', function () {
             expect(app, 'app keys').to.have.keys(['appId', 'appName', 'creationDate', 'paymentsMode', 'encryptionMode'])
 
             expect(app.appId, 'app appId').to.eq(appId)
-            expect(app.appName, 'app name').to.eq('Trial')
+            expect(app.appName, 'app name').to.eq('Starter App')
             expect(app.paymentsMode, 'paymentsMode').to.eq('disabled')
             expect(app.encryptionMode, 'encryptionMode').to.eq('end-to-end')
 
@@ -696,11 +696,11 @@ describe('ListApps', function () {
 
             expect(app, 'app keys').to.have.keys(['appId', 'appName', 'creationDate', 'paymentsMode', 'encryptionMode'])
             expect(app.appId, 'app appId').to.eq(appId)
-            expect(app.appName, 'app name').to.eq('Trial')
+            expect(app.appName, 'app name').to.eq('Starter App')
             expect(app.paymentsMode, 'paymentsMode').to.eq('disabled')
             expect(app.encryptionMode, 'encryptionMode').to.eq('end-to-end')
 
-            const nextPageToken = constructNextPageToken({ 'admin-id': adminId, 'app-name': 'Trial' })
+            const nextPageToken = constructNextPageToken({ 'admin-id': adminId, 'app-name': 'Starter App' })
 
             cy
               .request({
@@ -839,7 +839,7 @@ describe('ListApps', function () {
       })
 
       it('Next page token with no admin ID', function () {
-        const nextPageToken = constructNextPageToken({ 'admin-id': undefined, 'app-name': 'Trial' })
+        const nextPageToken = constructNextPageToken({ 'admin-id': undefined, 'app-name': 'Starter App' })
 
         cy
           .request({
@@ -860,7 +860,7 @@ describe('ListApps', function () {
       })
 
       it('Next page token with extra key', function () {
-        const nextPageToken = constructNextPageToken({ 'admin-id': this.test.adminId, 'app-name': 'Trial', 'extra-key': 'hello' })
+        const nextPageToken = constructNextPageToken({ 'admin-id': this.test.adminId, 'app-name': 'Starter App', 'extra-key': 'hello' })
 
         cy
           .request({
@@ -881,7 +881,7 @@ describe('ListApps', function () {
       })
 
       it('Next page token with incorrect admin ID', function () {
-        const nextPageToken = constructNextPageToken({ 'admin-id': '000000000000000000000000000000000000', 'app-name': 'Trial' })
+        const nextPageToken = constructNextPageToken({ 'admin-id': '000000000000000000000000000000000000', 'app-name': 'Starter App' })
 
         cy
           .request({
