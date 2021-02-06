@@ -241,14 +241,7 @@ class Connection {
               }
 
               const newTransactions = message.transactionLog
-              await database.applyTransactions(newTransactions, message.ownerId)
-
-              if (!database.init) {
-                database.dbId = dbId
-                database.dbNameHash = dbNameHash
-                database.init = true
-                database.receivedMessage()
-              }
+              await database.applyTransactions(newTransactions, message.ownerId, dbId, dbNameHash)
 
               if (message.buildBundle) {
                 this.buildBundle(database)

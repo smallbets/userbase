@@ -151,7 +151,7 @@ class Database {
     this.bundleChunks = {}
   }
 
-  async applyTransactions(transactions, ownerId) {
+  async applyTransactions(transactions, ownerId, dbId, dbNameHash) {
     for (let i = 0; i < transactions.length; i++) {
       const transaction = transactions[i]
       const seqNo = transaction.seqNo
@@ -178,7 +178,11 @@ class Database {
     }
 
     if (!this.init) {
+      this.init = true // allows triggers and loaders to be called from within client's changeHandler on database load
+      this.dbId = dbId
+      this.dbNameHash = dbNameHash
       this.onChange(this.getItems())
+      this.receivedMessage() // wait to resolve openDatabase() until changeHandler has received all data
     }
   }
 
