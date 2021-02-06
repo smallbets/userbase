@@ -1,3 +1,8 @@
+## [2.7.4] - 2021-02-06
+
+### Changed
+- openDatabase() `changeHandler` param supports the usage of triggers and/or file reads when loading a database, rather than throw `DatabaseNotOpen` and require the developer wait until openDatabase() finishes executing before modifying the database or reading files.
+
 ## [2.7.3] - 2021-01-18
 ### Added
 - Support for a new `userbase-js` compatible package that targets node.
