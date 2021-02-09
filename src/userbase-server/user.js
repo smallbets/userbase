@@ -855,6 +855,7 @@ const _buildStripeData = (user, app, admin) => {
 
   stripeData.subscriptionStatus = user[paymentsMode + '-subscription-status']
   stripeData.cancelSubscriptionAt = user[paymentsMode + '-cancel-subscription-at']
+  stripeData.subscriptionPlanId = user[paymentsMode + '-subscription-plan-id']
 
   const trialExpirationDate = _getTrialExpirationDate(user, app, paymentsMode)
   stripeData.trialExpirationDate = trialExpirationDate && trialExpirationDate.toISOString()
@@ -2511,8 +2512,18 @@ exports.updateSubscriptionInDdb = async (logChildObject, logs, metadata, custome
     ) throw new Error('AlreadyHasActivePlan')
 
     const updateUserParams = await _buildStripeSubscriptionDdbParams(user, customerId, subscriptionId, subscriptionPlanId, status, cancelAt, stripeEventTimestamp, paymentsMode)
+
     const ddbClient = connection.ddbClient()
-    await ddbClient.update(updateUserParams).promise()
+    updateUserParams.ReturnValues = 'ALL_NEW'
+    const result = await ddbClient.update(updateUserParams).promise()
+    const updatedUser = result.Attributes
+
+    const updatedUserResult = {
+      ...buildUserResult(updatedUser, app, admin),
+      userData: { ..._buildUserData(updatedUser, app, admin) },
+    }
+
+    pushAndBroadcastUpdatedUser(updatedUserResult)
   } catch (e) {
     switch (e.message) {
       case 'MissingUserIdFromUserSubscriptionMetadata':
