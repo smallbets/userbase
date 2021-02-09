@@ -855,6 +855,7 @@ const _buildStripeData = (user, app, admin) => {
 
   stripeData.subscriptionStatus = user[paymentsMode + '-subscription-status']
   stripeData.cancelSubscriptionAt = user[paymentsMode + '-cancel-subscription-at']
+  stripeData.subscriptionPlanId = user[paymentsMode + '-subscription-plan-id']
 
   const trialExpirationDate = _getTrialExpirationDate(user, app, paymentsMode)
   stripeData.trialExpirationDate = trialExpirationDate && trialExpirationDate.toISOString()

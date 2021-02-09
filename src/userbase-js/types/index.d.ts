@@ -29,6 +29,7 @@ export interface UserResult {
   trialExpirationDate?: Date
   subscriptionStatus?: SubscriptionStatus
   cancelSubscriptionAt?: Date
+  subscriptionPlanId?: string
   email?: string
   profile?: UserProfile
   protectedProfile?: UserProfile

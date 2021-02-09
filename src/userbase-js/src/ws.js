@@ -815,11 +815,12 @@ class Connection {
       if (creationDate) result.creationDate = creationDate
 
       if (stripeData) {
-        const { paymentsMode, subscriptionStatus, cancelSubscriptionAt, trialExpirationDate } = stripeData
+        const { paymentsMode, subscriptionStatus, cancelSubscriptionAt, subscriptionPlanId, trialExpirationDate } = stripeData
 
         if (paymentsMode) result.paymentsMode = paymentsMode
         if (subscriptionStatus) result.subscriptionStatus = subscriptionStatus
         if (cancelSubscriptionAt) result.cancelSubscriptionAt = cancelSubscriptionAt
+        if (subscriptionPlanId) result.subscriptionPlanId = subscriptionPlanId
         if (trialExpirationDate) result.trialExpirationDate = trialExpirationDate
       }
     }
