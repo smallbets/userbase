@@ -1,5 +1,8 @@
-## [2.7.4] - 2021-02-06
+## [2.8.0] - 2021-02-09
+### Added
+- provide `subscriptionPlanId` in user result to init(), signIn() and updateUserHandler() callback.
 
+## [2.7.4] - 2021-02-06
 ### Changed
 - openDatabase() `changeHandler` param supports the usage of triggers and/or file reads when loading a database, rather than throw `DatabaseNotOpen` and require the developer wait until openDatabase() finishes executing before modifying the database or reading files.
 
