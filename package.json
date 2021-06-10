@@ -26,7 +26,7 @@
     "start:prod": "npm stop && node ./node_modules/forever/bin/forever --minUptime 5000 --spinSleepTime 1000 -l ../logs/encd.log -p $(pwd) -a start ./src/proof-of-concept/build/app.js",
     "stop": "node ./node_modules/forever/bin/forever stopall",
     "watch:client": "cd ./src/proof-of-concept && npm run watch:client",
-    "watch:server": "NODE_ENV=development nodemon --exec 'babel-node ./src/proof-of-concept/server/app.js --presets @babel/preset-env' | pino-pretty",
+    "watch:server": "NODE_ENV=development nodemon --legacy-watch --exec 'babel-node ./src/proof-of-concept/server/app.js --presets @babel/preset-env' | pino-pretty",
     "watch:admin-panel": "cd ./src/userbase-server/admin-panel && npm run start",
     "watch:userbase-js": "cd src/userbase-js && npm run watch",
     "deploy:infra": "./deploy/deploy-infra.sh",
@@ -46,6 +46,7 @@
     "publish:userbase-server:npm": "cd ./npm_build/userbase-server && npm publish",
     "build:userbase-js:script": "cd src/userbase-js && npm run build:umd",
     "lint": "eslint .",
+    "lint-fix": "eslint . --fix",
     "test:setup": "npm run build:userbase-js:script && npm run watch:server",
     "test": "npx cypress open & npm run test:setup",
     "test:concurrency": "npm run build:userbase-js:script && sh ./test/start.sh"
@@ -60,6 +61,7 @@
   "devDependencies": {
     "@babel/cli": "^7.6.2",
     "@babel/core": "^7.4.5",
+    "@babel/helper-compilation-targets": "^7.14.5",
     "@babel/node": "^7.4.5",
     "@babel/plugin-transform-runtime": "^7.6.2",
     "@babel/preset-env": "^7.4.5",

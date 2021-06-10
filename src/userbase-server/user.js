@@ -669,7 +669,15 @@ exports.authenticateUser = async function (req, res, next) {
 
     // makes all the following objects available in next route
     res.locals.user = user
-    res.locals.admin = admin
+    res.locals.admin = {
+      ...admin,
+      paymentStatus: "active",
+      connectedToStripe: true,
+      storageSubscriptionStatus: "active",
+      altPaymentStatus: "active",
+      "stripe-saas-subscription-status": "active",
+      "stripe-storage-subscription-status": "active",
+    }
     res.locals.app = app
     res.locals.authToken = session['auth-token']
     res.locals.changePassword = session['change-password']

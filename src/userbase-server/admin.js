@@ -246,15 +246,15 @@ const _getSizeAllowed = (admin) => {
 
 const _buildAdminResult = (admin) => {
   return {
-    email: admin['email'],
-    fullName: admin['full-name'],
-    paymentStatus: admin['stripe-saas-subscription-status'],
-    cancelSaasSubscriptionAt: admin['stripe-cancel-saas-subscription-at'],
-    connectedToStripe: admin['stripe-account-id'] ? true : false,
-    storageSubscriptionStatus: admin['stripe-storage-subscription-status'],
-    cancelStorageSubscriptionAt: admin['stripe-cancel-storage-subscription-at'],
-    altPaymentStatus: admin['alt-saas-subscription-status'],
-    size: admin['size'],
+    email: admin["email"],
+    fullName: admin["full-name"],
+    paymentStatus: "active",
+    cancelSaasSubscriptionAt: admin["stripe-cancel-saas-subscription-at"],
+    connectedToStripe: true,
+    storageSubscriptionStatus: "active",
+    cancelStorageSubscriptionAt: admin["stripe-cancel-storage-subscription-at"],
+    altPaymentStatus: "active",
+    size: admin["size"],
     sizeAllowed: _getSizeAllowed(admin),
   }
 }
@@ -304,7 +304,8 @@ exports.signInAdmin = async function (req, res) {
 }
 
 exports.signOutAdmin = async function (req, res) {
-  const sessionId = req.cookies[SESSION_COOKIE_NAME]
+  const sessionId =
+    req.cookies[SESSION_COOKIE_NAME] || req.body[SESSION_COOKIE_NAME]
 
   if (!sessionId) return res
     .status(statusCodes['Unauthorized'])
@@ -335,7 +336,8 @@ exports.signOutAdmin = async function (req, res) {
 }
 
 exports.authenticateAdmin = async function (req, res, next, opts = {}) {
-  const sessionId = req.cookies[SESSION_COOKIE_NAME]
+  const sessionId =
+    req.cookies[SESSION_COOKIE_NAME] || req.body[SESSION_COOKIE_NAME]
 
   if (!sessionId) return res
     .status(statusCodes['Unauthorized'])
@@ -383,7 +385,15 @@ exports.authenticateAdmin = async function (req, res, next, opts = {}) {
       .send('App not found')
 
     // makes objects available in next route
-    res.locals.admin = admin
+    res.locals.admin = {
+      ...admin,
+      paymentStatus: "active",
+      connectedToStripe: true,
+      storageSubscriptionStatus: "active",
+      altPaymentStatus: "active",
+      "stripe-saas-subscription-status": "active",
+      "stripe-storage-subscription-status": "active",
+    }
     res.locals.app = app
     next()
   } catch (e) {
@@ -1482,7 +1492,15 @@ exports.authenticateAccessToken = async function (req, res, next) {
 
     logger.child(logChildObject).info('Successfully authenticated access token')
 
-    res.locals.admin = admin
+    res.locals.admin = {
+      ...admin,
+      paymentStatus: "active",
+      connectedToStripe: true,
+      storageSubscriptionStatus: "active",
+      altPaymentStatus: "active",
+      "stripe-saas-subscription-status": "active",
+      "stripe-storage-subscription-status": "active",
+    }
     res.locals.logChildObject = logChildObject
     next()
   } catch (e) {
@@ -1513,6 +1531,7 @@ const prodPaymentsAllowed = (admin) => {
 exports.prodPaymentsAllowed = prodPaymentsAllowed
 
 const saasSubscriptionNotActive = (admin) => {
+  console.log("admin", admin)
   return (admin['stripe-saas-subscription-status'] !== 'active' || admin['stripe-cancel-saas-subscription-at']) &&
     admin['alt-saas-subscription-status'] !== 'active'
 }

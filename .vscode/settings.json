@@ -1,16 +1,16 @@
 {
-    "editor.formatOnPaste": true,
-    "editor.formatOnSave": true,
-    "editor.minimap.maxColumn": 180,
-    "editor.tabSize": 2,
-    "editor.smoothScrolling": true,
-    "editor.tabCompletion": "on",
-    "files.insertFinalNewline": true,
-    "files.trimFinalNewlines": true,
-    "files.trimTrailingWhitespace": true,
-    "html.format.wrapLineLength": 0,
-    "eslint.autoFixOnSave": true,
-    "editor.codeActionsOnSave": {
-        "source.fixAll.eslint": true
-    },
+  "editor.formatOnPaste": true,
+  "editor.formatOnSave": false,
+  "editor.minimap.maxColumn": 180,
+  "editor.tabSize": 2,
+  "editor.smoothScrolling": true,
+  "editor.tabCompletion": "on",
+  "files.insertFinalNewline": true,
+  "files.trimFinalNewlines": true,
+  "files.trimTrailingWhitespace": true,
+  "html.format.wrapLineLength": 0,
+  "eslint.autoFixOnSave": false,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": true
+  }
 }
