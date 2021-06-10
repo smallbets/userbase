@@ -292,9 +292,10 @@ exports.signInAdmin = async function (req, res) {
 
     setSessionCookie(res, sessionId)
 
-    return res
-      .status(statusCodes['Success'])
-      .send(_buildAdminResult(admin))
+    return res.status(statusCodes["Success"]).send({
+      ..._buildAdminResult(admin),
+      sessionId,
+    })
   } catch (e) {
     logger.error(`Admin '${email}' failed to sign in with ${e}`)
     return res
