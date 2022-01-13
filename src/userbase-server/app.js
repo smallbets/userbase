@@ -77,7 +77,7 @@ exports.createAppController = async function (req, res) {
   const admin = res.locals.admin
   const adminId = admin['admin-id']
 
-  if (adminController.saasSubscriptionNotActive(admin)) return res
+  if (!adminController.saasSubscriptionActive(admin)) return res
     .status(statusCodes['Payment Required'])
     .send('Pay subscription fee to create an app.')
 
@@ -197,7 +197,7 @@ exports.deleteApp = async function (req, res) {
   const admin = res.locals.admin
   const adminId = admin['admin-id']
 
-  if (adminController.saasSubscriptionNotActive(admin)) return res
+  if (!adminController.saasSubscriptionActive(admin)) return res
     .status(statusCodes['Payment Required'])
     .send('Pay subscription fee to delete an app.')
 
@@ -289,7 +289,7 @@ exports.permanentDeleteAppController = async function (req, res) {
   const admin = res.locals.admin
   const adminId = admin['admin-id']
 
-  if (adminController.saasSubscriptionNotActive(admin)) return res
+  if (!adminController.saasSubscriptionActive(admin)) return res
     .status(statusCodes['Payment Required'])
     .send('Pay subscription fee to permanently delete an app.')
 

@@ -195,7 +195,7 @@ export default class Dashboard extends Component {
               {showEncryptionModeModal && <EncryptionModeModal handleHideEncryptionModeModal={this.handleHideEncryptionModeModal} />}
 
               {
-                (!adminLogic.saasSubscriptionNotActive(admin)) ? <div />
+                (adminLogic.saasSubscriptionActive(admin)) ? <div />
                   : <div className='text-left mb-4 text-orange-600 font-normal'>
                     The Starter plan is limited to 1 app and {FREE_PLAN_USERS_LIMIT} users. <a href="#edit-account">Remove this limit</a> with a Userbase subscription.
                 </div>
@@ -237,7 +237,7 @@ export default class Dashboard extends Component {
                 </table>
               }
 
-              {!adminLogic.saasSubscriptionNotActive(admin) &&
+              {adminLogic.saasSubscriptionActive(admin) &&
 
                 <form className={`flex text-left ${(activeApps && activeApps.length) ? 'mt-8' : ''}`}>
                   <div className='flex-1 my-auto'>

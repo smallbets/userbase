@@ -11,11 +11,6 @@ import { StripeDataTable } from './StripeDataTable'
 import { STRIPE_CLIENT_ID, FREE_PLAN_USERS_LIMIT, getStripeState } from '../../config'
 import EncryptionModeModal from './EncryptionModeModal'
 
-// admin must have an active Userbase subscripion to enable prod payments
-const prodPaymentsAllowed = ({ paymentStatus, cancelSaasSubscriptionAt }) => {
-  return paymentStatus === 'active' && !cancelSaasSubscriptionAt
-}
-
 export default class AppUsersTable extends Component {
   constructor(props) {
     super(props)
@@ -618,7 +613,7 @@ export default class AppUsersTable extends Component {
       errorPaymentsPortal,
     } = paymentsState
 
-    const disableProdPaymentSelection = admin && !prodPaymentsAllowed(admin) && paymentsMode !== 'prod'
+    const disableProdPaymentSelection = admin && !adminLogic.saasSubscriptionActive(admin) && paymentsMode !== 'prod'
 
     return (
       <div className='text-xs sm:text-sm'>
@@ -650,7 +645,7 @@ export default class AppUsersTable extends Component {
             {showEncryptionModeModal && <EncryptionModeModal handleHideEncryptionModeModal={this.handleHideEncryptionModeModal} />}
 
             {
-              !adminLogic.saasSubscriptionNotActive(admin) ? <div />
+              adminLogic.saasSubscriptionActive(admin) ? <div />
                 : <div className='text-left mb-4 text-orange-600 font-normal'>
                   The Starter plan is limited to 1 app and {FREE_PLAN_USERS_LIMIT} users. <a href="#edit-account">Remove this limit</a> with a Userbase subscription.
                 </div>
@@ -920,7 +915,7 @@ export default class AppUsersTable extends Component {
           <p className='text-left font-normal mb-4'>Collect recurring payments on your app with Stripe. Check the <a href='https://userbase.com/docs/sdk/#sdk-payments' target='_blank' rel='noopener noreferrer'>docs on Payments</a> for detailed instructions.</p>
 
           {
-            prodPaymentsAllowed(admin) ? <div />
+            adminLogic.saasSubscriptionActive(admin) ? <div />
               : <div className='text-left mb-6 text-orange-600 font-normal'>
                 The Starter plan is limited to test payments. <a href="#edit-account">Remove this limit</a> with a Userbase subscription.
               </div>
@@ -1163,7 +1158,7 @@ export default class AppUsersTable extends Component {
             </div>
           </div>
 
-          {!adminLogic.saasSubscriptionNotActive(admin) &&
+          {adminLogic.saasSubscriptionActive(admin) &&
             <div>
               <div className='flex-0 text-base sm:text-lg text-left mb-1'>Delete App</div>
               <p className='text-left font-normal'>By deleting this app, your users will lose access to their accounts. This action becomes irreversible once the app is permanently deleted.</p>

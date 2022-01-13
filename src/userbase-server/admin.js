@@ -1504,16 +1504,11 @@ exports.getAdminAccount = async function (req, res) {
   return res.send(_buildAdminResult(admin))
 }
 
-const prodPaymentsAllowed = (admin) => {
+const saasSubscriptionActive = (admin) => {
   const saasStatus = admin['stripe-saas-subscription-status']
   const cancelSaasAt = admin['stripe-cancel-saas-subscription-at']
+  const altSaasStatus = admin['alt-saas-subscription-status']
 
-  return saasStatus === 'active' && !cancelSaasAt
+  return (saasStatus === 'active' && !cancelSaasAt) || altSaasStatus === 'active'
 }
-exports.prodPaymentsAllowed = prodPaymentsAllowed
-
-const saasSubscriptionNotActive = (admin) => {
-  return (admin['stripe-saas-subscription-status'] !== 'active' || admin['stripe-cancel-saas-subscription-at']) &&
-    admin['alt-saas-subscription-status'] !== 'active'
-}
-exports.saasSubscriptionNotActive = saasSubscriptionNotActive
+exports.saasSubscriptionActive = saasSubscriptionActive

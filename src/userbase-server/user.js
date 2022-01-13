@@ -454,7 +454,7 @@ const _validateSignUpInput = (appId, username, passwordToken, publicKeyData, pas
 }
 
 const _validateSubscription = async (admin, appId) => {
-  if (adminController.saasSubscriptionNotActive(admin)) {
+  if (!adminController.saasSubscriptionActive(admin)) {
     const numUsers = await appController.countNonDeletedAppUsers(appId, LIMIT_NUM_TRIAL_USERS)
     if (numUsers >= LIMIT_NUM_TRIAL_USERS) {
       throw {
@@ -844,7 +844,7 @@ const _buildStripeData = (user, app, admin) => {
     stripeAccountId &&
 
     // make sure paid for payments feature, or that didn't need to pay
-    ((app['payments-mode'] === 'prod' && adminController.prodPaymentsAllowed(admin)) || app['payments-mode'] !== 'prod') &&
+    ((app['payments-mode'] === 'prod' && adminController.saasSubscriptionActive(admin)) || app['payments-mode'] !== 'prod') &&
 
     // default paymentsMode to 'test' so long as above conditions are met
     (app['payments-mode'] || 'test')
@@ -2385,7 +2385,7 @@ exports.createSubscriptionPaymentSession = async function (logChildObject, app, 
     }
 
     let subscriptionPlanId, subscriptionStatus, cancelSubscriptionAt, customerId
-    if (app['payments-mode'] === 'prod' && adminController.prodPaymentsAllowed(admin)) {
+    if (app['payments-mode'] === 'prod' && adminController.saasSubscriptionActive(admin)) {
       subscriptionPlanId = providedPlanId || providedPriceId || app['prod-subscription-plan-id']
       subscriptionStatus = user['prod-subscription-status']
       cancelSubscriptionAt = user['prod-cancel-subscription-at']
@@ -2588,7 +2588,7 @@ exports.validatePayment = function (user, app, admin) {
   if (!app['payment-required']) return
 
   // payments mode set to prod but subscription not paid for gets same functional treatment as disabled payments mode
-  if (app['payments-mode'] === 'prod' && !adminController.prodPaymentsAllowed(admin)) return
+  if (app['payments-mode'] === 'prod' && !adminController.saasSubscriptionActive(admin)) return
 
   const paymentsMode = app['payments-mode'] === 'prod' ? 'prod' : 'test'
 
