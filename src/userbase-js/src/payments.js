@@ -48,6 +48,8 @@ const _validatePurchaseOrUpdate = (params) => {
     const invalidProtocol = true
     throw new errors.CancelUrlInvalid(invalidProtocol)
   }
+
+  if (typeof params.enableAutomaticTax !== 'boolean') throw new errors.EnableAutomaticTaxMustBeString
 }
 
 const purchaseSubscription = async (params) => {

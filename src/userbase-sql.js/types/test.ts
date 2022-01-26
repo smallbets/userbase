@@ -264,8 +264,14 @@ modifyDatabasePermissions({ databaseId: 'tid' })
 // $ExpectType Promise<void>
 purchaseSubscription({ successUrl: 'turl', cancelUrl: 'turl' })
 
+// $ExpectType Promise<void>
+purchaseSubscription({ successUrl: 'turl', cancelUrl: 'turl', enableAutomaticTax: true })
+
 // $ExpectError
 purchaseSubscription({ successUrl: 'turl' })
+
+// $ExpectError
+purchaseSubscription({ successUrl: 'turl', cancelUrl: 'turl', enableAutomaticTax: '' })
 
 // $ExpectType Promise<CancelSubscriptionResult>
 cancelSubscription()
@@ -276,5 +282,11 @@ resumeSubscription()
 // $ExpectType Promise<void>
 updatePaymentMethod({ successUrl: 'turl', cancelUrl: 'turl' })
 
+// $ExpectType Promise<void>
+updatePaymentMethod({ successUrl: 'turl', cancelUrl: 'turl', enableAutomaticTax: true })
+
 // $ExpectError
 updatePaymentMethod({ cancelUrl: 'turl' })
+
+// $ExpectError
+updatePaymentMethod({ successUrl: 'turl', cancelUrl: 'turl', enableAutomaticTax: '' })

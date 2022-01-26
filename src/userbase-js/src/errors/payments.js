@@ -56,6 +56,17 @@ class CancelUrlInvalid extends Error {
     this.status = statusCodes['Bad Request']
   }
 }
+
+class EnableAutomaticTaxMustBeBoolean extends Error {
+  constructor(...params) {
+    super(...params)
+
+    this.name = 'EnableAutomaticTaxMustBeBoolean'
+    this.message = 'Enable automatic tax must be a boolean.'
+    this.status = statusCodes['Bad Request']
+  }
+}
+
 class StripeJsLibraryMissing extends Error {
   constructor(...params) {
     super(...params)
@@ -186,6 +197,7 @@ export default {
   CancelUrlMissing,
   CancelUrlMustBeString,
   CancelUrlInvalid,
+  EnableAutomaticTaxMustBeBoolean,
   StripeJsLibraryMissing,
   PaymentsDisabled,
   PriceIdOrPlanIdAllowed,

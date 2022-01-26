@@ -161,13 +161,13 @@ export interface UserbaseSqlJs {
 
   modifyDatabasePermissions(params: databaseNameXorId & { username: string, readOnly?: boolean, resharingAllowed?: boolean, revoke?: boolean }): Promise<void>
 
-  purchaseSubscription(params: { successUrl: string, cancelUrl: string }): Promise<void>
+  purchaseSubscription(params: { successUrl: string, cancelUrl: string, enableAutomaticTax?: boolean }): Promise<void>
 
   cancelSubscription(): Promise<CancelSubscriptionResult>
 
   resumeSubscription(): Promise<void>
 
-  updatePaymentMethod(params: { successUrl: string, cancelUrl: string }): Promise<void>
+  updatePaymentMethod(params: { successUrl: string, cancelUrl: string, enableAutomaticTax?: boolean }): Promise<void>
 }
 
 declare let userbaseSqlJs: UserbaseSqlJs

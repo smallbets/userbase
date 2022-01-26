@@ -2319,7 +2319,7 @@ const conditionCheckUserExists = (username, appId, userId) => {
   }
 }
 
-const _createStripePaymentSession = async function (user, admin, subscriptionPlanId, customerId, success_url, cancel_url, useTestClient) {
+const _createStripePaymentSession = async function (user, admin, subscriptionPlanId, customerId, success_url, cancel_url, enableAutomaticTax, useTestClient) {
   const stripeAccount = admin['stripe-account-id']
 
   try {
@@ -2341,6 +2341,9 @@ const _createStripePaymentSession = async function (user, admin, subscriptionPla
       },
       success_url,
       cancel_url,
+      automatic_tax: enableAutomaticTax ? {
+        enabled: true,
+      } : undefined,
     },
       { stripeAccount }
     )
@@ -2367,7 +2370,7 @@ const _createStripePaymentSession = async function (user, admin, subscriptionPla
   }
 }
 
-exports.createSubscriptionPaymentSession = async function (logChildObject, app, admin, user, success_url, cancel_url, providedPlanId, providedPriceId) {
+exports.createSubscriptionPaymentSession = async function (logChildObject, app, admin, user, success_url, cancel_url, providedPlanId, providedPriceId, enableAutomaticTax) {
   try {
     const stripeAccountId = admin['stripe-account-id']
     logChildObject.stripeAccountId = stripeAccountId
@@ -2412,7 +2415,7 @@ exports.createSubscriptionPaymentSession = async function (logChildObject, app, 
       }
     }
 
-    const session = await _createStripePaymentSession(user, admin, subscriptionPlanId, customerId, success_url, cancel_url, app['payments-mode'] !== 'prod')
+    const session = await _createStripePaymentSession(user, admin, subscriptionPlanId, customerId, success_url, cancel_url, enableAutomaticTax, app['payments-mode'] !== 'prod')
 
     logger
       .child({ ...logChildObject, statusCode: statusCodes['Success'] })
@@ -2741,7 +2744,7 @@ exports.resumeSubscription = async function (logChildObject, app, admin, user) {
   }
 }
 
-const _createStripeUpdatePaymentMethodSession = async function (user, admin, customer_id, subscription_id, success_url, cancel_url, useTestClient) {
+const _createStripeUpdatePaymentMethodSession = async function (user, admin, customer_id, subscription_id, success_url, cancel_url, enableAutomaticTax, useTestClient) {
   const stripeAccount = admin['stripe-account-id']
 
   try {
@@ -2758,6 +2761,9 @@ const _createStripeUpdatePaymentMethodSession = async function (user, admin, cus
       },
       success_url,
       cancel_url,
+      automatic_tax: enableAutomaticTax ? {
+        enabled: true,
+      } : undefined,
     }, {
       stripeAccount
     })
@@ -2777,7 +2783,7 @@ const _createStripeUpdatePaymentMethodSession = async function (user, admin, cus
   }
 }
 
-exports.updatePaymentMethod = async function (logChildObject, app, admin, user, success_url, cancel_url) {
+exports.updatePaymentMethod = async function (logChildObject, app, admin, user, success_url, cancel_url, enableAutomaticTax) {
   try {
     const stripeAccountId = admin['stripe-account-id']
     logChildObject.stripeAccountId = stripeAccountId
@@ -2807,7 +2813,7 @@ exports.updatePaymentMethod = async function (logChildObject, app, admin, user, 
       error: 'SubscriptionNotPurchased'
     }
 
-    const session = await _createStripeUpdatePaymentMethodSession(user, admin, customerId, subscriptionId, success_url, cancel_url, useTestClient)
+    const session = await _createStripeUpdatePaymentMethodSession(user, admin, customerId, subscriptionId, success_url, cancel_url, enableAutomaticTax, useTestClient)
 
     logger
       .child({ ...logChildObject, statusCode: statusCodes['Success'] })
