@@ -167,13 +167,13 @@ export interface Userbase {
 
   modifyDatabasePermissions(params: databaseNameXorId & { username: string, readOnly?: boolean, resharingAllowed?: boolean, revoke?: boolean }): Promise<void>
 
-  purchaseSubscription(params: { successUrl: string, cancelUrl: string, enableAutomaticTax?: boolean } & priceIdXorPlanId): Promise<void>
+  purchaseSubscription(params: { successUrl: string, cancelUrl: string } & priceIdXorPlanId): Promise<void>
 
   cancelSubscription(): Promise<CancelSubscriptionResult>
 
   resumeSubscription(): Promise<void>
 
-  updatePaymentMethod(params: { successUrl: string, cancelUrl: string, enableAutomaticTax?: boolean }): Promise<void>
+  updatePaymentMethod(params: { successUrl: string, cancelUrl: string }): Promise<void>
 }
 
 declare let userbase: Userbase

@@ -357,7 +357,6 @@ async function start(express, app, userbaseConfig = {}) {
                     params.cancelUrl,
                     params.planId,
                     params.priceId,
-                    params.enableAutomaticTax,
                   )
                   break
                 }
@@ -386,8 +385,7 @@ async function start(express, app, userbaseConfig = {}) {
                     res.locals.admin,
                     res.locals.user,
                     params.successUrl,
-                    params.cancelUrl,
-                    params.enableAutomaticTax,
+                    params.cancelUrl
                   )
                   break
                 }

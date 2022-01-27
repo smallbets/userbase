@@ -331,20 +331,11 @@ purchaseSubscription({ successUrl: 'turl', cancelUrl: 'turl', priceId: 'tid' })
 // $ExpectType Promise<void>
 purchaseSubscription({ successUrl: 'turl', cancelUrl: 'turl', planId: 'tid' })
 
-// $ExpectType Promise<void>
-purchaseSubscription({ successUrl: 'turl', cancelUrl: 'turl', priceId: 'tid', enableAutomaticTax: true })
-
-// $ExpectType Promise<void>
-purchaseSubscription({ successUrl: 'turl', cancelUrl: 'turl', planId: 'tid', enableAutomaticTax: true })
-
 // $ExpectError
 purchaseSubscription({ successUrl: 'turl' })
 
 // $ExpectError
 purchaseSubscription({ successUrl: 'turl', cancelUrl: 'turl', priceId: 'tid', planId: 'tid' })
-
-// $ExpectError
-purchaseSubscription({ successUrl: 'turl', cancelUrl: 'turl', priceId: 'tid', enableAutomaticTax: '' })
 
 // $ExpectType Promise<CancelSubscriptionResult>
 cancelSubscription()
@@ -355,11 +346,5 @@ resumeSubscription()
 // $ExpectType Promise<void>
 updatePaymentMethod({ successUrl: 'turl', cancelUrl: 'turl' })
 
-// $ExpectType Promise<void>
-updatePaymentMethod({ successUrl: 'turl', cancelUrl: 'turl', enableAutomaticTax: true })
-
 // $ExpectError
 updatePaymentMethod({ cancelUrl: 'turl' })
-
-// $ExpectError
-updatePaymentMethod({ successUrl: 'turl', cancelUrl: 'turl', enableAutomaticTax: '' })
