@@ -28,10 +28,12 @@ export default class AppUsersTable extends Component {
       paymentsState: {
         paymentsMode: '',
         enableAutomaticTax: false,
+        allowPromotionCodes: false,
         trialPeriodDays: '',
         newTrialPeriodDays: '',
         loadingPaymentsMode: false,
         loadingEnableAutomaticTax: false,
+        loadingAllowPomotionCodes: false,
         loadingPlanMode: false,
         errorPaymentsPortal: false,
       }
@@ -53,6 +55,7 @@ export default class AppUsersTable extends Component {
     this.handleEnableTestPayments = this.handleEnableTestPayments.bind(this)
     this.handleEnableProdPayments = this.handleEnableProdPayments.bind(this)
     this.handleToggleEnableAutomaticTax = this.handleToggleEnableAutomaticTax.bind(this)
+    this.handleToggleAllowPromotionCodes = this.handleToggleAllowPromotionCodes.bind(this)
     this.handleTogglePaymentRequired = this.handleTogglePaymentRequired.bind(this)
     this.handleSetEncryptionMode = this.handleSetEncryptionMode.bind(this)
     this.handleShowEncryptionModeModal = this.handleShowEncryptionModeModal.bind(this)
@@ -73,7 +76,7 @@ export default class AppUsersTable extends Component {
         dashboardLogic.listAppUsers(appName),
         dashboardLogic.getDomainWhitelist(appName),
       ])
-      const { users, appId, encryptionMode, paymentsMode, paymentRequired, enableAutomaticTax, trialPeriodDays } = listAppUsersResponse
+      const { users, appId, encryptionMode, paymentsMode, paymentRequired, enableAutomaticTax, allowPromotionCodes, trialPeriodDays } = listAppUsersResponse
       const { domains } = domainWhitelist
       if (appId !== domainWhitelist.appId) throw new Error('Please refresh the page!')
 
@@ -97,6 +100,7 @@ export default class AppUsersTable extends Component {
         paymentsMode,
         paymentRequired,
         enableAutomaticTax,
+        allowPromotionCodes,
         trialPeriodDays,
       }
 
@@ -535,6 +539,41 @@ export default class AppUsersTable extends Component {
     }
   }
 
+  async handleToggleAllowPromotionCodes(event) {
+    event.preventDefault()
+    const { appName } = this.props
+    const { appId, paymentsState } = this.state
+    if (paymentsState.loadingAllowPomotionCodes) return
+
+    try {
+      this.setState({ paymentsState: {
+          ...paymentsState,
+          loadingAllowPomotionCodes: true,
+          errorPaymentsPortal: false
+        }
+      })
+      const allowPromotionCodes = event.target.checked
+
+      await dashboardLogic.toggleAllowPromotionCodes(appName, appId, allowPromotionCodes)
+
+      if (this._isMounted) {
+        this.setState({ paymentsState: {
+            ...paymentsState,
+            loadingAllowPomotionCodes: false,
+            allowPromotionCodes
+          }
+        })
+      }
+    } catch (e) {
+      if (this._isMounted) this.setState({ paymentsState: {
+          ...paymentsState,
+          loadingAllowPomotionCodes: true,
+          errorPaymentsPortal: e.message
+        }
+      })
+    }
+  }
+
   async handleSetEncryptionMode(encryptionMode) {
     if (encryptionMode === this.state.encryptionMode) return
     const { appName } = this.props
@@ -662,10 +701,12 @@ export default class AppUsersTable extends Component {
       paymentsMode,
       paymentRequired,
       enableAutomaticTax,
+      allowPromotionCodes,
       trialPeriodDays,
       newTrialPeriodDays,
       loadingPaymentsMode,
       loadingEnableAutomaticTax,
+      loadingAllowPomotionCodes,
       loadingPlanMode,
       loadingSetTrialPeriod,
       loadingDeleteTrial,
@@ -1112,6 +1153,29 @@ export default class AppUsersTable extends Component {
                       </div>
 
                       {loadingEnableAutomaticTax && <div className='loader w-4 h-4 ml-4 inline-block' />}
+                    </label>
+                    <label className='flex items-center mb-4 fit-content'>
+                      <div className='relative cursor-pointer'>
+                        <input
+                          type='checkbox'
+                          className='hidden'
+                          checked={allowPromotionCodes}
+                          onChange={this.handleToggleAllowPromotionCodes}
+                          disabled={loadingAllowPomotionCodes}
+                        />
+                        <div className='w-10 h-4 rounded-full shadow-inner bg-gray-400' />
+                        <div className='toggle-dot absolute w-6 h-6 bg-white rounded-full shadow' />
+                      </div>
+                      <div className='ml-3 font-medium cursor-pointer text-gray-600 flex items-center'>
+                        <div className='hover:text-gray-800 mr-1'>
+                          Allow promotion codes in Checkout
+                        </div>
+                        <div>
+                          (see <a className='text-yellow-700' href='https://stripe.com/docs/payments/checkout/discounts#promotion-codes' target='_blank' rel='noopener noreferrer'>documentation</a>)
+                        </div>
+                      </div>
+
+                      {loadingAllowPomotionCodes && <div className='loader w-4 h-4 ml-4 inline-block' />}
                     </label>
                   </div>
                 }
