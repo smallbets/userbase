@@ -705,6 +705,7 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.post('/stripe/connected/apps/:appId/enable-test-payments', admin.authenticateAdmin, appController.enableTestPayments)
     v1Admin.post('/stripe/connected/apps/:appId/enable-prod-payments', admin.authenticateAdmin, appController.enableProdPayments)
     v1Admin.post('/stripe/connected/apps/:appId/payment-required', admin.authenticateAdmin, appController.setPaymentRequired)
+    v1Admin.post('/stripe/connected/apps/:appId/enable-automatic-tax', admin.authenticateAdmin, appController.setEnableAutomaticTax)
 
     // Access token endpoints
     v1Admin.post('/users/:userId', admin.authenticateAccessToken, userController.updateProtectedProfile)

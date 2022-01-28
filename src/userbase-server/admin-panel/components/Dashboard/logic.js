@@ -143,6 +143,21 @@ const setPaymentRequired = async (appName, appId, paymentRequired) => {
   }
 }
 
+const toggleEnableAutomaticTax = async (appName, appId, enableAutomaticTax) => {
+  try {
+    await axios({
+      method: 'POST',
+      url: `/${VERSION}/admin/stripe/connected/apps/${appId}/enable-automatic-tax?appName=${encodeURIComponent(appName)}`,
+      data: {
+        enableAutomaticTax,
+      },
+      timeout: TEN_SECONDS_MS
+    })
+  } catch (e) {
+    adminLogic.errorHandler(e)
+  }
+}
+
 const setTrialPeriod = async (appName, appId, trialPeriodDays) => {
   try {
     await axios({
@@ -238,6 +253,7 @@ export default {
   enableTestPayments,
   enableProdPayments,
   setPaymentRequired,
+  toggleEnableAutomaticTax,
   setTrialPeriod,
   deleteTrial,
   modifyEncryptionMode,
