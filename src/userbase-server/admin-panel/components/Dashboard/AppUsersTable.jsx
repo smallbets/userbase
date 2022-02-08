@@ -1139,13 +1139,8 @@ export default class AppUsersTable extends Component {
                         <div className='w-10 h-4 rounded-full shadow-inner bg-gray-400' />
                         <div className='toggle-dot absolute w-6 h-6 bg-white rounded-full shadow' />
                       </div>
-                      <div className='ml-3 font-medium cursor-pointer text-gray-600 flex items-center'>
-                        <div className='hover:text-gray-800 mr-1'>
-                          Collect taxes in Checkout
-                        </div>
-                        <div>
-                          (see <a className='text-yellow-700' href='https://stripe.com/docs/payments/checkout/taxes' target='_blank' rel='noopener noreferrer'>documentation</a>)
-                        </div>
+                      <div className='ml-3 font-medium cursor-pointer text-gray-600 hover:text-gray-800'>
+                        Collect taxes in Checkout
                       </div>
 
                       {loadingEnableAutomaticTax && <div className='loader w-4 h-4 ml-4 inline-block' />}
@@ -1162,13 +1157,8 @@ export default class AppUsersTable extends Component {
                         <div className='w-10 h-4 rounded-full shadow-inner bg-gray-400' />
                         <div className='toggle-dot absolute w-6 h-6 bg-white rounded-full shadow' />
                       </div>
-                      <div className='ml-3 font-medium cursor-pointer text-gray-600 flex items-center'>
-                        <div className='hover:text-gray-800 mr-1'>
-                          Allow promotion codes in Checkout
-                        </div>
-                        <div>
-                          (see <a className='text-yellow-700' href='https://stripe.com/docs/payments/checkout/discounts#promotion-codes' target='_blank' rel='noopener noreferrer'>documentation</a>)
-                        </div>
+                      <div className='ml-3 font-medium cursor-pointer text-gray-600 hover:text-gray-800'>
+                        Allow promotion codes in Checkout
                       </div>
 
                       {loadingAllowPomotionCodes && <div className='loader w-4 h-4 ml-4 inline-block' />}
