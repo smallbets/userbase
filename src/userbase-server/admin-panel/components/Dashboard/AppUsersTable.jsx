@@ -1163,6 +1163,10 @@ export default class AppUsersTable extends Component {
 
                       {loadingAllowPomotionCodes && <div className='loader w-4 h-4 ml-4 inline-block' />}
                     </label>
+
+                    <div className='text-xs text-gray-600 font-normal'>
+                      For more information on these settings, see the documentation for it <a className='cursor-pointer hover:text-orange-700' href='https://userbase.com/docs/sdk/purchase-subscription#advanced' target='_blank' rel='noopener noreferrer'>here</a>.
+                    </div>
                   </div>
                 }
 
