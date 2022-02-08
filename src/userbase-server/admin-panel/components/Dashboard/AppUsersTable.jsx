@@ -1120,13 +1120,9 @@ export default class AppUsersTable extends Component {
                   </div>
                 </form>
 
-                <div className='text-right'>
-                  <span className='mb-0 cursor-pointer mouse:hover:text-orange-700' onClick={this.handleShowAdvanced}>
-                    +Show Advanced
-                  </span>
-                  <span className='ml-1 mr-1'>/</span>
-                  <span className='mb-0 cursor-pointer mouse:hover:text-orange-700' onClick={this.handleHideAdvanced}>
-                    -Hide Advanced
+                <div className={showAdvanced ? 'mb-4' : 'mb-0'}>
+                  <span className='mb-0 cursor-pointer mouse:hover:text-orange-700' onClick={showAdvanced ? this.handleHideAdvanced : this.handleShowAdvanced}>
+                    {showAdvanced ? '-Hide Advanced' : '+Show Advanced'}
                   </span>
                 </div>
                 {showAdvanced &&
