@@ -104,7 +104,7 @@ export default class AppUsersTable extends Component {
         trialPeriodDays,
       }
 
-      if (this._isMounted) this.setState({ appId, encryptionMode, activeUsers, deletedUsers, domains, loading: false, paymentsState: updatedPaymentsState })
+      if (this._isMounted) this.setState({ appId, encryptionMode, activeUsers, deletedUsers, domains, loading: false, paymentsState: updatedPaymentsState, showAdvanced: enableAutomaticTax || allowPromotionCodes })
     } catch (e) {
       if (this._isMounted) this.setState({ error: e.message, loading: false })
     }
