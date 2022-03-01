@@ -404,6 +404,8 @@ const _buildAppResult = (app, admin) => {
     ? {
       paymentsMode: app['payments-mode'] || 'test',
       paymentRequired: app['payment-required'] || false,
+      enableAutomaticTax: app['enable-automatic-tax'] || false,
+      allowPromotionCodes: app['allow-promotion-codes'] || false,
       trialPeriodDays: app['trial-period-days'],
 
       // legacy plans stored on app
@@ -878,6 +880,152 @@ const _setPaymentRequired = async function (req, res, log1, log2, log3) {
   }
 }
 
+const _setEnableAutomaticTaxInDdb = async function (adminId, appName, appId, enableAutomaticTax) {
+  const params = {
+    TableName: setup.appsTableName,
+    Key: {
+      'admin-id': adminId,
+      'app-name': appName
+    },
+    UpdateExpression: 'SET #enableAutomaticTax = :enableAutomaticTax',
+    ConditionExpression: '#appId = :appId and attribute_not_exists(deleted)',
+    ExpressionAttributeValues: {
+      ':appId': appId,
+      ':enableAutomaticTax': enableAutomaticTax
+    },
+    ExpressionAttributeNames: {
+      '#appId': 'app-id',
+      '#enableAutomaticTax': 'enable-automatic-tax'
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+  await ddbClient.update(params).promise()
+}
+
+const _setEnableAutomaticTax = async (req, res, log1, log2, log3) => {
+  let logChildObject
+  try {
+    const enableAutomaticTax = req.body.enableAutomaticTax
+
+    const admin = res.locals.admin
+    const adminId = admin['admin-id']
+    const stripeAccountId = admin['stripe-account-id']
+    const appId = req.params.appId
+    const appName = req.query.appName
+
+    logChildObject = { adminId, stripeAccountId, appId, enableAutomaticTax, req: trimReq(req) }
+    logger.child(logChildObject).info(log1)
+
+    if (!stripeAccountId) throw {
+      status: statusCodes['Forbidden'],
+      error: { message: 'Stripe account not connected.' }
+    }
+
+    if (admin['deleted']) throw {
+      status: statusCodes['Not Found'],
+      error: { message: 'Admin not found.' }
+    }
+
+    if (typeof enableAutomaticTax !== 'boolean') throw {
+      status: statusCodes['Bad Request'],
+      error: { message: 'Enable automatic tax value invalid.' }
+    }
+
+    await _setEnableAutomaticTaxInDdb(adminId, appName, appId, enableAutomaticTax)
+
+    logger
+      .child({ ...logChildObject, statusCode: statusCodes['Success'] })
+      .info(log2)
+
+    return res.end()
+  } catch (e) {
+    const message = log3
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
+      return res.status(e.status).send(e.error.message)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return res.status(statusCode).send(message)
+    }
+  }
+}
+
+const _setAllowPromotionCodesInDdb = async function (adminId, appName, appId, allowPromotionCodes) {
+  const params = {
+    TableName: setup.appsTableName,
+    Key: {
+      'admin-id': adminId,
+      'app-name': appName
+    },
+    UpdateExpression: 'SET #allowPromotionCodes = :allowPromotionCodes',
+    ConditionExpression: '#appId = :appId and attribute_not_exists(deleted)',
+    ExpressionAttributeValues: {
+      ':appId': appId,
+      ':allowPromotionCodes': allowPromotionCodes
+    },
+    ExpressionAttributeNames: {
+      '#appId': 'app-id',
+      '#allowPromotionCodes': 'allow-promotion-codes'
+    }
+  }
+
+  const ddbClient = connection.ddbClient()
+  await ddbClient.update(params).promise()
+}
+
+const _setAllowPromotionCodes = async (req, res, log1, log2, log3) => {
+  let logChildObject
+  try {
+    const allowPromotionCodes = req.body.allowPromotionCodes
+
+    const admin = res.locals.admin
+    const adminId = admin['admin-id']
+    const stripeAccountId = admin['stripe-account-id']
+    const appId = req.params.appId
+    const appName = req.query.appName
+
+    logChildObject = { adminId, stripeAccountId, appId, allowPromotionCodes, req: trimReq(req) }
+    logger.child(logChildObject).info(log1)
+
+    if (!stripeAccountId) throw {
+      status: statusCodes['Forbidden'],
+      error: { message: 'Stripe account not connected.' }
+    }
+
+    if (admin['deleted']) throw {
+      status: statusCodes['Not Found'],
+      error: { message: 'Admin not found.' }
+    }
+
+    if (typeof allowPromotionCodes !== 'boolean') throw {
+      status: statusCodes['Bad Request'],
+      error: { message: 'Enable automatic tax value invalid.' }
+    }
+
+    await _setAllowPromotionCodesInDdb(adminId, appName, appId, allowPromotionCodes)
+
+    logger
+      .child({ ...logChildObject, statusCode: statusCodes['Success'] })
+      .info(log2)
+
+    return res.end()
+  } catch (e) {
+    const message = log3
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
+      return res.status(e.status).send(e.error.message)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return res.status(statusCode).send(message)
+    }
+  }
+}
+
 exports.enableTestPayments = function (req, res) {
   const paymentsMode = 'test'
   const log1 = 'Enabling test payments'
@@ -899,6 +1047,20 @@ exports.setPaymentRequired = function (req, res) {
   const log2 = 'Successfully set payment required'
   const log3 = 'Failed to set payment required'
   return _setPaymentRequired(req, res, log1, log2, log3)
+}
+
+exports.setEnableAutomaticTax = function (req, res) {
+  const log1 = 'Setting enable automatic tax'
+  const log2 = 'Successfully set enable automatic tax'
+  const log3 = 'Failed to set enable automatic tax '
+  return _setEnableAutomaticTax(req, res, log1, log2, log3)
+}
+
+exports.setAllowPromotionCodes = function (req, res) {
+  const log1 = 'Setting allow promotion codes'
+  const log2 = 'Successfully set allow promotion codes'
+  const log3 = 'Failed to set allow promotion codes '
+  return _setAllowPromotionCodes(req, res, log1, log2, log3)
 }
 
 exports.modifyEncryptionMode = async function (req, res) {

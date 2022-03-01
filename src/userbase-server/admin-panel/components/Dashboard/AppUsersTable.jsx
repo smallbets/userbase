@@ -21,14 +21,19 @@ export default class AppUsersTable extends Component {
       deletedUsers: [],
       loading: true,
       showDeletedUsers: false,
+      showAdvanced: false,
       showEncryptionModeModal: false,
       domains: [],
       domainName: '',
       paymentsState: {
         paymentsMode: '',
+        enableAutomaticTax: false,
+        allowPromotionCodes: false,
         trialPeriodDays: '',
         newTrialPeriodDays: '',
         loadingPaymentsMode: false,
+        loadingEnableAutomaticTax: false,
+        loadingAllowPomotionCodes: false,
         loadingPlanMode: false,
         errorPaymentsPortal: false,
       }
@@ -42,11 +47,15 @@ export default class AppUsersTable extends Component {
     this.handleToggleDisplayUserMetadata = this.handleToggleDisplayUserMetadata.bind(this)
     this.handleExpandAll = this.handleExpandAll.bind(this)
     this.handleHideAll = this.handleHideAll.bind(this)
+    this.handleShowAdvanced = this.handleShowAdvanced.bind(this)
+    this.handleHideAdvanced = this.handleHideAdvanced.bind(this)
     this.handleTrialPeriodInputChange = this.handleTrialPeriodInputChange.bind(this)
     this.handleSetTrialPeriod = this.handleSetTrialPeriod.bind(this)
     this.handleDeleteTrial = this.handleDeleteTrial.bind(this)
     this.handleEnableTestPayments = this.handleEnableTestPayments.bind(this)
     this.handleEnableProdPayments = this.handleEnableProdPayments.bind(this)
+    this.handleToggleEnableAutomaticTax = this.handleToggleEnableAutomaticTax.bind(this)
+    this.handleToggleAllowPromotionCodes = this.handleToggleAllowPromotionCodes.bind(this)
     this.handleTogglePaymentRequired = this.handleTogglePaymentRequired.bind(this)
     this.handleSetEncryptionMode = this.handleSetEncryptionMode.bind(this)
     this.handleShowEncryptionModeModal = this.handleShowEncryptionModeModal.bind(this)
@@ -67,7 +76,7 @@ export default class AppUsersTable extends Component {
         dashboardLogic.listAppUsers(appName),
         dashboardLogic.getDomainWhitelist(appName),
       ])
-      const { users, appId, encryptionMode, paymentsMode, paymentRequired, trialPeriodDays } = listAppUsersResponse
+      const { users, appId, encryptionMode, paymentsMode, paymentRequired, enableAutomaticTax, allowPromotionCodes, trialPeriodDays } = listAppUsersResponse
       const { domains } = domainWhitelist
       if (appId !== domainWhitelist.appId) throw new Error('Please refresh the page!')
 
@@ -90,10 +99,12 @@ export default class AppUsersTable extends Component {
         ...paymentsState,
         paymentsMode,
         paymentRequired,
+        enableAutomaticTax,
+        allowPromotionCodes,
         trialPeriodDays,
       }
 
-      if (this._isMounted) this.setState({ appId, encryptionMode, activeUsers, deletedUsers, domains, loading: false, paymentsState: updatedPaymentsState })
+      if (this._isMounted) this.setState({ appId, encryptionMode, activeUsers, deletedUsers, domains, loading: false, paymentsState: updatedPaymentsState, showAdvanced: enableAutomaticTax || allowPromotionCodes })
     } catch (e) {
       if (this._isMounted) this.setState({ error: e.message, loading: false })
     }
@@ -253,6 +264,21 @@ export default class AppUsersTable extends Component {
       deletedUsers: this.state.deletedUsers.map((user) => ({ ...user, displayUserMetadata: false })),
       showDeletedUsers: false
     })
+  }
+
+  handleShowAdvanced(e) {
+    e.preventDefault()
+    this.setState((prevState) => ({
+      ...prevState,
+      showAdvanced: true,
+    }))
+  }
+  handleHideAdvanced(e) {
+    e.preventDefault()
+    this.setState((prevState) => ({
+      ...prevState,
+      showAdvanced: false,
+    }))
   }
 
   handleTrialPeriodInputChange(event) {
@@ -478,6 +504,76 @@ export default class AppUsersTable extends Component {
     }
   }
 
+  async handleToggleEnableAutomaticTax(event) {
+    event.preventDefault()
+    const { appName } = this.props
+    const { appId, paymentsState } = this.state
+    if (paymentsState.loadingEnableAutomaticTax) return
+
+    try {
+      this.setState({ paymentsState: {
+          ...paymentsState,
+          loadingEnableAutomaticTax: true,
+          errorPaymentsPortal: false
+        }
+      })
+      const enableAutomaticTax = event.target.checked
+
+      await dashboardLogic.toggleEnableAutomaticTax(appName, appId, enableAutomaticTax)
+
+      if (this._isMounted) {
+        this.setState({ paymentsState: {
+            ...paymentsState,
+            loadingEnableAutomaticTax: false,
+            enableAutomaticTax
+          }
+        })
+      }
+    } catch (e) {
+      if (this._isMounted) this.setState({ paymentsState: {
+          ...paymentsState,
+          loadingEnableAutomaticTax: true,
+          errorPaymentsPortal: e.message
+        }
+      })
+    }
+  }
+
+  async handleToggleAllowPromotionCodes(event) {
+    event.preventDefault()
+    const { appName } = this.props
+    const { appId, paymentsState } = this.state
+    if (paymentsState.loadingAllowPomotionCodes) return
+
+    try {
+      this.setState({ paymentsState: {
+          ...paymentsState,
+          loadingAllowPomotionCodes: true,
+          errorPaymentsPortal: false
+        }
+      })
+      const allowPromotionCodes = event.target.checked
+
+      await dashboardLogic.toggleAllowPromotionCodes(appName, appId, allowPromotionCodes)
+
+      if (this._isMounted) {
+        this.setState({ paymentsState: {
+            ...paymentsState,
+            loadingAllowPomotionCodes: false,
+            allowPromotionCodes
+          }
+        })
+      }
+    } catch (e) {
+      if (this._isMounted) this.setState({ paymentsState: {
+          ...paymentsState,
+          loadingAllowPomotionCodes: true,
+          errorPaymentsPortal: e.message
+        }
+      })
+    }
+  }
+
   async handleSetEncryptionMode(encryptionMode) {
     if (encryptionMode === this.state.encryptionMode) return
     const { appName } = this.props
@@ -587,6 +683,7 @@ export default class AppUsersTable extends Component {
       deletedUsers,
       error,
       showDeletedUsers,
+      showAdvanced,
       paymentsState,
       appId,
       encryptionMode,
@@ -603,9 +700,13 @@ export default class AppUsersTable extends Component {
     const {
       paymentsMode,
       paymentRequired,
+      enableAutomaticTax,
+      allowPromotionCodes,
       trialPeriodDays,
       newTrialPeriodDays,
       loadingPaymentsMode,
+      loadingEnableAutomaticTax,
+      loadingAllowPomotionCodes,
       loadingPlanMode,
       loadingSetTrialPeriod,
       loadingDeleteTrial,
@@ -1018,6 +1119,57 @@ export default class AppUsersTable extends Component {
                     }
                   </div>
                 </form>
+
+                <div className={showAdvanced ? 'mb-4' : 'mb-0'}>
+                  <span className='mb-0 cursor-pointer mouse:hover:text-orange-700' onClick={showAdvanced ? this.handleHideAdvanced : this.handleShowAdvanced}>
+                    {showAdvanced ? '-Hide Advanced' : '+Show Advanced'}
+                  </span>
+                </div>
+                {showAdvanced &&
+                  <div>
+                    <label className='flex items-center mb-4 fit-content'>
+                      <div className='relative cursor-pointer'>
+                        <input
+                          type='checkbox'
+                          className='hidden'
+                          checked={enableAutomaticTax}
+                          onChange={this.handleToggleEnableAutomaticTax}
+                          disabled={loadingEnableAutomaticTax}
+                        />
+                        <div className='w-10 h-4 rounded-full shadow-inner bg-gray-400' />
+                        <div className='toggle-dot absolute w-6 h-6 bg-white rounded-full shadow' />
+                      </div>
+                      <div className='ml-3 font-medium cursor-pointer text-gray-600 hover:text-gray-800'>
+                        Collect taxes in Checkout
+                      </div>
+
+                      {loadingEnableAutomaticTax && <div className='loader w-4 h-4 ml-4 inline-block' />}
+                    </label>
+                    <label className='flex items-center mb-4 fit-content'>
+                      <div className='relative cursor-pointer'>
+                        <input
+                          type='checkbox'
+                          className='hidden'
+                          checked={allowPromotionCodes}
+                          onChange={this.handleToggleAllowPromotionCodes}
+                          disabled={loadingAllowPomotionCodes}
+                        />
+                        <div className='w-10 h-4 rounded-full shadow-inner bg-gray-400' />
+                        <div className='toggle-dot absolute w-6 h-6 bg-white rounded-full shadow' />
+                      </div>
+                      <div className='ml-3 font-medium cursor-pointer text-gray-600 hover:text-gray-800'>
+                        Allow promotion codes in Checkout
+                      </div>
+
+                      {loadingAllowPomotionCodes && <div className='loader w-4 h-4 ml-4 inline-block' />}
+                    </label>
+
+                    <div className='text-xs text-gray-600 font-normal'>
+                      For more information on these settings, see the documentation for it <a className='cursor-pointer hover:text-orange-700' href='https://userbase.com/docs/sdk/purchase-subscription#advanced' target='_blank' rel='noopener noreferrer'>here</a>.
+                    </div>
+                  </div>
+                }
+
               </div>
               :
 
