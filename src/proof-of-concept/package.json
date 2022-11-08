@@ -33,7 +33,7 @@
     "css-loader": "^2.1.1",
     "file-loader": "^3.0.1",
     "html-loader": "^0.5.5",
-    "html-webpack-plugin": "^3.2.0",
+    "html-webpack-plugin": "^5.5.0",
     "open": "6.0.0",
     "opn-browser-webpack-plugin": "0.0.7",
     "optimize-css-assets-webpack-plugin": "^5.0.1",
