@@ -22,7 +22,7 @@
     "build:server": "cd ./src/proof-of-concept && npm run build:server",
     "build:admin-panel": "cd ./src/userbase-server/admin-panel && npm run build",
     "copy:admin-panel:to-build": "mkdir ./src/proof-of-concept/build/node_modules/userbase-server/admin-panel && cp -R ./src/userbase-server/admin-panel/dist ./src/proof-of-concept/build/node_modules/userbase-server/admin-panel/dist",
-    "start": "npm-run-all -r -p watch:client watch:server watch:admin-panel watch:userbase-js",
+    "start": "LOG_LEVEL=debug npm-run-all -r -p watch:client watch:server watch:admin-panel watch:userbase-js",
     "start:prod": "npm stop && node ./node_modules/forever/bin/forever --minUptime 5000 --spinSleepTime 1000 -l ../logs/encd.log -p $(pwd) -a start ./src/proof-of-concept/build/app.js",
     "stop": "node ./node_modules/forever/bin/forever stopall",
     "watch:client": "cd ./src/proof-of-concept && npm run watch:client",

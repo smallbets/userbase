@@ -7,10 +7,12 @@ import userController from './user'
 import appController from './app'
 import adminController from './admin'
 import stripe from './stripe'
+import { wait } from './utils'
 
 const MS_IN_AN_HOUR = 60 * 60 * 1000
 const MS_IN_A_DAY = 24 * MS_IN_AN_HOUR
 const TIME_TO_PURGE = 30 * MS_IN_A_DAY
+const MAX_PURGE_ATTEMPTS = 10
 
 const ddbWhileLoop = async (params, ddbQuery, action) => {
   let itemsResponse = await ddbQuery(params)
@@ -559,19 +561,17 @@ const purgeDeletedAdmins = async (nightlyId) => {
   logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purging deleted admins')
 }
 
-const purge = async (nightlyId) => {
+const purge = async (nightlyId, attempt = 1) => {
   const start = Date.now()
-  const logChildObject = { nightlyId, start }
+  const logChildObject = { nightlyId, start, attempt }
 
   try {
     logger.child(logChildObject).info('Commencing purge')
 
     // place deleted items in permanent deleted tables
-    await Promise.all([
-      scanForDeletedAdmins(nightlyId),
-      scanForDeletedApps(nightlyId),
-      scanForDeletedUsers(nightlyId),
-    ])
+    await scanForDeletedAdmins(nightlyId)
+    await scanForDeletedApps(nightlyId)
+    await scanForDeletedUsers(nightlyId)
 
     // purge items from permanent deleted tables. Do each synchronously because top level may delete level below it;
     // for example, purging admins will purge apps and users, reducing the number of deleted apps and deleted users
@@ -582,6 +582,13 @@ const purge = async (nightlyId) => {
     logger.child({ timeToPurge: Date.now() - start, ...logChildObject }).info('Finished purge')
   } catch (e) {
     logger.child({ timeToPurge: Date.now() - start, err: e, ...logChildObject }).fatal('Failed purge')
+
+    if (e && e.retryable) {
+      await wait(1000 * 60 * 5) // 5 mins
+      if (attempt < MAX_PURGE_ATTEMPTS) {
+        await purge(nightlyId, attempt + 1)
+      }
+    }
   }
 }
 
