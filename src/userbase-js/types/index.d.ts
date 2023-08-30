@@ -128,16 +128,25 @@ export type databaseNameXorIdXorShareToken = (
 
 export type priceIdXorPlanId = ({ priceId?: string, planId?: never } | { planId?: string, priceId?: never });
 
+export type PasswordHashAlgo = (
+  passwordArrayBuffer: Uint8Array,
+  salt: Uint8Array,
+  N: number,
+  r: number,
+  p: number,
+  dkLen: number
+) => Promise<Uint8Array>;
+
 export interface Userbase {
   init(params: { appId: string, updateUserHandler?: UpdateUserHandler, sessionLength?: number, allowServerSideEncryption?: boolean }): Promise<Session>
 
-  signUp(params: { username: string, password: string, email?: string, profile?: UserProfile, rememberMe?: RememberMeOption, sessionLength?: number }): Promise<UserResult>
+  signUp(params: { username: string, password: string, email?: string, profile?: UserProfile, rememberMe?: RememberMeOption, sessionLength?: number, passwordHashAlgo?: PasswordHashAlgo }): Promise<UserResult>
 
-  signIn(params: { username: string, password: string, rememberMe?: RememberMeOption, sessionLength?: number }): Promise<UserResult>
+  signIn(params: { username: string, password: string, rememberMe?: RememberMeOption, sessionLength?: number, passwordHashAlgo?: PasswordHashAlgo }): Promise<UserResult>
 
   signOut(): Promise<void>
 
-  updateUser(params: { username?: string, currentPassword?: string, newPassword?: string, email?: string | null | false | undefined, profile?: UserProfile | null | false | undefined }): Promise<void>
+  updateUser(params: { username?: string, currentPassword?: string, newPassword?: string, email?: string | null | false | undefined, profile?: UserProfile | null | false | undefined, passwordHashAlgo?: PasswordHashAlgo }): Promise<void>
 
   deleteUser(): Promise<void>
 
