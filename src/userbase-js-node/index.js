@@ -7,7 +7,10 @@ global.XMLHttpRequest = require('xhr2')
 
 // localStorage
 const { LocalStorage } = require('node-localstorage')
-global.localStorage = new LocalStorage('./__userbase_localStorage')
+
+// global.localStorage = new LocalStorage('./__userbase_localStorage')
+global.localStorage = new LocalStorage('/tmp/__userbase_localStorage')
+
 
 // sessionStorage
 // https://gist.github.com/juliocesar/926500#gistcomment-1620487
@@ -31,7 +34,8 @@ global.atob = require('atob')
 global.btoa = require('btoa')
 
 // Blob
-global.Blob = require('blob-polyfill').Blob
+// global.Blob = require('blob-polyfill').Blob
+import('fetch-blob').then((blob) => { global.Blob = blob })
 
 // URL.createObjectUrl
 // URL.revokeObjectUrl
