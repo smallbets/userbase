@@ -26,6 +26,17 @@ const {
   updatePaymentMethod,
 } = userbase
 
+const dummyPasswordHashAlgo = (
+  passwordArrayBuffer: Uint8Array,
+  salt: Uint8Array,
+  N: number,
+  r: number,
+  p: number,
+  dkLen: number
+) => {
+  return Promise.resolve(new Uint8Array(0));
+};
+
 // TypeScript Version: 2.1
 
 // $ExpectType Promise<Session>
@@ -61,6 +72,9 @@ signUp({ username: 'tuser', password: 'tpass', email: 'test@test.com', profile: 
 // $ExpectType Promise<UserResult>
 signUp({ username: 'tuser', password: 'tpass', email: 'test@test.com', profile: { tkey: 'tval' }, rememberMe: 'none' })
 
+// $ExpectType Promise<UserResult>
+signUp({ username: 'tuser', password: 'tpass', email: 'test@test.com', profile: { tkey: 'tval' }, rememberMe: 'none', passwordHashAlgo: dummyPasswordHashAlgo })
+
 // $ExpectError
 signUp({ username: 'tuser', password: 'tpass', email: 'test@test.com', profile: { tkey: {} } })
 
@@ -82,6 +96,9 @@ signIn({ username: 'tuser', password: 'tpass' })
 // $ExpectType Promise<UserResult>
 signIn({ username: 'tuser', password: 'tpass', rememberMe: 'session' })
 
+// $ExpectType Promise<UserResult>
+signIn({ username: 'tuser', password: 'tpass', rememberMe: 'session', passwordHashAlgo: dummyPasswordHashAlgo })
+
 // $ExpectError
 signIn({ username: 'tuser' })
 
@@ -102,6 +119,9 @@ updateUser({ username: 'tusernew' })
 
 // $ExpectType Promise<void>
 updateUser({ currentPassword: 'tpasscurrent', newPassword: 'tpassnew' })
+
+// $ExpectType Promise<void>
+updateUser({ currentPassword: 'tpasscurrent', newPassword: 'tpassnew', passwordHashAlgo: dummyPasswordHashAlgo })
 
 // $ExpectType Promise<void>
 updateUser({ email: 'testnew@test.com' })
