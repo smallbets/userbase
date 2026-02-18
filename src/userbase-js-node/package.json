@@ -16,7 +16,7 @@
   "dependencies": {
     "@peculiar/webcrypto": "^1.1.4",
     "atob": "^2.1.2",
-    "blob-polyfill": "^4.0.20200601",
+    "fetch-blob": "^3.2.0",
     "btoa": "^1.2.1",
     "domexception": "^2.0.1",
     "isomorphic-ws": "^4.0.1",
