@@ -255,10 +255,15 @@ const _handleCustomerSubscription = async (logChildObject, eventType, subscripti
 }
 
 const _handleCheckoutSessionCompleted = async (logChildObject, session, stripeAccountId) => {
+  const isProduction = session.livemode
+  
   if (session.mode === 'subscription') {
     await _handleCheckoutSubscriptionCompleted(logChildObject, session, stripeAccountId)
   } else if (session.mode === 'setup') {
     await _updateStripePaymentMethod(logChildObject, session, stripeAccountId)
+  } else if (session.mode === 'payment') {
+    // One-time payment completed
+    await userController.handleOneTimePaymentCompleted(logChildObject, session, stripeAccountId, isProduction)
   }
 }
 
@@ -303,6 +308,14 @@ const handleWebhook = async function (req, res, webhookOption) {
         const subscription = event.data.object
         const stripeEventTimestamp = event.created
         await _handleCustomerSubscription(logChildObject, event.type, subscription, stripeEventTimestamp, stripeAccountId)
+        break
+      }
+
+      case 'charge.refunded': {
+        const charge = event.data.object
+        const paymentIntentId = charge.payment_intent
+        const isProduction = event.livemode
+        await userController.handleRefund(logChildObject, paymentIntentId, stripeAccountId, isProduction)
         break
       }
 

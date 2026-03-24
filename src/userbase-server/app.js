@@ -5,6 +5,7 @@ import statusCodes from './statusCodes'
 import setup from './setup'
 import userController from './user'
 import adminController from './admin'
+import stripe from './stripe'
 import { trimReq, lastEvaluatedKeyToNextPageToken, nextPageTokenToLastEvaluatedKey } from './utils'
 
 const UUID_STRING_LENGTH = 36
@@ -13,6 +14,15 @@ const _validateEncryptionMode = (encryptionMode) => {
   if (encryptionMode !== 'end-to-end' && encryptionMode !== 'server-side') throw {
     status: statusCodes['Bad Request'],
     data: "Encryption mode must either be 'end-to-end' or 'server-side'"
+  }
+}
+
+const _validatePaymentsMode = (paymentsMode) => {
+  if (paymentsMode && paymentsMode !== 'test' && paymentsMode !== 'prod' && paymentsMode !== 'disabled') {
+    throw {
+      status: statusCodes['Bad Request'],
+      error: { message: "Payments mode must be 'test', 'prod', or 'disabled'." }
+    }
   }
 }
 
@@ -400,7 +410,10 @@ const _getUsersQuery = async function (appId, lastEvaluatedKey) {
 }
 
 const _buildAppResult = (app, admin) => {
-  const stripeData = admin['stripe-account-id']
+  // Per-app Stripe account takes precedence over admin's Stripe account
+  const stripeAccountId = app['stripe-account-id'] || admin['stripe-account-id']
+  
+  const stripeData = stripeAccountId
     ? {
       paymentsMode: app['payments-mode'] || 'test',
       paymentRequired: app['payment-required'] || false,
@@ -411,6 +424,9 @@ const _buildAppResult = (app, admin) => {
       // legacy plans stored on app
       testSubscriptionPlanId: app['test-subscription-plan-id'],
       prodSubscriptionPlanId: app['prod-subscription-plan-id'],
+      
+      // Per-app Stripe account
+      stripeAccountId: app['stripe-account-id'] || undefined,
     }
     : {
       paymentsMode: 'disabled'
@@ -1305,6 +1321,364 @@ exports.validateOrigin = async function (appId, origin) {
     status: statusCodes['Forbidden'],
     error: {
       message: 'Domain not whitelisted'
+    }
+  }
+}
+
+// ============================================
+// Admin API Endpoints (access token authentication)
+// ============================================
+
+/**
+ * Create a new app via Admin API (access token authentication)
+ * POST /v1/admin/apps
+ */
+exports.createAppViaAdminAPI = async function (req, res) {
+  let logChildObject
+  try {
+    const admin = res.locals.admin
+    const adminId = admin['admin-id']
+
+    const appName = req.body.appName
+    const encryptionMode = req.body.encryptionMode
+
+    logChildObject = { adminId, appName, encryptionMode, req: trimReq(req) }
+    logger.child(logChildObject).info('Creating app via Admin API')
+
+    if (admin['deleted']) throw {
+      status: statusCodes['Not Found'],
+      error: { message: 'Admin not found.' }
+    }
+
+    if (!appName) throw {
+      status: statusCodes['Bad Request'],
+      error: { message: 'App name is required.' }
+    }
+
+    if (!adminController.saasSubscriptionActive(admin)) throw {
+      status: statusCodes['Payment Required'],
+      error: { message: 'Pay subscription fee to create an app.' }
+    }
+
+    const app = await createApp(appName, adminId, encryptionMode)
+
+    logChildObject.appId = app['app-id']
+    logger.child({ ...logChildObject, statusCode: statusCodes['Success'] }).info('Successfully created app via Admin API')
+
+    return res.status(statusCodes['Success']).send(_buildAppResult(app, admin))
+  } catch (e) {
+    const message = 'Failed to create app.'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
+      return res.status(e.status).send(e.error)
+    } else if (e.data) {
+      const statusCode = e.status || statusCodes['Bad Request']
+      logger.child({ ...logChildObject, statusCode, err: e.data }).warn(message)
+      return res.status(statusCode).send({ message: e.data })
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return res.status(statusCode).send({ message })
+    }
+  }
+}
+
+/**
+ * Update an app via Admin API (access token authentication)
+ * PATCH /v1/admin/apps/:appId
+ */
+exports.updateAppViaAdminAPI = async function (req, res) {
+  let logChildObject
+  try {
+    const appId = req.params.appId
+    const admin = res.locals.admin
+    const adminId = admin['admin-id']
+
+    const { 
+      paymentsMode, 
+      paymentRequired, 
+      enableAutomaticTax, 
+      allowPromotionCodes,
+      trialPeriodDays,
+      testSubscriptionPlanId,
+      prodSubscriptionPlanId,
+    } = req.body
+
+    logChildObject = { adminId, appId, req: trimReq(req) }
+    logger.child(logChildObject).info('Updating app via Admin API')
+
+    if (admin['deleted']) throw {
+      status: statusCodes['Not Found'],
+      error: { message: 'Admin not found.' }
+    }
+
+    const app = await getAppByAppId(appId)
+    if (!app || app['deleted']) throw {
+      status: statusCodes['Not Found'],
+      error: { message: 'App not found.' }
+    }
+
+    if (app['admin-id'] !== adminId) throw {
+      status: statusCodes['Forbidden'],
+      error: { message: 'App not found.' }
+    }
+
+    // Validate payments mode if provided
+    _validatePaymentsMode(paymentsMode)
+
+    // Build update expression dynamically based on provided fields
+    const updateExpressions = []
+    const expressionAttributeNames = {}
+    const expressionAttributeValues = {}
+
+    if (paymentsMode !== undefined) {
+      updateExpressions.push('#paymentsMode = :paymentsMode')
+      expressionAttributeNames['#paymentsMode'] = 'payments-mode'
+      expressionAttributeValues[':paymentsMode'] = paymentsMode
+    }
+
+    if (paymentRequired !== undefined) {
+      updateExpressions.push('#paymentRequired = :paymentRequired')
+      expressionAttributeNames['#paymentRequired'] = 'payment-required'
+      expressionAttributeValues[':paymentRequired'] = paymentRequired
+    }
+
+    if (enableAutomaticTax !== undefined) {
+      updateExpressions.push('#enableAutomaticTax = :enableAutomaticTax')
+      expressionAttributeNames['#enableAutomaticTax'] = 'enable-automatic-tax'
+      expressionAttributeValues[':enableAutomaticTax'] = enableAutomaticTax
+    }
+
+    if (allowPromotionCodes !== undefined) {
+      updateExpressions.push('#allowPromotionCodes = :allowPromotionCodes')
+      expressionAttributeNames['#allowPromotionCodes'] = 'allow-promotion-codes'
+      expressionAttributeValues[':allowPromotionCodes'] = allowPromotionCodes
+    }
+
+    if (trialPeriodDays !== undefined) {
+      if (typeof trialPeriodDays !== 'number' || trialPeriodDays < 1 || trialPeriodDays > 730) {
+        throw {
+          status: statusCodes['Bad Request'],
+          error: { message: 'Trial period must be a number between 1 and 730.' }
+        }
+      }
+      updateExpressions.push('#trialPeriodDays = :trialPeriodDays')
+      expressionAttributeNames['#trialPeriodDays'] = 'trial-period-days'
+      expressionAttributeValues[':trialPeriodDays'] = trialPeriodDays
+    }
+
+    if (testSubscriptionPlanId !== undefined) {
+      updateExpressions.push('#testSubscriptionPlanId = :testSubscriptionPlanId')
+      expressionAttributeNames['#testSubscriptionPlanId'] = 'test-subscription-plan-id'
+      expressionAttributeValues[':testSubscriptionPlanId'] = testSubscriptionPlanId
+    }
+
+    if (prodSubscriptionPlanId !== undefined) {
+      updateExpressions.push('#prodSubscriptionPlanId = :prodSubscriptionPlanId')
+      expressionAttributeNames['#prodSubscriptionPlanId'] = 'prod-subscription-plan-id'
+      expressionAttributeValues[':prodSubscriptionPlanId'] = prodSubscriptionPlanId
+    }
+
+    if (updateExpressions.length === 0) {
+      throw {
+        status: statusCodes['Bad Request'],
+        error: { message: 'No fields provided to update.' }
+      }
+    }
+
+    const params = {
+      TableName: setup.appsTableName,
+      Key: {
+        'admin-id': adminId,
+        'app-name': app['app-name']
+      },
+      UpdateExpression: 'SET ' + updateExpressions.join(', '),
+      ConditionExpression: '#appId = :appId and attribute_not_exists(deleted)',
+      ExpressionAttributeNames: {
+        '#appId': 'app-id',
+        ...expressionAttributeNames
+      },
+      ExpressionAttributeValues: {
+        ':appId': appId,
+        ...expressionAttributeValues
+      },
+      ReturnValues: 'ALL_NEW'
+    }
+
+    const ddbClient = connection.ddbClient()
+    const result = await ddbClient.update(params).promise()
+    const updatedApp = result.Attributes
+
+    logger.child({ ...logChildObject, statusCode: statusCodes['Success'] }).info('Successfully updated app via Admin API')
+
+    return res.status(statusCodes['Success']).send(_buildAppResult(updatedApp, admin))
+  } catch (e) {
+    const message = 'Failed to update app.'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
+      return res.status(e.status).send(e.error)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return res.status(statusCode).send({ message })
+    }
+  }
+}
+
+/**
+ * Connect Stripe account to an app via Admin API
+ * POST /v1/admin/apps/:appId/stripe/connection/:authorizationCode
+ */
+exports.connectAppStripeAccount = async function (req, res) {
+  let logChildObject
+  try {
+    const appId = req.params.appId
+    const authorizationCode = req.params.authorizationCode
+    const admin = res.locals.admin
+    const adminId = admin['admin-id']
+
+    logChildObject = { adminId, appId, req: trimReq(req) }
+    logger.child(logChildObject).info('Connecting Stripe account to app via Admin API')
+
+    if (admin['deleted']) throw {
+      status: statusCodes['Not Found'],
+      error: { message: 'Admin not found.' }
+    }
+
+    const app = await getAppByAppId(appId)
+    if (!app || app['deleted']) throw {
+      status: statusCodes['Not Found'],
+      error: { message: 'App not found.' }
+    }
+
+    if (app['admin-id'] !== adminId) throw {
+      status: statusCodes['Forbidden'],
+      error: { message: 'App not found.' }
+    }
+
+    // Exchange authorization code for Stripe Connect account ID
+    const stripeConnectedAccount = await stripe.getClient().oauth.token({
+      grant_type: 'authorization_code',
+      code: authorizationCode,
+    })
+
+    const stripeUserId = stripeConnectedAccount.stripe_user_id
+    if (!stripeUserId) throw {
+      status: statusCodes['Bad Request'],
+      error: { message: 'Invalid authorization code.' }
+    }
+
+    logChildObject.stripeAccountId = stripeUserId
+
+    // Store Stripe account ID on the app
+    const params = {
+      TableName: setup.appsTableName,
+      Key: {
+        'admin-id': adminId,
+        'app-name': app['app-name']
+      },
+      UpdateExpression: 'SET #stripeAccountId = :stripeAccountId',
+      ConditionExpression: '#appId = :appId and attribute_not_exists(deleted)',
+      ExpressionAttributeNames: {
+        '#appId': 'app-id',
+        '#stripeAccountId': 'stripe-account-id'
+      },
+      ExpressionAttributeValues: {
+        ':appId': appId,
+        ':stripeAccountId': stripeUserId
+      },
+      ReturnValues: 'ALL_NEW'
+    }
+
+    const ddbClient = connection.ddbClient()
+    const result = await ddbClient.update(params).promise()
+    const updatedApp = result.Attributes
+
+    logger.child({ ...logChildObject, statusCode: statusCodes['Success'] }).info('Successfully connected Stripe account to app')
+
+    return res.status(statusCodes['Success']).send(_buildAppResult(updatedApp, admin))
+  } catch (e) {
+    const message = 'Failed to connect Stripe account to app.'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
+      return res.status(e.status).send(e.error)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return res.status(statusCode).send({ message })
+    }
+  }
+}
+
+/**
+ * Disconnect Stripe account from an app via Admin API
+ * DELETE /v1/admin/apps/:appId/stripe/connection
+ */
+exports.disconnectAppStripeAccount = async function (req, res) {
+  let logChildObject
+  try {
+    const appId = req.params.appId
+    const admin = res.locals.admin
+    const adminId = admin['admin-id']
+
+    logChildObject = { adminId, appId, req: trimReq(req) }
+    logger.child(logChildObject).info('Disconnecting Stripe account from app via Admin API')
+
+    if (admin['deleted']) throw {
+      status: statusCodes['Not Found'],
+      error: { message: 'Admin not found.' }
+    }
+
+    const app = await getAppByAppId(appId)
+    if (!app || app['deleted']) throw {
+      status: statusCodes['Not Found'],
+      error: { message: 'App not found.' }
+    }
+
+    if (app['admin-id'] !== adminId) throw {
+      status: statusCodes['Forbidden'],
+      error: { message: 'App not found.' }
+    }
+
+    // Remove Stripe account ID from the app
+    const params = {
+      TableName: setup.appsTableName,
+      Key: {
+        'admin-id': adminId,
+        'app-name': app['app-name']
+      },
+      UpdateExpression: 'REMOVE #stripeAccountId',
+      ConditionExpression: '#appId = :appId and attribute_not_exists(deleted)',
+      ExpressionAttributeNames: {
+        '#appId': 'app-id',
+        '#stripeAccountId': 'stripe-account-id'
+      },
+      ExpressionAttributeValues: {
+        ':appId': appId
+      },
+      ReturnValues: 'ALL_NEW'
+    }
+
+    const ddbClient = connection.ddbClient()
+    const result = await ddbClient.update(params).promise()
+    const updatedApp = result.Attributes
+
+    logger.child({ ...logChildObject, statusCode: statusCodes['Success'] }).info('Successfully disconnected Stripe account from app')
+
+    return res.status(statusCodes['Success']).send(_buildAppResult(updatedApp, admin))
+  } catch (e) {
+    const message = 'Failed to disconnect Stripe account from app.'
+
+    if (e.status && e.error) {
+      logger.child({ ...logChildObject, statusCode: e.status, err: e.error }).warn(message)
+      return res.status(e.status).send(e.error)
+    } else {
+      const statusCode = statusCodes['Internal Server Error']
+      logger.child({ ...logChildObject, statusCode, err: e }).error(message)
+      return res.status(statusCode).send({ message })
     }
   }
 }
