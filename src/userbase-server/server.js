@@ -360,6 +360,18 @@ async function start(express, app, userbaseConfig = {}) {
                   )
                   break
                 }
+                case 'PurchaseOneTime': {
+                  response = await userController.createOneTimePaymentSession(
+                    logChildObject,
+                    res.locals.app,
+                    res.locals.admin,
+                    res.locals.user,
+                    params.successUrl,
+                    params.cancelUrl,
+                    params.priceId,
+                  )
+                  break
+                }
                 case 'CancelSubscription': {
                   response = await userController.cancelSubscription(
                     logChildObject,
@@ -716,6 +728,12 @@ async function start(express, app, userbaseConfig = {}) {
     v1Admin.get('/databases/:databaseId/users', admin.authenticateAccessToken, db.listUsersForDatabaseWithPagination)
     v1Admin.get('/apps', admin.authenticateAccessToken, appController.listAppsWithPagination)
     v1Admin.get('/auth-tokens/:authToken', admin.authenticateAccessToken, userController.verifyAuthToken)
+
+    // Admin API endpoints for app management (access token authentication)
+    v1Admin.post('/apps', admin.authenticateAccessToken, appController.createAppViaAdminAPI)
+    v1Admin.patch('/apps/:appId', admin.authenticateAccessToken, appController.updateAppViaAdminAPI)
+    v1Admin.post('/apps/:appId/stripe/connection/:authorizationCode', admin.authenticateAccessToken, appController.connectAppStripeAccount)
+    v1Admin.delete('/apps/:appId/stripe/connection', admin.authenticateAccessToken, appController.disconnectAppStripeAccount)
 
     // internal server used to receive notifications of transactions and user updates from peers -- shouldn't be exposed to public
     const internalServer = express()
